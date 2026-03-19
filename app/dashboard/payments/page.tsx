@@ -19,8 +19,8 @@ export default async function PaymentsPage() {
     .maybeSingle();
 
   if (!membership) redirect("/dashboard/setup");
-
-  const schoolId = membership.school_id;
+  const membershipTyped = membership as { school_id: string };
+  const schoolId = membershipTyped.school_id;
 
   // Fetch students (no status filter — column may not exist)
   const { data: students, error: studentsError } = await supabase
@@ -30,8 +30,8 @@ export default async function PaymentsPage() {
     .order("full_name");
 
 
-  // Get student IDs for sub-queries
-  const studentIds = (students ?? []).map((s) => s.id);
+  const typedStudents = (students ?? []) as { id: string; full_name: string; admission_number: string | null; class: { name: string } | null }[];
+  const studentIds = typedStudents.map((s) => s.id);
 
   // Fetch balances — query by student_id list instead of school_id
   const balancesRes = studentIds.length > 0
@@ -58,6 +58,27 @@ export default async function PaymentsPage() {
     console.log("[payments] payments error:", paymentsRes.error);
   }
 
+  const typedBalances = (balancesRes.data ?? []) as {
+    student_id: string;
+    fee_structure_id: string;
+    fee_name: string;
+    total_fee: number;
+    total_paid: number;
+    balance: number;
+    due_date: string | null;
+  }[];
+  const typedPayments = (paymentsRes.data ?? []) as {
+    id: string;
+    student_id: string;
+    amount: number;
+    payment_method: string;
+    payment_date: string;
+    reference_number: string | null;
+    notes: string | null;
+    fee_structure_id: string | null;
+    receipt: { id: string; receipt_number: string } | null;
+  }[];
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -81,9 +102,9 @@ export default async function PaymentsPage() {
 
       <main className="mx-auto max-w-3xl px-6 py-10">
         <PaymentClient
-          students={students ?? []}
-          balances={balancesRes.data ?? []}
-          payments={paymentsRes.data ?? []}
+          students={typedStudents}
+          balances={typedBalances}
+          payments={typedPayments}
         />
       </main>
     </div>

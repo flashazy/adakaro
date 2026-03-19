@@ -72,7 +72,7 @@ export async function initiateAzamPayPayment(
     const supabaseAdmin = createAdminClient();
     const { error: insertError } = await supabaseAdmin
       .from("azampay_pending_payments")
-      .insert(insertPayload);
+      .insert(insertPayload as never);
 
     if (insertError) {
       console.error("[initiateAzamPayPayment] INSERT ERROR:", insertError);

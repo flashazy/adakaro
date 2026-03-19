@@ -36,6 +36,17 @@ export default async function ReceiptPage({ params }: PageProps) {
 
   if (!payment) notFound();
 
+  const paymentTyped = payment as {
+    amount: number;
+    status: string;
+    payment_method: string;
+    payment_date: string;
+    reference_number: string | null;
+    notes: string | null;
+    student: { full_name: string; admission_number: string | null; class: { name: string } | null } | null;
+    fee_structure: { name: string } | null;
+  };
+
   const { data: receipt } = await supabase
     .from("receipts")
     .select("*")
@@ -43,13 +54,9 @@ export default async function ReceiptPage({ params }: PageProps) {
     .limit(1)
     .maybeSingle();
 
-  const student = payment.student as {
-    full_name: string;
-    admission_number: string | null;
-    class: { name: string } | null;
-  } | null;
-
-  const feeStructure = payment.fee_structure as { name: string } | null;
+  const receiptTyped = receipt as { receipt_number: string; issued_at: string } | null;
+  const student = paymentTyped.student;
+  const feeStructure = paymentTyped.fee_structure;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
@@ -71,16 +78,16 @@ export default async function ReceiptPage({ params }: PageProps) {
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           {/* Receipt header */}
           <div className="border-b border-slate-200 px-6 py-5 text-center dark:border-zinc-800">
-            {receipt && (
+            {receiptTyped && (
               <p className="text-xs font-medium uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                {receipt.receipt_number}
+                {receiptTyped.receipt_number}
               </p>
             )}
             <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
-              {formatCurrency(Number(payment.amount))}
+              {formatCurrency(Number(paymentTyped.amount))}
             </p>
             <span className="mt-2 inline-flex rounded-full bg-emerald-50 px-3 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-              {payment.status}
+              {paymentTyped.status}
             </span>
           </div>
 
@@ -96,19 +103,19 @@ export default async function ReceiptPage({ params }: PageProps) {
             <Row label="Fee" value={feeStructure?.name ?? "—"} />
             <Row
               label="Method"
-              value={payment.payment_method.replace("_", " ")}
+              value={paymentTyped.payment_method.replace("_", " ")}
             />
-            <Row label="Date" value={payment.payment_date} />
-            {payment.reference_number && (
-              <Row label="Reference" value={payment.reference_number} />
+            <Row label="Date" value={paymentTyped.payment_date} />
+            {paymentTyped.reference_number && (
+              <Row label="Reference" value={paymentTyped.reference_number} />
             )}
-            {payment.notes && (
-              <Row label="Notes" value={payment.notes} />
+            {paymentTyped.notes && (
+              <Row label="Notes" value={paymentTyped.notes} />
             )}
-            {receipt && (
+            {receiptTyped && (
               <Row
                 label="Issued"
-                value={new Date(receipt.issued_at).toLocaleString()}
+                value={new Date(receiptTyped.issued_at).toLocaleString()}
               />
             )}
           </div>

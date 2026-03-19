@@ -20,8 +20,8 @@ export default async function StudentsPage() {
     .maybeSingle();
 
   if (!membership) redirect("/dashboard/setup");
-
-  const schoolId = membership.school_id;
+  const membershipTyped = membership as { school_id: string };
+  const schoolId = membershipTyped.school_id;
 
   const { data: classes } = await supabase
     .from("classes")
@@ -38,10 +38,18 @@ export default async function StudentsPage() {
   console.log("[students] schoolId:", schoolId);
   console.log("[students] data count:", students?.length ?? "null", "error:", studentsError);
 
-  const classOptions = (classes ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-  }));
+  const typedClasses = (classes ?? []) as { id: string; name: string }[];
+  const typedStudents = (students ?? []) as {
+    id: string;
+    full_name: string;
+    admission_number: string | null;
+    class_id: string;
+    class: { id: string; name: string } | null;
+    parent_name: string | null;
+    parent_email: string | null;
+    parent_phone: string | null;
+  }[];
+  const classOptions = typedClasses.map((c) => ({ id: c.id, name: c.name }));
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
@@ -66,7 +74,7 @@ export default async function StudentsPage() {
 
       <main className="mx-auto max-w-5xl space-y-8 px-6 py-10">
         <AddStudentForm classes={classOptions} />
-        <StudentList students={students ?? []} classes={classOptions} />
+        <StudentList students={typedStudents} classes={classOptions} />
       </main>
     </div>
   );

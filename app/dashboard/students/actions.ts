@@ -19,8 +19,8 @@ async function getSchoolId() {
     .maybeSingle();
 
   if (!membership) throw new Error("No school found");
-
-  return { supabase, schoolId: membership.school_id };
+  const membershipTyped = membership as { school_id: string };
+  return { supabase, schoolId: membershipTyped.school_id };
 }
 
 export interface StudentActionState {
@@ -54,7 +54,7 @@ export async function addStudent(
       parent_name: parentName,
       parent_email: parentEmail,
       parent_phone: parentPhone,
-    });
+    } as never);
 
     if (error) {
       if (error.code === "23505") {
@@ -97,7 +97,7 @@ export async function updateStudent(
         parent_name: parentName,
         parent_email: parentEmail,
         parent_phone: parentPhone,
-      })
+      } as never)
       .eq("id", studentId);
 
     if (error) {

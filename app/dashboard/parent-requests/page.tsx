@@ -19,8 +19,8 @@ export default async function ParentRequestsPage() {
     .maybeSingle();
 
   if (!membership) redirect("/dashboard/setup");
-
-  const schoolId = membership.school_id;
+  const membershipTyped = membership as { school_id: string };
+  const schoolId = membershipTyped.school_id;
 
   // Fetch pending requests (without profiles join — PostgREST can't auto-detect
   // the FK since the column is parent_id not profile_id) and all students
@@ -38,8 +38,15 @@ export default async function ParentRequestsPage() {
       .order("full_name"),
   ]);
 
-  // Fetch parent profiles separately for each request
-  const parentIds = (requestsRes.data ?? []).map((r) => r.parent_id);
+  const typedRequests = (requestsRes.data ?? []) as {
+    id: string;
+    parent_id: string;
+    admission_number: string;
+    student_id: string | null;
+    created_at: string;
+  }[];
+
+  const parentIds = typedRequests.map((r) => r.parent_id);
   let parentMap: Record<string, { full_name: string; email: string | null }> =
     {};
   if (parentIds.length > 0) {
@@ -47,12 +54,13 @@ export default async function ParentRequestsPage() {
       .from("profiles")
       .select("id, full_name, email")
       .in("id", parentIds);
-    for (const p of parents ?? []) {
+    const typedParents = (parents ?? []) as { id: string; full_name: string; email: string | null }[];
+    for (const p of typedParents) {
       parentMap[p.id] = { full_name: p.full_name, email: p.email };
     }
   }
 
-  const requests: RequestData[] = (requestsRes.data ?? []).map((r) => {
+  const requests: RequestData[] = typedRequests.map((r) => {
     const parent = parentMap[r.parent_id];
 
     return {
@@ -65,12 +73,19 @@ export default async function ParentRequestsPage() {
     };
   });
 
-  const students = (studentsRes.data ?? []).map((s) => ({
+  const typedStudentsRes = (studentsRes.data ?? []) as {
+    id: string;
+    full_name: string;
+    admission_number: string | null;
+    class: { name: string } | null;
+  }[];
+  const students = typedStudentsRes.map((s) => ({
     id: s.id,
     full_name: s.full_name,
     admission_number: s.admission_number,
     className: (s.class as { name: string } | null)?.name ?? "No class",
   }));
+
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">

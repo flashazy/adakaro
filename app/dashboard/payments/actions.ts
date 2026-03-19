@@ -57,19 +57,21 @@ export async function recordPayment(
         payment_date: paymentDate,
         notes,
         recorded_by: user.id,
-      })
+      } as never)
       .select("id")
       .single();
 
     if (paymentError) return { error: paymentError.message };
+    const paymentTyped = payment as { id: string };
 
     // Create receipt (trigger auto-generates receipt_number)
     const { data: receipt, error: receiptError } = await supabase
       .from("receipts")
-      .insert({ payment_id: payment.id, receipt_number: "" })
+      .insert({ payment_id: paymentTyped.id, receipt_number: "" } as never)
       .select("id, receipt_number")
       .single();
 
+    const receiptTyped = receipt as { receipt_number: string } | null;
     if (receiptError) {
       console.log("[payments] receipt error:", receiptError);
     }
@@ -77,9 +79,9 @@ export async function recordPayment(
     revalidatePath("/dashboard/payments");
 
     return {
-      success: `Payment of ${amount.toLocaleString()} recorded.${receipt ? ` Receipt: ${receipt.receipt_number}` : ""}`,
-      paymentId: payment.id,
-      receiptNumber: receipt?.receipt_number ?? undefined,
+      success: `Payment of ${amount.toLocaleString()} recorded.${receiptTyped ? ` Receipt: ${receiptTyped.receipt_number}` : ""}`,
+      paymentId: paymentTyped.id,
+      receiptNumber: receiptTyped?.receipt_number ?? undefined,
     };
   } catch (e) {
     return { error: (e as Error).message };

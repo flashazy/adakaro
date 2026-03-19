@@ -68,7 +68,7 @@ export async function createSchool(
       phone,
       email,
       logo_url,
-    })
+    } as never)
     .select("id")
     .single();
 
@@ -77,16 +77,17 @@ export async function createSchool(
     return { error: insertError.message };
   }
 
-  console.log("[createSchool] school created:", school.id);
+  const schoolTyped = school as { id: string };
+  console.log("[createSchool] school created:", schoolTyped.id);
 
   // Link this admin to the school
   const { error: memberError } = await supabase
     .from("school_members")
     .insert({
-      school_id: school.id,
+      school_id: schoolTyped.id,
       user_id: user.id,
       role: "admin" as const,
-    });
+    } as never);
 
   if (memberError) {
     console.error("[createSchool] school_members insert error:", memberError);

@@ -19,8 +19,8 @@ async function getSchoolId() {
     .maybeSingle();
 
   if (!membership) throw new Error("No school found");
-
-  return { supabase, schoolId: membership.school_id };
+  const membershipTyped = membership as { school_id: string };
+  return { supabase, schoolId: membershipTyped.school_id };
 }
 
 export interface RequestActionState {
@@ -49,14 +49,15 @@ export async function approveRequest(
     if (fetchErr || !request) {
       return { error: "Request not found." };
     }
+    const requestTyped = request as { parent_id: string; student_id: string | null };
 
     // Insert the parent-student link
     const { error: linkErr } = await supabase
       .from("parent_students")
       .insert({
-        parent_id: request.parent_id,
+        parent_id: requestTyped.parent_id,
         student_id: studentId,
-      });
+      } as never);
 
     if (linkErr) {
       if (linkErr.code === "23505") {
@@ -69,7 +70,7 @@ export async function approveRequest(
     // Update request status to approved
     const { error: updateErr } = await supabase
       .from("parent_link_requests")
-      .update({ status: "approved" })
+      .update({ status: "approved" } as never)
       .eq("id", requestId);
 
     if (updateErr) {
@@ -95,7 +96,7 @@ export async function rejectRequest(
 
     const { error } = await supabase
       .from("parent_link_requests")
-      .update({ status: "rejected" })
+      .update({ status: "rejected" } as never)
       .eq("id", requestId);
 
     if (error) {

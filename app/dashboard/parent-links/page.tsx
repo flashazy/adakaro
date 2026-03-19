@@ -20,8 +20,8 @@ export default async function ParentLinksPage() {
     .maybeSingle();
 
   if (!membership) redirect("/dashboard/setup");
-
-  const schoolId = membership.school_id;
+  const membershipTyped = membership as { school_id: string };
+  const schoolId = membershipTyped.school_id;
 
   // Fetch parents (profiles with role 'parent'), students for this school, and existing links in parallel
   const [parentsRes, studentsRes, linksRes] = await Promise.all([
@@ -42,13 +42,15 @@ export default async function ParentLinksPage() {
       ),
   ]);
 
-  const parents = (parentsRes.data ?? []).map((p) => ({
+  const typedParents = (parentsRes.data ?? []) as { id: string; full_name: string; email: string | null }[];
+  const parents = typedParents.map((p) => ({
     id: p.id,
     full_name: p.full_name,
     email: p.email,
   }));
 
-  const students = (studentsRes.data ?? []).map((s) => ({
+  const typedStudentsRes = (studentsRes.data ?? []) as { id: string; full_name: string; admission_number: string | null; class: { name: string } | null }[];
+  const students = typedStudentsRes.map((s) => ({
     id: s.id,
     full_name: s.full_name,
     admission_number: s.admission_number,
@@ -56,8 +58,15 @@ export default async function ParentLinksPage() {
       (s.class as { name: string } | null)?.name ?? "No class",
   }));
 
+  const typedLinks = (linksRes.data ?? []) as {
+    id: string;
+    parent_id: string;
+    student_id: string;
+    parent: { full_name: string; email: string | null } | null;
+    student: { full_name: string; class: { name: string } | null } | null;
+  }[];
   // Build link rows with joined names
-  const linkRows: ParentLinkData[] = (linksRes.data ?? []).map((l) => {
+  const linkRows: ParentLinkData[] = typedLinks.map((l) => {
     const parent = l.parent as { full_name: string; email: string | null } | null;
     const student = l.student as {
       full_name: string;
@@ -76,7 +85,7 @@ export default async function ParentLinksPage() {
   // Only show links for students in this school
   const schoolStudentIds = new Set(students.map((s) => s.id));
   const filteredLinks = linkRows.filter((l) => {
-    const orig = (linksRes.data ?? []).find((r) => r.id === l.id);
+    const orig = typedLinks.find((r) => r.id === l.id);
     return orig ? schoolStudentIds.has(orig.student_id) : true;
   });
 

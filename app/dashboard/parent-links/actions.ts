@@ -19,8 +19,8 @@ async function getSchoolId() {
     .maybeSingle();
 
   if (!membership) throw new Error("No school found");
-
-  return { supabase, schoolId: membership.school_id, userId: user.id };
+  const membershipTyped = membership as { school_id: string };
+  return { supabase, schoolId: membershipTyped.school_id, userId: user.id };
 }
 
 export interface LinkActionState {
@@ -45,7 +45,7 @@ export async function addParentLink(
     const { error } = await supabase.from("parent_students").insert({
       parent_id: parentId,
       student_id: studentId,
-    });
+    } as never);
 
     if (error) {
       if (error.code === "23505") {

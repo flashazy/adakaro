@@ -19,8 +19,8 @@ async function getSchoolId() {
     .maybeSingle();
 
   if (!membership) throw new Error("No school found");
-
-  return { supabase, schoolId: membership.school_id };
+  const membershipTyped = membership as { school_id: string };
+  return { supabase, schoolId: membershipTyped.school_id };
 }
 
 export interface FeeTypeActionState {
@@ -46,7 +46,7 @@ export async function addFeeType(
       name,
       description,
       is_recurring: isRecurring,
-    });
+    } as never);
 
     if (error) {
       if (error.code === "23505") {
@@ -77,7 +77,7 @@ export async function updateFeeType(
 
     const { error } = await supabase
       .from("fee_types")
-      .update({ name, description, is_recurring: isRecurring })
+      .update({ name, description, is_recurring: isRecurring } as never)
       .eq("id", feeTypeId);
 
     if (error) {

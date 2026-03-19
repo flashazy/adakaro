@@ -29,21 +29,22 @@ export async function submitLinkRequest(
     // Use SECURITY DEFINER function to look up student without RLS restrictions
     const { data: result, error: rpcError } = await supabase.rpc(
       "lookup_student_by_admission",
-      { adm_number: admissionNumber }
+      { adm_number: admissionNumber } as never
     );
 
     if (rpcError) {
       return { error: "Something went wrong. Please try again." };
     }
 
-    if (!result || result.length === 0) {
+    const resultTyped = result as { student_id: string; school_id: string }[] | null;
+    if (!resultTyped || resultTyped.length === 0) {
       return {
         error:
           "No student found with that admission number. Please check and try again.",
       };
     }
 
-    const { student_id, school_id } = result[0];
+    const { student_id, school_id } = resultTyped[0];
 
     // Check if a pending request already exists for this parent + student
     const { data: existing } = await supabase
@@ -82,7 +83,7 @@ export async function submitLinkRequest(
         student_id,
         school_id,
         status: "pending",
-      });
+      } as never);
 
     if (insertError) {
       return { error: insertError.message };

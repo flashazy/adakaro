@@ -50,8 +50,8 @@ export default async function ReportsPage() {
     .maybeSingle();
 
   if (!membership) redirect("/dashboard/setup");
-
-  const schoolId = membership.school_id;
+  const membershipTyped = membership as { school_id: string };
+  const schoolId = membershipTyped.school_id;
 
   // Get student IDs for this school first (needed for payments filter)
   const { data: schoolStudents } = await supabase
@@ -59,7 +59,8 @@ export default async function ReportsPage() {
     .select("id, class_id")
     .eq("school_id", schoolId);
 
-  const studentIds = (schoolStudents ?? []).map((s) => s.id);
+  const typedSchoolStudents = (schoolStudents ?? []) as { id: string; class_id: string }[];
+  const studentIds = typedSchoolStudents.map((s) => s.id);
 
   const [balancesRes, paymentsRes, classesRes, schoolRes] = await Promise.all([
     supabase
@@ -86,8 +87,9 @@ export default async function ReportsPage() {
   const balances = (balancesRes.data ?? []) as BalanceRow[];
   const payments = (paymentsRes.data ?? []) as PaymentRow[];
   const classes = (classesRes.data ?? []) as ClassRow[];
-  const studentClasses = (schoolStudents ?? []) as StudentClassRow[];
-  const schoolName = schoolRes.data?.name ?? "School";
+  const studentClasses = typedSchoolStudents as StudentClassRow[];
+  const schoolData = schoolRes.data as { name: string } | null;
+  const schoolName = schoolData?.name ?? "School";
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">

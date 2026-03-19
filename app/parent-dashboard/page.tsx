@@ -55,7 +55,8 @@ export default async function ParentDashboard() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "parent") redirect("/dashboard");
+  const profileTyped = profile as { full_name: string; role: string } | null;
+  if (profileTyped?.role !== "parent") redirect("/dashboard");
 
   // Fetch linked students and pending link requests in parallel
   const [linksResult, pendingReqsResult] = await Promise.all([
@@ -71,9 +72,16 @@ export default async function ParentDashboard() {
       .order("created_at", { ascending: false }),
   ]);
 
-  const studentIds = (linksResult.data ?? []).map((l) => l.student_id);
+  const typedLinks = (linksResult.data ?? []) as { student_id: string }[];
+  const studentIds = typedLinks.map((l) => l.student_id);
   const childCount = studentIds.length;
-  const pendingRequests = (pendingReqsResult.data ?? []).map((r) => ({
+  const typedPendingReqs = (pendingReqsResult.data ?? []) as {
+    id: string;
+    admission_number: string;
+    status: string;
+    created_at: string;
+  }[];
+  const pendingRequests = typedPendingReqs.map((r) => ({
     id: r.id,
     admission_number: r.admission_number,
     status: r.status,
@@ -136,7 +144,7 @@ export default async function ParentDashboard() {
                 Parent Dashboard
               </h1>
               <p className="text-sm text-slate-500 dark:text-zinc-400">
-                Welcome back, {profile?.full_name || "Parent"}
+                Welcome back, {profileTyped?.full_name || "Parent"}
               </p>
             </div>
           </div>

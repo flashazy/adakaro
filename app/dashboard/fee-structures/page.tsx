@@ -50,10 +50,24 @@ export default async function FeeStructuresPage() {
         .order("created_at", { ascending: false }),
     ]);
 
-  const feeTypes = feeTypesRes.data ?? [];
-  const classes = classesRes.data ?? [];
-  const students = studentsRes.data ?? [];
-  const structures = structuresRes.data ?? [];
+  const typedFeeTypes = (feeTypesRes.data ?? []) as { id: string; name: string }[];
+  const typedClasses = (classesRes.data ?? []) as { id: string; name: string }[];
+  const typedStudents = (studentsRes.data ?? []) as {
+    id: string;
+    full_name: string;
+    admission_number: string | null;
+  }[];
+  const typedStructures = (structuresRes.data ?? []) as {
+    id: string;
+    fee_type_id: string | null;
+    class_id: string | null;
+    student_id: string | null;
+    amount: number;
+    due_date: string | null;
+    fee_type: { id: string; name: string } | null;
+    class: { id: string; name: string } | null;
+    student: { id: string; full_name: string } | null;
+  }[];
 
   if (structuresRes.error) {
     console.log("[fee-structures] error:", structuresRes.error);
@@ -82,12 +96,12 @@ export default async function FeeStructuresPage() {
 
       <main className="mx-auto max-w-5xl px-6 py-10">
         <AddFeeStructureForm
-          feeTypes={feeTypes}
-          classes={classes}
-          students={students}
+          feeTypes={typedFeeTypes}
+          classes={typedClasses}
+          students={typedStudents}
         />
 
-        {structures.length > 0 ? (
+        {typedStructures.length > 0 ? (
           <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             {/* Desktop header */}
             <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_100px_100px_auto] sm:gap-4 dark:border-zinc-800">
@@ -109,13 +123,13 @@ export default async function FeeStructuresPage() {
             </div>
 
             <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-              {structures.map((s) => (
+              {typedStructures.map((s) => (
                 <FeeStructureRow
                   key={s.id}
                   structure={s}
-                  feeTypes={feeTypes}
-                  classes={classes}
-                  students={students}
+                  feeTypes={typedFeeTypes}
+                  classes={typedClasses}
+                  students={typedStudents}
                 />
               ))}
             </div>

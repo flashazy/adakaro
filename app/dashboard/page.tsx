@@ -115,8 +115,8 @@ export default async function AdminDashboard() {
   if (!membership && !membershipError) {
     redirect("/dashboard/setup");
   }
-
-  const schoolId = membership?.school_id;
+  const membershipTyped = membership as { school_id: string } | null;
+  const schoolId = membershipTyped?.school_id;
 
   // Get student IDs for this school first
   const { data: schoolStudents } = await supabase
@@ -124,7 +124,8 @@ export default async function AdminDashboard() {
     .select("id")
     .eq("school_id", schoolId!);
 
-  const studentIds = (schoolStudents ?? []).map((s) => s.id);
+  const typedSchoolStudents = (schoolStudents ?? []) as { id: string }[];
+  const studentIds = typedSchoolStudents.map((s) => s.id);
 
   // Fetch all dashboard data in parallel
   const [profileRes, schoolRes, studentsRes, classesRes, paymentsRes, balancesRes] =
@@ -157,13 +158,15 @@ export default async function AdminDashboard() {
         .in("student_id", studentIds.length > 0 ? studentIds : [""]),
     ]);
 
-  const profileName = profileRes.data?.full_name || "Admin";
-  const schoolName = schoolRes.data?.name || "Your School";
+  const profileData = profileRes.data as { full_name: string } | null;
+  const schoolData = schoolRes.data as { name: string } | null;
+  const profileName = profileData?.full_name || "Admin";
+  const schoolName = schoolData?.name || "Your School";
   const totalStudents = studentsRes.count ?? 0;
   const totalClasses = classesRes.count ?? 0;
 
-  const allPayments = paymentsRes.data ?? [];
-  const allBalances = balancesRes.data ?? [];
+  const allPayments = (paymentsRes.data ?? []) as { amount: number; payment_date: string }[];
+  const allBalances = (balancesRes.data ?? []) as { balance: number }[];
 
   const feesCollected = allPayments.reduce(
     (sum, p) => sum + Number(p.amount),
