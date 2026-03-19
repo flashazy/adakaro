@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/types/supabase";
 import crypto from "crypto";
+
+type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
 
 export async function GET() {
   console.log("[webhook] GET request received – endpoint is reachable");
@@ -117,19 +120,19 @@ export async function POST(request: NextRequest) {
 
   const amount = Number(pendingRecord.amount);
 
-  const paymentInsertPayload = {
+  const paymentInsertPayload: PaymentInsert = {
     student_id: pendingRecord.student_id,
     fee_structure_id: pendingRecord.fee_structure_id,
     amount,
     payment_method: "azampay",
-    reference_number: transactionId ?? externalId,
+    reference_number: String(transactionId ?? externalId ?? ""),
     recorded_by: pendingRecord.parent_id,
   };
   console.log("[webhook] before inserting into payments, payload:", JSON.stringify(paymentInsertPayload, null, 2));
 
   const { data: payment, error: paymentError } = await supabase
     .from("payments")
-    .insert(paymentInsertPayload)
+    .insert(paymentInsertPayload as never)
     .select("id")
     .single();
 
@@ -137,12 +140,13 @@ export async function POST(request: NextRequest) {
     console.error("[webhook] payment insert ERROR:", paymentError);
     return NextResponse.json({ received: true }, { status: 200 });
   }
-  console.log("[webhook] payment insert succeeded, payment.id:", payment?.id);
+  const paymentRecord = payment as { id: string };
+  console.log("[webhook] payment insert succeeded, payment.id:", paymentRecord.id);
 
-  const receiptPayload = { payment_id: payment.id, receipt_number: "" };
+  const receiptPayload = { payment_id: paymentRecord.id, receipt_number: "" };
   console.log("[webhook] before inserting into receipts, payload:", JSON.stringify(receiptPayload, null, 2));
 
-  const { error: receiptError } = await supabase.from("receipts").insert(receiptPayload);
+  const { error: receiptError } = await supabase.from("receipts").insert(receiptPayload as never);
 
   if (receiptError) {
     console.error("[webhook] receipt insert ERROR:", receiptError);
