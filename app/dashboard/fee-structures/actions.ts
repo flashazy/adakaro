@@ -68,7 +68,7 @@ export async function addFeeStructure(
       due_date: dueDate,
       name: feeType?.name ?? "Fee",
       term: new Date().getFullYear().toString(),
-    });
+    } as never);
 
     if (error) return { error: error.message };
 
@@ -111,7 +111,7 @@ export async function updateFeeStructure(
         amount,
         due_date: dueDate,
         name: feeType?.name ?? "Fee",
-      })
+      } as never)
       .eq("id", id);
 
     if (error) return { error: error.message };
