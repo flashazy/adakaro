@@ -20,8 +20,8 @@ export default async function FeeStructuresPage() {
     .maybeSingle();
 
   if (!membership) redirect("/dashboard/setup");
-
-  const schoolId = membership.school_id;
+  const membershipTyped = membership as { school_id: string };
+  const schoolId = membershipTyped.school_id;
 
   // Fetch all lookup data in parallel
   const [feeTypesRes, classesRes, studentsRes, structuresRes] =
