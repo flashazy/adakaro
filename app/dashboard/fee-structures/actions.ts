@@ -58,6 +58,7 @@ export async function addFeeStructure(
       .select("name")
       .eq("id", feeTypeId)
       .single();
+    const feeTypeTyped = feeType as { name: string } | null;
 
     const { error } = await supabase.from("fee_structures").insert({
       school_id: schoolId,
@@ -66,7 +67,7 @@ export async function addFeeStructure(
       student_id: targetType === "student" ? studentId : null,
       amount,
       due_date: dueDate,
-      name: feeType?.name ?? "Fee",
+      name: feeTypeTyped?.name ?? "Fee",
       term: new Date().getFullYear().toString(),
     } as never);
 
@@ -101,6 +102,7 @@ export async function updateFeeStructure(
       .select("name")
       .eq("id", feeTypeId)
       .single();
+    const feeTypeTyped = feeType as { name: string } | null;
 
     const { error } = await supabase
       .from("fee_structures")
@@ -110,7 +112,7 @@ export async function updateFeeStructure(
         student_id: targetType === "student" ? studentId : null,
         amount,
         due_date: dueDate,
-        name: feeType?.name ?? "Fee",
+        name: feeTypeTyped?.name ?? "Fee",
       } as never)
       .eq("id", id);
 
