@@ -107,17 +107,23 @@ export async function POST(request: NextRequest) {
     console.error("[webhook] Pending not found:", externalId, fetchError);
     return NextResponse.json({ received: true }, { status: 200 });
   }
-  console.log("[webhook] found pending record:", JSON.stringify(pending, null, 2));
+  const pendingRecord = pending as {
+    student_id: string;
+    fee_structure_id: string;
+    amount: number;
+    parent_id: string;
+  };
+  console.log("[webhook] found pending record:", JSON.stringify(pendingRecord, null, 2));
 
-  const amount = Number(pending.amount);
+  const amount = Number(pendingRecord.amount);
 
   const paymentInsertPayload = {
-    student_id: pending.student_id,
-    fee_structure_id: pending.fee_structure_id,
+    student_id: pendingRecord.student_id,
+    fee_structure_id: pendingRecord.fee_structure_id,
     amount,
     payment_method: "azampay",
     reference_number: transactionId ?? externalId,
-    recorded_by: pending.parent_id,
+    recorded_by: pendingRecord.parent_id,
   };
   console.log("[webhook] before inserting into payments, payload:", JSON.stringify(paymentInsertPayload, null, 2));
 
