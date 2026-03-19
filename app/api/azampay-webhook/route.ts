@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
   console.log("[webhook] before inserting into receipts, payload:", JSON.stringify(receiptPayload, null, 2));
   const { error: receiptError } = await supabase
     .from("receipts")
-    .insert(receiptPayload);
+    .insert(receiptPayload as never);
 
   if (receiptError) {
     console.error("[webhook] receipt insert ERROR:", receiptError);
