@@ -145,14 +145,16 @@ export async function POST(request: NextRequest) {
 
   const receiptPayload = { payment_id: paymentRecord.id, receipt_number: "" };
   console.log("[webhook] before inserting into receipts, payload:", JSON.stringify(receiptPayload, null, 2));
-
-  const { error: receiptError } = await supabase.from("receipts").insert(receiptPayload as never);
+  const { error: receiptError } = await supabase
+    .from("receipts")
+    .insert(receiptPayload);
 
   if (receiptError) {
     console.error("[webhook] receipt insert ERROR:", receiptError);
-  } else {
-    console.log("[webhook] receipt insert succeeded");
+    // Even if receipt fails, we still return success (payment already recorded)
+    return NextResponse.json({ received: true }, { status: 200 });
   }
+  console.log("[webhook] receipt insert succeeded");
 
   console.log("[webhook] before deleting pending for externalId:", externalId);
   const { error: deleteError } = await supabase
