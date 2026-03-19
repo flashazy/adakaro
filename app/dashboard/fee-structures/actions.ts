@@ -19,8 +19,8 @@ async function getSchoolId() {
     .maybeSingle();
 
   if (!membership) throw new Error("No school found");
-
-  return { supabase, schoolId: membership.school_id };
+  const membershipTyped = membership as { school_id: string };
+  return { supabase, schoolId: membershipTyped.school_id };
 }
 
 export interface FeeStructureActionState {
