@@ -46,7 +46,7 @@ export async function addClass(
       school_id: schoolId,
       name,
       description,
-    });
+    } as never);
 
     if (error) {
       if (error.code === "23505") {
