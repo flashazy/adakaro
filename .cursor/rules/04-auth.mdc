@@ -1,0 +1,31 @@
+---
+description: "Authentication with Supabase"
+globs: ["**/app/(auth)/**/*.{ts,tsx}", "**/lib/supabase/**/*.ts", "middleware.ts"]
+alwaysApply: true
+---
+
+# Authentication Requirements
+
+## Supabase Auth Setup
+- Use Supabase Auth with email/password (and optionally magic link or OAuth).
+- Store user profiles in a `profiles` table linked to `auth.users`.
+- Use Row Level Security (RLS) on all tables.
+
+## Auth Flows
+- **Sign up**: collect email/password, create profile after sign‑up.
+- **Login**: email + password.
+- **Logout**: clear session.
+- **Password reset**: use Supabase's built‑in reset flow.
+- **Protected routes**: use middleware to redirect unauthenticated users.
+
+## Session Management
+- Use Supabase's `getSession()` and `getUser()` in server components.
+- Use `useUser()` hook (custom) for client components.
+- Handle loading states while session is being checked.
+
+## Security
+- Never expose service role keys on the client.
+- Always validate user permissions on the server (RLS or server actions).
+- Use HTTPS only (Vercel handles this).---
+alwaysApply: true
+---

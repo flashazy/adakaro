@@ -1,0 +1,40 @@
+---
+description: "Reusable component architecture"
+globs: "**/components/**/*.{tsx,jsx}"
+alwaysApply: true
+---
+
+# Component Guidelines
+
+## Component Philosophy
+- Build a library of **reusable, composable** components.
+- Each component should do one thing well.
+- Props should be well‑typed and documented.
+
+## Must‑Have UI Components
+- `Button` – with variants (primary, secondary, outline, ghost) and sizes.
+- `Input` – text, email, password, with label and error message.
+- `Card` – container with consistent padding, border, shadow.
+- `Modal` – accessible dialog with header, body, footer.
+- `DataTable` – sortable, filterable, paginated table.
+- `DashboardWidget` – card that displays a metric or chart.
+- `Avatar` – user avatar with fallback.
+- `DropdownMenu` – accessible dropdown.
+- `Tabs` – for switching between views.
+- `Toast` – for notifications.
+/components
+/ui # purely presentational, reusable components
+/layout # layout components (Header, Footer, Sidebar)
+/forms # form-specific components
+/dashboard # dashboard-specific widgets
+/shared # components used across features
+
+## Implementation Rules
+- Use `"use client"` only when necessary (interactivity, hooks).
+- Prefer composition over props explosion.
+- Use `cn()` utility (from `clsx`/`tailwind-merge`) for conditional Tailwind classes.
+- All components must have proper TypeScript types.
+
+## Folder Structure for Components---
+alwaysApply: true
+---

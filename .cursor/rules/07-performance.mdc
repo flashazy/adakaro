@@ -1,0 +1,32 @@
+---
+description: "Performance best practices"
+globs: "**/*.{ts,tsx}"
+alwaysApply: true
+---
+
+# Performance Guidelines
+
+## Data Fetching
+- Minimize client‑side data fetching; prefer server components.
+- Use React `cache()` to deduplicate requests.
+- Implement proper loading states with `loading.tsx` or `Suspense`.
+- Paginate large lists.
+
+## Images
+- Use Next.js `Image` component with proper sizing and lazy loading.
+- Serve images in modern formats (WebP, AVIF).
+
+## Bundle Size
+- Avoid large dependencies; if needed, use dynamic imports (`next/dynamic`).
+- Split code by routes (Next.js does this automatically).
+
+## Rendering
+- Use static generation (`generateStaticParams`) where possible.
+- Use Incremental Static Regeneration (ISR) for dynamic content that changes infrequently.
+- For real‑time features, use Supabase Realtime sparingly and disconnect when not needed.
+
+## Caching
+- Leverage Next.js caching mechanisms (`fetch` cache, `unstable_cache`).
+- Set appropriate `Cache-Control` headers in API routes.---
+alwaysApply: true
+---

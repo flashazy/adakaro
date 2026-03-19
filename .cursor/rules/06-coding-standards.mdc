@@ -1,0 +1,39 @@
+---
+description: "General coding standards"
+globs: "**/*.{ts,tsx}"
+alwaysApply: true
+---
+
+# Coding Standards
+
+## TypeScript
+- Strict mode enabled (`strict: true` in `tsconfig.json`).
+- Prefer `interface` over `type` for object definitions.
+- Use `type` for unions, intersections, and utility types.
+- Avoid `any`; use `unknown` if type is truly unknown.
+
+## React & Next.js
+- Use Server Components by default; add `"use client"` only when needed.
+- Use Server Actions for mutations instead of API routes when possible.
+- Keep pages as simple as possible; move logic to components or hooks.
+- Use `next/navigation` for routing in client components.
+
+## Functions
+- Keep functions small and focused (single responsibility).
+- Use descriptive names (verbs for functions, nouns for components).
+- Prefer early returns to reduce nesting.
+- Add JSDoc comments for complex functions.
+
+## Imports
+- Use absolute imports with `@/` alias (configured in `tsconfig.json`).
+- Group imports: React/Next, third‑party, internal, styles.
+
+## Error Handling
+- Use try/catch in Server Actions and API routes.
+- Display user‑friendly error messages.
+- Log errors to console (or a service) in development only.
+
+## Testing (optional)
+- Write tests for critical paths (auth, billing) using Jest and React Testing Library.---
+alwaysApply: true
+---

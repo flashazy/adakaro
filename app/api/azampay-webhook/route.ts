@@ -1,0 +1,160 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import crypto from "crypto";
+
+export async function GET() {
+  console.log("[webhook] GET request received – endpoint is reachable");
+  return new Response("Webhook endpoint is live", { status: 200 });
+}
+
+/**
+ * Verify webhook signature using HMAC-SHA256.
+ * AzamPay may send signature in X-Signature or similar header.
+ */
+function verifySignature(
+  rawBody: string,
+  signature: string | null,
+  secret: string
+): boolean {
+  if (!signature || !secret) return false;
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+  try {
+    const sigBuf = Buffer.from(signature, "hex");
+    const expBuf = Buffer.from(expected, "hex");
+    return sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
+}
+
+export async function POST(request: NextRequest) {
+  console.log("[webhook] POST request received");
+  console.log("[webhook] using admin client, service role key exists?", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  const apiKey = process.env.AZAMPAY_API_KEY;
+  if (!apiKey) {
+    console.error("[webhook] AZAMPAY_API_KEY not configured");
+    return NextResponse.json(
+      { error: "Webhook not configured" },
+      { status: 500 }
+    );
+  }
+
+  const rawBody = await request.text();
+  console.log("[webhook] raw body length:", rawBody.length);
+
+  const signature =
+    request.headers.get("X-Signature") ??
+    request.headers.get("X-Azampay-Signature") ??
+    request.headers.get("X-Webhook-Signature");
+
+  if (signature) {
+    if (!verifySignature(rawBody, signature, apiKey)) {
+      console.warn("[webhook] Invalid signature");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+  }
+
+  let body: {
+    transactionStatus?: string;
+    externalId?: string;
+    transactionId?: string;
+    pgReferenceId?: string;
+    amount?: number;
+    [key: string]: unknown;
+  };
+
+  try {
+    body = JSON.parse(rawBody);
+  } catch (e) {
+    console.error("[webhook] JSON parse error:", e);
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  console.log("[webhook] parsed body:", JSON.stringify(body, null, 2));
+
+  const status =
+    body.transactionStatus ?? body.status ?? body.TransactionStatus;
+  const externalId =
+    body.externalId ?? body.external_id ?? body.ExternalId;
+  const transactionId =
+    body.transactionId ?? body.transaction_id ?? body.pgReferenceId ?? body.reference;
+
+  console.log("[webhook] externalId:", externalId, "transactionId:", transactionId);
+
+  if (status !== "SUCCESS" && status !== "success" && status !== "Completed") {
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
+  if (!externalId) {
+    console.warn("[webhook] SUCCESS but no externalId:", body);
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
+  const supabase = createAdminClient();
+
+  console.log("[webhook] searching for externalId:", externalId);
+  const { data: pending, error: fetchError } = await supabase
+    .from("azampay_pending_payments")
+    .select("student_id, fee_structure_id, amount, parent_id")
+    .eq("external_id", externalId)
+    .limit(1)
+    .maybeSingle();
+
+  if (fetchError || !pending) {
+    console.error("[webhook] Pending not found:", externalId, fetchError);
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+  console.log("[webhook] found pending record:", JSON.stringify(pending, null, 2));
+
+  const amount = Number(pending.amount);
+
+  const paymentInsertPayload = {
+    student_id: pending.student_id,
+    fee_structure_id: pending.fee_structure_id,
+    amount,
+    payment_method: "azampay",
+    reference_number: transactionId ?? externalId,
+    recorded_by: pending.parent_id,
+  };
+  console.log("[webhook] before inserting into payments, payload:", JSON.stringify(paymentInsertPayload, null, 2));
+
+  const { data: payment, error: paymentError } = await supabase
+    .from("payments")
+    .insert(paymentInsertPayload)
+    .select("id")
+    .single();
+
+  if (paymentError) {
+    console.error("[webhook] payment insert ERROR:", paymentError);
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+  console.log("[webhook] payment insert succeeded, payment.id:", payment?.id);
+
+  const receiptPayload = { payment_id: payment.id, receipt_number: "" };
+  console.log("[webhook] before inserting into receipts, payload:", JSON.stringify(receiptPayload, null, 2));
+
+  const { error: receiptError } = await supabase.from("receipts").insert(receiptPayload);
+
+  if (receiptError) {
+    console.error("[webhook] receipt insert ERROR:", receiptError);
+  } else {
+    console.log("[webhook] receipt insert succeeded");
+  }
+
+  console.log("[webhook] before deleting pending for externalId:", externalId);
+  const { error: deleteError } = await supabase
+    .from("azampay_pending_payments")
+    .delete()
+    .eq("external_id", externalId);
+
+  if (deleteError) {
+    console.error("[webhook] delete pending ERROR:", deleteError);
+  } else {
+    console.log("[webhook] delete pending succeeded");
+  }
+
+  return NextResponse.json({ received: true }, { status: 200 });
+}

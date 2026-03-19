@@ -1,0 +1,37 @@
+---
+description: "Common SaaS feature patterns"
+globs: ["**/app/**/*.{ts,tsx}", "**/components/**/*.{tsx}"]
+alwaysApply: false   # Only apply when building SaaS features
+---
+
+# SaaS Feature Patterns
+
+## User Onboarding
+- After signup, guide users to set up their profile/organization.
+- Use a checklist or wizard for first‑time setup.
+
+## Organizations / Teams
+- Allow users to create or join organizations.
+- Implement roles (owner, admin, member).
+- Store membership in a `members` table with RLS policies.
+
+## Subscription & Billing
+- Use Stripe or Polar.sh for payments (if needed).
+- Store subscription status in a `subscriptions` table.
+- Protect premium features based on subscription tier.
+
+## Dashboard
+- Show key metrics (counts, recent activity).
+- Provide charts using a library like Recharts or Tremor.
+- Allow filtering by date range.
+
+## User Settings
+- Profile management (name, avatar, email).
+- Notification preferences.
+- Security settings (password change, 2FA if needed).
+
+## Admin Area
+- Protect with a role‑based check.
+- Provide overview of users, subscriptions, and usage.---
+alwaysApply: true
+---

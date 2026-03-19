@@ -1,0 +1,18 @@
+------
+description: "Core technology stack"
+globs: ["**/*.{ts,tsx,js,jsx}", "package.json", "next.config.js"]
+alwaysApply: true
+---
+
+# Tech Stack Requirements
+
+All code must adhere to the following stack:
+
+- **Frontend**: Next.js (App Router), React, TypeScript
+- **Backend**: Supabase (PostgreSQL, Auth, Storage, Realtime)
+- **Styling**: Tailwind CSS
+- **Deployment**: Vercel
+
+**No other backend services** should be introduced unless absolutely necessary. Prefer Supabase's built-in features.
+alwaysApply: true
+---

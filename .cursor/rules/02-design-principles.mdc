@@ -1,0 +1,31 @@
+---
+description: "Design system and UI philosophy"
+globs: ["**/*.{tsx,jsx,css}", "tailwind.config.js"]
+alwaysApply: true
+---
+
+# Design Principles
+
+## Core Philosophy: Simplicity First
+- The interface must be **extremely easy to understand**, even for non‑technical users.
+- Avoid clutter: every element should have a purpose.
+- Use clear language, not jargon.
+
+## Visual Style
+- **Minimal and clean**: plenty of whitespace, subtle shadows, rounded corners.
+- **Consistent color palette**: primary, secondary, accent, and neutral tones.
+- **Typography**: use a modern, readable font (e.g., Inter, Geist).
+- **Icons**: use a consistent icon set (e.g., Lucide React) to aid recognition.
+
+## Layout
+- Mobile‑first, fully responsive.
+- Use cards to group related information.
+- Dashboards should provide clear summaries (KPIs, charts) at a glance.
+- Forms should be simple, with clear labels and inline validation.
+
+## User Experience
+- Provide feedback for all actions (loading states, success/error toasts).
+- Keep users oriented: use breadcrumbs or clear navigation.
+- Protect users from irreversible actions with confirmation dialogs.---
+alwaysApply: true
+---
