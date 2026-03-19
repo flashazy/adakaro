@@ -78,7 +78,7 @@ export async function updateClass(
 
     const { error } = await supabase
       .from("classes")
-      .update({ name, description })
+      .update({ name, description } as never)
       .eq("id", classId);
 
     if (error) {
