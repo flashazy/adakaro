@@ -22,11 +22,24 @@ export default async function ClassesPage() {
   if (!membership) redirect("/dashboard/setup");
   const membershipTyped = membership as { school_id: string };
 
-  const { data: classes } = await supabase
+  const { data: classes, error } = await supabase
     .from("classes")
     .select("*")
     .eq("school_id", membershipTyped.school_id)
     .order("name");
+
+  if (error) {
+    console.error("[classes] fetch error:", error);
+  }
+
+  const typedClasses = (classes || []) as {
+    id: string;
+    name: string;
+    description: string | null;
+    school_id: string;
+    created_at: string;
+    updated_at: string;
+  }[];
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
@@ -52,7 +65,7 @@ export default async function ClassesPage() {
       <main className="mx-auto max-w-4xl px-6 py-10">
         <AddClassForm />
 
-        {classes && classes.length > 0 ? (
+        {typedClasses.length > 0 ? (
           <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             {/* Desktop table header */}
             <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:gap-4 dark:border-zinc-800">
@@ -68,7 +81,7 @@ export default async function ClassesPage() {
             </div>
 
             <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-              {classes.map((cls) => (
+              {typedClasses.map((cls) => (
                 <ClassRow key={cls.id} cls={cls} />
               ))}
             </div>
