@@ -20,11 +20,12 @@ export default async function ClassesPage() {
     .maybeSingle();
 
   if (!membership) redirect("/dashboard/setup");
+  const membershipTyped = membership as { school_id: string };
 
   const { data: classes } = await supabase
     .from("classes")
     .select("*")
-    .eq("school_id", membership.school_id)
+    .eq("school_id", membershipTyped.school_id)
     .order("name");
 
   return (
