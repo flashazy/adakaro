@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
   let body: {
     transactionStatus?: string;
     externalId?: string;
+    utilityref?: string;
     transactionId?: string;
     pgReferenceId?: string;
     amount?: number;
@@ -89,7 +90,10 @@ export async function POST(request: NextRequest) {
   const status =
     body.transactionStatus ?? body.status ?? body.TransactionStatus;
   const externalId =
-    body.externalId ?? body.external_id ?? body.ExternalId;
+    body.externalId ??
+    body.external_id ??
+    body.ExternalId ??
+    body.utilityref;
   const transactionId =
     body.transactionId ?? body.transaction_id ?? body.pgReferenceId ?? body.reference;
   console.log(
