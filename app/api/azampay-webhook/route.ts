@@ -34,7 +34,10 @@ function verifySignature(
 }
 
 export async function POST(request: NextRequest) {
-  console.log("[webhook] POST request received");
+  console.log("[webhook] 🔥 POST request received");
+  const rawBody = await request.text();
+  console.log("[webhook] raw body:", rawBody);
+
   console.log("[webhook] using admin client, service role key exists?", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   const apiKey = process.env.AZAMPAY_API_KEY;
@@ -46,7 +49,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const rawBody = await request.text();
   console.log("[webhook] raw body length:", rawBody.length);
 
   const signature =
@@ -67,16 +69,22 @@ export async function POST(request: NextRequest) {
     transactionId?: string;
     pgReferenceId?: string;
     amount?: number;
+    status?: unknown;
+    TransactionStatus?: unknown;
+    external_id?: unknown;
+    ExternalId?: unknown;
+    transaction_id?: unknown;
+    reference?: unknown;
     [key: string]: unknown;
   };
 
   try {
     body = JSON.parse(rawBody);
+    console.log("[webhook] parsed body:", JSON.stringify(body, null, 2));
   } catch (e) {
     console.error("[webhook] JSON parse error:", e);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  console.log("[webhook] parsed body:", JSON.stringify(body, null, 2));
 
   const status =
     body.transactionStatus ?? body.status ?? body.TransactionStatus;
@@ -84,8 +92,12 @@ export async function POST(request: NextRequest) {
     body.externalId ?? body.external_id ?? body.ExternalId;
   const transactionId =
     body.transactionId ?? body.transaction_id ?? body.pgReferenceId ?? body.reference;
-
-  console.log("[webhook] externalId:", externalId, "transactionId:", transactionId);
+  console.log(
+    "[webhook] extracted externalId:",
+    externalId,
+    "transactionId:",
+    transactionId
+  );
 
   if (status !== "SUCCESS" && status !== "success" && status !== "Completed") {
     return NextResponse.json({ received: true }, { status: 200 });
@@ -98,7 +110,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  console.log("[webhook] searching for externalId:", externalId);
+  console.log("[webhook] looking for pending with externalId:", externalId);
   const { data: pending, error: fetchError } = await supabase
     .from("azampay_pending_payments")
     .select("student_id, fee_structure_id, amount, parent_id")
@@ -106,8 +118,18 @@ export async function POST(request: NextRequest) {
     .limit(1)
     .maybeSingle();
 
+  console.log("[webhook] pending record found?", !!pending);
+  if (fetchError) {
+    console.error("[webhook] pending query error:", fetchError);
+  }
+  if (pending) {
+    console.log("[webhook] pending record:", JSON.stringify(pending, null, 2));
+  } else {
+    console.log("[webhook] no pending record found");
+  }
+
   if (fetchError || !pending) {
-    console.error("[webhook] Pending not found:", externalId, fetchError);
+    console.error("[webhook] Pending not found or error:", externalId, fetchError);
     return NextResponse.json({ received: true }, { status: 200 });
   }
   const pendingRecord = pending as {
@@ -116,8 +138,6 @@ export async function POST(request: NextRequest) {
     amount: number;
     parent_id: string;
   };
-  console.log("[webhook] found pending record:", JSON.stringify(pendingRecord, null, 2));
-
   const amount = Number(pendingRecord.amount);
 
   const paymentInsertPayload: PaymentInsert = {
@@ -128,7 +148,10 @@ export async function POST(request: NextRequest) {
     reference_number: String(transactionId ?? externalId ?? ""),
     recorded_by: pendingRecord.parent_id,
   };
-  console.log("[webhook] before inserting into payments, payload:", JSON.stringify(paymentInsertPayload, null, 2));
+  console.log(
+    "[webhook] inserting payment with payload:",
+    JSON.stringify(paymentInsertPayload, null, 2)
+  );
 
   const { data: payment, error: paymentError } = await supabase
     .from("payments")
@@ -140,11 +163,17 @@ export async function POST(request: NextRequest) {
     console.error("[webhook] payment insert ERROR:", paymentError);
     return NextResponse.json({ received: true }, { status: 200 });
   }
+  console.log(
+    "[webhook] payment insert succeeded, payment:",
+    JSON.stringify(payment, null, 2)
+  );
   const paymentRecord = payment as { id: string };
-  console.log("[webhook] payment insert succeeded, payment.id:", paymentRecord.id);
 
   const receiptPayload = { payment_id: paymentRecord.id, receipt_number: "" };
-  console.log("[webhook] before inserting into receipts, payload:", JSON.stringify(receiptPayload, null, 2));
+  console.log(
+    "[webhook] inserting receipt with payload:",
+    JSON.stringify(receiptPayload, null, 2)
+  );
   const { error: receiptError } = await supabase
     .from("receipts")
     .insert(receiptPayload as never);
@@ -156,7 +185,10 @@ export async function POST(request: NextRequest) {
   }
   console.log("[webhook] receipt insert succeeded");
 
-  console.log("[webhook] before deleting pending for externalId:", externalId);
+  console.log(
+    "[webhook] deleting pending row for externalId:",
+    externalId
+  );
   const { error: deleteError } = await supabase
     .from("azampay_pending_payments")
     .delete()
@@ -165,7 +197,7 @@ export async function POST(request: NextRequest) {
   if (deleteError) {
     console.error("[webhook] delete pending ERROR:", deleteError);
   } else {
-    console.log("[webhook] delete pending succeeded");
+    console.log("[webhook] delete pending succeeded for externalId:", externalId);
   }
 
   return NextResponse.json({ received: true }, { status: 200 });
