@@ -79,6 +79,7 @@ export async function initiateAzamPayPayment(
       return { error: insertError.message };
     }
     console.log("[initiateAzamPayPayment] insert succeeded");
+    console.log("[initiateAzamPayPayment] 🔥 About to call AzamPay checkout");
 
     console.log("[initiateAzamPayPayment] calling initiateAzamPayCheckout...");
     const result = await initiateAzamPayCheckout({
