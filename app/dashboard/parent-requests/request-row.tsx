@@ -68,10 +68,14 @@ export default function RequestRow({
     });
   }
 
-  // Prioritize matched student at top of list
+  const norm = (v: string | null) =>
+    (v ?? "").trim().toLowerCase();
+  const reqAdm = norm(request.admissionNumber);
+
+  // Prioritize matched student at top of list (case-insensitive / trim)
   const sortedStudents = [...students].sort((a, b) => {
-    const aMatch = a.admission_number === request.admissionNumber ? -1 : 0;
-    const bMatch = b.admission_number === request.admissionNumber ? -1 : 0;
+    const aMatch = norm(a.admission_number) === reqAdm ? -1 : 0;
+    const bMatch = norm(b.admission_number) === reqAdm ? -1 : 0;
     return aMatch - bMatch;
   });
 
@@ -193,9 +197,7 @@ export default function RequestRow({
                 <option key={s.id} value={s.id}>
                   {s.full_name} — {s.className}
                   {s.admission_number ? ` (${s.admission_number})` : ""}
-                  {s.admission_number === request.admissionNumber
-                    ? " ★ Match"
-                    : ""}
+                  {norm(s.admission_number) === reqAdm ? " ★ Match" : ""}
                 </option>
               ))}
             </select>

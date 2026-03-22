@@ -6,6 +6,7 @@ import {
   deleteFeeStructure,
   type FeeStructureActionState,
 } from "./actions";
+import { formatCurrency as formatMoney } from "@/lib/currency";
 
 interface Option {
   id: string;
@@ -35,18 +36,16 @@ interface Props {
   feeTypes: Option[];
   classes: Option[];
   students: StudentOption[];
+  currencyCode: string;
 }
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-export function FeeStructureRow({ structure, feeTypes, classes, students }: Props) {
+export function FeeStructureRow({
+  structure,
+  feeTypes,
+  classes,
+  students,
+  currencyCode,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [targetType, setTargetType] = useState<"class" | "student">(
@@ -110,7 +109,7 @@ export function FeeStructureRow({ structure, feeTypes, classes, students }: Prop
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-zinc-400">
-              Amount
+              Amount ({currencyCode})
             </label>
             <input
               name="amount"
@@ -230,7 +229,7 @@ export function FeeStructureRow({ structure, feeTypes, classes, students }: Prop
           {targetName}
         </p>
         <p className="text-sm font-medium text-slate-900 dark:text-white">
-          {formatCurrency(Number(structure.amount))}
+          {formatMoney(Number(structure.amount), currencyCode)}
         </p>
         <p className="text-sm text-slate-500 dark:text-zinc-400">
           {structure.due_date ?? "—"}
@@ -263,7 +262,7 @@ export function FeeStructureRow({ structure, feeTypes, classes, students }: Prop
             </p>
           </div>
           <p className="shrink-0 text-sm font-semibold text-slate-900 dark:text-white">
-            {formatCurrency(Number(structure.amount))}
+            {formatMoney(Number(structure.amount), currencyCode)}
           </p>
         </div>
         {structure.due_date && (

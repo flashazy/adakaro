@@ -2,18 +2,14 @@ import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "./print-button";
 import Link from "next/link";
+import {
+  DEFAULT_SCHOOL_CURRENCY,
+  formatCurrency,
+  normalizeSchoolCurrency,
+} from "@/lib/currency";
 
 interface PageProps {
   params: Promise<{ id: string }>;
-}
-
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
 }
 
 export default async function ReceiptPage({ params }: PageProps) {
@@ -29,7 +25,7 @@ export default async function ReceiptPage({ params }: PageProps) {
   const { data: payment } = await supabase
     .from("payments")
     .select(
-      "*, student:students(full_name, admission_number, class:classes(name)), fee_structure:fee_structures(name)"
+      "*, student:students(full_name, admission_number, school_id, class:classes(name)), fee_structure:fee_structures(name)"
     )
     .eq("id", paymentId)
     .single();
@@ -43,7 +39,12 @@ export default async function ReceiptPage({ params }: PageProps) {
     payment_date: string;
     reference_number: string | null;
     notes: string | null;
-    student: { full_name: string; admission_number: string | null; class: { name: string } | null } | null;
+    student: {
+      full_name: string;
+      admission_number: string | null;
+      school_id: string;
+      class: { name: string } | null;
+    } | null;
     fee_structure: { name: string } | null;
   };
 
@@ -57,6 +58,18 @@ export default async function ReceiptPage({ params }: PageProps) {
   const receiptTyped = receipt as { receipt_number: string; issued_at: string } | null;
   const student = paymentTyped.student;
   const feeStructure = paymentTyped.fee_structure;
+
+  let currencyCode = DEFAULT_SCHOOL_CURRENCY;
+  if (student?.school_id) {
+    const { data: schoolCur } = await supabase
+      .from("schools")
+      .select("currency")
+      .eq("id", student.school_id)
+      .maybeSingle();
+    currencyCode = normalizeSchoolCurrency(
+      (schoolCur as { currency: string | null } | null)?.currency
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
@@ -84,7 +97,7 @@ export default async function ReceiptPage({ params }: PageProps) {
               </p>
             )}
             <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
-              {formatCurrency(Number(paymentTyped.amount))}
+              {formatCurrency(Number(paymentTyped.amount), currencyCode)}
             </p>
             <span className="mt-2 inline-flex rounded-full bg-emerald-50 px-3 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
               {paymentTyped.status}

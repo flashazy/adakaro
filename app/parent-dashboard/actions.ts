@@ -26,10 +26,26 @@ export async function submitLinkRequest(
 
     if (!user) return { error: "Not authenticated." };
 
+    // Prefer a school where this parent already has a linked child (avoids wrong school when
+    // the same admission number exists in multiple schools).
+    const { data: linkRows } = await supabase
+      .from("parent_students")
+      .select("students(school_id)")
+      .eq("parent_id", user.id)
+      .limit(1);
+
+    const firstLink = linkRows?.[0] as
+      | { students: { school_id: string } | null }
+      | undefined;
+    const preferSchoolId = firstLink?.students?.school_id ?? null;
+
     // Use SECURITY DEFINER function to look up student without RLS restrictions
     const { data: result, error: rpcError } = await supabase.rpc(
       "lookup_student_by_admission",
-      { adm_number: admissionNumber } as never
+      {
+        adm_number: admissionNumber,
+        p_prefer_school_id: preferSchoolId,
+      } as never
     );
 
     if (rpcError) {
@@ -94,6 +110,46 @@ export async function submitLinkRequest(
       success:
         "Request sent to the school. You will be notified when approved.",
     };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+export async function cancelPendingLinkRequest(
+  requestId: string
+): Promise<{ error?: string; success?: string }> {
+  if (!requestId?.trim()) {
+    return { error: "Request not found." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return { error: "Not authenticated." };
+
+    const { data: deleted, error } = await supabase
+      .from("parent_link_requests")
+      .delete()
+      .eq("id", requestId)
+      .eq("parent_id", user.id)
+      .eq("status", "pending")
+      .select("id");
+
+    if (error) {
+      return { error: error.message };
+    }
+    if (!deleted?.length) {
+      return {
+        error:
+          "Could not cancel this request. It may have already been approved or removed.",
+      };
+    }
+
+    revalidatePath("/parent-dashboard");
+    return { success: "Request cancelled. You can send a new one if needed." };
   } catch (e) {
     return { error: (e as Error).message };
   }

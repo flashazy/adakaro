@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isSchoolCurrencyCode } from "@/lib/currency";
 
 export interface SetupState {
   error?: string;
@@ -15,10 +16,17 @@ export async function createSchool(
   const address = (formData.get("address") as string) || null;
   const phone = (formData.get("phone") as string) || null;
   const email = (formData.get("email") as string) || null;
+  const currencyRaw = String(formData.get("currency") ?? "")
+    .trim()
+    .toUpperCase();
   const logo = formData.get("logo") as File | null;
 
   if (!name.trim()) {
     return { error: "School name is required." };
+  }
+
+  if (!isSchoolCurrencyCode(currencyRaw)) {
+    return { error: "Please select a valid currency." };
   }
 
   const supabase = await createClient();
@@ -60,41 +68,26 @@ export async function createSchool(
     logo_url = publicUrl;
   }
 
-  const { data: school, error: insertError } = await supabase
-    .from("schools")
-    .insert({
-      name: name.trim(),
-      address,
-      phone,
-      email,
-      logo_url,
-    } as never)
-    .select("id")
-    .single();
+  const { data: schoolId, error: rpcError } = await supabase.rpc(
+    "create_founding_school",
+    {
+      p_name: name.trim(),
+      p_address: address,
+      p_phone: phone,
+      p_email: email,
+      p_logo_url: logo_url,
+      p_currency: currencyRaw,
+    } as never
+  );
 
-  if (insertError) {
-    console.error("[createSchool] schools insert error:", insertError);
-    return { error: insertError.message };
+  if (rpcError) {
+    console.error("[createSchool] create_founding_school error:", rpcError);
+    return { error: rpcError.message };
   }
 
-  const schoolTyped = school as { id: string };
-  console.log("[createSchool] school created:", schoolTyped.id);
-
-  // Link this admin to the school
-  const { error: memberError } = await supabase
-    .from("school_members")
-    .insert({
-      school_id: schoolTyped.id,
-      user_id: user.id,
-      role: "admin" as const,
-    } as never);
-
-  if (memberError) {
-    console.error("[createSchool] school_members insert error:", memberError);
-    return { error: memberError.message };
+  if (!schoolId) {
+    return { error: "School was not created." };
   }
-
-  console.log("[createSchool] admin linked to school successfully");
 
   redirect("/dashboard");
 }

@@ -15,7 +15,22 @@ export async function GET(request: Request) {
       } = await supabase.auth.getUser();
 
       if (user) {
-        const role = (user.user_metadata?.role as string) || "parent";
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        const profileRole = (profileRow as { role: string } | null)?.role;
+        const role =
+          profileRole === "admin" || profileRole === "parent"
+            ? profileRole
+            : String(user.user_metadata?.role ?? "")
+                    .toLowerCase()
+                    .trim() === "admin"
+              ? "admin"
+              : "parent";
+
         const destination = role === "admin" ? "/dashboard" : "/parent-dashboard";
         return NextResponse.redirect(`${origin}${destination}`);
       }

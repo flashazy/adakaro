@@ -32,7 +32,7 @@ git commit -m "Initial commit: Adakaro school fees app"
 
 1. Go to [https://github.com/new](https://github.com/new)
 2. **Repository name:** `adakaro` (or any name you prefer)
-3. **Description:** (optional) e.g. "School fees management with AzamPay"
+3. **Description:** (optional) e.g. "School fees management with ClickPesa"
 4. Choose **Public** or **Private**
 5. **Do NOT** check "Add a README" or "Add .gitignore" – you already have files
 6. Click **Create repository**
@@ -94,13 +94,11 @@ If Git asks for credentials, use a **Personal Access Token** (not your password)
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `AZAMPAY_BASE_URL`
-   - `AZAMPAY_CLIENT_ID`
-   - `AZAMPAY_CLIENT_SECRET`
-   - `AZAMPAY_API_KEY`
-   - `AZAMPAY_APP_NAME`
+   - `CLICKPESA_API_KEY` (BillPay API)
+   - `CLICKPESA_CHECKSUM_SECRET` (webhook verification, if used)
+   - `CLICKPESA_BASE_URL` (optional; default ClickPesa API base)
    - `NEXT_PUBLIC_APP_URL` (your Vercel URL, e.g. `https://adakaro.vercel.app`)
-   - `WEBHOOK_BASE_URL` (your production webhook URL for AzamPay callbacks)
+   - Webhook URL in ClickPesa dashboard: `https://YOUR_DOMAIN/api/clickpesa/webhook`
 
 5. Deploy.
 

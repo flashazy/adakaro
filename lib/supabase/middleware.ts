@@ -57,7 +57,28 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user) {
-    const role = (user.user_metadata?.role as string) || "parent";
+    // JWT metadata first (always available); override from DB when present.
+    // Using only metadata while the parent page requires profiles.role caused a
+    // loop: page → redirect /dashboard, middleware → redirect /parent-dashboard.
+    let role: "admin" | "parent" =
+      String(user.user_metadata?.role ?? "")
+        .toLowerCase()
+        .trim() === "admin"
+        ? "admin"
+        : "parent";
+
+    if (isAuthPage || isProtectedRoute) {
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const pr = (profileRow as { role: "admin" | "parent" } | null)?.role;
+      if (pr === "admin" || pr === "parent") {
+        role = pr;
+      }
+    }
 
     // Redirect authenticated users away from auth pages.
     if (isAuthPage) {

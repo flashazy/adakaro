@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import { formatCurrency } from "@/lib/currency";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ interface Props {
   classes: ClassRow[];
   studentClasses: StudentClassRow[];
   schoolName: string;
+  currencyCode: string;
 }
 
 type ReportTab =
@@ -57,15 +59,6 @@ const TABS: { id: ReportTab; label: string }[] = [
 ];
 
 // ─── Helpers ──────────────────────────────────────────────
-
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   const escape = (v: string) =>
@@ -95,7 +88,9 @@ export function ReportsClient({
   classes,
   studentClasses,
   schoolName,
+  currencyCode,
 }: Props) {
+  const money = (n: number) => formatCurrency(n, currencyCode);
   const [activeTab, setActiveTab] = useState<ReportTab>("student-fees");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -421,16 +416,38 @@ export function ReportsClient({
         </div>
 
         {activeTab === "student-fees" && (
-          <StudentFeeReport rows={studentFeeRows} grandTotal={grandTotalFee} grandPaid={grandTotalPaid} grandBalance={grandBalance} />
+          <StudentFeeReport
+            rows={studentFeeRows}
+            grandTotal={grandTotalFee}
+            grandPaid={grandTotalPaid}
+            grandBalance={grandBalance}
+            formatMoney={money}
+          />
         )}
         {activeTab === "class-summary" && (
-          <ClassSummaryReport rows={classSummaryRows} grandTotal={grandTotalFee} grandPaid={grandTotalPaid} grandOutstanding={grandBalance > 0 ? grandBalance : 0} />
+          <ClassSummaryReport
+            rows={classSummaryRows}
+            grandTotal={grandTotalFee}
+            grandPaid={grandTotalPaid}
+            grandOutstanding={grandBalance > 0 ? grandBalance : 0}
+            formatMoney={money}
+          />
         )}
         {activeTab === "outstanding" && (
-          <OutstandingReport rows={outstandingRows} grandOutstanding={grandOutstanding} />
+          <OutstandingReport
+            rows={outstandingRows}
+            grandOutstanding={grandOutstanding}
+            formatMoney={money}
+          />
         )}
         {activeTab === "monthly-income" && (
-          <MonthlyIncomeReport rows={monthlyIncomeRows} grandTotal={grandMonthlyIncome} dateFrom={dateFrom} dateTo={dateTo} />
+          <MonthlyIncomeReport
+            rows={monthlyIncomeRows}
+            grandTotal={grandMonthlyIncome}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            formatMoney={money}
+          />
         )}
       </div>
     </div>
@@ -471,11 +488,13 @@ function StudentFeeReport({
   grandTotal,
   grandPaid,
   grandBalance,
+  formatMoney,
 }: {
   rows: { studentName: string; className: string; totalFee: number; totalPaid: number; balance: number }[];
   grandTotal: number;
   grandPaid: number;
   grandBalance: number;
+  formatMoney: (n: number) => string;
 }) {
   if (rows.length === 0) return <EmptyState message="No student fee data available." />;
 
@@ -496,10 +515,10 @@ function StudentFeeReport({
             <tr key={i} className="hover:bg-slate-50 dark:hover:bg-zinc-800/30">
               <td className={tdClass}>{r.studentName}</td>
               <td className={tdMutedClass}>{r.className}</td>
-              <td className={`${tdClass} text-right`}>{formatCurrency(r.totalFee)}</td>
-              <td className={`${tdClass} text-right`}>{formatCurrency(r.totalPaid)}</td>
+              <td className={`${tdClass} text-right`}>{formatMoney(r.totalFee)}</td>
+              <td className={`${tdClass} text-right`}>{formatMoney(r.totalPaid)}</td>
               <td className={`${tdClass} text-right ${r.balance > 0 ? "text-amber-600 dark:text-amber-400 font-semibold" : ""}`}>
-                {formatCurrency(r.balance)}
+                {formatMoney(r.balance)}
               </td>
             </tr>
           ))}
@@ -508,10 +527,10 @@ function StudentFeeReport({
           <tr>
             <td className={tfootTdClass}>Total</td>
             <td className={tfootTdClass}>{rows.length} students</td>
-            <td className={`${tfootTdClass} text-right`}>{formatCurrency(grandTotal)}</td>
-            <td className={`${tfootTdClass} text-right`}>{formatCurrency(grandPaid)}</td>
+            <td className={`${tfootTdClass} text-right`}>{formatMoney(grandTotal)}</td>
+            <td className={`${tfootTdClass} text-right`}>{formatMoney(grandPaid)}</td>
             <td className={`${tfootTdClass} text-right text-amber-600 dark:text-amber-400`}>
-              {formatCurrency(grandBalance)}
+              {formatMoney(grandBalance)}
             </td>
           </tr>
         </tfoot>
@@ -527,11 +546,13 @@ function ClassSummaryReport({
   grandTotal,
   grandPaid,
   grandOutstanding,
+  formatMoney,
 }: {
   rows: { className: string; studentCount: number; totalFee: number; totalPaid: number; outstanding: number }[];
   grandTotal: number;
   grandPaid: number;
   grandOutstanding: number;
+  formatMoney: (n: number) => string;
 }) {
   if (rows.length === 0) return <EmptyState message="No class data available." />;
 
@@ -552,12 +573,12 @@ function ClassSummaryReport({
             <tr key={i} className="hover:bg-slate-50 dark:hover:bg-zinc-800/30">
               <td className={tdClass}>{r.className}</td>
               <td className={`${tdMutedClass} text-right`}>{r.studentCount}</td>
-              <td className={`${tdClass} text-right`}>{formatCurrency(r.totalFee)}</td>
+              <td className={`${tdClass} text-right`}>{formatMoney(r.totalFee)}</td>
               <td className={`${tdClass} text-right text-emerald-600 dark:text-emerald-400`}>
-                {formatCurrency(r.totalPaid)}
+                {formatMoney(r.totalPaid)}
               </td>
               <td className={`${tdClass} text-right ${r.outstanding > 0 ? "text-amber-600 dark:text-amber-400 font-semibold" : ""}`}>
-                {formatCurrency(r.outstanding)}
+                {formatMoney(r.outstanding)}
               </td>
             </tr>
           ))}
@@ -566,12 +587,12 @@ function ClassSummaryReport({
           <tr>
             <td className={tfootTdClass}>Total</td>
             <td className={`${tfootTdClass} text-right`}>{rows.reduce((s, r) => s + r.studentCount, 0)}</td>
-            <td className={`${tfootTdClass} text-right`}>{formatCurrency(grandTotal)}</td>
+            <td className={`${tfootTdClass} text-right`}>{formatMoney(grandTotal)}</td>
             <td className={`${tfootTdClass} text-right text-emerald-600 dark:text-emerald-400`}>
-              {formatCurrency(grandPaid)}
+              {formatMoney(grandPaid)}
             </td>
             <td className={`${tfootTdClass} text-right text-amber-600 dark:text-amber-400`}>
-              {formatCurrency(grandOutstanding)}
+              {formatMoney(grandOutstanding)}
             </td>
           </tr>
         </tfoot>
@@ -585,9 +606,11 @@ function ClassSummaryReport({
 function OutstandingReport({
   rows,
   grandOutstanding,
+  formatMoney,
 }: {
   rows: { studentName: string; className: string; totalFee: number; totalPaid: number; balance: number }[];
   grandOutstanding: number;
+  formatMoney: (n: number) => string;
 }) {
   if (rows.length === 0) {
     return (
@@ -605,7 +628,7 @@ function OutstandingReport({
         <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
           {rows.length} student{rows.length !== 1 ? "s" : ""} with outstanding
           balances totalling{" "}
-          <span className="font-bold">{formatCurrency(grandOutstanding)}</span>
+          <span className="font-bold">{formatMoney(grandOutstanding)}</span>
         </p>
       </div>
 
@@ -625,10 +648,10 @@ function OutstandingReport({
               <tr key={i} className="hover:bg-slate-50 dark:hover:bg-zinc-800/30">
                 <td className={tdClass}>{r.studentName}</td>
                 <td className={tdMutedClass}>{r.className}</td>
-                <td className={`${tdClass} text-right`}>{formatCurrency(r.totalFee)}</td>
-                <td className={`${tdClass} text-right`}>{formatCurrency(r.totalPaid)}</td>
+                <td className={`${tdClass} text-right`}>{formatMoney(r.totalFee)}</td>
+                <td className={`${tdClass} text-right`}>{formatMoney(r.totalPaid)}</td>
                 <td className={`${tdClass} text-right text-amber-600 dark:text-amber-400 font-semibold`}>
-                  {formatCurrency(r.balance)}
+                  {formatMoney(r.balance)}
                 </td>
               </tr>
             ))}
@@ -638,13 +661,13 @@ function OutstandingReport({
               <td className={tfootTdClass}>Total</td>
               <td className={tfootTdClass}>{rows.length} students</td>
               <td className={`${tfootTdClass} text-right`}>
-                {formatCurrency(rows.reduce((s, r) => s + r.totalFee, 0))}
+                {formatMoney(rows.reduce((s, r) => s + r.totalFee, 0))}
               </td>
               <td className={`${tfootTdClass} text-right`}>
-                {formatCurrency(rows.reduce((s, r) => s + r.totalPaid, 0))}
+                {formatMoney(rows.reduce((s, r) => s + r.totalPaid, 0))}
               </td>
               <td className={`${tfootTdClass} text-right text-amber-600 dark:text-amber-400`}>
-                {formatCurrency(grandOutstanding)}
+                {formatMoney(grandOutstanding)}
               </td>
             </tr>
           </tfoot>
@@ -661,11 +684,13 @@ function MonthlyIncomeReport({
   grandTotal,
   dateFrom,
   dateTo,
+  formatMoney,
 }: {
   rows: { month: string; total: number; count: number }[];
   grandTotal: number;
   dateFrom: string;
   dateTo: string;
+  formatMoney: (n: number) => string;
 }) {
   if (rows.length === 0) return <EmptyState message="No payments found for the selected period." />;
 
@@ -702,7 +727,7 @@ function MonthlyIncomeReport({
                 <td className={tdClass}>{formatMonth(r.month)}</td>
                 <td className={`${tdMutedClass} text-right`}>{r.count}</td>
                 <td className={`${tdClass} text-right text-emerald-600 dark:text-emerald-400 font-semibold`}>
-                  {formatCurrency(r.total)}
+                  {formatMoney(r.total)}
                 </td>
               </tr>
             ))}
@@ -714,7 +739,7 @@ function MonthlyIncomeReport({
                 {rows.reduce((s, r) => s + r.count, 0)}
               </td>
               <td className={`${tfootTdClass} text-right text-emerald-600 dark:text-emerald-400`}>
-                {formatCurrency(grandTotal)}
+                {formatMoney(grandTotal)}
               </td>
             </tr>
           </tfoot>

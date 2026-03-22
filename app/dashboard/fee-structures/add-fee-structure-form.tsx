@@ -22,11 +22,18 @@ interface Props {
   feeTypes: { id: string; name: string }[];
   classes: { id: string; name: string }[];
   students: { id: string; full_name: string; admission_number: string | null }[];
+  /** School ISO currency (TZS, KES, UGX, USD) */
+  currencyCode: string;
 }
 
 const initialState: FeeStructureActionState = {};
 
-export function AddFeeStructureForm({ feeTypes, classes, students }: Props) {
+export function AddFeeStructureForm({
+  feeTypes,
+  classes,
+  students,
+  currencyCode,
+}: Props) {
   const [state, formAction] = useActionState(addFeeStructure, initialState);
   const [open, setOpen] = useState(false);
   const [targetType, setTargetType] = useState<"class" | "student">("class");
@@ -111,7 +118,7 @@ export function AddFeeStructureForm({ feeTypes, classes, students }: Props) {
                 htmlFor="amount"
                 className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
-                Amount <span className="text-red-500">*</span>
+                Amount ({currencyCode}) <span className="text-red-500">*</span>
               </label>
               <input
                 id="amount"

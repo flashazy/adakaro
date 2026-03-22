@@ -2,16 +2,15 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/(auth)/actions";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { CreateSchoolModal } from "./create-school-modal";
 import { DashboardCharts } from "./dashboard-charts";
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
+import {
+  DEFAULT_SCHOOL_CURRENCY,
+  formatCurrency,
+  formatSchoolTitleWithCurrency,
+  normalizeSchoolCurrency,
+} from "@/lib/currency";
 
 const NAV_LINKS = [
   {
@@ -66,6 +65,17 @@ const NAV_LINKS = [
     ),
   },
   {
+    href: "/dashboard/school-settings",
+    title: "School settings",
+    desc: "Currency and school preferences.",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+      </svg>
+    ),
+  },
+  {
     href: "/dashboard/reports",
     title: "Reports",
     desc: "Generate & export reports.",
@@ -86,7 +96,7 @@ const NAV_LINKS = [
     ),
   },
   {
-    href: "/dashboard/parent-requests",
+    href: "/dashboard/link-requests",
     title: "Link Requests",
     desc: "Review parent access requests.",
     icon: (
@@ -97,6 +107,54 @@ const NAV_LINKS = [
   },
 ] as const;
 
+/** Always refetch membership after creating a school (router.refresh / navigation). */
+export const dynamic = "force-dynamic";
+
+function buildEmptyDailyPayments() {
+  const today = new Date();
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(today.getDate() - 29);
+  const dailyMap = new Map<string, number>();
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(thirtyDaysAgo);
+    d.setDate(thirtyDaysAgo.getDate() + i);
+    const key = d.toISOString().split("T")[0];
+    dailyMap.set(key, 0);
+  }
+  return Array.from(dailyMap.entries()).map(([date, amount]) => ({
+    date: `${date.slice(5, 7)}/${date.slice(8, 10)}`,
+    amount,
+  }));
+}
+
+function buildEmptyMonthlyIncome() {
+  const today = new Date();
+  const monthlyMap = new Map<string, number>();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    monthlyMap.set(key, 0);
+  }
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  return Array.from(monthlyMap.entries()).map(([key, amount]) => ({
+    month: monthNames[Number(key.slice(5, 7)) - 1],
+    amount,
+  }));
+}
+
 export default async function AdminDashboard() {
   const supabase = await createClient();
   const {
@@ -105,18 +163,121 @@ export default async function AdminDashboard() {
 
   if (!user) redirect("/login");
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  const hasSchool = Boolean(schoolId);
+
+  const { data: profileOnly } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
     .maybeSingle();
 
-  if (!membership && !membershipError) {
-    redirect("/dashboard/setup");
+  const profileNameEarly =
+    (profileOnly as { full_name: string } | null)?.full_name || "Admin";
+
+  if (!hasSchool) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+        <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+            <div>
+              <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
+                Your School
+              </h1>
+              <p className="text-sm text-slate-500 dark:text-zinc-400">
+                Welcome back, {profileNameEarly}
+              </p>
+            </div>
+            <form action={signOut}>
+              <button
+                type="submit"
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Sign out
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-7xl px-6 py-8">
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="font-medium">Finish onboarding</p>
+            <p className="mt-1 text-amber-800/90 dark:text-amber-200/80">
+              Create your school to unlock the dashboard, classes, students, and
+              fee management. You can also use the{" "}
+              <Link
+                href="/dashboard/setup"
+                className="font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950 dark:text-amber-100"
+              >
+                full setup page
+              </Link>{" "}
+              if you prefer.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard
+              label="Total Students"
+              value="0"
+              icon={
+                <svg className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+                </svg>
+              }
+            />
+            <KpiCard
+              label="Fees Collected"
+              value={formatCurrency(0, DEFAULT_SCHOOL_CURRENCY)}
+              color="emerald"
+              icon={
+                <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+              }
+            />
+            <KpiCard
+              label="Outstanding"
+              value={formatCurrency(0, DEFAULT_SCHOOL_CURRENCY)}
+              color="amber"
+              icon={
+                <svg className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+              }
+            />
+            <KpiCard
+              label="Active Classes"
+              value="0"
+              icon={
+                <svg className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
+                </svg>
+              }
+            />
+          </div>
+
+          <div className="mt-8">
+            <DashboardCharts
+              dailyPayments={buildEmptyDailyPayments()}
+              monthlyIncome={buildEmptyMonthlyIncome()}
+              feesCollected={0}
+              outstandingBalance={0}
+              currencyCode={DEFAULT_SCHOOL_CURRENCY}
+            />
+          </div>
+
+          <div className="mt-8">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+              Quick Actions
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <CreateSchoolModal enabled />
+            </div>
+          </div>
+        </main>
+      </div>
+    );
   }
-  const membershipTyped = membership as { school_id: string } | null;
-  const schoolId = membershipTyped?.school_id;
 
   // Get student IDs for this school first
   const { data: schoolStudents } = await supabase
@@ -137,7 +298,7 @@ export default async function AdminDashboard() {
         .single(),
       supabase
         .from("schools")
-        .select("name")
+        .select("name, currency")
         .eq("id", schoolId!)
         .single(),
       supabase
@@ -159,9 +320,14 @@ export default async function AdminDashboard() {
     ]);
 
   const profileData = profileRes.data as { full_name: string } | null;
-  const schoolData = schoolRes.data as { name: string } | null;
+  const schoolData = schoolRes.data as {
+    name: string;
+    currency: string | null;
+  } | null;
   const profileName = profileData?.full_name || "Admin";
   const schoolName = schoolData?.name || "Your School";
+  const schoolCurrency = normalizeSchoolCurrency(schoolData?.currency);
+  const schoolTitle = formatSchoolTitleWithCurrency(schoolName, schoolCurrency);
   const totalStudents = studentsRes.count ?? 0;
   const totalClasses = classesRes.count ?? 0;
 
@@ -232,7 +398,7 @@ export default async function AdminDashboard() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              {schoolName}
+              {schoolTitle}
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               Welcome back, {profileName}
@@ -263,7 +429,7 @@ export default async function AdminDashboard() {
           />
           <KpiCard
             label="Fees Collected"
-            value={formatCurrency(feesCollected)}
+            value={formatCurrency(feesCollected, schoolCurrency)}
             color="emerald"
             icon={
               <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -273,7 +439,7 @@ export default async function AdminDashboard() {
           />
           <KpiCard
             label="Outstanding"
-            value={formatCurrency(outstandingBalance)}
+            value={formatCurrency(outstandingBalance, schoolCurrency)}
             color="amber"
             icon={
               <svg className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -299,6 +465,7 @@ export default async function AdminDashboard() {
             monthlyIncome={monthlyIncome}
             feesCollected={feesCollected}
             outstandingBalance={outstandingBalance}
+            currencyCode={schoolCurrency}
           />
         </div>
 

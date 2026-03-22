@@ -8,7 +8,13 @@ export type Json =
 
 export type UserRole = "admin" | "parent";
 export type StudentStatus = "active" | "inactive" | "graduated" | "transferred";
-export type PaymentMethod = "cash" | "bank_transfer" | "mobile_money" | "card" | "cheque" | "azampay";
+export type PaymentMethod =
+  | "cash"
+  | "bank_transfer"
+  | "mobile_money"
+  | "card"
+  | "cheque"
+  | "clickpesa";
 export type PaymentStatusType = "completed" | "pending" | "failed" | "refunded";
 
 export interface Database {
@@ -53,6 +59,7 @@ export interface Database {
           phone: string | null;
           email: string | null;
           logo_url: string | null;
+          currency: string;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -64,6 +71,7 @@ export interface Database {
           phone?: string | null;
           email?: string | null;
           logo_url?: string | null;
+          currency?: string;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -74,6 +82,7 @@ export interface Database {
           phone?: string | null;
           email?: string | null;
           logo_url?: string | null;
+          currency?: string;
           updated_at?: string;
         };
       };
@@ -338,6 +347,62 @@ export interface Database {
           updated_at?: string;
         };
       };
+      clickpesa_fee_bills: {
+        Row: {
+          id: string;
+          student_id: string;
+          fee_structure_id: string;
+          parent_id: string;
+          control_number: string | null;
+          checkout_link: string | null;
+          order_reference: string;
+          amount: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          fee_structure_id: string;
+          parent_id: string;
+          control_number?: string | null;
+          checkout_link?: string | null;
+          order_reference: string;
+          amount: number;
+          created_at?: string;
+        };
+        Update: {
+          control_number?: string | null;
+          checkout_link?: string | null;
+          order_reference?: string;
+          amount?: number;
+        };
+      };
+      clickpesa_payment_transactions: {
+        Row: {
+          id: string;
+          clickpesa_bill_id: string;
+          payment_reference: string | null;
+          amount: number;
+          status: string;
+          raw_webhook: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          clickpesa_bill_id: string;
+          payment_reference?: string | null;
+          amount: number;
+          status?: string;
+          raw_webhook?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          payment_reference?: string | null;
+          amount?: number;
+          status?: string;
+          raw_webhook?: Json | null;
+        };
+      };
     };
     Views: {
       student_fee_balances: {
@@ -358,6 +423,21 @@ export interface Database {
       };
     };
     Functions: {
+      create_founding_school: {
+        Args: {
+          p_name: string;
+          p_address?: string | null;
+          p_phone?: string | null;
+          p_email?: string | null;
+          p_logo_url?: string | null;
+          p_currency?: string | null;
+        };
+        Returns: string;
+      };
+      get_my_school_id: {
+        Args: Record<string, never>;
+        Returns: string | null;
+      };
       get_school_role: {
         Args: { p_school_id: string };
         Returns: UserRole | null;
@@ -375,8 +455,26 @@ export interface Database {
         Returns: string[];
       };
       lookup_student_by_admission: {
-        Args: { adm_number: string };
+        Args: { adm_number: string; p_prefer_school_id?: string | null };
         Returns: { student_id: string; school_id: string }[];
+      };
+      get_pending_parent_link_requests_for_admin: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          parent_id: string;
+          admission_number: string;
+          student_id: string | null;
+          created_at: string;
+        }[];
+      };
+      admin_approve_parent_link_request: {
+        Args: { p_request_id: string; p_student_id: string };
+        Returns: Json;
+      };
+      admin_reject_parent_link_request: {
+        Args: { p_request_id: string };
+        Returns: Json;
       };
     };
     Enums: {

@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { describeSupabaseError } from "@/lib/dashboard/supabase-error";
+import { QueryErrorBanner } from "../query-error-banner";
 import { AddFeeTypeForm } from "./add-fee-type-form";
 import { FeeTypeRow } from "./fee-type-row";
 import Link from "next/link";
@@ -12,24 +15,18 @@ export default async function FeeTypesPage() {
 
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!membership) redirect("/dashboard/setup");
-  const membershipTyped = membership as { school_id: string };
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) redirect("/dashboard");
 
   const { data: feeTypes, error: feeTypesError } = await supabase
     .from("fee_types")
     .select("*")
-    .eq("school_id", membershipTyped.school_id)
+    .eq("school_id", schoolId)
     .order("name");
 
+  const fetchError = describeSupabaseError(feeTypesError);
   if (feeTypesError) {
-    console.log("[fee-types] error:", feeTypesError);
+    console.error("[fee-types] error:", fetchError);
   }
 
   const typedFeeTypes = (feeTypes ?? []) as {
@@ -66,7 +63,27 @@ export default async function FeeTypesPage() {
       <main className="mx-auto max-w-4xl px-6 py-10">
         <AddFeeTypeForm />
 
-        {typedFeeTypes.length > 0 ? (
+        {fetchError ? (
+          <QueryErrorBanner
+            title="Could not load fee types"
+            message={fetchError}
+            className="mt-6"
+          >
+            <p className="text-xs text-red-800 dark:text-red-200">
+              If you are a school admin, run Supabase migrations (including{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00018_get_my_school_id
+              </code>{" "}
+              and{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00019_admin_rls_is_school_admin
+              </code>
+              ) so RLS allows reading your school&apos;s data.
+            </p>
+          </QueryErrorBanner>
+        ) : null}
+
+        {!fetchError && typedFeeTypes.length > 0 ? (
           <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             {/* Desktop table header */}
             <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_80px_auto] sm:gap-4 dark:border-zinc-800">
@@ -90,13 +107,13 @@ export default async function FeeTypesPage() {
               ))}
             </div>
           </div>
-        ) : (
+        ) : !fetchError ? (
           <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               No fee types yet. Add your first fee type above.
             </p>
           </div>
-        )}
+        ) : null}
       </main>
     </div>
   );

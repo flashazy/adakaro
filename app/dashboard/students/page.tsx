@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { QueryErrorBanner } from "../query-error-banner";
 import { AddStudentForm } from "./add-student-form";
 import { StudentList } from "./student-list";
 import Link from "next/link";
@@ -12,18 +15,10 @@ export default async function StudentsPage() {
 
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) redirect("/dashboard");
 
-  if (!membership) redirect("/dashboard/setup");
-  const membershipTyped = membership as { school_id: string };
-  const schoolId = membershipTyped.school_id;
-
-  const { data: classes } = await supabase
+  const { data: classes, error: classesError } = await supabase
     .from("classes")
     .select("id, name")
     .eq("school_id", schoolId)
@@ -35,8 +30,10 @@ export default async function StudentsPage() {
     .eq("school_id", schoolId)
     .order("full_name");
 
-  console.log("[students] schoolId:", schoolId);
-  console.log("[students] data count:", students?.length ?? "null", "error:", studentsError);
+  const listError = combineSupabaseErrors([classesError, studentsError]);
+  if (listError) {
+    console.error("[students] query error:", listError);
+  }
 
   const typedClasses = (classes ?? []) as { id: string; name: string }[];
   const typedStudents = (students ?? []) as {
@@ -73,8 +70,16 @@ export default async function StudentsPage() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-8 px-6 py-10">
+        {listError ? (
+          <QueryErrorBanner
+            title="Could not load students or classes"
+            message={listError}
+          />
+        ) : null}
         <AddStudentForm classes={classOptions} />
-        <StudentList students={typedStudents} classes={classOptions} />
+        {!listError ? (
+          <StudentList students={typedStudents} classes={classOptions} />
+        ) : null}
       </main>
     </div>
   );

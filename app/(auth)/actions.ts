@@ -38,7 +38,23 @@ export async function login(
     return { error: error.message };
   }
 
-  const role = (authData.user.user_metadata?.role as string) || "parent";
+  const user = authData.user;
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const profileRole = (profileRow as { role: UserRole } | null)?.role;
+  const role: UserRole =
+    profileRole === "admin" || profileRole === "parent"
+      ? profileRole
+      : String(user.user_metadata?.role ?? "")
+            .toLowerCase()
+            .trim() === "admin"
+        ? "admin"
+        : "parent";
+
   redirect(role === "admin" ? "/dashboard" : "/parent-dashboard");
 }
 

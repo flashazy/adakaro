@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/supabase";
 
-async function getSchoolId() {
+async function getAuthenticatedSupabase() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -11,16 +12,18 @@ async function getSchoolId() {
 
   if (!user) throw new Error("Not authenticated");
 
-  const { data: membership } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  return { supabase, user };
+}
 
-  if (!membership) throw new Error("No school found");
-  const membershipTyped = membership as { school_id: string };
-  return { supabase, schoolId: membershipTyped.school_id };
+function parseRpcResult(data: Json | null): { ok: boolean; error?: string } {
+  if (data == null || typeof data !== "object" || Array.isArray(data)) {
+    return { ok: false, error: "Invalid response" };
+  }
+  const obj = data as Record<string, Json | undefined>;
+  const ok = obj.ok === true;
+  const err =
+    typeof obj.error === "string" ? obj.error : undefined;
+  return ok ? { ok: true } : { ok: false, error: err ?? "Request failed" };
 }
 
 export interface RequestActionState {
@@ -37,44 +40,23 @@ export async function approveRequest(
   }
 
   try {
-    const { supabase } = await getSchoolId();
+    const { supabase } = await getAuthenticatedSupabase();
 
-    // Get the request to find the parent_id
-    const { data: request, error: fetchErr } = await supabase
-      .from("parent_link_requests")
-      .select("parent_id, student_id")
-      .eq("id", requestId)
-      .single();
+    const { data, error } = await supabase.rpc(
+      "admin_approve_parent_link_request",
+      {
+        p_request_id: requestId,
+        p_student_id: studentId,
+      } as never
+    );
 
-    if (fetchErr || !request) {
-      return { error: "Request not found." };
-    }
-    const requestTyped = request as { parent_id: string; student_id: string | null };
-
-    // Insert the parent-student link
-    const { error: linkErr } = await supabase
-      .from("parent_students")
-      .insert({
-        parent_id: requestTyped.parent_id,
-        student_id: studentId,
-      } as never);
-
-    if (linkErr) {
-      if (linkErr.code === "23505") {
-        // Already linked — still mark as approved
-      } else {
-        return { error: linkErr.message };
-      }
+    if (error) {
+      return { error: error.message };
     }
 
-    // Update request status to approved
-    const { error: updateErr } = await supabase
-      .from("parent_link_requests")
-      .update({ status: "approved" } as never)
-      .eq("id", requestId);
-
-    if (updateErr) {
-      return { error: updateErr.message };
+    const parsed = parseRpcResult(data);
+    if (!parsed.ok) {
+      return { error: parsed.error ?? "Could not approve request." };
     }
 
     revalidatePath("/dashboard/parent-requests");
@@ -92,15 +74,20 @@ export async function rejectRequest(
   }
 
   try {
-    const { supabase } = await getSchoolId();
+    const { supabase } = await getAuthenticatedSupabase();
 
-    const { error } = await supabase
-      .from("parent_link_requests")
-      .update({ status: "rejected" } as never)
-      .eq("id", requestId);
+    const { data, error } = await supabase.rpc(
+      "admin_reject_parent_link_request",
+      { p_request_id: requestId } as never
+    );
 
     if (error) {
       return { error: error.message };
+    }
+
+    const parsed = parseRpcResult(data);
+    if (!parsed.ok) {
+      return { error: parsed.error ?? "Could not reject request." };
     }
 
     revalidatePath("/dashboard/parent-requests");

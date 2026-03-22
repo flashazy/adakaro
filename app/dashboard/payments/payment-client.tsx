@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { recordPayment, type PaymentActionState } from "./actions";
 import Link from "next/link";
+import { formatCurrency } from "@/lib/currency";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -39,24 +40,16 @@ interface Props {
   students: StudentOption[];
   balances: BalanceRow[];
   payments: PaymentRow[];
-}
-
-// ─── Helpers ─────────────────────────────────────────────
-
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
+  currencyCode: string;
 }
 
 const METHODS = [
   { value: "cash", label: "Cash" },
   { value: "bank_transfer", label: "Bank Transfer" },
   { value: "mobile_money", label: "Mobile Money" },
-  { value: "azampay", label: "AzamPay" },
+  { value: "card", label: "Card" },
+  { value: "cheque", label: "Cheque" },
+  { value: "clickpesa", label: "ClickPesa (online)" },
 ] as const;
 
 // ─── Submit button ───────────────────────────────────────
@@ -78,7 +71,13 @@ function SubmitButton() {
 
 const initialState: PaymentActionState = {};
 
-export function PaymentClient({ students, balances, payments }: Props) {
+export function PaymentClient({
+  students,
+  balances,
+  payments,
+  currencyCode,
+}: Props) {
+  const money = (n: number) => formatCurrency(n, currencyCode);
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedFeeId, setSelectedFeeId] = useState("");
@@ -197,13 +196,13 @@ export function PaymentClient({ students, balances, payments }: Props) {
                       {b.fee_name}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-zinc-400">
-                      Total: {formatCurrency(Number(b.total_fee))} · Paid:{" "}
-                      {formatCurrency(Number(b.total_paid))}
+                      Total: {money(Number(b.total_fee))} · Paid:{" "}
+                      {money(Number(b.total_paid))}
                       {b.due_date ? ` · Due: ${b.due_date}` : ""}
                     </p>
                   </div>
                   <span className="shrink-0 text-sm font-semibold text-amber-600 dark:text-amber-400">
-                    {formatCurrency(Number(b.balance))}
+                    {money(Number(b.balance))}
                   </span>
                 </button>
               ))}
@@ -226,7 +225,7 @@ export function PaymentClient({ students, balances, payments }: Props) {
             Record payment — {selectedBalance.fee_name}
           </h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-            Balance: {formatCurrency(Number(selectedBalance.balance))}
+            Balance: {money(Number(selectedBalance.balance))}
           </p>
 
           <input type="hidden" name="student_id" value={selectedStudentId} />
@@ -238,7 +237,8 @@ export function PaymentClient({ students, balances, payments }: Props) {
                 htmlFor="amount"
                 className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
-                Amount <span className="text-red-500">*</span>
+                Amount ({currencyCode}){" "}
+                <span className="text-red-500">*</span>
               </label>
               <input
                 id="amount"
@@ -367,7 +367,7 @@ export function PaymentClient({ students, balances, payments }: Props) {
               >
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-white">
-                    {formatCurrency(Number(p.amount))}
+                    {money(Number(p.amount))}
                     <span className="ml-2 text-xs font-normal text-slate-500 dark:text-zinc-400">
                       {p.payment_method?.replace("_", " ") ?? "N/A"} · {p.payment_date}
                     </span>

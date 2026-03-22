@@ -10,7 +10,7 @@ const VALID_METHODS: PaymentMethod[] = [
   "mobile_money",
   "card",
   "cheque",
-  "azampay",
+  "clickpesa",
 ];
 
 export interface PaymentActionState {

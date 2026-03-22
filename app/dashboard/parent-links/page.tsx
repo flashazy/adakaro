@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { QueryErrorBanner } from "../query-error-banner";
 import AddLinkForm from "./add-link-form";
 import LinkRow, { type ParentLinkData } from "./link-row";
 
@@ -12,16 +15,8 @@ export default async function ParentLinksPage() {
 
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!membership) redirect("/dashboard/setup");
-  const membershipTyped = membership as { school_id: string };
-  const schoolId = membershipTyped.school_id;
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) redirect("/dashboard");
 
   // Fetch parents (profiles with role 'parent'), students for this school, and existing links in parallel
   const [parentsRes, studentsRes, linksRes] = await Promise.all([
@@ -41,6 +36,15 @@ export default async function ParentLinksPage() {
         "id, parent_id, student_id, parent:profiles(full_name, email), student:students(full_name, class:classes(name))"
       ),
   ]);
+
+  const fetchError = combineSupabaseErrors([
+    parentsRes.error,
+    studentsRes.error,
+    linksRes.error,
+  ]);
+  if (fetchError) {
+    console.error("[parent-links] error:", fetchError);
+  }
 
   const typedParents = (parentsRes.data ?? []) as { id: string; full_name: string; email: string | null }[];
   const parents = typedParents.map((p) => ({
@@ -118,7 +122,26 @@ export default async function ParentLinksPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-8 space-y-8">
+      <main className="mx-auto max-w-5xl space-y-8 px-6 py-8">
+        {fetchError ? (
+          <QueryErrorBanner
+            title="Could not load parent links data"
+            message={fetchError}
+          >
+            <p className="text-xs text-red-800 dark:text-red-200">
+              Apply migration{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00019_admin_rls_is_school_admin
+              </code>{" "}
+              if admins cannot read{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                parent_students
+              </code>{" "}
+              or related rows.
+            </p>
+          </QueryErrorBanner>
+        ) : null}
+
         {/* Add form */}
         <AddLinkForm parents={parents} students={students} />
 
@@ -136,7 +159,7 @@ export default async function ParentLinksPage() {
             </span>
           </div>
 
-          {filteredLinks.length === 0 ? (
+          {!fetchError && filteredLinks.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <svg className="mx-auto h-10 w-10 text-slate-300 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
@@ -147,6 +170,10 @@ export default async function ParentLinksPage() {
               <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
                 Use the form above to link a parent account to a student.
               </p>
+            </div>
+          ) : fetchError ? (
+            <div className="px-6 py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
+              Fix the error above to load links.
             </div>
           ) : (
             <div className="overflow-x-auto">

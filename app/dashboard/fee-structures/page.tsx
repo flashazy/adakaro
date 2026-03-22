@@ -1,5 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { normalizeSchoolCurrency } from "@/lib/currency";
+import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { QueryErrorBanner } from "../query-error-banner";
 import { AddFeeStructureForm } from "./add-fee-structure-form";
 import { FeeStructureRow } from "./fee-structure-row";
 import Link from "next/link";
@@ -12,19 +16,10 @@ export default async function FeeStructuresPage() {
 
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) redirect("/dashboard");
 
-  if (!membership) redirect("/dashboard/setup");
-  const membershipTyped = membership as { school_id: string };
-  const schoolId = membershipTyped.school_id;
-
-  // Fetch all lookup data in parallel
-  const [feeTypesRes, classesRes, studentsRes, structuresRes] =
+  const [feeTypesRes, classesRes, studentsRes, structuresRes, schoolRes] =
     await Promise.all([
       supabase
         .from("fee_types")
@@ -48,6 +43,7 @@ export default async function FeeStructuresPage() {
         )
         .eq("school_id", schoolId)
         .order("created_at", { ascending: false }),
+      supabase.from("schools").select("currency").eq("id", schoolId).single(),
     ]);
 
   const typedFeeTypes = (feeTypesRes.data ?? []) as { id: string; name: string }[];
@@ -69,8 +65,18 @@ export default async function FeeStructuresPage() {
     student: { id: string; full_name: string } | null;
   }[];
 
-  if (structuresRes.error) {
-    console.log("[fee-structures] error:", structuresRes.error);
+  const schoolRow = schoolRes.data as { currency: string | null } | null;
+  const currencyCode = normalizeSchoolCurrency(schoolRow?.currency);
+
+  const fetchError = combineSupabaseErrors([
+    feeTypesRes.error,
+    classesRes.error,
+    studentsRes.error,
+    structuresRes.error,
+    schoolRes.error,
+  ]);
+  if (fetchError) {
+    console.error("[fee-structures] error:", fetchError);
   }
 
   return (
@@ -94,14 +100,34 @@ export default async function FeeStructuresPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-10">
+      <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
+        {fetchError ? (
+          <QueryErrorBanner
+            title="Could not load fee structure data"
+            message={fetchError}
+          >
+            <p className="text-xs text-red-800 dark:text-red-200">
+              Apply migrations{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00018_get_my_school_id
+              </code>{" "}
+              and{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00019_admin_rls_is_school_admin
+              </code>{" "}
+              if reads are blocked by RLS.
+            </p>
+          </QueryErrorBanner>
+        ) : null}
+
         <AddFeeStructureForm
           feeTypes={typedFeeTypes}
           classes={typedClasses}
           students={typedStudents}
+          currencyCode={currencyCode}
         />
 
-        {typedStructures.length > 0 ? (
+        {!fetchError && typedStructures.length > 0 ? (
           <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             {/* Desktop header */}
             <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_100px_100px_auto] sm:gap-4 dark:border-zinc-800">
@@ -130,17 +156,18 @@ export default async function FeeStructuresPage() {
                   feeTypes={typedFeeTypes}
                   classes={typedClasses}
                   students={typedStudents}
+                  currencyCode={currencyCode}
                 />
               ))}
             </div>
           </div>
-        ) : (
+        ) : !fetchError ? (
           <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               No fee structures yet. Add your first one above.
             </p>
           </div>
-        )}
+        ) : null}
       </main>
     </div>
   );

@@ -1,5 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { normalizeSchoolCurrency } from "@/lib/currency";
+import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { QueryErrorBanner } from "../query-error-banner";
 import { PaymentClient } from "./payment-client";
 import Link from "next/link";
 
@@ -11,16 +15,17 @@ export default async function PaymentsPage() {
 
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) redirect("/dashboard");
 
-  if (!membership) redirect("/dashboard/setup");
-  const membershipTyped = membership as { school_id: string };
-  const schoolId = membershipTyped.school_id;
+  const { data: schoolRow, error: schoolErr } = await supabase
+    .from("schools")
+    .select("currency")
+    .eq("id", schoolId)
+    .single();
+  const currencyCode = normalizeSchoolCurrency(
+    (schoolRow as { currency: string | null } | null)?.currency
+  );
 
   // Fetch students (no status filter — column may not exist)
   const { data: students, error: studentsError } = await supabase
@@ -51,11 +56,14 @@ export default async function PaymentsPage() {
         .limit(50)
     : { data: [], error: null };
 
-  if (balancesRes.error) {
-    console.log("[payments] balances error:", balancesRes.error);
-  }
-  if (paymentsRes.error) {
-    console.log("[payments] payments error:", paymentsRes.error);
+  const fetchError = combineSupabaseErrors([
+    schoolErr,
+    studentsError,
+    balancesRes.error,
+    paymentsRes.error,
+  ]);
+  if (fetchError) {
+    console.error("[payments] error:", fetchError);
   }
 
   const typedBalances = (balancesRes.data ?? []) as {
@@ -100,11 +108,30 @@ export default async function PaymentsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-6 py-10">
+      <main className="mx-auto max-w-3xl space-y-6 px-6 py-10">
+        {fetchError ? (
+          <QueryErrorBanner
+            title="Could not load payment data"
+            message={fetchError}
+          >
+            <p className="text-xs text-red-800 dark:text-red-200">
+              Apply migrations{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00018_get_my_school_id
+              </code>{" "}
+              and{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00019_admin_rls_is_school_admin
+              </code>{" "}
+              if school-scoped reads fail.
+            </p>
+          </QueryErrorBanner>
+        ) : null}
         <PaymentClient
           students={typedStudents}
           balances={typedBalances}
           payments={typedPayments}
+          currencyCode={currencyCode}
         />
       </main>
     </div>

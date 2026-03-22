@@ -1,8 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useTransition, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { submitLinkRequest, type LinkRequestState } from "./actions";
+import { useRouter } from "next/navigation";
+import {
+  submitLinkRequest,
+  cancelPendingLinkRequest,
+  type LinkRequestState,
+} from "./actions";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -44,6 +49,13 @@ export default function LinkRequestForm({
 }: {
   pendingRequests: PendingRequest[];
 }) {
+  const router = useRouter();
+  const [cancelPending, startCancel] = useTransition();
+  const [cancelMessage, setCancelMessage] = useState<{
+    type: "error" | "success";
+    text: string;
+  } | null>(null);
+
   const [state, formAction] = useActionState<LinkRequestState, FormData>(
     submitLinkRequest,
     {}
@@ -119,12 +131,27 @@ export default function LinkRequestForm({
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
               Pending Requests
             </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+              Stuck? Cancel a request to send a new one. Your school admin must still approve
+              new requests.
+            </p>
           </div>
+          {cancelMessage && (
+            <div
+              className={`mx-6 mb-2 rounded-lg border px-3 py-2 text-xs ${
+                cancelMessage.type === "error"
+                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+              }`}
+            >
+              {cancelMessage.text}
+            </div>
+          )}
           <div className="divide-y divide-slate-100 dark:divide-zinc-800/50">
             {pendingRequests.map((req) => (
               <div
                 key={req.id}
-                className="flex items-center justify-between px-6 py-3"
+                className="flex flex-col gap-2 px-6 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/20">
@@ -146,9 +173,32 @@ export default function LinkRequestForm({
                     </p>
                   </div>
                 </div>
-                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-                  Pending
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                    Pending
+                  </span>
+                  <button
+                    type="button"
+                    disabled={cancelPending}
+                    onClick={() => {
+                      setCancelMessage(null);
+                      startCancel(async () => {
+                        const out = await cancelPendingLinkRequest(req.id);
+                        if (out.error) {
+                          setCancelMessage({ type: "error", text: out.error });
+                          return;
+                        }
+                        if (out.success) {
+                          setCancelMessage({ type: "success", text: out.success });
+                        }
+                        router.refresh();
+                      });
+                    }}
+                    className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  >
+                    {cancelPending ? "Cancelling…" : "Cancel request"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

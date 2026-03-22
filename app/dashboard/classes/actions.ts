@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 
 async function getSchoolId() {
   const supabase = await createClient();
@@ -11,16 +12,10 @@ async function getSchoolId() {
 
   if (!user) throw new Error("Not authenticated");
 
-  const { data: membership } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) throw new Error("No school found");
 
-  if (!membership) throw new Error("No school found");
-  const membershipTyped = membership as { school_id: string };
-  return { supabase, schoolId: membershipTyped.school_id };
+  return { supabase, schoolId };
 }
 
 export interface ClassActionState {

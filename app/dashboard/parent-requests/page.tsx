@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getSchoolIdsForAdminUser } from "@/lib/dashboard/get-school-ids";
+import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { QueryErrorBanner } from "../query-error-banner";
 import RequestRow, { type RequestData } from "./request-row";
 
 export default async function ParentRequestsPage() {
@@ -11,32 +14,38 @@ export default async function ParentRequestsPage() {
 
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
-    .from("school_members")
-    .select("school_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .maybeSingle();
+  const schoolIds = await getSchoolIdsForAdminUser(supabase, user.id);
+  if (schoolIds.length === 0) redirect("/dashboard");
 
-  if (!membership) redirect("/dashboard/setup");
-  const membershipTyped = membership as { school_id: string };
-  const schoolId = membershipTyped.school_id;
-
-  // Fetch pending requests (without profiles join — PostgREST can't auto-detect
-  // the FK since the column is parent_id not profile_id) and all students
-  const [requestsRes, studentsRes] = await Promise.all([
-    supabase
-      .from("parent_link_requests")
-      .select("id, parent_id, admission_number, student_id, created_at")
-      .eq("school_id", schoolId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false }),
+  // SECURITY DEFINER RPC (migration 00025): direct SELECT can be empty when RLS hides
+  // student rows used in policy subqueries. Fallback keeps older DBs working until migrated.
+  const [rpcRes, studentsRes] = await Promise.all([
+    supabase.rpc("get_pending_parent_link_requests_for_admin"),
     supabase
       .from("students")
       .select("id, full_name, admission_number, class:classes(name)")
-      .eq("school_id", schoolId)
+      .in("school_id", schoolIds)
       .order("full_name"),
   ]);
+
+  let requestsRes: {
+    data: typeof rpcRes.data;
+    error: typeof rpcRes.error;
+  };
+  if (rpcRes.error) {
+    console.error(
+      "[parent-requests] get_pending_parent_link_requests_for_admin failed, using table query:",
+      rpcRes.error.message
+    );
+    const fallback = await supabase
+      .from("parent_link_requests")
+      .select("id, parent_id, admission_number, student_id, created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    requestsRes = { data: fallback.data as typeof rpcRes.data, error: fallback.error };
+  } else {
+    requestsRes = rpcRes;
+  }
 
   const typedRequests = (requestsRes.data ?? []) as {
     id: string;
@@ -49,15 +58,26 @@ export default async function ParentRequestsPage() {
   const parentIds = typedRequests.map((r) => r.parent_id);
   let parentMap: Record<string, { full_name: string; email: string | null }> =
     {};
+  let profilesError: unknown = null;
   if (parentIds.length > 0) {
-    const { data: parents } = await supabase
+    const { data: parents, error } = await supabase
       .from("profiles")
       .select("id, full_name, email")
       .in("id", parentIds);
+    profilesError = error;
     const typedParents = (parents ?? []) as { id: string; full_name: string; email: string | null }[];
     for (const p of typedParents) {
       parentMap[p.id] = { full_name: p.full_name, email: p.email };
     }
+  }
+
+  const fetchError = combineSupabaseErrors([
+    requestsRes.error,
+    studentsRes.error,
+    profilesError,
+  ]);
+  if (fetchError) {
+    console.error("[parent-requests] error:", fetchError);
   }
 
   const requests: RequestData[] = typedRequests.map((r) => {
@@ -116,7 +136,35 @@ export default async function ParentRequestsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-8">
+      <main className="mx-auto max-w-5xl space-y-6 px-6 py-8">
+        {fetchError ? (
+          <QueryErrorBanner
+            title="Could not load link requests"
+            message={fetchError}
+          >
+            <p className="text-xs text-red-800 dark:text-red-200">
+              Apply migrations{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00019_admin_rls_is_school_admin
+              </code>
+              ,{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00024_parent_link_requests_admin_visibility
+              </code>
+              ,{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00025_admin_parent_link_request_rpcs
+              </code>
+              , and{" "}
+              <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">
+                00026_parent_link_request_visibility_and_cancel
+              </code>{" "}
+              for <code className="rounded bg-red-100 px-1 dark:bg-red-900/40">parent_link_requests</code>{" "}
+              visibility (admission match + RLS), RPC list, and admission lookup.
+            </p>
+          </QueryErrorBanner>
+        ) : null}
+
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           {/* Table header */}
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-zinc-800">
@@ -131,7 +179,7 @@ export default async function ParentRequestsPage() {
             </span>
           </div>
 
-          {requests.length === 0 ? (
+          {!fetchError && requests.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <svg className="mx-auto h-10 w-10 text-slate-300 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -142,6 +190,10 @@ export default async function ParentRequestsPage() {
               <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
                 No pending parent link requests at the moment.
               </p>
+            </div>
+          ) : fetchError ? (
+            <div className="px-6 py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
+              Fix the error above to load requests.
             </div>
           ) : (
             <div>

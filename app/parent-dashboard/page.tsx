@@ -2,22 +2,20 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/(auth)/actions";
 import Link from "next/link";
+import type { UserRole } from "@/types/supabase";
 import LinkRequestForm from "./link-request-form";
-import PayOnlineButton from "./pay-online-button";
-
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
-}
+import ClickPesaPayButton from "@/components/ClickPesaPayButton";
+import {
+  DEFAULT_SCHOOL_CURRENCY,
+  formatCurrency,
+  normalizeSchoolCurrency,
+} from "@/lib/currency";
 
 interface StudentWithClass {
   id: string;
   full_name: string;
   admission_number: string | null;
+  school_id: string;
   class: { name: string } | null;
 }
 
@@ -53,10 +51,20 @@ export default async function ParentDashboard() {
     .from("profiles")
     .select("full_name, role")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  const profileTyped = profile as { full_name: string; role: string } | null;
-  if (profileTyped?.role !== "parent") redirect("/dashboard");
+  const profileTyped = profile as { full_name: string; role: UserRole } | null;
+  const profileRole = profileTyped?.role;
+  const effectiveRole: UserRole =
+    profileRole === "admin" || profileRole === "parent"
+      ? profileRole
+      : String(user.user_metadata?.role ?? "")
+            .toLowerCase()
+            .trim() === "admin"
+        ? "admin"
+        : "parent";
+
+  if (effectiveRole !== "parent") redirect("/dashboard");
 
   // Fetch linked students and pending link requests in parallel
   const [linksResult, pendingReqsResult] = await Promise.all([
@@ -96,7 +104,7 @@ export default async function ParentDashboard() {
     const [studentsRes, balancesRes, paymentsRes] = await Promise.all([
       supabase
         .from("students")
-        .select("id, full_name, admission_number, class:classes(name)")
+        .select("id, full_name, admission_number, school_id, class:classes(name)")
         .in("id", studentIds),
       supabase
         .from("student_fee_balances")
@@ -118,6 +126,31 @@ export default async function ParentDashboard() {
     balances = (balancesRes.data ?? []) as BalanceRow[];
     payments = (paymentsRes.data ?? []) as PaymentRow[];
   }
+
+  const schoolIds = [...new Set(students.map((s) => s.school_id))];
+  const currencyBySchoolId = new Map<string, string>();
+  if (schoolIds.length > 0) {
+    const { data: schoolRows } = await supabase
+      .from("schools")
+      .select("id, currency")
+      .in("id", schoolIds);
+    for (const row of schoolRows ?? []) {
+      const r = row as { id: string; currency: string | null };
+      currencyBySchoolId.set(r.id, normalizeSchoolCurrency(r.currency));
+    }
+  }
+
+  function currencyForStudent(studentId: string): string {
+    const st = students.find((s) => s.id === studentId);
+    if (!st) return DEFAULT_SCHOOL_CURRENCY;
+    return currencyBySchoolId.get(st.school_id) ?? DEFAULT_SCHOOL_CURRENCY;
+  }
+
+  const distinctCurrencies = [
+    ...new Set(students.map((s) => currencyBySchoolId.get(s.school_id) ?? DEFAULT_SCHOOL_CURRENCY)),
+  ];
+  const aggregateCurrency =
+    distinctCurrencies.length === 1 ? distinctCurrencies[0]! : null;
 
   const totalFees = balances.reduce((sum, b) => sum + Number(b.total_fee), 0);
   const totalPaid = balances.reduce((sum, b) => sum + Number(b.total_paid), 0);
@@ -196,7 +229,16 @@ export default async function ParentDashboard() {
               />
               <KpiCard
                 label="Total Fees"
-                value={formatCurrency(totalFees)}
+                value={
+                  aggregateCurrency
+                    ? formatCurrency(totalFees, aggregateCurrency)
+                    : "—"
+                }
+                subtitle={
+                  aggregateCurrency
+                    ? undefined
+                    : "Multiple currencies — see each child below"
+                }
                 icon={
                   <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
@@ -205,9 +247,17 @@ export default async function ParentDashboard() {
               />
               <KpiCard
                 label="Paid"
-                value={formatCurrency(totalPaid)}
+                value={
+                  aggregateCurrency
+                    ? formatCurrency(totalPaid, aggregateCurrency)
+                    : "—"
+                }
                 color="emerald"
-                subtitle={`${collectionPct}% collected`}
+                subtitle={
+                  aggregateCurrency
+                    ? `${collectionPct}% collected`
+                    : "Per-student breakdown below"
+                }
                 icon={
                   <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -216,7 +266,11 @@ export default async function ParentDashboard() {
               />
               <KpiCard
                 label="Balance Due"
-                value={formatCurrency(totalBalance)}
+                value={
+                  aggregateCurrency
+                    ? formatCurrency(totalBalance, aggregateCurrency)
+                    : "—"
+                }
                 color={totalBalance > 0 ? "amber" : undefined}
                 icon={
                   <svg className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -255,6 +309,7 @@ export default async function ParentDashboard() {
                 const outstandingFees = sBalances.filter(
                   (b) => b.balance > 0
                 );
+                const sc = currencyForStudent(student.id);
 
                 return (
                   <div
@@ -292,7 +347,7 @@ export default async function ParentDashboard() {
                         </div>
                         {sBalance > 0 && (
                           <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-                            {formatCurrency(sBalance)} due
+                            {formatCurrency(sBalance, sc)} due
                           </span>
                         )}
                       </div>
@@ -302,7 +357,7 @@ export default async function ParentDashboard() {
                     <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200 dark:divide-zinc-800 dark:border-zinc-800">
                       <MiniStat
                         label="Total Fees"
-                        value={formatCurrency(sTotalFee)}
+                        value={formatCurrency(sTotalFee, sc)}
                         icon={
                           <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -311,7 +366,7 @@ export default async function ParentDashboard() {
                       />
                       <MiniStat
                         label="Paid"
-                        value={formatCurrency(sTotalPaid)}
+                        value={formatCurrency(sTotalPaid, sc)}
                         color="emerald"
                         icon={
                           <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -321,7 +376,7 @@ export default async function ParentDashboard() {
                       />
                       <MiniStat
                         label="Balance"
-                        value={formatCurrency(sBalance)}
+                        value={formatCurrency(sBalance, sc)}
                         color={sBalance > 0 ? "amber" : undefined}
                         icon={
                           <svg className="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -353,20 +408,21 @@ export default async function ParentDashboard() {
                                   {b.fee_name}
                                 </p>
                                 <p className="text-xs text-slate-500 dark:text-zinc-400">
-                                  {formatCurrency(Number(b.total_paid))} of{" "}
-                                  {formatCurrency(Number(b.total_fee))} paid
+                                  {formatCurrency(Number(b.total_paid), sc)} of{" "}
+                                  {formatCurrency(Number(b.total_fee), sc)} paid
                                   {b.due_date ? ` · Due ${b.due_date}` : ""}
                                 </p>
                               </div>
                               <div className="flex shrink-0 items-center gap-2">
-                                <PayOnlineButton
+                                <ClickPesaPayButton
                                   studentId={student.id}
                                   feeStructureId={b.fee_structure_id}
                                   feeName={b.fee_name}
                                   amount={Number(b.balance)}
+                                  currencyCode={sc}
                                 />
                                 <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
-                                  {formatCurrency(Number(b.balance))}
+                                  {formatCurrency(Number(b.balance), sc)}
                                 </span>
                               </div>
                             </div>
@@ -413,7 +469,7 @@ export default async function ParentDashboard() {
                                 {/* Payment details */}
                                 <div className="min-w-0 flex-1">
                                   <p className="text-sm font-medium text-slate-900 dark:text-white">
-                                    {formatCurrency(Number(p.amount))}
+                                    {formatCurrency(Number(p.amount), sc)}
                                     <span className="ml-2 text-xs font-normal text-slate-500 dark:text-zinc-400">
                                       {feeStructure?.name ?? "Payment"}
                                     </span>

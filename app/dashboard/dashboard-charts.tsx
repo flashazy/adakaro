@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCurrency } from "@/lib/currency";
 import {
   ResponsiveContainer,
   LineChart,
@@ -31,21 +32,13 @@ interface Props {
   monthlyIncome: MonthlyPoint[];
   feesCollected: number;
   outstandingBalance: number;
+  currencyCode: string;
 }
 
-function formatCurrency(n: number) {
+function formatAxisShort(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
   return String(n);
-}
-
-function formatFullCurrency(n: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
 }
 
 const PIE_COLORS = ["#10b981", "#f59e0b"];
@@ -54,10 +47,12 @@ function CustomTooltip({
   active,
   payload,
   label,
+  currencyCode,
 }: {
   active?: boolean;
   payload?: { value: number; name?: string; color?: string }[];
   label?: string;
+  currencyCode: string;
 }) {
   if (!active || !payload?.length) return null;
   return (
@@ -70,7 +65,7 @@ function CustomTooltip({
       {payload.map((entry, i) => (
         <p key={i} className="text-sm font-semibold" style={{ color: entry.color }}>
           {entry.name ? `${entry.name}: ` : ""}
-          {formatFullCurrency(entry.value)}
+          {formatCurrency(entry.value, currencyCode)}
         </p>
       ))}
     </div>
@@ -82,6 +77,7 @@ export function DashboardCharts({
   monthlyIncome,
   feesCollected,
   outstandingBalance,
+  currencyCode,
 }: Props) {
   const pieData = [
     { name: "Collected", value: feesCollected },
@@ -114,13 +110,15 @@ export function DashboardCharts({
                   interval="preserveStartEnd"
                 />
                 <YAxis
-                  tickFormatter={formatCurrency}
+                  tickFormatter={formatAxisShort}
                   tick={{ fontSize: 11, fill: "#94a3b8" }}
                   tickLine={false}
                   axisLine={false}
                   width={48}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip
+                  content={<CustomTooltip currencyCode={currencyCode} />}
+                />
                 <Line
                   type="monotone"
                   dataKey="amount"
@@ -168,7 +166,9 @@ export function DashboardCharts({
                     <Cell key={i} fill={PIE_COLORS[i]} />
                   ))}
                 </Pie>
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip
+                  content={<CustomTooltip currencyCode={currencyCode} />}
+                />
                 <Legend
                   verticalAlign="bottom"
                   height={32}
@@ -220,13 +220,15 @@ export function DashboardCharts({
                   axisLine={{ stroke: "#e2e8f0" }}
                 />
                 <YAxis
-                  tickFormatter={formatCurrency}
+                  tickFormatter={formatAxisShort}
                   tick={{ fontSize: 11, fill: "#94a3b8" }}
                   tickLine={false}
                   axisLine={false}
                   width={48}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip
+                  content={<CustomTooltip currencyCode={currencyCode} />}
+                />
                 <Bar
                   dataKey="amount"
                   name="Income"
