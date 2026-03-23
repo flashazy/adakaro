@@ -22,16 +22,28 @@ export async function GET(request: Request) {
           .maybeSingle();
 
         const profileRole = (profileRow as { role: string } | null)?.role;
-        const role =
-          profileRole === "admin" || profileRole === "parent"
-            ? profileRole
-            : String(user.user_metadata?.role ?? "")
-                    .toLowerCase()
-                    .trim() === "admin"
-              ? "admin"
-              : "parent";
 
-        const destination = role === "admin" ? "/dashboard" : "/parent-dashboard";
+        const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
+          "is_super_admin",
+          {} as never
+        );
+        const isSuper =
+          (!rpcSuperErr && rpcSuper === true) || profileRole === "super_admin";
+
+        let destination = "/parent-dashboard";
+        if (isSuper) {
+          destination = "/super-admin";
+        } else if (profileRole === "admin") {
+          destination = "/dashboard";
+        } else if (profileRole === "parent") {
+          destination = "/parent-dashboard";
+        } else {
+          const metaAdmin =
+            String(user.user_metadata?.role ?? "")
+              .toLowerCase()
+              .trim() === "admin";
+          destination = metaAdmin ? "/dashboard" : "/parent-dashboard";
+        }
         return NextResponse.redirect(`${origin}${destination}`);
       }
     }

@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 import type { UserRole } from "@/types/supabase";
 import LinkRequestForm from "./link-request-form";
+import PendingSchoolInvitations from "./pending-school-invitations";
 import ClickPesaPayButton from "@/components/ClickPesaPayButton";
 import {
   DEFAULT_SCHOOL_CURRENCY,
@@ -54,19 +56,39 @@ export default async function ParentDashboard() {
 
   const profileTyped = profile as { full_name: string; role: UserRole } | null;
   const profileRole = profileTyped?.role;
-  const effectiveRole: UserRole =
-    profileRole === "admin" || profileRole === "parent"
-      ? profileRole
-      : String(user.user_metadata?.role ?? "")
-            .toLowerCase()
-            .trim() === "admin"
-        ? "admin"
-        : "parent";
 
-  if (effectiveRole !== "parent") redirect("/dashboard");
+  /** Service role: profiles RLS often fails; still show Admin entry when DB says admin. */
+  let hasAdminDashboardAccess = profileRole === "admin";
+  if (!hasAdminDashboardAccess) {
+    try {
+      const admin = createAdminClient();
+      const { data: profRow } = await admin
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      if ((profRow as { role: string } | null)?.role === "admin") {
+        hasAdminDashboardAccess = true;
+      }
+      if (!hasAdminDashboardAccess) {
+        const { data: memRow } = await admin
+          .from("school_members")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("role", "admin")
+          .limit(1)
+          .maybeSingle();
+        if (memRow) hasAdminDashboardAccess = true;
+      }
+    } catch {
+      /* no service role */
+    }
+  }
 
-  // Fetch linked students and pending link requests in parallel
-  const [linksResult, pendingReqsResult] = await Promise.all([
+  const nowIso = new Date().toISOString();
+
+  // Fetch linked students, pending link requests, and school admin invites in parallel
+  const [linksResult, pendingReqsResult, invitesResult] = await Promise.all([
     supabase
       .from("parent_students")
       .select("student_id")
@@ -77,6 +99,11 @@ export default async function ParentDashboard() {
       .eq("parent_id", user.id)
       .eq("status", "pending")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("school_invitations")
+      .select("id, school_id, token, expires_at")
+      .eq("status", "pending")
+      .gt("expires_at", nowIso),
   ]);
 
   const typedLinks = (linksResult.data ?? []) as { student_id: string }[];
@@ -93,6 +120,93 @@ export default async function ParentDashboard() {
     admission_number: r.admission_number,
     status: r.status,
     created_at: r.created_at,
+  }));
+
+  let typedPendingInvites = (invitesResult.data ?? []) as {
+    id: string;
+    school_id: string;
+    token: string;
+    expires_at: string;
+  }[];
+
+  // RLS policy "Invitee can select own pending invitation" often fails in practice
+  // because policies cannot reliably read auth.users.email as the authenticated role.
+  // Fall back to service role filtered by the session email from getUser() (same checks
+  // accept_school_invitation uses server-side).
+  if (
+    typedPendingInvites.length === 0 &&
+    user.email &&
+    user.email.trim().length > 0
+  ) {
+    try {
+      const admin = createAdminClient();
+      const sessionEmail = user.email.trim().toLowerCase();
+      const { data: adminInviteRows } = await admin
+        .from("school_invitations")
+        .select("id, school_id, token, expires_at, invited_email")
+        .eq("status", "pending")
+        .gt("expires_at", nowIso)
+        .eq("invited_email", sessionEmail);
+
+      typedPendingInvites = (adminInviteRows ?? [])
+        .map((row) => {
+          const r = row as {
+            id: string;
+            school_id: string;
+            token: string;
+            expires_at: string;
+            invited_email: string;
+          };
+          if (r.invited_email.trim().toLowerCase() !== sessionEmail) {
+            return null;
+          }
+          return {
+            id: r.id,
+            school_id: r.school_id,
+            token: r.token,
+            expires_at: r.expires_at,
+          };
+        })
+        .filter(Boolean) as {
+        id: string;
+        school_id: string;
+        token: string;
+        expires_at: string;
+      }[];
+    } catch {
+      /* no service role */
+    }
+  }
+
+  const invitationSchoolNames: Record<string, string> = {};
+  if (typedPendingInvites.length > 0) {
+    const schoolIds = [...new Set(typedPendingInvites.map((i) => i.school_id))];
+    try {
+      const admin = createAdminClient();
+      const { data: schoolRows } = await admin
+        .from("schools")
+        .select("id, name")
+        .in("id", schoolIds);
+      for (const row of schoolRows ?? []) {
+        const r = row as { id: string; name: string };
+        invitationSchoolNames[r.id] = r.name;
+      }
+    } catch {
+      /* service role unavailable locally */
+    }
+  }
+
+  const pendingAdminInvitesForUi = typedPendingInvites.map((i) => ({
+    id: i.id,
+    school_id: i.school_id,
+    token: i.token,
+    expires_at: i.expires_at,
+    schoolName: invitationSchoolNames[i.school_id] ?? "School",
+    expiresLabel: new Date(i.expires_at).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }),
   }));
 
   let students: StudentWithClass[] = [];
@@ -161,8 +275,17 @@ export default async function ParentDashboard() {
     totalFees > 0 ? Math.round((totalPaid / totalFees) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      <main className="mx-auto max-w-7xl px-6 py-8">
+    <main className="pb-4">
+        {hasAdminDashboardAccess ? (
+          <div className="mb-4 flex flex-wrap items-center justify-end gap-2 border-b border-slate-200 pb-3 dark:border-zinc-800">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500"
+            >
+              Admin dashboard
+            </Link>
+          </div>
+        ) : null}
         <div className="mb-6">
           <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
             Parent dashboard
@@ -171,6 +294,9 @@ export default async function ParentDashboard() {
             Welcome back, {profileTyped?.full_name || "Parent"}
           </p>
         </div>
+
+        <PendingSchoolInvitations invitations={pendingAdminInvitesForUi} />
+
         {/* No linked students */}
         {childCount === 0 ? (
           <div className="space-y-6">
@@ -500,8 +626,7 @@ export default async function ParentDashboard() {
             </div>
           </>
         )}
-      </main>
-    </div>
+    </main>
   );
 }
 

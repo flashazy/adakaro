@@ -49,9 +49,9 @@ export default async function StudentsPage() {
   const classOptions = typedClasses.map((c) => ({ id: c.id, name: c.name }));
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               Students
@@ -69,7 +69,7 @@ export default async function StudentsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-8 px-6 py-10">
+      <main className="mx-auto max-w-5xl space-y-8 py-10">
         {listError ? (
           <QueryErrorBanner
             title="Could not load students or classes"
@@ -81,6 +81,6 @@ export default async function StudentsPage() {
           <StudentList students={typedStudents} classes={classOptions} />
         ) : null}
       </main>
-    </div>
+    </>
   );
 }

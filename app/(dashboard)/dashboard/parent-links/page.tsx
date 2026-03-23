@@ -1,11 +1,162 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/types/supabase";
 import { QueryErrorBanner } from "../query-error-banner";
 import AddLinkForm from "./add-link-form";
 import LinkRow, { type ParentLinkData } from "./link-row";
+
+type Db = SupabaseClient<Database>;
+type FetchBundle = {
+  parentsRes: { data: unknown; error: unknown };
+  studentsRes: { data: unknown; error: unknown };
+  linksRes: { data: unknown; error: unknown };
+};
+
+/** True when this PostgREST / Postgres error should trigger a service-role refetch. */
+function isRlsOrPermissionError(err: unknown): boolean {
+  if (err == null) return false;
+
+  const o = err as Record<string, unknown>;
+  const codeRaw = o.code != null ? String(o.code) : "";
+  const code = codeRaw.toUpperCase().replace(/^0+/, "") || codeRaw;
+
+  // Postgres privilege / RLS recursion (string or numeric codes from drivers)
+  if (
+    code === "42501" ||
+    code === "42P17" ||
+    code.includes("42501") ||
+    code.includes("42P17")
+  ) {
+    return true;
+  }
+
+  const text = [o.message, o.details, o.hint, o.description]
+    .filter((x) => typeof x === "string")
+    .join(" ")
+    .toLowerCase();
+
+  if (
+    text.includes("42501") ||
+    text.includes("42p17") ||
+    text.includes("permission denied") ||
+    text.includes("infinite recursion") ||
+    text.includes("row-level security") ||
+    text.includes("rls policy") ||
+    text.includes("insufficient privilege")
+  ) {
+    return true;
+  }
+
+  // Some clients only expose a nested cause or minimal shape — scan serialized form
+  try {
+    const blob = JSON.stringify(err).toLowerCase();
+    if (
+      blob.includes("42501") ||
+      blob.includes("42p17") ||
+      blob.includes("permission denied") ||
+      blob.includes("infinite recursion")
+    ) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return false;
+}
+
+function anyQueryNeedsAdminFallback(bundle: FetchBundle): boolean {
+  return (
+    isRlsOrPermissionError(bundle.parentsRes.error) ||
+    isRlsOrPermissionError(bundle.studentsRes.error) ||
+    isRlsOrPermissionError(bundle.linksRes.error)
+  );
+}
+
+/** Session-scoped client: full selects including class name. */
+async function fetchParentLinksWithClient(
+  client: Db,
+  schoolId: string,
+  options: { includeClassJoin: boolean }
+): Promise<FetchBundle> {
+  const studentSelect = options.includeClassJoin
+    ? "id, full_name, admission_number, class_id, class:classes(name)"
+    : "id, full_name, admission_number, class_id";
+
+  const linkStudentSelect = options.includeClassJoin
+    ? "student:students(full_name, class:classes(name))"
+    : "student:students(full_name)";
+
+  const [parentsRes, studentsRes, linksResAll] = await Promise.all([
+    client
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("role", "parent")
+      .order("full_name"),
+    client
+      .from("students")
+      .select(studentSelect)
+      .eq("school_id", schoolId)
+      .order("full_name"),
+    client.from("parent_students").select(
+      `id, parent_id, student_id, parent:profiles(full_name, email), ${linkStudentSelect}`
+    ),
+  ]);
+
+  const studentRows = (studentsRes.data ?? []) as { id: string }[];
+  const schoolStudentIds = new Set(studentRows.map((s) => s.id));
+
+  const rows = (linksResAll.data ?? []) as { student_id: string }[];
+  const filtered = rows.filter((r) => schoolStudentIds.has(r.student_id));
+
+  return {
+    parentsRes,
+    studentsRes,
+    linksRes: { data: filtered, error: linksResAll.error },
+  };
+}
+
+/**
+ * Service role: avoid embedding `classes` — some projects omit GRANT on `classes`
+ * for `service_role`, which causes 42501 even though RLS is bypassed.
+ */
+async function fetchParentLinksWithAdminClient(
+  admin: Db,
+  schoolId: string
+): Promise<FetchBundle> {
+  const [parentsRes, studentsRes] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("role", "parent")
+      .order("full_name"),
+    admin
+      .from("students")
+      .select("id, full_name, admission_number, class_id")
+      .eq("school_id", schoolId)
+      .order("full_name"),
+  ]);
+
+  const studentRows = (studentsRes.data ?? []) as { id: string }[];
+  const studentIds = studentRows.map((s) => s.id);
+
+  const linksRes =
+    studentIds.length > 0
+      ? await admin
+          .from("parent_students")
+          .select(
+            "id, parent_id, student_id, parent:profiles(full_name, email), student:students(full_name)"
+          )
+          .in("student_id", studentIds)
+      : { data: [] as unknown[], error: null };
+
+  return { parentsRes, studentsRes, linksRes };
+}
 
 export default async function ParentLinksPage() {
   const supabase = await createClient();
@@ -18,30 +169,69 @@ export default async function ParentLinksPage() {
   const schoolId = await getSchoolIdForUser(supabase, user.id);
   if (!schoolId) redirect("/dashboard");
 
-  // Fetch parents (profiles with role 'parent'), students for this school, and existing links in parallel
-  const [parentsRes, studentsRes, linksRes] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, email")
-      .eq("role", "parent")
-      .order("full_name"),
-    supabase
-      .from("students")
-      .select("id, full_name, admission_number, class_id, class:classes(name)")
-      .eq("school_id", schoolId)
-      .order("full_name"),
-    supabase
-      .from("parent_students")
-      .select(
-        "id, parent_id, student_id, parent:profiles(full_name, email), student:students(full_name, class:classes(name))"
-      ),
-  ]);
+  let { parentsRes, studentsRes, linksRes } = await fetchParentLinksWithClient(
+    supabase,
+    schoolId,
+    { includeClassJoin: true }
+  );
 
-  const fetchError = combineSupabaseErrors([
+  let fetchError = combineSupabaseErrors([
     parentsRes.error,
     studentsRes.error,
     linksRes.error,
   ]);
+
+  const combinedSuggestsPermission =
+    fetchError != null &&
+    (() => {
+      const m = fetchError.toLowerCase();
+      return (
+        m.includes("42p17") ||
+        m.includes("42501") ||
+        m.includes("infinite recursion") ||
+        m.includes("permission denied") ||
+        m.includes("row-level security") ||
+        m.includes("rls policy") ||
+        m.includes("insufficient privilege")
+      );
+    })();
+
+  // Any failed query from the session client → one admin attempt (covers odd PostgREST shapes)
+  const anyUserQueryFailed =
+    parentsRes.error != null ||
+    studentsRes.error != null ||
+    linksRes.error != null;
+
+  if (
+    anyQueryNeedsAdminFallback({ parentsRes, studentsRes, linksRes }) ||
+    combinedSuggestsPermission ||
+    anyUserQueryFailed
+  ) {
+    try {
+      const admin = createAdminClient();
+      const adminBundle = await fetchParentLinksWithAdminClient(admin, schoolId);
+      const adminErr = combineSupabaseErrors([
+        adminBundle.parentsRes.error,
+        adminBundle.studentsRes.error,
+        adminBundle.linksRes.error,
+      ]);
+      if (!adminErr) {
+        parentsRes = adminBundle.parentsRes;
+        studentsRes = adminBundle.studentsRes;
+        linksRes = adminBundle.linksRes;
+        fetchError = null;
+      } else {
+        fetchError = adminErr;
+      }
+    } catch (e) {
+      fetchError =
+        fetchError +
+        (e instanceof Error
+          ? `\n\nService role fallback failed: ${e.message}`
+          : "\n\nService role fallback failed.");
+    }
+  }
+
   if (fetchError) {
     console.error("[parent-links] error:", fetchError);
   }
@@ -94,10 +284,10 @@ export default async function ParentLinksPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       {/* Header */}
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-950/40">
               <svg className="h-5 w-5 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -122,7 +312,7 @@ export default async function ParentLinksPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-8 px-6 py-8">
+      <main className="mx-auto max-w-5xl space-y-8 py-8">
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load parent links data"
@@ -204,6 +394,6 @@ export default async function ParentLinksPage() {
           )}
         </div>
       </main>
-    </div>
+    </>
   );
 }

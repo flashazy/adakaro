@@ -10,6 +10,14 @@ export interface AuthState {
   success?: string;
 }
 
+/** Internal path only; prevents open redirects. */
+function safeInternalPath(raw: string | null | undefined): string | null {
+  if (raw == null || typeof raw !== "string") return null;
+  const t = raw.trim();
+  if (!t.startsWith("/") || t.startsWith("//")) return null;
+  return t;
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
@@ -46,14 +54,40 @@ export async function login(
     .maybeSingle();
 
   const profileRole = (profileRow as { role: UserRole } | null)?.role;
+
   const role: UserRole =
-    profileRole === "admin" || profileRole === "parent"
+    profileRole === "admin" ||
+    profileRole === "parent" ||
+    profileRole === "super_admin"
       ? profileRole
       : String(user.user_metadata?.role ?? "")
-            .toLowerCase()
-            .trim() === "admin"
+              .toLowerCase()
+              .trim() === "admin"
         ? "admin"
         : "parent";
+
+  const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
+    "is_super_admin",
+    {} as never
+  );
+  const isSuper =
+    !rpcSuperErr && rpcSuper === true
+      ? true
+      : profileRole === "super_admin";
+
+  const next = safeInternalPath(formData.get("next") as string | null);
+
+  // Platform super admins always land in super admin unless `next` is explicitly that area.
+  if (isSuper) {
+    if (next?.startsWith("/super-admin")) {
+      redirect(next);
+    }
+    redirect("/super-admin");
+  }
+
+  if (next) {
+    redirect(next);
+  }
 
   redirect(role === "admin" ? "/dashboard" : "/parent-dashboard");
 }
@@ -107,6 +141,11 @@ export async function signup(
       success:
         "Account created! Check your email for a confirmation link, then log in.",
     };
+  }
+
+  const next = safeInternalPath(formData.get("next") as string | null);
+  if (next) {
+    redirect(next);
   }
 
   const destination = role === "admin" ? "/dashboard" : "/parent-dashboard";

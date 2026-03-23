@@ -1,7 +1,6 @@
 export default function DashboardLoading() {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      <main className="mx-auto max-w-7xl px-6 py-8">
+    <main>
         {/* KPI card skeletons */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
@@ -62,7 +61,6 @@ export default function DashboardLoading() {
             ))}
           </div>
         </div>
-      </main>
-    </div>
+    </main>
   );
 }

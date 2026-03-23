@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
+import { getDisplayName } from "@/lib/display-name";
+import { normalizePlanId } from "@/lib/plans";
 import { CreateSchoolModal } from "./create-school-modal";
 import { DashboardCharts } from "./dashboard-charts";
+import { RequestUpgradeQuickAction } from "./request-upgrade-quick-action";
 import {
   DEFAULT_SCHOOL_CURRENCY,
   formatCurrency,
@@ -105,12 +108,12 @@ const NAV_LINKS = [
     ),
   },
   {
-    href: "/pricing",
-    title: "Plans",
-    desc: "Subscription tiers and pricing.",
+    href: "/dashboard/team",
+    title: "Team",
+    desc: "Manage school administrators.",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Zm-13.5 0a2.625 2.625 0 1 1-4.5 0 2.625 2.625 0 0 1 4.5 0Z" />
       </svg>
     ),
   },
@@ -172,28 +175,49 @@ export default async function AdminDashboard() {
 
   if (!user) redirect("/login");
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  const hasSchool = Boolean(schoolId);
-
-  const { data: profileOnly } = await supabase
+  const { data: profileRow } = await supabase
     .from("profiles")
     .select("full_name")
     .eq("id", user.id)
     .maybeSingle();
 
-  const profileNameEarly =
-    (profileOnly as { full_name: string } | null)?.full_name || "Admin";
+  const profileName = getDisplayName(
+    user,
+    (profileRow as { full_name: string } | null)?.full_name ?? null
+  );
+
+  const resolved = await resolveSchoolDisplay(user.id, supabase);
+  const schoolId = resolved?.schoolId ?? null;
+  const schoolNameResolved = resolved?.name?.trim() || null;
+  const schoolCurrencyRaw = resolved?.currency ?? null;
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("[dashboard] resolveSchoolDisplay", { resolved });
+  }
+
+  const hasSchool = Boolean(schoolId);
+
+  let currentSchoolPlan = "free";
+  if (schoolId) {
+    const { data: schoolPlanRow } = await supabase
+      .from("schools")
+      .select("plan")
+      .eq("id", schoolId)
+      .maybeSingle();
+    currentSchoolPlan = normalizePlanId(
+      (schoolPlanRow as { plan?: string | null } | null)?.plan ?? "free"
+    );
+  }
 
   if (!hasSchool) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-        <main className="mx-auto max-w-7xl px-6 py-8">
+      <main className="pb-4">
           <div className="mb-6">
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               Your school
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
-              Welcome back, {profileNameEarly}
+              Welcome back, {profileName}
             </p>
           </div>
           <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
@@ -270,8 +294,7 @@ export default async function AdminDashboard() {
               <CreateSchoolModal enabled />
             </div>
           </div>
-        </main>
-      </div>
+      </main>
     );
   }
 
@@ -284,45 +307,31 @@ export default async function AdminDashboard() {
   const typedSchoolStudents = (schoolStudents ?? []) as { id: string }[];
   const studentIds = typedSchoolStudents.map((s) => s.id);
 
-  // Fetch all dashboard data in parallel
-  const [profileRes, schoolRes, studentsRes, classesRes, paymentsRes, balancesRes] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", user.id)
-        .single(),
-      supabase
-        .from("schools")
-        .select("name, currency")
-        .eq("id", schoolId!)
-        .single(),
-      supabase
-        .from("students")
-        .select("id", { count: "exact", head: true })
-        .eq("school_id", schoolId!),
-      supabase
-        .from("classes")
-        .select("id", { count: "exact", head: true })
-        .eq("school_id", schoolId!),
-      supabase
-        .from("payments")
-        .select("amount, payment_date")
-        .in("student_id", studentIds.length > 0 ? studentIds : [""]),
-      supabase
-        .from("student_fee_balances")
-        .select("total_fee, total_paid, balance")
-        .in("student_id", studentIds.length > 0 ? studentIds : [""]),
-    ]);
+  // Fetch dashboard aggregates in parallel (profile + school name already loaded above)
+  const [studentsRes, classesRes, paymentsRes, balancesRes] = await Promise.all([
+    supabase
+      .from("students")
+      .select("id", { count: "exact", head: true })
+      .eq("school_id", schoolId!),
+    supabase
+      .from("classes")
+      .select("id", { count: "exact", head: true })
+      .eq("school_id", schoolId!),
+    supabase
+      .from("payments")
+      .select("amount, payment_date")
+      .in("student_id", studentIds.length > 0 ? studentIds : [""]),
+    supabase
+      .from("student_fee_balances")
+      .select("total_fee, total_paid, balance")
+      .in("student_id", studentIds.length > 0 ? studentIds : [""]),
+  ]);
 
-  const profileData = profileRes.data as { full_name: string } | null;
-  const schoolData = schoolRes.data as {
-    name: string;
-    currency: string | null;
-  } | null;
-  const profileName = profileData?.full_name || "Admin";
-  const schoolName = schoolData?.name || "Your School";
-  const schoolCurrency = normalizeSchoolCurrency(schoolData?.currency);
+  const schoolName =
+    schoolNameResolved && schoolNameResolved.length > 0
+      ? schoolNameResolved
+      : "Your School";
+  const schoolCurrency = normalizeSchoolCurrency(schoolCurrencyRaw);
   const schoolTitle = formatSchoolTitleWithCurrency(schoolName, schoolCurrency);
   const totalStudents = studentsRes.count ?? 0;
   const totalClasses = classesRes.count ?? 0;
@@ -388,8 +397,7 @@ export default async function AdminDashboard() {
   }));
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      <main className="mx-auto max-w-7xl px-6 py-8">
+    <main className="pb-4">
         <div className="mb-6">
           <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
             {schoolTitle}
@@ -457,6 +465,10 @@ export default async function AdminDashboard() {
             Quick Actions
           </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <RequestUpgradeQuickAction
+              schoolId={schoolId!}
+              currentPlan={currentSchoolPlan}
+            />
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
@@ -478,8 +490,7 @@ export default async function AdminDashboard() {
             ))}
           </div>
         </div>
-      </main>
-    </div>
+    </main>
   );
 }
 

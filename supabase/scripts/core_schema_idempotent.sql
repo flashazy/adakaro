@@ -120,6 +120,14 @@ ALTER TABLE public.schools
   ADD CONSTRAINT schools_currency_check
   CHECK (currency IN ('TZS', 'KES', 'UGX', 'USD'));
 
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS plan text NOT NULL DEFAULT 'free';
+ALTER TABLE public.schools DROP CONSTRAINT IF EXISTS schools_plan_check;
+ALTER TABLE public.schools
+  ADD CONSTRAINT schools_plan_check
+  CHECK (plan IN ('free', 'basic', 'pro', 'enterprise'));
+
+-- school_invitations + RPCs: see migration 00027_school_invitations.sql
+
 CREATE INDEX IF NOT EXISTS idx_schools_created_by ON public.schools(created_by);
 
 DROP TRIGGER IF EXISTS schools_updated_at ON public.schools;

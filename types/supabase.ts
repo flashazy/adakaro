@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = "admin" | "parent";
+export type UserRole = "admin" | "parent" | "super_admin";
 export type StudentStatus = "active" | "inactive" | "graduated" | "transferred";
 export type PaymentMethod =
   | "cash"
@@ -60,6 +60,7 @@ export interface Database {
           email: string | null;
           logo_url: string | null;
           currency: string;
+          plan: string;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -72,6 +73,7 @@ export interface Database {
           email?: string | null;
           logo_url?: string | null;
           currency?: string;
+          plan?: string;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -83,6 +85,7 @@ export interface Database {
           email?: string | null;
           logo_url?: string | null;
           currency?: string;
+          plan?: string;
           updated_at?: string;
         };
       };
@@ -103,6 +106,61 @@ export interface Database {
         };
         Update: {
           role?: UserRole;
+        };
+      };
+      school_invitations: {
+        Row: {
+          id: string;
+          school_id: string;
+          invited_email: string;
+          invited_by: string;
+          token: string;
+          status: string;
+          created_at: string;
+          expires_at: string;
+          accepted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          invited_email: string;
+          invited_by: string;
+          token: string;
+          status?: string;
+          created_at?: string;
+          expires_at?: string;
+          accepted_at?: string | null;
+        };
+        Update: {
+          status?: string;
+          accepted_at?: string | null;
+          expires_at?: string;
+        };
+      };
+      upgrade_requests: {
+        Row: {
+          id: string;
+          school_id: string;
+          requested_by: string;
+          current_plan: string;
+          requested_plan: string;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          requested_by: string;
+          current_plan: string;
+          requested_plan: string;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: string;
+          updated_at?: string;
         };
       };
       classes: {
@@ -438,6 +496,10 @@ export interface Database {
         Args: Record<string, never>;
         Returns: string | null;
       };
+      get_my_school_for_dashboard: {
+        Args: Record<string, never>;
+        Returns: Json | null;
+      };
       get_school_role: {
         Args: { p_school_id: string };
         Returns: UserRole | null;
@@ -476,6 +538,52 @@ export interface Database {
         Args: { p_request_id: string };
         Returns: Json;
       };
+      accept_school_invitation: {
+        Args: { p_token: string };
+        Returns: Json;
+      };
+      is_email_already_school_admin: {
+        Args: { p_school_id: string; p_email: string };
+        Returns: boolean;
+      };
+      peek_school_invitation: {
+        Args: { p_token: string };
+        Returns: Json;
+      };
+      is_super_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      super_admin_create_school: {
+        Args: {
+          p_name: string;
+          p_currency: string;
+          p_plan: string;
+          p_admin_user_id: string;
+        };
+        Returns: string;
+      };
+      super_admin_dashboard_stats: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      super_admin_list_schools_with_counts: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          name: string;
+          plan: string;
+          currency: string;
+          created_at: string;
+          created_by: string;
+          admin_count: number;
+          student_count: number;
+        }[];
+      };
+      super_admin_review_upgrade_request: {
+        Args: { p_request_id: string; p_approve: boolean };
+        Returns: Json;
+      };
     };
     Enums: {
       user_role: UserRole;
@@ -501,4 +609,6 @@ export type Payment = Database["public"]["Tables"]["payments"]["Row"];
 export type Receipt = Database["public"]["Tables"]["receipts"]["Row"];
 export type ParentStudent = Database["public"]["Tables"]["parent_students"]["Row"];
 export type ParentLinkRequest = Database["public"]["Tables"]["parent_link_requests"]["Row"];
+export type SchoolInvitation = Database["public"]["Tables"]["school_invitations"]["Row"];
+export type UpgradeRequest = Database["public"]["Tables"]["upgrade_requests"]["Row"];
 export type StudentFeeBalance = Database["public"]["Views"]["student_fee_balances"]["Row"];

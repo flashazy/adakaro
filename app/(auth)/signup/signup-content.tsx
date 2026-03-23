@@ -50,6 +50,11 @@ export default function SignupContent() {
   const searchParams = useSearchParams();
   const roleParam = searchParams.get("role")?.toLowerCase().trim();
   const defaultAdmin = roleParam === "admin";
+  const nextParam = searchParams.get("next") ?? "";
+  const loginHref =
+    nextParam && nextParam.startsWith("/")
+      ? `/login?next=${encodeURIComponent(nextParam)}`
+      : "/login";
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -61,6 +66,8 @@ export default function SignupContent() {
       </p>
 
       <form action={formAction} className="mt-6 space-y-4">
+        <input type="hidden" name="next" value={nextParam} />
+
         {state.error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-400">
             {state.error}
@@ -216,7 +223,7 @@ export default function SignupContent() {
       <p className="mt-6 text-center text-sm text-slate-500 dark:text-zinc-400">
         Already have an account?{" "}
         <Link
-          href="/login"
+          href={loginHref}
           className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
         >
           Sign in

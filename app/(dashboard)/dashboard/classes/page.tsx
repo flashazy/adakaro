@@ -45,9 +45,9 @@ export default async function ClassesPage() {
   }[];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-4xl items-center justify-between py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               Classes
@@ -65,7 +65,7 @@ export default async function ClassesPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl space-y-6 px-6 py-10">
+      <main className="mx-auto max-w-4xl space-y-6 py-10">
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load classes"
@@ -115,6 +115,6 @@ export default async function ClassesPage() {
           </div>
         ) : null}
       </main>
-    </div>
+    </>
   );
 }

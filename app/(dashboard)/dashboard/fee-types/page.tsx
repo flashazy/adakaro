@@ -40,9 +40,9 @@ export default async function FeeTypesPage() {
   }[];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-4xl items-center justify-between py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               Fee Types
@@ -60,7 +60,7 @@ export default async function FeeTypesPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-10">
+      <main className="mx-auto max-w-4xl py-10">
         <AddFeeTypeForm />
 
         {fetchError ? (
@@ -115,6 +115,6 @@ export default async function FeeTypesPage() {
           </div>
         ) : null}
       </main>
-    </div>
+    </>
   );
 }

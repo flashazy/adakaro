@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase();
+}
 
 export interface LinkRequestState {
   error?: string;
@@ -151,6 +156,317 @@ export async function cancelPendingLinkRequest(
     revalidatePath("/parent-dashboard");
     return { success: "Request cancelled. You can send a new one if needed." };
   } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+/** Keep JWT in sync with profiles/school_members so middleware allows /dashboard. */
+async function syncAuthMetadataRoleAdmin(
+  userId: string,
+  userMetadata: Record<string, unknown> | null | undefined
+): Promise<void> {
+  try {
+    const svc = createAdminClient();
+    const base =
+      userMetadata &&
+      typeof userMetadata === "object" &&
+      !Array.isArray(userMetadata)
+        ? { ...userMetadata }
+        : {};
+    await svc.auth.admin.updateUserById(userId, {
+      user_metadata: { ...base, role: "admin" },
+    });
+  } catch (e) {
+    console.error("[parent-invite-accept] auth.admin.updateUserById", e);
+  }
+}
+
+const ACCEPT_INVITE_ERRORS: Record<string, string> = {
+  invalid_or_expired: "This invitation is invalid or has expired.",
+  email_mismatch:
+    "This invitation was sent to a different email address than the one you’re signed in with.",
+  not_authenticated: "You must be signed in to accept.",
+  no_email: "Your account has no email; contact support.",
+  already_member: "You are already a member of this school.",
+};
+
+/**
+ * Accept admin invite using the service role after session checks.
+ * The DB RPC `accept_school_invitation` often returns invalid_or_expired because
+ * its first SELECT on `school_invitations` is still subject to RLS, and invitees
+ * are not school admins — so the row is invisible to the function.
+ */
+export type AcceptSchoolAdminInviteResult =
+  | { ok: true; redirectTo: string }
+  | { ok: false; error: string };
+
+export async function acceptSchoolAdminInvite(
+  token: string
+): Promise<AcceptSchoolAdminInviteResult> {
+  const trimmed = String(token ?? "").trim();
+  if (!trimmed) {
+    return { ok: false, error: "Missing invitation." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user?.email?.trim()) {
+      return { ok: false, error: "Not authenticated." };
+    }
+
+    const sessionEmail = normalizeEmail(user.email);
+
+    console.log("[parent-invite-accept] start", {
+      tokenLength: trimmed.length,
+      tokenPrefix: `${trimmed.slice(0, 8)}…`,
+      userId: user.id,
+      sessionEmail,
+    });
+
+    const admin = createAdminClient();
+
+    const { data: inv, error: fetchErr } = await admin
+      .from("school_invitations")
+      .select("id, school_id, invited_email, status, expires_at")
+      .eq("token", trimmed)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error("[parent-invite-accept] load invitation failed", fetchErr);
+      return {
+        ok: false,
+        error: fetchErr.message || "Could not load invitation.",
+      };
+    }
+
+    if (!inv) {
+      console.log("[parent-invite-accept] no invitation row for token");
+      return {
+        ok: false,
+        error: ACCEPT_INVITE_ERRORS.invalid_or_expired,
+      };
+    }
+
+    const row = inv as {
+      id: string;
+      school_id: string;
+      invited_email: string;
+      status: string;
+      expires_at: string;
+    };
+
+    if (row.status !== "pending") {
+      console.log("[parent-invite-accept] not pending", { status: row.status });
+      return {
+        ok: false,
+        error: ACCEPT_INVITE_ERRORS.invalid_or_expired,
+      };
+    }
+
+    if (new Date(row.expires_at).getTime() <= Date.now()) {
+      console.log("[parent-invite-accept] expired", { expires_at: row.expires_at });
+      return {
+        ok: false,
+        error: ACCEPT_INVITE_ERRORS.invalid_or_expired,
+      };
+    }
+
+    if (normalizeEmail(row.invited_email) !== sessionEmail) {
+      console.log("[parent-invite-accept] email mismatch", {
+        invited_email: row.invited_email,
+        sessionEmail,
+      });
+      return {
+        ok: false,
+        error: ACCEPT_INVITE_ERRORS.email_mismatch,
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+
+    const { data: existingMember } = await admin
+      .from("school_members")
+      .select("id")
+      .eq("school_id", row.school_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existingMember) {
+      await admin
+        .from("profiles")
+        .update({ role: "admin", updated_at: nowIso } as never)
+        .eq("id", user.id);
+
+      const { error: markErr } = await admin
+        .from("school_invitations")
+        .update({
+          status: "accepted",
+          accepted_at: nowIso,
+        } as never)
+        .eq("id", row.id);
+
+      if (markErr) {
+        console.error("[parent-invite-accept] mark accepted (member)", markErr);
+        return { ok: false, error: markErr.message };
+      }
+
+      await syncAuthMetadataRoleAdmin(
+        user.id,
+        user.user_metadata as Record<string, unknown> | null | undefined
+      );
+
+      console.log("[parent-invite-accept] ok (already school member)", {
+        school_id: row.school_id,
+      });
+      revalidatePath("/parent-dashboard");
+      revalidatePath("/dashboard");
+      return {
+        ok: true,
+        redirectTo: "/dashboard?adminInviteAccepted=1",
+      };
+    }
+
+    const { error: insErr } = await admin
+      .from("school_members")
+      .insert({
+        school_id: row.school_id,
+        user_id: user.id,
+        role: "admin",
+      } as never);
+
+    if (insErr) {
+      console.error("[parent-invite-accept] insert school_members", insErr);
+      if (insErr.code === "23505") {
+        return {
+          ok: false,
+          error: ACCEPT_INVITE_ERRORS.already_member,
+        };
+      }
+      return { ok: false, error: insErr.message };
+    }
+
+    const { error: profileErr } = await admin
+      .from("profiles")
+      .update({ role: "admin", updated_at: nowIso } as never)
+      .eq("id", user.id);
+
+    if (profileErr) {
+      console.error("[parent-invite-accept] update profiles", profileErr);
+      return { ok: false, error: profileErr.message };
+    }
+
+    const { error: invUpErr } = await admin
+      .from("school_invitations")
+      .update({
+        status: "accepted",
+        accepted_at: nowIso,
+      } as never)
+      .eq("id", row.id);
+
+    if (invUpErr) {
+      console.error("[parent-invite-accept] update invitation", invUpErr);
+      return { ok: false, error: invUpErr.message };
+    }
+
+    await syncAuthMetadataRoleAdmin(
+      user.id,
+      user.user_metadata as Record<string, unknown> | null | undefined
+    );
+
+    console.log("[parent-invite-accept] ok", {
+      school_id: row.school_id,
+      invitation_id: row.id,
+    });
+
+    revalidatePath("/parent-dashboard");
+    revalidatePath("/dashboard");
+    return {
+      ok: true,
+      redirectTo: "/dashboard?adminInviteAccepted=1",
+    };
+  } catch (e) {
+    console.error("[parent-invite-accept] exception", e);
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export async function declineSchoolAdminInvite(
+  invitationId: string
+): Promise<{ error?: string; success?: string }> {
+  const id = String(invitationId ?? "").trim();
+  if (!id) {
+    return { error: "Invalid invitation." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user?.email) {
+      return { error: "Not authenticated." };
+    }
+
+    const callerEmail = normalizeEmail(user.email);
+
+    const admin = createAdminClient();
+    const { data: inv, error: fetchErr } = await admin
+      .from("school_invitations")
+      .select("id, invited_email, status")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr || !inv) {
+      return { error: "Invitation not found." };
+    }
+
+    const row = inv as {
+      id: string;
+      invited_email: string;
+      status: string;
+    };
+
+    if (row.status !== "pending") {
+      return { error: "This invitation is no longer pending." };
+    }
+
+    if (normalizeEmail(row.invited_email) !== callerEmail) {
+      return { error: "You cannot decline an invitation sent to someone else." };
+    }
+
+    console.log("[parent-invite-decline] updating", { invitationId: id });
+
+    const { data: updated, error: updateErr } = await admin
+      .from("school_invitations")
+      .update({ status: "expired" } as never)
+      .eq("id", id)
+      .eq("status", "pending")
+      .select("id");
+
+    if (updateErr) {
+      console.error("[parent-invite-decline] update failed", updateErr);
+      return { error: updateErr.message };
+    }
+
+    if (!updated?.length) {
+      console.log("[parent-invite-decline] no row updated");
+      return {
+        error:
+          "Could not decline this invitation. It may have already been used or removed.",
+      };
+    }
+
+    console.log("[parent-invite-decline] ok", { invitationId: id });
+
+    revalidatePath("/parent-dashboard");
+    return { success: "Invitation declined." };
+  } catch (e) {
+    console.error("[parent-invite-decline] exception", e);
     return { error: (e as Error).message };
   }
 }

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency, formatSchoolTitleWithCurrency } from "@/lib/currency";
 import { SchoolCurrencyForm } from "./school-currency-form";
 
@@ -14,27 +14,35 @@ export default async function SchoolSettingsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) redirect("/dashboard");
+  const display = await resolveSchoolDisplay(user.id, supabase);
+  if (!display?.schoolId) redirect("/dashboard");
+  const schoolId = display.schoolId;
 
   const { data: school, error } = await supabase
     .from("schools")
     .select("name, currency")
     .eq("id", schoolId)
-    .single();
+    .maybeSingle();
 
-  if (error || !school) {
+  if (error) {
     console.error("[school-settings]", error);
-    redirect("/dashboard");
   }
 
-  const row = school as { name: string; currency: string | null };
+  const fetched = school as { name: string; currency: string | null } | null;
+  const row = {
+    name: (fetched?.name?.trim() || display.name?.trim() || "").trim(),
+    currency: fetched?.currency ?? display.currency,
+  };
+
+  if (!row.name) {
+    redirect("/dashboard");
+  }
   const currency = normalizeSchoolCurrency(row.currency);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-3xl items-center justify-between py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               School settings
@@ -52,7 +60,7 @@ export default async function SchoolSettingsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl space-y-8 px-6 py-10">
+      <main className="mx-auto max-w-3xl space-y-8 py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
             Currency
@@ -69,6 +77,6 @@ export default async function SchoolSettingsPage() {
           </div>
         </section>
       </main>
-    </div>
+    </>
   );
 }

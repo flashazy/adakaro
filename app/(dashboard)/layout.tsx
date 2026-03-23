@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
+import { getDisplayName } from "@/lib/display-name";
+import { checkIsSuperAdmin } from "@/lib/super-admin";
 
 export default async function DashboardGroupLayout({
   children,
@@ -18,12 +21,35 @@ export default async function DashboardGroupLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name")
+    .select("full_name, role")
     .eq("id", user.id)
     .maybeSingle();
 
-  const fullName =
-    (profile as { full_name: string } | null)?.full_name?.trim() || "User";
+  const profileRow = profile as { full_name: string; role: string } | null;
+  const fullName = getDisplayName(user, profileRow?.full_name ?? null);
+  const isSuperAdmin = await checkIsSuperAdmin(supabase, user.id);
+
+  let hasParentStudents = false;
+  const parentLinks = await supabase
+    .from("parent_students")
+    .select("id")
+    .eq("parent_id", user.id)
+    .limit(1);
+  if (!parentLinks.error && (parentLinks.data?.length ?? 0) > 0) {
+    hasParentStudents = true;
+  } else {
+    try {
+      const admin = createAdminClient();
+      const fallback = await admin
+        .from("parent_students")
+        .select("id")
+        .eq("parent_id", user.id)
+        .limit(1);
+      hasParentStudents = (fallback.data?.length ?? 0) > 0;
+    } catch {
+      /* no service role */
+    }
+  }
 
   return (
     <>
@@ -33,8 +59,19 @@ export default async function DashboardGroupLayout({
       >
         Skip to content
       </a>
-      <DashboardHeader fullName={fullName} />
-      <div id="page-content">{children}</div>
+      <DashboardHeader
+        fullName={fullName}
+        isSuperAdmin={isSuperAdmin}
+        showParentDashboardLink={hasParentStudents}
+      />
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+        <div
+          id="page-content"
+          className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8"
+        >
+          {children}
+        </div>
+      </div>
     </>
   );
 }

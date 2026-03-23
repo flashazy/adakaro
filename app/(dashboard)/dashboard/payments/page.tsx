@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency } from "@/lib/currency";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
@@ -15,17 +15,10 @@ export default async function PaymentsPage() {
 
   if (!user) redirect("/login");
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) redirect("/dashboard");
-
-  const { data: schoolRow, error: schoolErr } = await supabase
-    .from("schools")
-    .select("currency")
-    .eq("id", schoolId)
-    .single();
-  const currencyCode = normalizeSchoolCurrency(
-    (schoolRow as { currency: string | null } | null)?.currency
-  );
+  const display = await resolveSchoolDisplay(user.id, supabase);
+  if (!display?.schoolId) redirect("/dashboard");
+  const schoolId = display.schoolId;
+  const currencyCode = normalizeSchoolCurrency(display.currency);
 
   // Fetch students (no status filter — column may not exist)
   const { data: students, error: studentsError } = await supabase
@@ -57,7 +50,6 @@ export default async function PaymentsPage() {
     : { data: [], error: null };
 
   const fetchError = combineSupabaseErrors([
-    schoolErr,
     studentsError,
     balancesRes.error,
     paymentsRes.error,
@@ -88,9 +80,9 @@ export default async function PaymentsPage() {
   }[];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-3xl items-center justify-between py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               Record Payment
@@ -108,7 +100,7 @@ export default async function PaymentsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl space-y-6 px-6 py-10">
+      <main className="mx-auto max-w-3xl space-y-6 py-10">
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load payment data"
@@ -134,6 +126,6 @@ export default async function PaymentsPage() {
           currencyCode={currencyCode}
         />
       </main>
-    </div>
+    </>
   );
 }

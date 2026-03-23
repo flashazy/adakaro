@@ -108,10 +108,10 @@ export default async function ParentRequestsPage() {
 
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       {/* Header */}
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-950/40">
               <svg className="h-5 w-5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -136,7 +136,7 @@ export default async function ParentRequestsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-6 px-6 py-8">
+      <main className="mx-auto max-w-5xl space-y-6 py-8">
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load link requests"
@@ -208,6 +208,6 @@ export default async function ParentRequestsPage() {
           )}
         </div>
       </main>
-    </div>
+    </>
   );
 }

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency } from "@/lib/currency";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
@@ -46,8 +46,9 @@ export default async function ReportsPage() {
 
   if (!user) redirect("/login");
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) redirect("/dashboard");
+  const display = await resolveSchoolDisplay(user.id, supabase);
+  if (!display?.schoolId) redirect("/dashboard");
+  const schoolId = display.schoolId;
 
   // Get student IDs for this school first (needed for payments filter)
   const { data: schoolStudents, error: schoolStudentsError } = await supabase
@@ -58,7 +59,7 @@ export default async function ReportsPage() {
   const typedSchoolStudents = (schoolStudents ?? []) as { id: string; class_id: string }[];
   const studentIds = typedSchoolStudents.map((s) => s.id);
 
-  const [balancesRes, paymentsRes, classesRes, schoolRes] = await Promise.all([
+  const [balancesRes, paymentsRes, classesRes] = await Promise.all([
     supabase
       .from("student_fee_balances")
       .select(
@@ -77,35 +78,29 @@ export default async function ReportsPage() {
       .select("id, name")
       .eq("school_id", schoolId)
       .order("name"),
-    supabase.from("schools").select("name, currency").eq("id", schoolId).single(),
   ]);
 
   const balances = (balancesRes.data ?? []) as BalanceRow[];
   const payments = (paymentsRes.data ?? []) as PaymentRow[];
   const classes = (classesRes.data ?? []) as ClassRow[];
   const studentClasses = typedSchoolStudents as StudentClassRow[];
-  const schoolData = schoolRes.data as {
-    name: string;
-    currency: string | null;
-  } | null;
-  const schoolName = schoolData?.name ?? "School";
-  const currencyCode = normalizeSchoolCurrency(schoolData?.currency);
+  const schoolName = display.name?.trim() || "School";
+  const currencyCode = normalizeSchoolCurrency(display.currency);
 
   const fetchError = combineSupabaseErrors([
     schoolStudentsError,
     balancesRes.error,
     paymentsRes.error,
     classesRes.error,
-    schoolRes.error,
   ]);
   if (fetchError) {
     console.error("[reports] error:", fetchError);
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex w-full max-w-none items-center justify-between py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               Reports
@@ -123,7 +118,7 @@ export default async function ReportsPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl space-y-6 px-6 py-10">
+      <main className="mx-auto w-full max-w-none space-y-6 py-10">
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load report data"
@@ -151,6 +146,6 @@ export default async function ReportsPage() {
           currencyCode={currencyCode}
         />
       </main>
-    </div>
+    </>
   );
 }

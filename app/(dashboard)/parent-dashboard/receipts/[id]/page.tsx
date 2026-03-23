@@ -71,9 +71,9 @@ export default async function ParentReceiptPage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-xl items-center justify-between py-4">
           <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
             Payment Receipt
           </h1>
@@ -86,7 +86,7 @@ export default async function ParentReceiptPage({ params }: PageProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-xl px-6 py-10">
+      <main className="mx-auto max-w-xl py-10">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           {/* Receipt header */}
           <div className="border-b border-slate-200 px-6 py-5 text-center dark:border-zinc-800">
@@ -138,7 +138,7 @@ export default async function ParentReceiptPage({ params }: PageProps) {
           </div>
         </div>
       </main>
-    </div>
+    </>
   );
 }
 

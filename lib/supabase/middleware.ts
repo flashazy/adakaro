@@ -47,7 +47,9 @@ export async function updateSession(request: NextRequest) {
 
   const isAdminRoute = pathname.startsWith("/dashboard");
   const isParentRoute = pathname.startsWith("/parent-dashboard");
-  const isProtectedRoute = isAdminRoute || isParentRoute;
+  const isSuperAdminRoute = pathname.startsWith("/super-admin");
+  const isProtectedRoute =
+    isAdminRoute || isParentRoute || isSuperAdminRoute;
 
   // Unauthenticated users trying to access protected routes → login.
   if (!user && isProtectedRoute) {
@@ -60,7 +62,7 @@ export async function updateSession(request: NextRequest) {
     // JWT metadata first (always available); override from DB when present.
     // Using only metadata while the parent page requires profiles.role caused a
     // loop: page → redirect /dashboard, middleware → redirect /parent-dashboard.
-    let role: "admin" | "parent" =
+    let role: "admin" | "parent" | "super_admin" =
       String(user.user_metadata?.role ?? "")
         .toLowerCase()
         .trim() === "admin"
@@ -68,35 +70,63 @@ export async function updateSession(request: NextRequest) {
         : "parent";
 
     if (isAuthPage || isProtectedRoute) {
-      const { data: profileRow } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
+      // SECURITY DEFINER — reliable even if profiles SELECT is flaky for this user.
+      const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
+        "is_super_admin",
+        {} as never
+      );
+      if (!rpcSuperErr && rpcSuper === true) {
+        role = "super_admin";
+      } else {
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
 
-      const pr = (profileRow as { role: "admin" | "parent" } | null)?.role;
-      if (pr === "admin" || pr === "parent") {
-        role = pr;
+        const pr = (profileRow as { role: "admin" | "parent" | "super_admin" } | null)
+          ?.role;
+        if (pr === "admin" || pr === "parent" || pr === "super_admin") {
+          role = pr;
+        }
       }
     }
 
     // Redirect authenticated users away from auth pages.
     if (isAuthPage) {
       const url = request.nextUrl.clone();
-      url.pathname = role === "admin" ? "/dashboard" : "/parent-dashboard";
+      if (role === "super_admin") {
+        url.pathname = "/super-admin";
+      } else if (role === "admin") {
+        url.pathname = "/dashboard";
+      } else {
+        url.pathname = "/parent-dashboard";
+      }
+      return NextResponse.redirect(url);
+    }
+
+    // Super admin routes: platform owners only.
+    if (isSuperAdminRoute && role !== "super_admin") {
+      const url = request.nextUrl.clone();
+      url.pathname = role === "parent" ? "/parent-dashboard" : "/dashboard";
       return NextResponse.redirect(url);
     }
 
     // Enforce role-based access on protected routes.
-    if (isAdminRoute && role !== "admin") {
+    if (isAdminRoute && role !== "admin" && role !== "super_admin") {
       const url = request.nextUrl.clone();
       url.pathname = "/parent-dashboard";
       return NextResponse.redirect(url);
     }
 
-    if (isParentRoute && role !== "parent") {
+    // Parents who are also school admins need both dashboards (fees + admin UI).
+    if (isParentRoute && role !== "parent" && role !== "admin") {
       const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
+      if (role === "super_admin") {
+        url.pathname = "/super-admin";
+      } else {
+        url.pathname = "/dashboard";
+      }
       return NextResponse.redirect(url);
     }
   }

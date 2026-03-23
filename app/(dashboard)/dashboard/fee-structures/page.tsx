@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency } from "@/lib/currency";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
@@ -16,10 +16,12 @@ export default async function FeeStructuresPage() {
 
   if (!user) redirect("/login");
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) redirect("/dashboard");
+  const display = await resolveSchoolDisplay(user.id, supabase);
+  if (!display?.schoolId) redirect("/dashboard");
+  const schoolId = display.schoolId;
+  const currencyCode = normalizeSchoolCurrency(display.currency);
 
-  const [feeTypesRes, classesRes, studentsRes, structuresRes, schoolRes] =
+  const [feeTypesRes, classesRes, studentsRes, structuresRes] =
     await Promise.all([
       supabase
         .from("fee_types")
@@ -43,7 +45,6 @@ export default async function FeeStructuresPage() {
         )
         .eq("school_id", schoolId)
         .order("created_at", { ascending: false }),
-      supabase.from("schools").select("currency").eq("id", schoolId).single(),
     ]);
 
   const typedFeeTypes = (feeTypesRes.data ?? []) as { id: string; name: string }[];
@@ -65,24 +66,20 @@ export default async function FeeStructuresPage() {
     student: { id: string; full_name: string } | null;
   }[];
 
-  const schoolRow = schoolRes.data as { currency: string | null } | null;
-  const currencyCode = normalizeSchoolCurrency(schoolRow?.currency);
-
   const fetchError = combineSupabaseErrors([
     feeTypesRes.error,
     classesRes.error,
     studentsRes.error,
     structuresRes.error,
-    schoolRes.error,
   ]);
   if (fetchError) {
     console.error("[fee-structures] error:", fetchError);
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
               Fee Structures
@@ -100,7 +97,7 @@ export default async function FeeStructuresPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
+      <main className="mx-auto max-w-5xl space-y-6 py-10">
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load fee structure data"
@@ -169,6 +166,6 @@ export default async function FeeStructuresPage() {
           </div>
         ) : null}
       </main>
-    </div>
+    </>
   );
 }

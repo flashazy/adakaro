@@ -6,7 +6,7 @@ Deploy the Next.js app on **Vercel** with **Supabase** (PostgreSQL + Auth) and *
 
 ## 1. Supabase migrations (production)
 
-Your repo has migrations `00001`–`00026` under `supabase/migrations/`. **All of them** should run on the production project in order (not only the subset below).
+Your repo has migrations under `supabase/migrations/`. **All of them** should run on the production project in order (not only the subset below).
 
 ### Mapping (feature ↔ migration file)
 
@@ -22,8 +22,16 @@ Your repo has migrations `00001`–`00026` under `supabase/migrations/`. **All o
 | 00024 | `00024_parent_link_requests_admin_visibility.sql` | Parent link requests RLS + lookup |
 | 00025 | `00025_admin_parent_link_request_rpcs.sql` | Admin RPCs for link requests |
 | 00026 | `00026_parent_link_request_visibility_and_cancel.sql` | Visibility helper + lookup prefer-school + parent cancel |
+| 00027 | `00027_school_invitations.sql` | Invitations + related RLS/RPCs |
+| 00028 | `00028_super_admin_setup.sql` | `super_admin` role + platform admin RPCs |
+| 00029 | `00029_get_my_school_for_dashboard.sql` | `get_my_school_for_dashboard` RPC |
+| 00030 | `00030_fix_get_my_school_for_dashboard.sql` | RPC uses membership JOIN + creator fallback |
+| **00031** | **`00031_schools_select_by_membership.sql`** | **Lets every school member `SELECT` their `schools` row (fixes missing name/currency in UI)** |
+| 00032 | `00032_service_role_grants_public.sql` | `GRANT … TO service_role` on core tables (fixes “permission denied” with `SUPABASE_SERVICE_ROLE_KEY`) |
 
 Earlier migrations (`00001`–`00016`, etc.) are required for schema, RLS, parent links, fees, etc.
+
+**Admin dashboard school name / currency:** apply **00031** (and 00029–00030 if not already). Optionally set **`SUPABASE_SERVICE_ROLE_KEY`** in `.env.local` / Vercel so the app can resolve school display server-side even before RLS fixes propagate.
 
 ### Confirm migrations are applied
 
@@ -221,4 +229,4 @@ Optional: enable **Vercel → Environment Variables** for Preview with a **stagi
 
 ---
 
-*Last updated to match migrations through `00026` and env usage in the Adakaro codebase.*
+*Last updated to match migrations through `00031` and env usage in the Adakaro codebase.*
