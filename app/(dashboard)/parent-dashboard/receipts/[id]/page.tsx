@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { PrintButton } from "@/app/dashboard/receipts/[id]/print-button";
+import { PrintButton } from "../../../dashboard/receipts/[id]/print-button";
 import Link from "next/link";
 import {
   DEFAULT_SCHOOL_CURRENCY,

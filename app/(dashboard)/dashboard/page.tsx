@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { signOut } from "@/app/(auth)/actions";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { CreateSchoolModal } from "./create-school-modal";
 import { DashboardCharts } from "./dashboard-charts";
@@ -105,6 +104,16 @@ const NAV_LINKS = [
       </svg>
     ),
   },
+  {
+    href: "/pricing",
+    title: "Plans",
+    desc: "Subscription tiers and pricing.",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+      </svg>
+    ),
+  },
 ] as const;
 
 /** Always refetch membership after creating a school (router.refresh / navigation). */
@@ -178,28 +187,15 @@ export default async function AdminDashboard() {
   if (!hasSchool) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-        <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            <div>
-              <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Your School
-              </h1>
-              <p className="text-sm text-slate-500 dark:text-zinc-400">
-                Welcome back, {profileNameEarly}
-              </p>
-            </div>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                Sign out
-              </button>
-            </form>
-          </div>
-        </header>
-
         <main className="mx-auto max-w-7xl px-6 py-8">
+          <div className="mb-6">
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
+              Your school
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-zinc-400">
+              Welcome back, {profileNameEarly}
+            </p>
+          </div>
           <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
             <p className="font-medium">Finish onboarding</p>
             <p className="mt-1 text-amber-800/90 dark:text-amber-200/80">
@@ -393,29 +389,15 @@ export default async function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      {/* Header */}
-      <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              {schoolTitle}
-            </h1>
-            <p className="text-sm text-slate-500 dark:text-zinc-400">
-              Welcome back, {profileName}
-            </p>
-          </div>
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-7xl px-6 py-8">
+        <div className="mb-6">
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
+            {schoolTitle}
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-zinc-400">
+            Welcome back, {profileName}
+          </p>
+        </div>
         {/* KPI Cards */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard

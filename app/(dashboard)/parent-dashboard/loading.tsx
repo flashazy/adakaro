@@ -1,20 +1,6 @@
 export default function ParentDashboardLoading() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      {/* Header skeleton */}
-      <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 animate-pulse rounded-lg bg-slate-200 dark:bg-zinc-700" />
-            <div className="space-y-1.5">
-              <div className="h-5 w-36 animate-pulse rounded bg-slate-200 dark:bg-zinc-700" />
-              <div className="h-4 w-48 animate-pulse rounded bg-slate-200 dark:bg-zinc-700" />
-            </div>
-          </div>
-          <div className="h-9 w-20 animate-pulse rounded-lg bg-slate-200 dark:bg-zinc-700" />
-        </div>
-      </header>
-
       <main className="mx-auto max-w-7xl px-6 py-8">
         {/* KPI cards skeleton — 4 cards */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { signOut } from "@/app/(auth)/actions";
 import Link from "next/link";
 import type { UserRole } from "@/types/supabase";
 import LinkRequestForm from "./link-request-form";
@@ -163,36 +162,15 @@ export default async function ParentDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      {/* Header */}
-      <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-950/40">
-              <svg className="h-5 w-5 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Parent Dashboard
-              </h1>
-              <p className="text-sm text-slate-500 dark:text-zinc-400">
-                Welcome back, {profileTyped?.full_name || "Parent"}
-              </p>
-            </div>
-          </div>
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-7xl px-6 py-8">
+        <div className="mb-6">
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
+            Parent dashboard
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-zinc-400">
+            Welcome back, {profileTyped?.full_name || "Parent"}
+          </p>
+        </div>
         {/* No linked students */}
         {childCount === 0 ? (
           <div className="space-y-6">
