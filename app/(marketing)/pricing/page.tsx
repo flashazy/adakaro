@@ -21,14 +21,6 @@ function usdApprox(tzs: number): string {
   }).format(usd);
 }
 
-function ComingSoonBadge() {
-  return (
-    <span className="ml-1.5 inline-flex shrink-0 items-center rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-zinc-700 dark:text-zinc-300">
-      Coming soon
-    </span>
-  );
-}
-
 interface FeatureLineProps {
   children: ReactNode;
 }
@@ -123,10 +115,7 @@ export default function PricingPage() {
               <FeatureLine>
                 Advanced reports (CSV export, class summaries)
               </FeatureLine>
-              <FeatureLine>
-                Up to 2 admin accounts
-                <ComingSoonBadge />
-              </FeatureLine>
+              <FeatureLine>Up to 2 admin accounts</FeatureLine>
             </ul>
             <Link
               href="/signup?role=admin"
@@ -159,10 +148,7 @@ export default function PricingPage() {
             <ul className="mt-6 flex flex-1 flex-col gap-3">
               <FeatureLine>Everything in Basic</FeatureLine>
               <FeatureLine>Up to 5 admin accounts</FeatureLine>
-              <FeatureLine>
-                Bulk student import
-                <ComingSoonBadge />
-              </FeatureLine>
+              <FeatureLine>Bulk student import</FeatureLine>
               <FeatureLine>Priority support</FeatureLine>
             </ul>
             <Link
