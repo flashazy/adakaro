@@ -17,6 +17,15 @@ type FetchBundle = {
   linksRes: { data: unknown; error: unknown };
 };
 
+/** PostgREST may return a single object or a one-element array for FK embeds. */
+function classNameFromEmbed(
+  cls: { name: string } | { name: string }[] | null | undefined
+): string | null {
+  if (cls == null) return null;
+  if (Array.isArray(cls)) return cls[0]?.name ?? null;
+  return cls.name ?? null;
+}
+
 /** True when this PostgREST / Postgres error should trigger a service-role refetch. */
 function isRlsOrPermissionError(err: unknown): boolean {
   if (err == null) return false;
@@ -121,10 +130,7 @@ async function fetchParentLinksWithClient(
   };
 }
 
-/**
- * Service role: avoid embedding `classes` — some projects omit GRANT on `classes`
- * for `service_role`, which causes 42501 even though RLS is bypassed.
- */
+/** Service role: same class embed as session client so CLASS column stays correct after fallback. */
 async function fetchParentLinksWithAdminClient(
   admin: Db,
   schoolId: string
@@ -137,7 +143,7 @@ async function fetchParentLinksWithAdminClient(
       .order("full_name"),
     admin
       .from("students")
-      .select("id, full_name, admission_number, class_id")
+      .select("id, full_name, admission_number, class_id, class:classes(name)")
       .eq("school_id", schoolId)
       .order("full_name"),
   ]);
@@ -150,7 +156,7 @@ async function fetchParentLinksWithAdminClient(
       ? await admin
           .from("parent_students")
           .select(
-            "id, parent_id, student_id, parent:profiles(full_name, email), student:students(full_name)"
+            "id, parent_id, student_id, parent:profiles(full_name, email), student:students(full_name, class:classes(name))"
           )
           .in("student_id", studentIds)
       : { data: [] as unknown[], error: null };
@@ -237,19 +243,18 @@ export default async function ParentLinksPage() {
   }
 
   const typedParents = (parentsRes.data ?? []) as { id: string; full_name: string; email: string | null }[];
-  const parents = typedParents.map((p) => ({
-    id: p.id,
-    full_name: p.full_name,
-    email: p.email,
-  }));
 
-  const typedStudentsRes = (studentsRes.data ?? []) as { id: string; full_name: string; admission_number: string | null; class: { name: string } | null }[];
+  const typedStudentsRes = (studentsRes.data ?? []) as {
+    id: string;
+    full_name: string;
+    admission_number: string | null;
+    class: { name: string } | { name: string }[] | null;
+  }[];
   const students = typedStudentsRes.map((s) => ({
     id: s.id,
     full_name: s.full_name,
     admission_number: s.admission_number,
-    className:
-      (s.class as { name: string } | null)?.name ?? "No class",
+    className: classNameFromEmbed(s.class) ?? "No class",
   }));
 
   const typedLinks = (linksRes.data ?? []) as {
@@ -257,22 +262,59 @@ export default async function ParentLinksPage() {
     parent_id: string;
     student_id: string;
     parent: { full_name: string; email: string | null } | null;
-    student: { full_name: string; class: { name: string } | null } | null;
+    student: {
+      full_name: string;
+      class: { name: string } | { name: string }[] | null;
+    } | null;
   }[];
+
+  /**
+   * Dropdown: `profiles.role = parent` misses users promoted to admin (e.g. after accepting
+   * a school invite) who still act as parents. Include every parent_id already linked to a
+   * student at this school using the embedded profile from the same query that powers the table.
+   */
+  const parentsById = new Map<
+    string,
+    { id: string; full_name: string; email: string | null }
+  >();
+  for (const p of typedParents) {
+    parentsById.set(p.id, {
+      id: p.id,
+      full_name: p.full_name,
+      email: p.email,
+    });
+  }
+  for (const l of typedLinks) {
+    const pr = l.parent;
+    if (pr && l.parent_id && !parentsById.has(l.parent_id)) {
+      parentsById.set(l.parent_id, {
+        id: l.parent_id,
+        full_name: pr.full_name ?? "Unknown",
+        email: pr.email ?? null,
+      });
+    }
+  }
+  const parents = [...parentsById.values()].sort((a, b) =>
+    a.full_name.localeCompare(b.full_name, undefined, { sensitivity: "base" })
+  );
+
   // Build link rows with joined names
   const linkRows: ParentLinkData[] = typedLinks.map((l) => {
     const parent = l.parent as { full_name: string; email: string | null } | null;
     const student = l.student as {
       full_name: string;
-      class: { name: string } | null;
+      class: { name: string } | { name: string }[] | null;
     } | null;
+
+    const fromEmbed = classNameFromEmbed(student?.class);
+    const fromStudentList = students.find((s) => s.id === l.student_id)?.className;
 
     return {
       id: l.id,
       parentName: parent?.full_name ?? "Unknown",
       parentEmail: parent?.email ?? null,
       studentName: student?.full_name ?? "Unknown",
-      className: student?.class?.name ?? "No class",
+      className: fromEmbed ?? fromStudentList ?? "No class",
     };
   });
 
