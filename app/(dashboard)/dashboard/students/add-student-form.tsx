@@ -48,6 +48,12 @@ export function AddStudentForm({
   nextAdmissionPreview = null,
   schoolAdmissionPrefix = null,
 }: Props) {
+  const effectivePrefix =
+    typeof schoolAdmissionPrefix === "string"
+      ? schoolAdmissionPrefix.trim().toUpperCase()
+      : "";
+  const hasAdmissionPrefix = effectivePrefix.length > 0;
+
   const router = useRouter();
   const [state, formAction] = useActionState(addStudent, initialState);
   const [open, setOpen] = useState(false);
@@ -57,14 +63,14 @@ export function AddStudentForm({
   const [admissionSnapshot, setAdmissionSnapshot] = useState("");
 
   useEffect(() => {
-    if (open && schoolAdmissionPrefix) {
+    if (open && hasAdmissionPrefix) {
       const { value, snapshot } = syncAdmissionFromPreview(
         nextAdmissionPreview
       );
       setAdmissionValue(value);
       setAdmissionSnapshot(snapshot);
     }
-  }, [open, schoolAdmissionPrefix, nextAdmissionPreview]);
+  }, [open, hasAdmissionPrefix, nextAdmissionPreview]);
 
   useEffect(() => {
     if (state.success) {
@@ -152,7 +158,7 @@ export function AddStudentForm({
               >
                 Admission number
               </label>
-              {schoolAdmissionPrefix ? (
+              {hasAdmissionPrefix ? (
                 <div className="mt-1.5 flex gap-2">
                   <input
                     type="hidden"
@@ -168,7 +174,7 @@ export function AddStudentForm({
                     value={admissionValue}
                     onChange={(e) => setAdmissionValue(e.target.value)}
                     className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
-                    placeholder={`e.g. ${schoolAdmissionPrefix}-001`}
+                    placeholder={`e.g. ${effectivePrefix}-001`}
                   />
                   <button
                     type="button"
@@ -191,7 +197,7 @@ export function AddStudentForm({
                   placeholder="e.g. ADM-001 (optional)"
                 />
               )}
-              {schoolAdmissionPrefix ? (
+              {hasAdmissionPrefix ? (
                 <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
                   Pre-filled with the next number. You can edit it; if you leave
                   it as suggested, the next free sequence number is assigned

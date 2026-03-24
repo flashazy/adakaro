@@ -46,32 +46,16 @@ export async function addStudent(
   try {
     const { supabase, schoolId } = await getSchoolId();
 
-    const { data: schoolRow, error: schoolErr } = await supabase
-      .from("schools")
-      .select("admission_prefix")
-      .eq("id", schoolId)
-      .maybeSingle();
-
-    if (schoolErr) {
-      return { error: schoolErr.message };
-    }
-
-    const schoolPrefix = (
-      schoolRow as { admission_prefix: string | null } | null
-    )?.admission_prefix?.trim();
-
     let admissionNumber: string | null = null;
+
+    function inferPrefixFromFormatted(adm: string): string | null {
+      const m = adm.trim().match(/^([A-Za-z]{2,10})-(\d+)$/);
+      return m ? m[1].toUpperCase() : null;
+    }
 
     async function allocateNextAdmission(): Promise<
       { ok: true; value: string } | { ok: false; message: string }
     > {
-      if (!schoolPrefix) {
-        return {
-          ok: false,
-          message:
-            "Set an admission prefix under School settings before using auto-generated admission numbers.",
-        };
-      }
       const { data: generated, error: genErr } = await supabase.rpc(
         "get_next_admission_number",
         { p_school_id: schoolId } as never
@@ -89,36 +73,37 @@ export async function addStudent(
       return { ok: true, value: genText.trim() };
     }
 
-    if (!schoolPrefix) {
-      admissionNumber =
-        admissionNumberRaw && admissionNumberRaw !== ""
-          ? admissionNumberRaw
-          : null;
-    } else {
-      const submitted = admissionNumberRaw ?? "";
-      const snapshot = admissionDefaultSnapshot;
-      const stillUsingSuggested =
-        snapshot !== "" && submitted !== "" && submitted === snapshot;
-      const cleared = submitted === "";
+    const submitted = admissionNumberRaw ?? "";
+    const snapshot = admissionDefaultSnapshot;
+    const snapshotPrefix = inferPrefixFromFormatted(snapshot);
+    const stillUsingSuggested =
+      snapshot !== "" && submitted !== "" && submitted === snapshot;
+    const cleared = submitted === "";
 
+    if (snapshotPrefix) {
       if (stillUsingSuggested || cleared) {
         const alloc = await allocateNextAdmission();
         if (!alloc.ok) {
           return { error: alloc.message };
         }
         admissionNumber = alloc.value;
+      } else if (submitted === "") {
+        admissionNumber = null;
       } else {
         admissionNumber = submitted;
         const re = new RegExp(
-          `^${escapeRegExp(schoolPrefix)}-\\d+$`,
+          `^${escapeRegExp(snapshotPrefix)}-\\d+$`,
           "i"
         );
         if (!re.test(admissionNumber)) {
           return {
-            error: `Admission number should match your school format (e.g. ${schoolPrefix}-001).`,
+            error: `Admission number should match your school format (e.g. ${snapshotPrefix}-001).`,
           };
         }
       }
+    } else {
+      admissionNumber =
+        submitted !== "" ? submitted : null;
     }
 
     const limitCheck = await checkStudentLimit(supabase, schoolId);

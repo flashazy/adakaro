@@ -2,10 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
-import {
-  escapeRegExp,
-  peekNextAdmissionNumberWithClient,
-} from "@/lib/admission-number";
+import { peekNextAdmissionNumberWithClient } from "@/lib/admission-number";
 import { canAccessFeature, normalizePlanId } from "@/lib/plans";
 import { checkStudentLimit, getSchoolPlanRow } from "@/lib/plan-limits";
 import { QueryErrorBanner } from "../query-error-banner";
@@ -14,24 +11,7 @@ import StudentImportModal from "./components/student-import-modal";
 import { StudentList } from "./student-list";
 import Link from "next/link";
 
-function fallbackNextAdmissionNumber(
-  prefix: string,
-  students: { admission_number: string | null }[]
-): string {
-  const p = prefix.trim().toUpperCase();
-  let max = 0;
-  const re = new RegExp(`^${escapeRegExp(p)}-(\\d+)$`, "i");
-  for (const s of students) {
-    const a = s.admission_number?.trim();
-    if (!a) continue;
-    const m = a.match(re);
-    if (m) {
-      const n = Number.parseInt(m[1], 10);
-      if (!Number.isNaN(n)) max = Math.max(max, n);
-    }
-  }
-  return `${p}-${String(max + 1).padStart(3, "0")}`;
-}
+export const dynamic = "force-dynamic";
 
 export default async function StudentsPage() {
   const supabase = await createClient();
@@ -79,23 +59,17 @@ export default async function StudentsPage() {
   const canBulkImport = canAccessFeature(planId, "bulkImport");
   const studentLimitState = await checkStudentLimit(supabase, schoolId);
 
-  const { data: schoolMeta } = await supabase
-    .from("schools")
-    .select("admission_prefix")
-    .eq("id", schoolId)
-    .maybeSingle();
-
-  const schoolAdmissionPrefix =
-    (schoolMeta as { admission_prefix: string | null } | null)
-      ?.admission_prefix?.trim() ?? null;
-
-  const peeked = schoolAdmissionPrefix
-    ? await peekNextAdmissionNumberWithClient(supabase, schoolId)
+  // Avoid direct SELECT on public.schools here: RLS can hit 42P17 (infinite
+  // recursion with school_members). peek_next_admission_number is SECURITY
+  // DEFINER and reads prefix + counter without that path.
+  const peekedRaw = await peekNextAdmissionNumberWithClient(supabase, schoolId);
+  const peeked = peekedRaw?.trim() ?? null;
+  const peekMatch = peeked?.match(/^([A-Za-z]{2,10})-(\d+)$/);
+  const schoolAdmissionPrefix = peekMatch
+    ? peekMatch[1].toUpperCase()
     : null;
-  const nextAdmissionPreview = schoolAdmissionPrefix
-    ? peeked ??
-      fallbackNextAdmissionNumber(schoolAdmissionPrefix, typedStudents)
-    : null;
+
+  const nextAdmissionPreview = peeked;
 
   return (
     <>
