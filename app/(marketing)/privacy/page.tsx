@@ -270,10 +270,10 @@ const sections = [
         <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-200">
           <strong>Email:</strong>{" "}
           <a
-            href="mailto:privacy@adakaro.app"
+            href="mailto:privacy@adakaro.com"
             className="text-indigo-600 hover:underline dark:text-indigo-400"
           >
-            privacy@adakaro.app
+            privacy@adakaro.com
           </a>
         </p>
       </>

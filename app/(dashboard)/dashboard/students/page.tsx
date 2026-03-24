@@ -4,6 +4,7 @@ import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddStudentForm } from "./add-student-form";
+import StudentImportModal from "./components/student-import-modal";
 import { StudentList } from "./student-list";
 import Link from "next/link";
 
@@ -76,6 +77,9 @@ export default async function StudentsPage() {
             message={listError}
           />
         ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <StudentImportModal classes={classOptions} />
+        </div>
         <AddStudentForm classes={classOptions} />
         {!listError ? (
           <StudentList students={typedStudents} classes={classOptions} />
