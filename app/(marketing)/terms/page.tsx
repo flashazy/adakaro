@@ -314,10 +314,10 @@ const sections = [
       <p>
         Questions about these Terms:{" "}
         <a
-          href="mailto:legal@adakaro.com"
+          href="mailto:info@adakaro.com"
           className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
         >
-          legal@adakaro.com
+          info@adakaro.com
         </a>
       </p>
     ),
