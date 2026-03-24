@@ -2,6 +2,7 @@
 
 import { useCallback, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { UpgradeModal } from "@/components/upgrade-modal";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_ROWS = 500;
@@ -33,6 +34,8 @@ interface ImportResult {
 
 interface Props {
   classes: { id: string; name: string }[];
+  /** Pro / Enterprise only; others see an upgrade prompt. */
+  canBulkImport?: boolean;
 }
 
 function downloadTemplate() {
@@ -88,10 +91,14 @@ function statusBadge(status: ValidatedRow["status"]) {
   );
 }
 
-export default function StudentImportModal({ classes }: Props) {
+export default function StudentImportModal({
+  classes,
+  canBulkImport = true,
+}: Props) {
   const router = useRouter();
   const titleId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<"pick" | "preview" | "done">("pick");
   const [progress, setProgress] = useState(0);
@@ -167,6 +174,12 @@ export default function StudentImportModal({ classes }: Props) {
         summary?: Summary;
       };
 
+      if (res.status === 403) {
+        setUpgradeOpen(true);
+        setFetchError(null);
+        return;
+      }
+
       if (!res.ok || data.error) {
         setFetchError(data.error ?? "Validation failed.");
         return;
@@ -213,6 +226,12 @@ export default function StudentImportModal({ classes }: Props) {
       });
       const data = (await res.json()) as ImportResult & { error?: string };
 
+      if (res.status === 403) {
+        setUpgradeOpen(true);
+        setFetchError(null);
+        return;
+      }
+
       if (!res.ok || data.error) {
         setFetchError(data.error ?? "Import failed.");
         return;
@@ -240,21 +259,41 @@ export default function StudentImportModal({ classes }: Props) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          reset();
-          setOpen(true);
-        }}
-        className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-800 transition-colors hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-950/60"
-      >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-        </svg>
-        Import Students (CSV)
-      </button>
+      {canBulkImport ? (
+        <button
+          type="button"
+          onClick={() => {
+            reset();
+            setOpen(true);
+          }}
+          className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-800 transition-colors hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-950/60"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+          </svg>
+          Import Students (CSV)
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setUpgradeOpen(true)}
+          className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+          </svg>
+          Import Students (CSV) — Pro
+        </button>
+      )}
 
-      {open ? (
+      <UpgradeModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        requiredPlan="pro"
+        featureName="Bulk student CSV import"
+      />
+
+      {canBulkImport && open ? (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center p-4"
           role="dialog"
@@ -503,3 +542,4 @@ export default function StudentImportModal({ classes }: Props) {
     </>
   );
 }
+

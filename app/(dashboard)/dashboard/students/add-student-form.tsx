@@ -5,12 +5,12 @@ import { useFormStatus } from "react-dom";
 import { useRef, useEffect, useState } from "react";
 import { addStudent, type StudentActionState } from "./actions";
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || disabled}
       className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
     >
       {pending ? "Adding…" : "Add student"}
@@ -20,11 +20,19 @@ function SubmitButton() {
 
 interface Props {
   classes: { id: string; name: string }[];
+  /** Current enrolment count for plan warnings. */
+  studentCount?: number;
+  /** Plan cap; null = unlimited. */
+  studentLimit?: number | null;
 }
 
 const initialState: StudentActionState = {};
 
-export function AddStudentForm({ classes }: Props) {
+export function AddStudentForm({
+  classes,
+  studentCount = 0,
+  studentLimit = null,
+}: Props) {
   const [state, formAction] = useActionState(addStudent, initialState);
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -35,6 +43,13 @@ export function AddStudentForm({ classes }: Props) {
       setOpen(false);
     }
   }, [state.success]);
+
+  const atStudentLimit =
+    studentLimit != null && studentCount >= studentLimit;
+  const approachingLimit =
+    studentLimit != null &&
+    !atStudentLimit &&
+    studentCount >= Math.max(0, studentLimit - 5);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -64,6 +79,24 @@ export function AddStudentForm({ classes }: Props) {
           action={formAction}
           className="border-t border-slate-200 px-6 pb-6 pt-4 dark:border-zinc-800"
         >
+          {atStudentLimit ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-200">
+              You&apos;ve reached your plan limit ({studentLimit} students).
+              Upgrade on the{" "}
+              <a
+                href="/pricing"
+                className="font-medium text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-400"
+              >
+                Pricing
+              </a>{" "}
+              page to add more.
+            </div>
+          ) : approachingLimit ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+              You&apos;re close to your plan limit: {studentCount} of{" "}
+              {studentLimit} students used.
+            </div>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
               <label
@@ -170,7 +203,7 @@ export function AddStudentForm({ classes }: Props) {
           </div>
 
           <div className="mt-5 flex items-center justify-between">
-            <SubmitButton />
+            <SubmitButton disabled={atStudentLimit} />
           </div>
 
           {state.error && (

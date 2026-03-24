@@ -2,7 +2,8 @@ import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
-import { getPlanLimit, normalizePlanId } from "@/lib/plans";
+import { normalizePlanId } from "@/lib/plans";
+import { effectiveAdminLimit } from "@/lib/plan-limits";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   const { data: school } = await supabase
     .from("schools")
-    .select("id, plan")
+    .select("id, plan, student_limit, admin_limit")
     .eq("id", schoolId)
     .single();
 
@@ -48,8 +49,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "School not found." }, { status: 404 });
   }
 
-  const plan = normalizePlanId((school as { plan: string }).plan);
-  const maxAdmins = getPlanLimit(plan, "maxAdmins");
+  const s = school as {
+    plan: string;
+    student_limit: number | null;
+    admin_limit: number | null;
+  };
+  const plan = normalizePlanId(s.plan);
+  const maxAdmins = effectiveAdminLimit({
+    plan: s.plan,
+    student_limit: s.student_limit,
+    admin_limit: s.admin_limit,
+  });
 
   const { count: adminCount } = await supabase
     .from("school_members")
@@ -65,13 +75,14 @@ export async function POST(request: NextRequest) {
     .gt("expires_at", new Date().toISOString());
 
   const used = (adminCount ?? 0) + (pendingCount ?? 0);
-  if (used >= maxAdmins) {
+  if (maxAdmins != null && used >= maxAdmins) {
     return NextResponse.json(
       {
-        error: `This school's ${plan} plan allows ${maxAdmins} admin seat(s).`,
+        error: `This school has reached its admin limit (${maxAdmins}) for the ${plan} plan.`,
         code: "limit_reached",
+        upgradeUrl: "/pricing",
       },
-      { status: 409 }
+      { status: 403 }
     );
   }
 

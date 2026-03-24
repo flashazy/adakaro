@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { checkStudentLimit } from "@/lib/plan-limits";
 
 async function getSchoolId() {
   const supabase = await createClient();
@@ -40,6 +41,14 @@ export async function addStudent(
 
   try {
     const { supabase, schoolId } = await getSchoolId();
+
+    const limitCheck = await checkStudentLimit(supabase, schoolId);
+    if (!limitCheck.allowed) {
+      return {
+        error:
+          "You've reached your plan limit. Upgrade to add more students.",
+      };
+    }
 
     const { error } = await supabase.from("students").insert({
       school_id: schoolId,

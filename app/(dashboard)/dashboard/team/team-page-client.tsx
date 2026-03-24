@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { InviteAdminModal } from "./invite-modal";
 import { RemoveAdminButton } from "./remove-admin-button";
@@ -27,11 +28,14 @@ interface TeamPageClientProps {
   members: TeamMemberRow[];
   planLabel: string;
   adminCount: number;
-  maxAdmins: number;
+  /** null = unlimited (e.g. enterprise). */
+  maxAdmins: number | null;
   pendingInviteCount: number;
   usedSlots: number;
   canInvite: boolean;
   pendingInvites: PendingInviteRow[];
+  /** Show pricing link when invite is blocked by plan. */
+  showUpgradeLink?: boolean;
 }
 
 export function TeamPageClient({
@@ -43,8 +47,17 @@ export function TeamPageClient({
   usedSlots,
   canInvite,
   pendingInvites,
+  showUpgradeLink = false,
 }: TeamPageClientProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
+
+  const atAdminCap =
+    maxAdmins != null && usedSlots >= maxAdmins;
+
+  const seatSummary =
+    maxAdmins == null
+      ? `${adminCount} admin seat${adminCount === 1 ? "" : "s"} (unlimited)`
+      : `${adminCount}/${maxAdmins} admin seat${maxAdmins === 1 ? "" : "s"} filled`;
 
   return (
     <>
@@ -53,7 +66,7 @@ export function TeamPageClient({
           <span className="font-semibold text-slate-800 dark:text-zinc-200">
             {planLabel}:
           </span>{" "}
-          {adminCount}/{maxAdmins} admin seat{maxAdmins === 1 ? "" : "s"} filled
+          {seatSummary}
           {pendingInviteCount > 0 ? (
             <>
               {" "}
@@ -61,7 +74,23 @@ export function TeamPageClient({
               {pendingInviteCount === 1 ? "" : "s"}
             </>
           ) : null}
-          . {usedSlots >= maxAdmins ? " Upgrade your plan to add more." : null}
+          .{" "}
+          {atAdminCap ? (
+            <>
+              Upgrade your plan to add more admins.
+              {showUpgradeLink ? (
+                <>
+                  {" "}
+                  <Link
+                    href="/pricing"
+                    className="font-medium text-indigo-600 underline-offset-2 hover:underline dark:text-indigo-400"
+                  >
+                    View pricing
+                  </Link>
+                </>
+              ) : null}
+            </>
+          ) : null}
         </p>
         <button
           type="button"

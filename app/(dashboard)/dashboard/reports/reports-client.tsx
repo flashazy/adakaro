@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef } from "react";
 import { formatCurrency } from "@/lib/currency";
+import { UpgradeModal } from "@/components/upgrade-modal";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -43,6 +44,8 @@ interface Props {
   studentClasses: StudentClassRow[];
   schoolName: string;
   currencyCode: string;
+  /** Basic+ plans: server CSV export. */
+  canAdvancedReports: boolean;
 }
 
 type ReportTab =
@@ -60,26 +63,6 @@ const TABS: { id: ReportTab; label: string }[] = [
 
 // ─── Helpers ──────────────────────────────────────────────
 
-function downloadCsv(filename: string, headers: string[], rows: string[][]) {
-  const escape = (v: string) =>
-    v.includes(",") || v.includes('"') || v.includes("\n")
-      ? `"${v.replace(/"/g, '""')}"`
-      : v;
-
-  const csv = [
-    headers.map(escape).join(","),
-    ...rows.map((row) => row.map(escape).join(",")),
-  ].join("\n");
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 // ─── Main component ──────────────────────────────────────
 
 export function ReportsClient({
@@ -89,11 +72,13 @@ export function ReportsClient({
   studentClasses,
   schoolName,
   currencyCode,
+  canAdvancedReports,
 }: Props) {
   const money = (n: number) => formatCurrency(n, currencyCode);
   const [activeTab, setActiveTab] = useState<ReportTab>("student-fees");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const classMap = useMemo(() => {
@@ -228,60 +213,45 @@ export function ReportsClient({
 
   // ── Export handlers ─────────────────────────────────────
 
-  function handleExportCsv() {
-    const now = new Date().toISOString().split("T")[0];
+  async function handleExportCsv() {
+    if (!canAdvancedReports) {
+      setUpgradeOpen(true);
+      return;
+    }
 
-    switch (activeTab) {
-      case "student-fees":
-        downloadCsv(
-          `student-fee-report-${now}.csv`,
-          ["Student", "Class", "Total Fees", "Paid", "Balance"],
-          studentFeeRows.map((r) => [
-            r.studentName,
-            r.className,
-            String(r.totalFee),
-            String(r.totalPaid),
-            String(r.balance),
-          ])
-        );
-        break;
-      case "class-summary":
-        downloadCsv(
-          `class-payment-summary-${now}.csv`,
-          ["Class", "Students", "Total Fees", "Collected", "Outstanding"],
-          classSummaryRows.map((r) => [
-            r.className,
-            String(r.studentCount),
-            String(r.totalFee),
-            String(r.totalPaid),
-            String(r.outstanding),
-          ])
-        );
-        break;
-      case "outstanding":
-        downloadCsv(
-          `outstanding-balances-${now}.csv`,
-          ["Student", "Class", "Total Fees", "Paid", "Balance"],
-          outstandingRows.map((r) => [
-            r.studentName,
-            r.className,
-            String(r.totalFee),
-            String(r.totalPaid),
-            String(r.balance),
-          ])
-        );
-        break;
-      case "monthly-income":
-        downloadCsv(
-          `monthly-income-${now}.csv`,
-          ["Month", "Transactions", "Total Income"],
-          monthlyIncomeRows.map((r) => [
-            r.month,
-            String(r.count),
-            String(r.total),
-          ])
-        );
-        break;
+    const fallbackName = `report-${new Date().toISOString().split("T")[0]}.csv`;
+    try {
+      const res = await fetch("/api/reports/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tab: activeTab,
+          dateFrom,
+          dateTo,
+        }),
+      });
+
+      if (res.status === 403) {
+        setUpgradeOpen(true);
+        return;
+      }
+
+      if (!res.ok) {
+        return;
+      }
+
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition");
+      const m = cd?.match(/filename="?([^";\n]+)"?/i);
+      const filename = m?.[1] ?? fallbackName;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -364,8 +334,12 @@ export function ReportsClient({
       <div className="mt-4 flex gap-2 print:hidden">
         <button
           type="button"
-          onClick={handleExportCsv}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          onClick={() => void handleExportCsv()}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
+            canAdvancedReports
+              ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              : "border-dashed border-slate-300 bg-white text-slate-500 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          }`}
         >
           <svg
             className="h-4 w-4"
@@ -381,6 +355,7 @@ export function ReportsClient({
             />
           </svg>
           Export CSV
+          {!canAdvancedReports ? " (Basic+)" : ""}
         </button>
         <button
           type="button"
@@ -450,6 +425,13 @@ export function ReportsClient({
           />
         )}
       </div>
+
+      <UpgradeModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        requiredPlan="basic"
+        featureName="Advanced reports (CSV export and class summaries)"
+      />
     </div>
   );
 }

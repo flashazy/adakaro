@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { canAccessFeature, normalizePlanId } from "@/lib/plans";
+import { checkStudentLimit, getSchoolPlanRow } from "@/lib/plan-limits";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddStudentForm } from "./add-student-form";
 import StudentImportModal from "./components/student-import-modal";
@@ -49,6 +51,11 @@ export default async function StudentsPage() {
   }[];
   const classOptions = typedClasses.map((c) => ({ id: c.id, name: c.name }));
 
+  const planRow = await getSchoolPlanRow(supabase, schoolId);
+  const planId = normalizePlanId(planRow?.plan ?? "free");
+  const canBulkImport = canAccessFeature(planId, "bulkImport");
+  const studentLimitState = await checkStudentLimit(supabase, schoolId);
+
   return (
     <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -78,9 +85,16 @@ export default async function StudentsPage() {
           />
         ) : null}
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <StudentImportModal classes={classOptions} />
+          <StudentImportModal
+            classes={classOptions}
+            canBulkImport={canBulkImport}
+          />
         </div>
-        <AddStudentForm classes={classOptions} />
+        <AddStudentForm
+          classes={classOptions}
+          studentCount={studentLimitState.current}
+          studentLimit={studentLimitState.limit}
+        />
         {!listError ? (
           <StudentList students={typedStudents} classes={classOptions} />
         ) : null}

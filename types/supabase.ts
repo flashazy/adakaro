@@ -61,6 +61,9 @@ export interface Database {
           logo_url: string | null;
           currency: string;
           plan: string;
+          plan_expires_at: string | null;
+          student_limit: number | null;
+          admin_limit: number | null;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -74,6 +77,9 @@ export interface Database {
           logo_url?: string | null;
           currency?: string;
           plan?: string;
+          plan_expires_at?: string | null;
+          student_limit?: number | null;
+          admin_limit?: number | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -86,6 +92,9 @@ export interface Database {
           logo_url?: string | null;
           currency?: string;
           plan?: string;
+          plan_expires_at?: string | null;
+          student_limit?: number | null;
+          admin_limit?: number | null;
           updated_at?: string;
         };
       };

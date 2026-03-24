@@ -2,7 +2,8 @@ import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
-import { getPlanLimit, normalizePlanId } from "@/lib/plans";
+import { normalizePlanId, planDisplayName } from "@/lib/plans";
+import { checkAdminLimit } from "@/lib/plan-limits";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -73,40 +74,17 @@ export async function POST(request: NextRequest) {
     const plan = normalizePlanId(
       (school as { plan?: string }).plan ?? "free"
     );
-    const maxAdmins = getPlanLimit(plan, "maxAdmins");
 
-    const { count: adminCountReal, error: countErr } = await supabase
-      .from("school_members")
-      .select("*", { count: "exact", head: true })
-      .eq("school_id", schoolId)
-      .eq("role", "admin");
-
-    if (countErr) {
-      console.error("[invite] admin count", countErr);
-      return NextResponse.json(
-        { error: "Could not verify admin seats." },
-        { status: 500 }
-      );
-    }
-
-    const { count: pendingCount } = await supabase
-      .from("school_invitations")
-      .select("*", { count: "exact", head: true })
-      .eq("school_id", schoolId)
-      .eq("status", "pending")
-      .gt("expires_at", new Date().toISOString());
-
-    const admins = adminCountReal ?? 0;
-    const pending = pendingCount ?? 0;
-    const usedSlots = admins + pending;
-
-    if (usedSlots >= maxAdmins) {
+    const adminLimitCheck = await checkAdminLimit(supabase, schoolId);
+    if (!adminLimitCheck.allowed && adminLimitCheck.limit != null) {
       return NextResponse.json(
         {
-          error: `Your ${plan} plan allows up to ${maxAdmins} admin seat(s). Remove a pending invite or upgrade your plan.`,
+          error: `You've reached your admin limit (${adminLimitCheck.limit}). Upgrade to add more admins.`,
           code: "limit_reached",
+          upgradeUrl: "/pricing",
+          plan: planDisplayName(plan),
         },
-        { status: 409 }
+        { status: 403 }
       );
     }
 

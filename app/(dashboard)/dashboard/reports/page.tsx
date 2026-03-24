@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency } from "@/lib/currency";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { canAccessFeature, normalizePlanId } from "@/lib/plans";
+import { getSchoolPlanRow } from "@/lib/plan-limits";
 import { QueryErrorBanner } from "../query-error-banner";
 import { ReportsClient } from "./reports-client";
 
@@ -87,6 +89,10 @@ export default async function ReportsPage() {
   const schoolName = display.name?.trim() || "School";
   const currencyCode = normalizeSchoolCurrency(display.currency);
 
+  const planRow = await getSchoolPlanRow(supabase, schoolId);
+  const planId = normalizePlanId(planRow?.plan ?? "free");
+  const canAdvancedReports = canAccessFeature(planId, "advancedReports");
+
   const fetchError = combineSupabaseErrors([
     schoolStudentsError,
     balancesRes.error,
@@ -144,6 +150,7 @@ export default async function ReportsPage() {
           studentClasses={studentClasses}
           schoolName={schoolName}
           currencyCode={currencyCode}
+          canAdvancedReports={canAdvancedReports}
         />
       </main>
     </>

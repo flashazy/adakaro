@@ -8,11 +8,8 @@ import {
   normalizeServiceRoleKey,
 } from "@/lib/supabase/admin";
 import { formatShortLocaleDate } from "@/lib/format-date";
-import {
-  getPlanLimit,
-  normalizePlanId,
-  planDisplayName,
-} from "@/lib/plans";
+import { normalizePlanId, planDisplayName } from "@/lib/plans";
+import { effectiveAdminLimit } from "@/lib/plan-limits";
 import { TeamPageClient, type TeamMemberRow } from "./team-page-client";
 
 export const dynamic = "force-dynamic";
@@ -163,7 +160,23 @@ export default async function TeamPage() {
   }
 
   const plan = normalizePlanId(schoolRow.plan);
-  const maxAdmins = getPlanLimit(plan, "maxAdmins");
+
+  const { data: limitRow } = await supabase
+    .from("schools")
+    .select("student_limit, admin_limit")
+    .eq("id", schoolId)
+    .maybeSingle();
+
+  const lr = limitRow as {
+    student_limit: number | null;
+    admin_limit: number | null;
+  } | null;
+
+  const maxAdmins = effectiveAdminLimit({
+    plan: schoolRow.plan,
+    student_limit: lr?.student_limit ?? null,
+    admin_limit: lr?.admin_limit ?? null,
+  });
 
   type MemberDbRow = {
     id: string;
@@ -308,7 +321,8 @@ export default async function TeamPage() {
 
   const pendingInviteCount = pendingCount ?? pendingInvites.length;
   const usedSlots = adminCount + pendingInviteCount;
-  const canInvite = usedSlots < maxAdmins;
+  const canInvite =
+    maxAdmins == null ? true : usedSlots < maxAdmins;
 
   const pendingInvitesForClient = pendingInvites.map((r) => ({
     id: r.id,
@@ -348,6 +362,7 @@ export default async function TeamPage() {
           usedSlots={usedSlots}
           canInvite={canInvite}
           pendingInvites={pendingInvitesForClient}
+          showUpgradeLink={!canInvite}
         />
       </main>
     </>

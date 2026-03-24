@@ -4,7 +4,11 @@ import { randomBytes } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPlanLimit, normalizePlanId } from "@/lib/plans";
+import { normalizePlanId, planDisplayName } from "@/lib/plans";
+import {
+  effectiveAdminLimit,
+  type SchoolPlanRow,
+} from "@/lib/plan-limits";
 
 export type InviteAdminResult =
   | { ok: true; email: string }
@@ -29,29 +33,54 @@ function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-async function loadSchoolPlanForInvite(
+async function loadSchoolPlanRowForInvite(
   supabase: Awaited<ReturnType<typeof createClient>>,
   schoolId: string
-): Promise<string | null> {
+): Promise<SchoolPlanRow | null> {
+  const mapRow = (r: {
+    plan: string | null;
+    student_limit?: number | null;
+    admin_limit?: number | null;
+  } | null): SchoolPlanRow | null => {
+    if (!r) return null;
+    return {
+      plan: r.plan ?? "free",
+      student_limit: r.student_limit ?? null,
+      admin_limit: r.admin_limit ?? null,
+    };
+  };
+
   const { data: userRow, error: uErr } = await supabase
     .from("schools")
-    .select("plan")
+    .select("plan, student_limit, admin_limit")
     .eq("id", schoolId)
     .maybeSingle();
 
   if (!uErr && userRow) {
-    return (userRow as { plan: string | null }).plan ?? "free";
+    return mapRow(
+      userRow as {
+        plan: string | null;
+        student_limit: number | null;
+        admin_limit: number | null;
+      }
+    );
   }
 
   try {
     const admin = createAdminClient();
     const { data: adminRow, error: aErr } = await admin
       .from("schools")
-      .select("plan")
+      .select("plan, student_limit, admin_limit")
       .eq("id", schoolId)
       .maybeSingle();
     if (!aErr && adminRow) {
-      return (adminRow as { plan: string | null }).plan ?? "free";
+      return mapRow(
+        adminRow as {
+          plan: string | null;
+          student_limit: number | null;
+          admin_limit: number | null;
+        }
+      );
     }
   } catch {
     /* no service role */
@@ -173,8 +202,8 @@ export async function submitSchoolAdminInvite(
     };
   }
 
-  const planRaw = await loadSchoolPlanForInvite(supabase, schoolId);
-  if (planRaw === null) {
+  const schoolPlanRow = await loadSchoolPlanRowForInvite(supabase, schoolId);
+  if (schoolPlanRow === null) {
     return {
       ok: false,
       error:
@@ -182,8 +211,8 @@ export async function submitSchoolAdminInvite(
     };
   }
 
-  const plan = normalizePlanId(planRaw);
-  const maxAdmins = getPlanLimit(plan, "maxAdmins");
+  const plan = normalizePlanId(schoolPlanRow.plan);
+  const maxAdmins = effectiveAdminLimit(schoolPlanRow);
 
   const adminCount = await countAdmins(supabase, schoolId);
   if (adminCount === null) {
@@ -195,19 +224,18 @@ export async function submitSchoolAdminInvite(
 
   inviteLog("plan limit check", {
     plan,
-    planRaw,
     maxAdmins,
     currentAdminCount: adminCount,
     pendingInviteCount: pendingCount,
     usedSlots,
-    withinLimit: usedSlots < maxAdmins,
+    withinLimit: maxAdmins == null || usedSlots < maxAdmins,
     schoolId,
   });
 
-  if (usedSlots >= maxAdmins) {
+  if (maxAdmins != null && usedSlots >= maxAdmins) {
     return {
       ok: false,
-      error: `Your ${plan} plan allows up to ${maxAdmins} admin seat(s). Remove a pending invite or upgrade your plan.`,
+      error: `You've reached your admin limit (${maxAdmins}). Upgrade to add more admins. Current plan: ${planDisplayName(plan)}.`,
     };
   }
 

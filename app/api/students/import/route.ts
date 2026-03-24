@@ -2,6 +2,8 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { canAccessFeature } from "@/lib/plans";
+import { checkStudentLimit, getSchoolPlanRow } from "@/lib/plan-limits";
 import type { Database } from "@/types/supabase";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -326,6 +328,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const planRow = await getSchoolPlanRow(supabase, schoolId);
+    const plan = planRow?.plan ?? "free";
+    if (!canAccessFeature(plan, "bulkImport")) {
+      return NextResponse.json(
+        {
+          error:
+            "Bulk student import is available on Pro and Enterprise plans. Upgrade to unlock.",
+          upgradeUrl: "/pricing",
+        },
+        { status: 403 }
+      );
+    }
+
     let body: ImportBody;
     try {
       body = (await request.json()) as ImportBody;
@@ -432,6 +447,12 @@ export async function POST(request: NextRequest) {
       const toInsert = validated.filter((r) => r.status !== "error");
       const skipped = validated.filter((r) => r.status === "error");
 
+      const limitState = await checkStudentLimit(supabase, schoolId);
+      let remaining =
+        limitState.limit == null
+          ? Number.POSITIVE_INFINITY
+          : Math.max(0, limitState.limit - limitState.current);
+
       type InsertRow = Database["public"]["Tables"]["students"]["Insert"];
       const successLines: number[] = [];
       const warningImports: { line: number; warnings: string[] }[] = [];
@@ -456,6 +477,15 @@ export async function POST(request: NextRequest) {
             });
             continue;
           }
+        }
+
+        if (remaining <= 0) {
+          insertErrors.push({
+            line: r.line,
+            message:
+              "Plan student limit reached. Upgrade to add more students.",
+          });
+          continue;
         }
 
         const row: InsertRow = {
@@ -485,6 +515,7 @@ export async function POST(request: NextRequest) {
         if (r.admission_number != null) {
           admissionsAfterInsert.add(r.admission_number.toLowerCase());
         }
+        remaining -= 1;
         successLines.push(r.line);
         if (r.warnings.length > 0) {
           warningImports.push({ line: r.line, warnings: [...r.warnings] });
