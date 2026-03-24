@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { generateAdmissionNumberWithClient } from "@/lib/admission-number";
 import { checkStudentLimit } from "@/lib/plan-limits";
 import type { Database } from "@/types/supabase";
 
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     const fullName = String(body.full_name ?? "").trim();
     const classId = String(body.class_id ?? "").trim();
-    const admissionNumber =
+    let admissionNumber =
       body.admission_number != null && String(body.admission_number).trim() !== ""
         ? String(body.admission_number).trim()
         : null;
@@ -77,6 +78,43 @@ export async function POST(request: NextRequest) {
         { error: "Please select a class." },
         { status: 400 }
       );
+    }
+
+    if (!admissionNumber) {
+      const { data: sch, error: schErr } = await supabase
+        .from("schools")
+        .select("admission_prefix")
+        .eq("id", schoolId)
+        .maybeSingle();
+
+      if (schErr) {
+        return NextResponse.json({ error: schErr.message }, { status: 500 });
+      }
+
+      const prefix = (
+        sch as { admission_prefix: string | null } | null
+      )?.admission_prefix?.trim();
+
+      if (!prefix) {
+        return NextResponse.json(
+          {
+            error:
+              "Provide an admission_number or set a school admission prefix for auto-generated numbers.",
+          },
+          { status: 400 }
+        );
+      }
+
+      try {
+        admissionNumber = await generateAdmissionNumberWithClient(
+          supabase,
+          schoolId
+        );
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : "Could not generate admission number.";
+        return NextResponse.json({ error: message }, { status: 422 });
+      }
     }
 
     const limitCheck = await checkStudentLimit(supabase, schoolId);
@@ -110,7 +148,7 @@ export async function POST(request: NextRequest) {
       if (insErr.code === "23505") {
         return NextResponse.json(
           {
-            error: `Admission number "${admissionNumber}" is already in use.`,
+            error: "This admission number is already in use for another student.",
           },
           { status: 409 }
         );

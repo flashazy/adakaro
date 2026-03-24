@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import {
+  escapeRegExp,
+  peekNextAdmissionNumberWithClient,
+} from "@/lib/admission-number";
 import { canAccessFeature, normalizePlanId } from "@/lib/plans";
 import { checkStudentLimit, getSchoolPlanRow } from "@/lib/plan-limits";
 import { QueryErrorBanner } from "../query-error-banner";
@@ -9,6 +13,25 @@ import { AddStudentForm } from "./add-student-form";
 import StudentImportModal from "./components/student-import-modal";
 import { StudentList } from "./student-list";
 import Link from "next/link";
+
+function fallbackNextAdmissionNumber(
+  prefix: string,
+  students: { admission_number: string | null }[]
+): string {
+  const p = prefix.trim().toUpperCase();
+  let max = 0;
+  const re = new RegExp(`^${escapeRegExp(p)}-(\\d+)$`, "i");
+  for (const s of students) {
+    const a = s.admission_number?.trim();
+    if (!a) continue;
+    const m = a.match(re);
+    if (m) {
+      const n = Number.parseInt(m[1], 10);
+      if (!Number.isNaN(n)) max = Math.max(max, n);
+    }
+  }
+  return `${p}-${String(max + 1).padStart(3, "0")}`;
+}
 
 export default async function StudentsPage() {
   const supabase = await createClient();
@@ -56,6 +79,24 @@ export default async function StudentsPage() {
   const canBulkImport = canAccessFeature(planId, "bulkImport");
   const studentLimitState = await checkStudentLimit(supabase, schoolId);
 
+  const { data: schoolMeta } = await supabase
+    .from("schools")
+    .select("admission_prefix")
+    .eq("id", schoolId)
+    .maybeSingle();
+
+  const schoolAdmissionPrefix =
+    (schoolMeta as { admission_prefix: string | null } | null)
+      ?.admission_prefix?.trim() ?? null;
+
+  const peeked = schoolAdmissionPrefix
+    ? await peekNextAdmissionNumberWithClient(supabase, schoolId)
+    : null;
+  const nextAdmissionPreview = schoolAdmissionPrefix
+    ? peeked ??
+      fallbackNextAdmissionNumber(schoolAdmissionPrefix, typedStudents)
+    : null;
+
   return (
     <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -94,6 +135,8 @@ export default async function StudentsPage() {
           classes={classOptions}
           studentCount={studentLimitState.current}
           studentLimit={studentLimitState.limit}
+          nextAdmissionPreview={nextAdmissionPreview}
+          schoolAdmissionPrefix={schoolAdmissionPrefix}
         />
         {!listError ? (
           <StudentList students={typedStudents} classes={classOptions} />

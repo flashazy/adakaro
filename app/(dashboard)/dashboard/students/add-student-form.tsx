@@ -2,8 +2,17 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
 import { addStudent, type StudentActionState } from "./actions";
+
+function syncAdmissionFromPreview(
+  preview: string | null | undefined
+): { value: string; snapshot: string } {
+  const v = (preview ?? "").trim();
+  return { value: v, snapshot: v };
+}
 
 function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
@@ -24,6 +33,10 @@ interface Props {
   studentCount?: number;
   /** Plan cap; null = unlimited. */
   studentLimit?: number | null;
+  /** Next admission number preview (does not reserve a slot). */
+  nextAdmissionPreview?: string | null;
+  /** School prefix when set (3–4 letters). */
+  schoolAdmissionPrefix?: string | null;
 }
 
 const initialState: StudentActionState = {};
@@ -32,17 +45,34 @@ export function AddStudentForm({
   classes,
   studentCount = 0,
   studentLimit = null,
+  nextAdmissionPreview = null,
+  schoolAdmissionPrefix = null,
 }: Props) {
+  const router = useRouter();
   const [state, formAction] = useActionState(addStudent, initialState);
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const admissionInputRef = useRef<HTMLInputElement>(null);
+  const [admissionValue, setAdmissionValue] = useState("");
+  const [admissionSnapshot, setAdmissionSnapshot] = useState("");
+
+  useEffect(() => {
+    if (open && schoolAdmissionPrefix) {
+      const { value, snapshot } = syncAdmissionFromPreview(
+        nextAdmissionPreview
+      );
+      setAdmissionValue(value);
+      setAdmissionSnapshot(snapshot);
+    }
+  }, [open, schoolAdmissionPrefix, nextAdmissionPreview]);
 
   useEffect(() => {
     if (state.success) {
       formRef.current?.reset();
       setOpen(false);
+      router.refresh();
     }
-  }, [state.success]);
+  }, [state.success, router]);
 
   const atStudentLimit =
     studentLimit != null && studentCount >= studentLimit;
@@ -122,13 +152,57 @@ export function AddStudentForm({
               >
                 Admission number
               </label>
-              <input
-                id="admission_number"
-                name="admission_number"
-                type="text"
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
-                placeholder="e.g. ADM-001"
-              />
+              {schoolAdmissionPrefix ? (
+                <div className="mt-1.5 flex gap-2">
+                  <input
+                    type="hidden"
+                    name="admission_default_snapshot"
+                    value={admissionSnapshot}
+                  />
+                  <input
+                    ref={admissionInputRef}
+                    id="admission_number"
+                    name="admission_number"
+                    type="text"
+                    autoComplete="off"
+                    value={admissionValue}
+                    onChange={(e) => setAdmissionValue(e.target.value)}
+                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                    placeholder={`e.g. ${schoolAdmissionPrefix}-001`}
+                  />
+                  <button
+                    type="button"
+                    title="Focus field to edit admission number"
+                    onClick={() => {
+                      admissionInputRef.current?.focus();
+                      admissionInputRef.current?.select();
+                    }}
+                    className="shrink-0 rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden />
+                  </button>
+                </div>
+              ) : (
+                <input
+                  id="admission_number"
+                  name="admission_number"
+                  type="text"
+                  className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                  placeholder="e.g. ADM-001 (optional)"
+                />
+              )}
+              {schoolAdmissionPrefix ? (
+                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                  Pre-filled with the next number. You can edit it; if you leave
+                  it as suggested, the next free sequence number is assigned
+                  when you save.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                  Set a school admission prefix in School settings to enable
+                  auto-generated numbers.
+                </p>
+              )}
             </div>
 
             <div>

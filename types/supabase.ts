@@ -64,6 +64,7 @@ export interface Database {
           plan_expires_at: string | null;
           student_limit: number | null;
           admin_limit: number | null;
+          admission_prefix: string | null;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -80,6 +81,7 @@ export interface Database {
           plan_expires_at?: string | null;
           student_limit?: number | null;
           admin_limit?: number | null;
+          admission_prefix?: string | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -95,6 +97,23 @@ export interface Database {
           plan_expires_at?: string | null;
           student_limit?: number | null;
           admin_limit?: number | null;
+          admission_prefix?: string | null;
+          updated_at?: string;
+        };
+      };
+      school_admission_counters: {
+        Row: {
+          school_id: string;
+          next_number: number;
+          updated_at: string;
+        };
+        Insert: {
+          school_id: string;
+          next_number?: number;
+          updated_at?: string;
+        };
+        Update: {
+          next_number?: number;
           updated_at?: string;
         };
       };
@@ -498,7 +517,20 @@ export interface Database {
           p_email?: string | null;
           p_logo_url?: string | null;
           p_currency?: string | null;
+          p_admission_prefix?: string | null;
         };
+        Returns: string;
+      };
+      generate_unique_prefix: {
+        Args: { p_school_name: string };
+        Returns: string;
+      };
+      peek_next_admission_number: {
+        Args: { p_school_id: string };
+        Returns: string | null;
+      };
+      get_next_admission_number: {
+        Args: { p_school_id: string };
         Returns: string;
       };
       get_my_school_id: {

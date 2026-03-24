@@ -19,6 +19,13 @@ export async function createSchool(
   const currencyRaw = String(formData.get("currency") ?? "")
     .trim()
     .toUpperCase();
+  const admissionPrefixRaw = String(
+    formData.get("admission_prefix") ?? ""
+  ).trim();
+  const p_admission_prefix =
+    admissionPrefixRaw === ""
+      ? null
+      : admissionPrefixRaw.toUpperCase();
   const logo = formData.get("logo") as File | null;
 
   if (!name.trim()) {
@@ -27,6 +34,16 @@ export async function createSchool(
 
   if (!isSchoolCurrencyCode(currencyRaw)) {
     return { error: "Please select a valid currency." };
+  }
+
+  if (
+    p_admission_prefix != null &&
+    !/^[A-Z]{3,4}$/.test(p_admission_prefix)
+  ) {
+    return {
+      error:
+        "Admission prefix must be 3–4 letters (A–Z), or leave blank to auto-generate from the school name.",
+    };
   }
 
   const supabase = await createClient();
@@ -77,6 +94,7 @@ export async function createSchool(
       p_email: email,
       p_logo_url: logo_url,
       p_currency: currencyRaw,
+      p_admission_prefix: p_admission_prefix,
     } as never
   );
 

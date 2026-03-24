@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { generateAdmissionNumberWithClient } from "@/lib/admission-number";
 import { canAccessFeature } from "@/lib/plans";
 import { checkStudentLimit, getSchoolPlanRow } from "@/lib/plan-limits";
 import type { Database } from "@/types/supabase";
@@ -144,6 +145,10 @@ function validateOneDataRow(
     if (existingAdmissions.has(key)) {
       errors.push("This admission number already exists for your school.");
     }
+  } else {
+    warnings.push(
+      "Admission number will be assigned automatically when you import."
+    );
   }
 
   let resolved_class_id: string | null = null;
@@ -383,6 +388,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const { data: schoolAdmissionRow, error: schoolAdmissionErr } =
+      await supabase
+        .from("schools")
+        .select("admission_prefix")
+        .eq("id", schoolId)
+        .maybeSingle();
+
+    if (schoolAdmissionErr) {
+      return NextResponse.json(
+        { error: schoolAdmissionErr.message },
+        { status: 500 }
+      );
+    }
+
+    const schoolAdmissionPrefix = (
+      schoolAdmissionRow as { admission_prefix: string | null } | null
+    )?.admission_prefix?.trim();
+
     if (body.action === "validate") {
       const csv = String(body.csv ?? "");
       const byteLength = new TextEncoder().encode(csv).length;
@@ -409,6 +432,19 @@ export async function POST(request: NextRequest) {
         defaultClassId,
         existingAdmissions
       );
+
+      const needsAutoAdmission = rows.some(
+        (r) => r.admission_number == null && r.status !== "error"
+      );
+      if (needsAutoAdmission && !schoolAdmissionPrefix) {
+        return NextResponse.json(
+          {
+            error:
+              "Your school has no admission prefix. Set it under School settings, or provide admission_number for every row in the CSV.",
+          },
+          { status: 400 }
+        );
+      }
 
       const validCount = rows.filter((r) => r.status === "valid").length;
       const warnCount = rows.filter((r) => r.status === "warning").length;
@@ -444,6 +480,19 @@ export async function POST(request: NextRequest) {
         existingAdmissions
       );
 
+      const needsAutoAdmissionImport = validated.some(
+        (r) => r.admission_number == null && r.status !== "error"
+      );
+      if (needsAutoAdmissionImport && !schoolAdmissionPrefix) {
+        return NextResponse.json(
+          {
+            error:
+              "Your school has no admission prefix. Set it under School settings, or provide admission_number for every row.",
+          },
+          { status: 400 }
+        );
+      }
+
       const toInsert = validated.filter((r) => r.status !== "error");
       const skipped = validated.filter((r) => r.status === "error");
 
@@ -468,15 +517,32 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        if (r.admission_number != null) {
-          const k = r.admission_number.toLowerCase();
-          if (admissionsAfterInsert.has(k)) {
+        let admissionToUse = r.admission_number?.trim() || null;
+        if (!admissionToUse) {
+          try {
+            admissionToUse = await generateAdmissionNumberWithClient(
+              supabase,
+              schoolId
+            );
+          } catch (e) {
             insertErrors.push({
               line: r.line,
-              message: "Duplicate admission number (database).",
+              message:
+                e instanceof Error
+                  ? e.message
+                  : "Could not generate admission number.",
             });
             continue;
           }
+        }
+
+        const k = admissionToUse.toLowerCase();
+        if (admissionsAfterInsert.has(k)) {
+          insertErrors.push({
+            line: r.line,
+            message: "Duplicate admission number (database).",
+          });
+          continue;
         }
 
         if (remaining <= 0) {
@@ -492,7 +558,7 @@ export async function POST(request: NextRequest) {
           school_id: schoolId,
           class_id: r.resolved_class_id,
           full_name: r.full_name,
-          admission_number: r.admission_number,
+          admission_number: admissionToUse,
           parent_email: r.parent_email,
           parent_name: null,
           parent_phone: null,
@@ -512,9 +578,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        if (r.admission_number != null) {
-          admissionsAfterInsert.add(r.admission_number.toLowerCase());
-        }
+        admissionsAfterInsert.add(admissionToUse.toLowerCase());
         remaining -= 1;
         successLines.push(r.line);
         if (r.warnings.length > 0) {

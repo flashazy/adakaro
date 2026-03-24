@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency, formatSchoolTitleWithCurrency } from "@/lib/currency";
 import { SchoolCurrencyForm } from "./school-currency-form";
+import { SchoolAdmissionPrefixForm } from "./school-admission-prefix-form";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function SchoolSettingsPage() {
 
   const { data: school, error } = await supabase
     .from("schools")
-    .select("name, currency")
+    .select("name, currency, admission_prefix")
     .eq("id", schoolId)
     .maybeSingle();
 
@@ -28,7 +29,11 @@ export default async function SchoolSettingsPage() {
     console.error("[school-settings]", error);
   }
 
-  const fetched = school as { name: string; currency: string | null } | null;
+  const fetched = school as {
+    name: string;
+    currency: string | null;
+    admission_prefix: string | null;
+  } | null;
   const row = {
     name: (fetched?.name?.trim() || display.name?.trim() || "").trim(),
     currency: fetched?.currency ?? display.currency,
@@ -38,6 +43,7 @@ export default async function SchoolSettingsPage() {
     redirect("/dashboard");
   }
   const currency = normalizeSchoolCurrency(row.currency);
+  const admissionPrefix = (fetched?.admission_prefix ?? "").trim();
 
   return (
     <>
@@ -61,6 +67,21 @@ export default async function SchoolSettingsPage() {
       </header>
 
       <main className="mx-auto max-w-3xl space-y-8 py-10">
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Student admission prefix
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+            Auto-generated admission numbers use this prefix (e.g. MTZ-012).
+          </p>
+          <div className="mt-6">
+            <SchoolAdmissionPrefixForm
+              schoolId={schoolId}
+              currentPrefix={admissionPrefix}
+            />
+          </div>
+        </section>
+
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
             Currency

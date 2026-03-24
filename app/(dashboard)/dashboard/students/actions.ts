@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { escapeRegExp } from "@/lib/admission-number";
 import { checkStudentLimit } from "@/lib/plan-limits";
 
 async function getSchoolId() {
@@ -29,7 +30,10 @@ export async function addStudent(
   formData: FormData
 ): Promise<StudentActionState> {
   const fullName = (formData.get("full_name") as string)?.trim();
-  const admissionNumber =
+  const snapshotField = formData.get("admission_default_snapshot");
+  const admissionDefaultSnapshot =
+    typeof snapshotField === "string" ? snapshotField.trim() : "";
+  const admissionNumberRaw =
     (formData.get("admission_number") as string)?.trim() || null;
   const classId = (formData.get("class_id") as string)?.trim();
   const parentName = (formData.get("parent_name") as string)?.trim() || null;
@@ -41,6 +45,81 @@ export async function addStudent(
 
   try {
     const { supabase, schoolId } = await getSchoolId();
+
+    const { data: schoolRow, error: schoolErr } = await supabase
+      .from("schools")
+      .select("admission_prefix")
+      .eq("id", schoolId)
+      .maybeSingle();
+
+    if (schoolErr) {
+      return { error: schoolErr.message };
+    }
+
+    const schoolPrefix = (
+      schoolRow as { admission_prefix: string | null } | null
+    )?.admission_prefix?.trim();
+
+    let admissionNumber: string | null = null;
+
+    async function allocateNextAdmission(): Promise<
+      { ok: true; value: string } | { ok: false; message: string }
+    > {
+      if (!schoolPrefix) {
+        return {
+          ok: false,
+          message:
+            "Set an admission prefix under School settings before using auto-generated admission numbers.",
+        };
+      }
+      const { data: generated, error: genErr } = await supabase.rpc(
+        "get_next_admission_number",
+        { p_school_id: schoolId } as never
+      );
+      if (genErr) {
+        return { ok: false, message: genErr.message };
+      }
+      const genText = generated as string | null | undefined;
+      if (typeof genText !== "string" || !genText.trim()) {
+        return {
+          ok: false,
+          message: "Could not generate an admission number.",
+        };
+      }
+      return { ok: true, value: genText.trim() };
+    }
+
+    if (!schoolPrefix) {
+      admissionNumber =
+        admissionNumberRaw && admissionNumberRaw !== ""
+          ? admissionNumberRaw
+          : null;
+    } else {
+      const submitted = admissionNumberRaw ?? "";
+      const snapshot = admissionDefaultSnapshot;
+      const stillUsingSuggested =
+        snapshot !== "" && submitted !== "" && submitted === snapshot;
+      const cleared = submitted === "";
+
+      if (stillUsingSuggested || cleared) {
+        const alloc = await allocateNextAdmission();
+        if (!alloc.ok) {
+          return { error: alloc.message };
+        }
+        admissionNumber = alloc.value;
+      } else {
+        admissionNumber = submitted;
+        const re = new RegExp(
+          `^${escapeRegExp(schoolPrefix)}-\\d+$`,
+          "i"
+        );
+        if (!re.test(admissionNumber)) {
+          return {
+            error: `Admission number should match your school format (e.g. ${schoolPrefix}-001).`,
+          };
+        }
+      }
+    }
 
     const limitCheck = await checkStudentLimit(supabase, schoolId);
     if (!limitCheck.allowed) {
@@ -62,7 +141,9 @@ export async function addStudent(
 
     if (error) {
       if (error.code === "23505") {
-        return { error: `Admission number "${admissionNumber}" is already in use.` };
+        return {
+          error: "This admission number is already in use for another student.",
+        };
       }
       return { error: error.message };
     }

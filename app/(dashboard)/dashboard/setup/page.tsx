@@ -1,17 +1,19 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { SchoolCurrencySelect } from "@/components/SchoolCurrencySelect";
 import { createSchool, type SetupState } from "./actions";
 
-function SubmitButton() {
+const PREFIX_RE = /^[A-Z]{3,4}$/;
+
+function SubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
 
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || disabled}
       className="flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {pending ? (
@@ -46,6 +48,98 @@ const initialState: SetupState = {};
 
 export default function SchoolSetupPage() {
   const [state, formAction] = useActionState(createSchool, initialState);
+  const [schoolName, setSchoolName] = useState("");
+  const [admissionPrefix, setAdmissionPrefix] = useState("");
+  const [prefixManual, setPrefixManual] = useState(false);
+  const [prefixCheckLoading, setPrefixCheckLoading] = useState(false);
+  const [prefixAvailable, setPrefixAvailable] = useState(true);
+  const [alternatives, setAlternatives] = useState<string[]>([]);
+  const suggestAbort = useRef<AbortController | null>(null);
+  const checkAbort = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const name = schoolName.trim();
+    if (name.length < 2 || prefixManual) {
+      return;
+    }
+    const t = window.setTimeout(() => {
+      suggestAbort.current?.abort();
+      const ac = new AbortController();
+      suggestAbort.current = ac;
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/schools/set-prefix?mode=suggest&name=${encodeURIComponent(name)}`,
+            { signal: ac.signal }
+          );
+          const data = (await res.json()) as {
+            suggested?: string;
+            error?: string;
+          };
+          if (!res.ok) {
+            return;
+          }
+          if (data.suggested) {
+            setAdmissionPrefix(data.suggested);
+          }
+        } catch {
+          /* aborted or network */
+        }
+      })();
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [schoolName, prefixManual]);
+
+  useEffect(() => {
+    const p = admissionPrefix.trim().toUpperCase();
+    if (p === "") {
+      setPrefixAvailable(true);
+      setAlternatives([]);
+      setPrefixCheckLoading(false);
+      return;
+    }
+    if (!PREFIX_RE.test(p)) {
+      setPrefixAvailable(false);
+      setAlternatives([]);
+      setPrefixCheckLoading(false);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      checkAbort.current?.abort();
+      const ac = new AbortController();
+      checkAbort.current = ac;
+      setPrefixCheckLoading(true);
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/schools/set-prefix?mode=check&prefix=${encodeURIComponent(p)}`,
+            { signal: ac.signal }
+          );
+          const data = (await res.json()) as {
+            available?: boolean;
+            alternatives?: string[];
+          };
+          if (!res.ok) {
+            setPrefixAvailable(false);
+            setAlternatives([]);
+            return;
+          }
+          setPrefixAvailable(Boolean(data.available));
+          setAlternatives(data.alternatives ?? []);
+        } catch {
+          setPrefixAvailable(false);
+          setAlternatives([]);
+        } finally {
+          setPrefixCheckLoading(false);
+        }
+      })();
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [admissionPrefix]);
+
+  const prefixOk =
+    admissionPrefix.trim() === "" ||
+    (PREFIX_RE.test(admissionPrefix.trim().toUpperCase()) && prefixAvailable);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-12 dark:from-zinc-950 dark:to-zinc-900">
@@ -68,6 +162,13 @@ export default function SchoolSetupPage() {
               </div>
             )}
 
+            <input
+              type="hidden"
+              name="admission_prefix"
+              value={admissionPrefix.trim().toUpperCase()}
+              readOnly
+            />
+
             <div>
               <label
                 htmlFor="name"
@@ -80,9 +181,81 @@ export default function SchoolSetupPage() {
                 name="name"
                 type="text"
                 required
+                value={schoolName}
+                onChange={(e) => {
+                  setSchoolName(e.target.value);
+                }}
                 className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
                 placeholder="e.g. Greenfield Academy"
               />
+            </div>
+
+            <div>
+              <label
+                htmlFor="admission_prefix_visible"
+                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+              >
+                School admission prefix (3–4 letters)
+              </label>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                Used for student admission numbers: PREFIX-001. Leave blank to
+                auto-generate from the school name.
+              </p>
+              <input
+                id="admission_prefix_visible"
+                type="text"
+                maxLength={4}
+                autoComplete="off"
+                value={admissionPrefix}
+                onChange={(e) => {
+                  setPrefixManual(true);
+                  setAdmissionPrefix(e.target.value.toUpperCase());
+                }}
+                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 uppercase shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+                placeholder="e.g. MTZ"
+              />
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                {admissionPrefix.trim() === "" ? (
+                  <span className="text-slate-500 dark:text-zinc-400">
+                    Auto-generate from name on create
+                  </span>
+                ) : prefixCheckLoading ? (
+                  <span className="text-slate-500 dark:text-zinc-400">
+                    Checking…
+                  </span>
+                ) : !PREFIX_RE.test(admissionPrefix.trim()) ? (
+                  <span className="text-amber-700 dark:text-amber-400">
+                    Use 3–4 letters A–Z only
+                  </span>
+                ) : prefixAvailable ? (
+                  <span className="text-emerald-700 dark:text-emerald-400">
+                    Available
+                  </span>
+                ) : (
+                  <span className="text-red-600 dark:text-red-400">
+                    Already taken
+                  </span>
+                )}
+              </div>
+              {!prefixAvailable && alternatives.length > 0 ? (
+                <p className="mt-2 text-xs text-slate-600 dark:text-zinc-400">
+                  Try:{" "}
+                  {alternatives.map((a, i) => (
+                    <button
+                      key={a}
+                      type="button"
+                      className="mr-2 font-medium text-indigo-600 underline-offset-2 hover:underline dark:text-indigo-400"
+                      onClick={() => {
+                        setAdmissionPrefix(a);
+                        setPrefixManual(true);
+                      }}
+                    >
+                      {a}
+                      {i < alternatives.length - 1 ? "," : ""}
+                    </button>
+                  ))}
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -167,7 +340,7 @@ export default function SchoolSetupPage() {
               />
             </div>
 
-            <SubmitButton />
+            <SubmitButton disabled={!prefixOk} />
           </form>
         </div>
       </div>

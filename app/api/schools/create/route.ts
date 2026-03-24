@@ -54,6 +54,13 @@ export async function POST(request: NextRequest) {
     const currencyRaw = String(formData.get("currency") ?? "")
       .trim()
       .toUpperCase();
+    const admissionPrefixRaw = String(
+      formData.get("admission_prefix") ?? ""
+    ).trim();
+    const p_admission_prefix =
+      admissionPrefixRaw === ""
+        ? null
+        : admissionPrefixRaw.toUpperCase();
     const logo = formData.get("logo");
 
     if (!isSchoolCurrencyCode(currencyRaw)) {
@@ -63,6 +70,19 @@ export async function POST(request: NextRequest) {
       );
     }
     const currency = currencyRaw;
+
+    if (
+      p_admission_prefix != null &&
+      !/^[A-Z]{3,4}$/.test(p_admission_prefix)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Admission prefix must be 3–4 letters (A–Z), or omit for auto-generate.",
+        },
+        { status: 400 }
+      );
+    }
 
     let logo_url: string | null = null;
 
@@ -106,6 +126,7 @@ export async function POST(request: NextRequest) {
         p_email: email,
         p_logo_url: logo_url,
         p_currency: currency,
+        p_admission_prefix: p_admission_prefix,
       } as never
     );
 
