@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { isSchoolCurrencyCode } from "@/lib/currency";
 import { normalizePlanId } from "@/lib/plans";
@@ -21,6 +22,9 @@ export async function POST(request: NextRequest) {
     currency?: string;
     plan?: string;
     adminEmail?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -80,5 +84,42 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, schoolId });
+  const id =
+    schoolId != null && String(schoolId).trim() !== ""
+      ? String(schoolId).trim()
+      : "";
+  if (!id) {
+    return NextResponse.json(
+      { error: "School was not created (no id returned)." },
+      { status: 500 }
+    );
+  }
+
+  const address = String(body.address ?? "").trim();
+  const phone = String(body.phone ?? "").trim();
+  const schoolEmail = String(body.email ?? "").trim();
+  if (address || phone || schoolEmail) {
+    try {
+      const admin = createAdminClient();
+      const { error: patchErr } = await admin
+        .from("schools")
+        .update({
+          ...(address ? { address } : {}),
+          ...(phone ? { phone } : {}),
+          ...(schoolEmail ? { email: schoolEmail } : {}),
+          updated_at: new Date().toISOString(),
+        } as never)
+        .eq("id", id);
+      if (patchErr) {
+        console.error(
+          "[super-admin/create-school] optional contact update",
+          patchErr
+        );
+      }
+    } catch (e) {
+      console.error("[super-admin/create-school] optional contact update", e);
+    }
+  }
+
+  return NextResponse.json({ ok: true, schoolId: id });
 }

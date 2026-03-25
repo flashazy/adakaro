@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatLocaleDateTime, formatShortLocaleDate } from "@/lib/format-date";
-import { planDisplayName } from "@/lib/plans";
+import { normalizePlanId, planDisplayName } from "@/lib/plans";
 import { SchoolCurrencySelect } from "@/components/SchoolCurrencySelect";
 
 const PLANS = ["free", "basic", "pro", "enterprise"] as const;
@@ -137,9 +137,14 @@ export function SchoolDetailClient({
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
   const [invitePending, setInvitePending] = useState(false);
 
-  const [plan, setPlan] = useState(school.plan);
+  const [plan, setPlan] = useState(() => normalizePlanId(school.plan));
   useEffect(() => {
-    setPlan(school.plan);
+    setPlan(normalizePlanId(school.plan));
+  }, [school.plan]);
+
+  const [editPlan, setEditPlan] = useState(() => normalizePlanId(school.plan));
+  useEffect(() => {
+    setEditPlan(normalizePlanId(school.plan));
   }, [school.plan]);
 
   async function refresh() {
@@ -159,7 +164,10 @@ export function SchoolDetailClient({
       alert(body.error || "Could not update plan");
       return;
     }
-    setSchool((s) => ({ ...s, plan }));
+    const nextPlan = normalizePlanId(plan);
+    setSchool((s) => ({ ...s, plan: nextPlan }));
+    setPlan(nextPlan);
+    setEditPlan(nextPlan);
     closePlanModal();
     await refresh();
   }
@@ -174,19 +182,27 @@ export function SchoolDetailClient({
         schoolId: school.id,
         name: fd.get("name"),
         currency: fd.get("currency"),
+        plan: editPlan,
       }),
       credentials: "same-origin",
     });
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      plan?: string;
+    };
     if (!res.ok) {
       alert(body.error || "Could not save");
       return;
     }
+    const nextPlan = normalizePlanId(body.plan ?? editPlan);
     setSchool((s) => ({
       ...s,
       name: String(fd.get("name") ?? "").trim(),
       currency: String(fd.get("currency") ?? "").toUpperCase(),
+      plan: nextPlan,
     }));
+    setPlan(nextPlan);
+    setEditPlan(nextPlan);
     closeEditModal();
     await refresh();
   }
@@ -509,7 +525,7 @@ export function SchoolDetailClient({
           <form onSubmit={submitPlan} className="space-y-4">
             <select
               value={plan}
-              onChange={(e) => setPlan(e.target.value)}
+              onChange={(e) => setPlan(normalizePlanId(e.target.value))}
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
             >
               {PLANS.map((p) => (
@@ -518,6 +534,10 @@ export function SchoolDetailClient({
                 </option>
               ))}
             </select>
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Choose any tier (upgrade or downgrade). Saving updates plan limits
+              immediately.
+            </p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -559,6 +579,29 @@ export function SchoolDetailClient({
                 id={`detail-edit-curr-${school.id}`}
                 defaultValue={school.currency}
               />
+            </div>
+            <div>
+              <label
+                htmlFor={`detail-edit-plan-${school.id}`}
+                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+              >
+                Plan
+              </label>
+              <select
+                id={`detail-edit-plan-${school.id}`}
+                value={editPlan}
+                onChange={(e) => setEditPlan(normalizePlanId(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+              >
+                {PLANS.map((p) => (
+                  <option key={p} value={p}>
+                    {planDisplayName(p)}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                You can set any tier; limits update automatically when you save.
+              </p>
             </div>
             <div className="flex justify-end gap-2">
               <button

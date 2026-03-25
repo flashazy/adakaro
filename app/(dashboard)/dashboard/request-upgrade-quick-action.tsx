@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import {
   normalizePlanId,
   planDisplayName,
@@ -36,6 +37,37 @@ interface RequestUpgradeQuickActionProps {
   currentPlan: string;
 }
 
+function parsePlanFromDashboardRpc(
+  raw: unknown,
+  expectedSchoolId: string
+): string | null {
+  if (raw == null) return null;
+  let value: unknown = raw;
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t || t === "null") return null;
+    try {
+      value = JSON.parse(t) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const o = value as Record<string, unknown>;
+  const sid =
+    typeof o.school_id === "string"
+      ? o.school_id
+      : o.school_id != null
+        ? String(o.school_id)
+        : "";
+  if (!sid || sid !== expectedSchoolId) return null;
+  const p = o.plan;
+  if (typeof p !== "string" || !p.trim()) return null;
+  return p.trim();
+}
+
 export function RequestUpgradeQuickAction({
   schoolId,
   currentPlan,
@@ -46,9 +78,31 @@ export function RequestUpgradeQuickAction({
   const [msg, setMsg] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
+  const [livePlanRaw, setLivePlanRaw] = useState<string | null>(null);
 
   const effectiveSchoolId = typeof schoolId === "string" ? schoolId.trim() : "";
-  const current = normalizePlanId(currentPlan);
+
+  useEffect(() => {
+    if (!effectiveSchoolId) {
+      setLivePlanRaw(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc("get_my_school_for_dashboard");
+      if (cancelled || error) return;
+      const parsed = parsePlanFromDashboardRpc(data, effectiveSchoolId);
+      if (!cancelled && parsed) {
+        setLivePlanRaw(parsed);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveSchoolId]);
+
+  const current = normalizePlanId(livePlanRaw ?? currentPlan);
   const atMax = current === "enterprise";
   const higherPlans = PLANS.filter((p) => planRank(p) > planRank(current));
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { isSchoolCurrencyCode } from "@/lib/currency";
+import { normalizePlanId } from "@/lib/plans";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  let body: { schoolId?: string; name?: string; currency?: string };
+  let body: { schoolId?: string; name?: string; currency?: string; plan?: string };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -25,6 +26,8 @@ export async function POST(request: NextRequest) {
   const schoolId = String(body.schoolId ?? "").trim();
   const name = String(body.name ?? "").trim();
   const currencyRaw = String(body.currency ?? "").trim().toUpperCase();
+  const hasPlan = body.plan !== undefined && body.plan !== null;
+  const normalizedPlan = hasPlan ? normalizePlanId(String(body.plan)) : undefined;
 
   if (!schoolId || !name) {
     return NextResponse.json(
@@ -37,13 +40,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid currency." }, { status: 400 });
   }
 
+  const patch: Record<string, string> = {
+    name,
+    currency: currencyRaw,
+    updated_at: new Date().toISOString(),
+  };
+  if (hasPlan && normalizedPlan !== undefined) {
+    patch.plan = normalizedPlan;
+  }
+
   const { error } = await supabase
     .from("schools")
-    .update({
-      name,
-      currency: currencyRaw,
-      updated_at: new Date().toISOString(),
-    } as never)
+    .update(patch as never)
     .eq("id", schoolId);
 
   if (error) {
@@ -54,5 +62,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    ...(normalizedPlan !== undefined ? { plan: normalizedPlan } : {}),
+  });
 }
