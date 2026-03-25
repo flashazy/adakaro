@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/currency";
 import {
   ResponsiveContainer,
@@ -72,6 +73,49 @@ function CustomTooltip({
   );
 }
 
+function ChartsSkeleton() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 lg:col-span-2">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+          Payment Trends
+        </h3>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+          Daily collections over the last 30 days
+        </p>
+        <div
+          className="mt-4 h-64 animate-pulse rounded-lg bg-slate-100 dark:bg-zinc-800/80"
+          aria-hidden
+        />
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+          Collection Rate
+        </h3>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+          Fees collected vs outstanding
+        </p>
+        <div
+          className="mt-4 h-56 animate-pulse rounded-lg bg-slate-100 dark:bg-zinc-800/80"
+          aria-hidden
+        />
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+          Monthly Income
+        </h3>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+          Payment totals per month
+        </p>
+        <div
+          className="mt-4 h-56 animate-pulse rounded-lg bg-slate-100 dark:bg-zinc-800/80"
+          aria-hidden
+        />
+      </div>
+    </div>
+  );
+}
+
 export function DashboardCharts({
   dailyPayments,
   monthlyIncome,
@@ -79,6 +123,16 @@ export function DashboardCharts({
   outstandingBalance,
   currencyCode,
 }: Props) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <ChartsSkeleton />;
+  }
+
   const pieData = [
     { name: "Collected", value: feesCollected },
     { name: "Outstanding", value: Math.max(0, outstandingBalance) },
