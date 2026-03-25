@@ -7,6 +7,45 @@ import { useRef, useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { addStudent, type StudentActionState } from "./actions";
 
+/** Title-case one segment (handles O'Connor-style apostrophes). */
+function capitalizeNameSegment(segment: string): string {
+  if (!segment) return segment;
+  const lower = segment.toLowerCase();
+  if (lower.includes("'")) {
+    return lower
+      .split("'")
+      .map((part) =>
+        part ? part.charAt(0).toUpperCase() + part.slice(1) : ""
+      )
+      .join("'");
+  }
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** Title-case a single whitespace-delimited word (handles hyphens). */
+function capitalizeNameWord(word: string): string {
+  if (!word) return word;
+  if (word.includes("-")) {
+    return word.split("-").map(capitalizeNameSegment).join("-");
+  }
+  return capitalizeNameSegment(word);
+}
+
+/** Full name on blur: trim runs of spaces, title-case each word. Empty / whitespace-only unchanged. */
+function toTitleCase(str: string): string {
+  if (!str.trim()) return str;
+  return str
+    .trim()
+    .split(/\s+/)
+    .map(capitalizeNameWord)
+    .join(" ");
+}
+
+function toLowercaseEmail(str: string): string {
+  if (!str.trim()) return str;
+  return str.trim().toLowerCase();
+}
+
 function syncAdmissionFromPreview(
   preview: string | null | undefined
 ): { value: string; snapshot: string } {
@@ -148,6 +187,9 @@ export function AddStudentForm({
                 required
                 className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="e.g. Jane Doe"
+                onBlur={(e) => {
+                  e.currentTarget.value = toTitleCase(e.currentTarget.value);
+                }}
               />
             </div>
 
@@ -246,6 +288,9 @@ export function AddStudentForm({
                 type="text"
                 className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="Parent's full name"
+                onBlur={(e) => {
+                  e.currentTarget.value = toTitleCase(e.currentTarget.value);
+                }}
               />
             </div>
 
@@ -262,6 +307,11 @@ export function AddStudentForm({
                 type="email"
                 className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="parent@example.com"
+                onBlur={(e) => {
+                  e.currentTarget.value = toLowercaseEmail(
+                    e.currentTarget.value
+                  );
+                }}
               />
             </div>
 
