@@ -97,7 +97,7 @@ export async function submitContactForm(
 
   try {
     await transporter.sendMail({
-      from: `"Adakaro contact" <${user}>`,
+      from: `"Adakaro Support" <info@adakaro.com>`,
       to,
       replyTo: email,
       subject,
