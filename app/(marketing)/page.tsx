@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { HomeLanding } from "@/components/landing/home-landing";
 
 export const metadata: Metadata = {
-  title: "Adakaro — Smart school fee management for East Africa",
+  title: "Adakaro — Track every school fee without paper or confusion",
   description:
-    "Simplify payments, track collections, and keep parents happy. Multi-currency fees, ClickPesa payments, and a dashboard built for schools and families.",
+    "Adakaro helps schools in Tanzania and East Africa collect fees, generate control numbers, and instantly see who has paid — all in one simple system.",
   openGraph: {
-    title: "Adakaro — Smart school fee management for East Africa",
+    title: "Adakaro — School fee tracking for Tanzania & East Africa",
     description:
-      "One platform for schools, parents, and administrators. KES, TZS, UGX, USD. Pay with M-Pesa and more via ClickPesa.",
+      "School fee tracking for Tanzania and East Africa. Control numbers, mobile money, and clear visibility of who has paid.",
   },
 };
 

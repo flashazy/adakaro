@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { submitContactForm, type ContactFormState } from "./actions";
 
@@ -21,6 +22,13 @@ const initialState: ContactFormState = {};
 
 export function ContactForm() {
   const [state, formAction] = useActionState(submitContactForm, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (state.ok) {
+      formRef.current?.reset();
+    }
+  }, [state.ok]);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
@@ -29,10 +37,8 @@ export function ContactForm() {
           className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200"
           role="status"
         >
-          <p className="font-semibold">Message received</p>
-          <p className="mt-1 text-emerald-700 dark:text-emerald-300">
-            Thank you for contacting us. We&apos;ll get back to you as soon as
-            we can.
+          <p className="font-semibold text-emerald-800 dark:text-emerald-200">
+            Thank you! We&apos;ll get back to you soon.
           </p>
         </div>
       ) : null}
@@ -46,7 +52,7 @@ export function ContactForm() {
         </div>
       ) : null}
 
-      <form action={formAction} className="space-y-5">
+      <form ref={formRef} action={formAction} className="space-y-5">
         <div>
           <label
             htmlFor="fullName"
@@ -120,9 +126,6 @@ export function ContactForm() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SubmitButton />
-          <p className="text-xs text-slate-500 dark:text-zinc-500">
-            Submissions are logged for now; email delivery will be added soon.
-          </p>
         </div>
       </form>
     </div>
