@@ -216,7 +216,7 @@ export function HomeLanding() {
                   href="#features"
                   className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-6 py-3.5 text-base font-semibold text-slate-800 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:hover:border-indigo-500/50 dark:hover:bg-zinc-800"
                 >
-                  View Demo
+                  Features
                 </Link>
               </div>
               <p className="mt-5 text-xs leading-relaxed text-slate-500 sm:text-sm dark:text-zinc-500">
