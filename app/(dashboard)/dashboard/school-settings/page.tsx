@@ -1,10 +1,14 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
+import {
+  resolveSchoolDisplay,
+  logoVersionFromRow,
+} from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency, formatSchoolTitleWithCurrency } from "@/lib/currency";
 import { SchoolCurrencyForm } from "./school-currency-form";
 import { SchoolAdmissionPrefixForm } from "./school-admission-prefix-form";
+import { SchoolLogoForm } from "./school-logo-form";
 
 export const dynamic = "force-dynamic";
 
@@ -19,20 +23,18 @@ export default async function SchoolSettingsPage() {
   if (!display?.schoolId) redirect("/dashboard");
   const schoolId = display.schoolId;
 
-  const { data: school, error } = await supabase
+  const { data: school } = await supabase
     .from("schools")
-    .select("name, currency, admission_prefix")
+    .select("name, currency, admission_prefix, logo_url, updated_at")
     .eq("id", schoolId)
     .maybeSingle();
-
-  if (error) {
-    console.error("[school-settings]", error);
-  }
 
   const fetched = school as {
     name: string;
     currency: string | null;
     admission_prefix: string | null;
+    logo_url: string | null;
+    updated_at: string;
   } | null;
   const row = {
     name: (fetched?.name?.trim() || display.name?.trim() || "").trim(),
@@ -44,6 +46,12 @@ export default async function SchoolSettingsPage() {
   }
   const currency = normalizeSchoolCurrency(row.currency);
   const admissionPrefix = (fetched?.admission_prefix ?? "").trim();
+  const logoUrl =
+    (fetched?.logo_url?.trim() || display.logo_url?.trim() || null) ?? null;
+  const logoVersion =
+    fetched?.updated_at != null
+      ? logoVersionFromRow(fetched.updated_at)
+      : display.logo_version;
 
   return (
     <>
@@ -78,6 +86,22 @@ export default async function SchoolSettingsPage() {
             <SchoolAdmissionPrefixForm
               schoolId={schoolId}
               currentPrefix={admissionPrefix}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+            School logo
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+            Shown on your dashboard header and anywhere the school is identified.
+          </p>
+          <div className="mt-6">
+            <SchoolLogoForm
+              schoolName={row.name}
+              initialLogoUrl={logoUrl}
+              initialLogoVersion={logoVersion}
             />
           </div>
         </section>

@@ -8,6 +8,19 @@ export interface ResolvedSchoolDisplay {
   schoolId: string;
   name: string;
   currency: string | null;
+  logo_url: string | null;
+  /** Epoch ms from `schools.updated_at` — use as `?v=` on logo URLs to bust CDN/browser cache. */
+  logo_version: number;
+}
+
+export function logoVersionFromRow(
+  updatedAt: string | null | undefined
+): number {
+  if (updatedAt == null || String(updatedAt).trim() === "") {
+    return Date.now();
+  }
+  const t = Date.parse(updatedAt);
+  return Number.isFinite(t) ? t : Date.now();
 }
 
 /**
@@ -54,16 +67,23 @@ async function fetchSchoolDisplayViaAdmin(
 
   const { data: school } = await admin
     .from("schools")
-    .select("name, currency")
+    .select("name, currency, logo_url, updated_at")
     .eq("id", schoolId)
     .maybeSingle();
 
-  const row = school as { name: string; currency: string | null } | null;
+  const row = school as {
+    name: string;
+    currency: string | null;
+    logo_url: string | null;
+    updated_at: string;
+  } | null;
   const name = row?.name?.trim() ?? "";
   return {
     schoolId,
     name,
     currency: row?.currency ?? null,
+    logo_url: row?.logo_url ?? null,
+    logo_version: logoVersionFromRow(row?.updated_at),
   };
 }
 
@@ -90,21 +110,32 @@ export async function resolveSchoolDisplay(
     if (parsed?.school_id) {
       let name = parsed.name.trim();
       let currency = parsed.currency;
+      let logo_url: string | null = null;
+      const { data: row } = await supabase
+        .from("schools")
+        .select("name, currency, logo_url, updated_at")
+        .eq("id", parsed.school_id)
+        .maybeSingle();
+      const r = row as {
+        name: string;
+        currency: string | null;
+        logo_url: string | null;
+        updated_at: string;
+      } | null;
       if (!name) {
-        const { data: row } = await supabase
-          .from("schools")
-          .select("name, currency")
-          .eq("id", parsed.school_id)
-          .maybeSingle();
-        const r = row as { name: string; currency: string | null } | null;
         name = r?.name?.trim() ?? "";
-        currency = r?.currency ?? currency;
       }
+      if (currency == null && r?.currency != null) {
+        currency = r.currency;
+      }
+      logo_url = r?.logo_url ?? null;
       if (name.length > 0) {
         return {
           schoolId: parsed.school_id,
           name,
           currency,
+          logo_url,
+          logo_version: logoVersionFromRow(r?.updated_at),
         };
       }
     }
@@ -117,17 +148,26 @@ export async function resolveSchoolDisplay(
 
   const { data: row } = await supabase
     .from("schools")
-    .select("name, currency")
+    .select("name, currency, logo_url, updated_at")
     .eq("id", schoolId)
     .maybeSingle();
 
-  const r = row as { name: string; currency: string | null } | null;
+  const r = row as {
+    name: string;
+    currency: string | null;
+    logo_url: string | null;
+    updated_at: string;
+  } | null;
   let name = r?.name?.trim() ?? "";
   let currency = r?.currency ?? null;
+  let logo_url = r?.logo_url ?? null;
+  let logo_version = logoVersionFromRow(r?.updated_at);
 
   if (!name && adminFirst?.schoolId === schoolId) {
     name = adminFirst.name;
     currency = adminFirst.currency ?? currency;
+    logo_url = adminFirst.logo_url ?? logo_url;
+    logo_version = adminFirst.logo_version ?? logo_version;
   }
 
   if (!name) {
@@ -138,10 +178,16 @@ export async function resolveSchoolDisplay(
   }
 
   if (!name) {
-    return { schoolId, name: "", currency };
+    return {
+      schoolId,
+      name: "",
+      currency,
+      logo_url: logo_url ?? null,
+      logo_version,
+    };
   }
 
-  return { schoolId, name, currency };
+  return { schoolId, name, currency, logo_url, logo_version };
 }
 
 /**

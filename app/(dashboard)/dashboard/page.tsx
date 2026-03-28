@@ -10,7 +10,6 @@ import { RequestUpgradeQuickAction } from "./request-upgrade-quick-action";
 import {
   DEFAULT_SCHOOL_CURRENCY,
   formatCurrency,
-  formatSchoolTitleWithCurrency,
   normalizeSchoolCurrency,
 } from "@/lib/currency";
 
@@ -188,7 +187,6 @@ export default async function AdminDashboard() {
 
   const resolved = await resolveSchoolDisplay(user.id, supabase);
   const schoolId = resolved?.schoolId ?? null;
-  const schoolNameResolved = resolved?.name?.trim() || null;
   const schoolCurrencyRaw = resolved?.currency ?? null;
 
   if (process.env.NODE_ENV === "development") {
@@ -327,12 +325,7 @@ export default async function AdminDashboard() {
       .in("student_id", studentIds.length > 0 ? studentIds : [""]),
   ]);
 
-  const schoolName =
-    schoolNameResolved && schoolNameResolved.length > 0
-      ? schoolNameResolved
-      : "Your School";
   const schoolCurrency = normalizeSchoolCurrency(schoolCurrencyRaw);
-  const schoolTitle = formatSchoolTitleWithCurrency(schoolName, schoolCurrency);
   const totalStudents = studentsRes.count ?? 0;
   const totalClasses = classesRes.count ?? 0;
 
@@ -398,16 +391,8 @@ export default async function AdminDashboard() {
 
   return (
     <main className="pb-4">
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-            {schoolTitle}
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-zinc-400">
-            Welcome back, {profileName}
-          </p>
-        </div>
         {/* KPI Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             label="Total Students"
             value={String(totalStudents)}

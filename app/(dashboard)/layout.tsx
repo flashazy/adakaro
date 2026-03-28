@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { getDisplayName } from "@/lib/display-name";
+import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 
 export default async function DashboardGroupLayout({
@@ -21,13 +22,19 @@ export default async function DashboardGroupLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, role")
+    .select("full_name, role, avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
-  const profileRow = profile as { full_name: string; role: string } | null;
+  const profileRow = profile as {
+    full_name: string;
+    role: string;
+    avatar_url: string | null;
+  } | null;
   const fullName = getDisplayName(user, profileRow?.full_name ?? null);
   const isSuperAdmin = await checkIsSuperAdmin(supabase, user.id);
+
+  const schoolDisplay = await resolveSchoolDisplay(user.id, supabase);
 
   let hasParentStudents = false;
   const parentLinks = await supabase
@@ -63,6 +70,11 @@ export default async function DashboardGroupLayout({
         fullName={fullName}
         isSuperAdmin={isSuperAdmin}
         showParentDashboardLink={hasParentStudents}
+        schoolLogoUrl={schoolDisplay?.logo_url ?? null}
+        schoolLogoVersion={schoolDisplay?.logo_version ?? null}
+        schoolName={schoolDisplay?.name ?? null}
+        schoolCurrency={schoolDisplay?.currency ?? null}
+        avatarUrl={profileRow?.avatar_url ?? null}
       />
       <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
         <div
