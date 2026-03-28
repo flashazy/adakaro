@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles } from "lucide-react";
+import { AdakaroLogoMark } from "@/components/brand/AdakaroLogoMark";
 import { signOut } from "@/app/(auth)/actions";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
@@ -37,9 +37,7 @@ export function DashboardHeader({
           href={homeHref}
           className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-white"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
-            <Sparkles className="h-5 w-5" aria-hidden />
-          </span>
+          <AdakaroLogoMark size={36} className="shrink-0 shadow-sm" />
           Adakaro
         </Link>
 
