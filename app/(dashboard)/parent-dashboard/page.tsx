@@ -6,6 +6,7 @@ import type { UserRole } from "@/types/supabase";
 import LinkRequestForm from "./link-request-form";
 import PendingSchoolInvitations from "./pending-school-invitations";
 import ClickPesaPayButton from "@/components/ClickPesaPayButton";
+import { FloatingScrollButton } from "@/components/ui/floating-scroll-button";
 import {
   getSchoolCurrencyById,
   resolveSchoolDisplay,
@@ -299,6 +300,7 @@ export default async function ParentDashboard() {
     totalFees > 0 ? Math.round((totalPaid / totalFees) * 100) : 0;
 
   return (
+    <>
     <main className="pb-4">
         {hasAdminDashboardAccess ? (
           <div className="mb-4 flex flex-wrap items-center justify-end gap-2 border-b border-slate-200 pb-3 dark:border-zinc-800">
@@ -651,6 +653,8 @@ export default async function ParentDashboard() {
           </>
         )}
     </main>
+    <FloatingScrollButton />
+    </>
   );
 }
 

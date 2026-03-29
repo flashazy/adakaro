@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { getDisplayName } from "@/lib/display-name";
 import { normalizePlanId } from "@/lib/plans";
+import { FloatingScrollButton } from "@/components/ui/floating-scroll-button";
 import { CreateSchoolModal } from "./create-school-modal";
 import { DashboardCharts } from "./dashboard-charts";
 import { RequestUpgradeQuickAction } from "./request-upgrade-quick-action";
@@ -209,6 +210,7 @@ export default async function AdminDashboard() {
 
   if (!hasSchool) {
     return (
+      <>
       <main className="pb-4">
           <div className="mb-6">
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -293,6 +295,8 @@ export default async function AdminDashboard() {
             </div>
           </div>
       </main>
+      <FloatingScrollButton />
+    </>
     );
   }
 
@@ -390,6 +394,7 @@ export default async function AdminDashboard() {
   }));
 
   return (
+    <>
     <main className="pb-4">
         {/* KPI Cards */}
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -476,6 +481,8 @@ export default async function AdminDashboard() {
           </div>
         </div>
     </main>
+    <FloatingScrollButton />
+    </>
   );
 }
 
