@@ -62,24 +62,26 @@ export default async function DashboardGroupLayout({
     <>
       <a
         href="#page-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-indigo-600 focus:px-3 focus:py-2 focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-indigo-600 focus:px-3 focus:py-2 focus:text-white print:hidden"
       >
         Skip to content
       </a>
-      <DashboardHeader
-        fullName={fullName}
-        isSuperAdmin={isSuperAdmin}
-        showParentDashboardLink={hasParentStudents}
-        schoolLogoUrl={schoolDisplay?.logo_url ?? null}
-        schoolLogoVersion={schoolDisplay?.logo_version ?? null}
-        schoolName={schoolDisplay?.name ?? null}
-        schoolCurrency={schoolDisplay?.currency ?? null}
-        avatarUrl={profileRow?.avatar_url ?? null}
-      />
-      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+      <div className="print:hidden">
+        <DashboardHeader
+          fullName={fullName}
+          isSuperAdmin={isSuperAdmin}
+          showParentDashboardLink={hasParentStudents}
+          schoolLogoUrl={schoolDisplay?.logo_url ?? null}
+          schoolLogoVersion={schoolDisplay?.logo_version ?? null}
+          schoolName={schoolDisplay?.name ?? null}
+          schoolCurrency={schoolDisplay?.currency ?? null}
+          avatarUrl={profileRow?.avatar_url ?? null}
+        />
+      </div>
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:bg-white">
         <div
           id="page-content"
-          className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8"
+          className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
         >
           {children}
         </div>

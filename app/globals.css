@@ -25,3 +25,92 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Receipt print: clean single-page layout (admin + parent dashboard receipts) */
+@media print {
+  @page {
+    margin: 10mm;
+    size: auto;
+  }
+
+  html:has(.receipt-print) {
+    background: white !important;
+  }
+
+  body:has(.receipt-print) {
+    background: white !important;
+    color: #111827 !important;
+  }
+
+  .receipt-print {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    overflow: visible !important;
+    box-shadow: none !important;
+    background: white !important;
+    border: 1px solid #d1d5db !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .receipt-print-watermark {
+    opacity: 1 !important;
+  }
+
+  /* Match on-screen prominence: large, bold PAID stamp */
+  .receipt-print-watermark span {
+    font-size: 7rem !important;
+    line-height: 1 !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.05em !important;
+    color: #d1d5db !important;
+    opacity: 0.5 !important;
+  }
+
+  .receipt-print-status {
+    font-size: 0.875rem !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    padding: 0.5rem 1.25rem !important;
+  }
+
+  /* Dark theme tokens should not produce light text on white paper */
+  html.dark .receipt-print .dark\:text-white,
+  html.dark .receipt-print .dark\:text-zinc-100,
+  html.dark .receipt-print .dark\:text-zinc-200,
+  html.dark .receipt-print .dark\:text-zinc-300,
+  html.dark .receipt-print .dark\:text-zinc-400,
+  html.dark .receipt-print .dark\:text-zinc-500 {
+    color: #111827 !important;
+  }
+
+  html.dark .receipt-print .dark\:text-indigo-400 {
+    color: #1d4ed8 !important;
+  }
+
+  html.dark .receipt-print .dark\:text-green-300 {
+    color: #15803d !important;
+  }
+
+  html.dark .receipt-print .dark\:border-zinc-600,
+  html.dark .receipt-print .dark\:border-zinc-700,
+  html.dark .receipt-print .dark\:border-zinc-800 {
+    border-color: #e5e7eb !important;
+  }
+
+  html.dark .receipt-print .dark\:bg-zinc-800,
+  html.dark .receipt-print .dark\:bg-zinc-900 {
+    background-color: white !important;
+  }
+
+  html.dark .receipt-print span.inline-flex.rounded-full[class*="bg-green"],
+  html.dark .receipt-print .receipt-print-status {
+    background-color: #dcfce7 !important;
+  }
+
+  .receipt-print .receipt-print-status {
+    color: #15803d !important;
+    background-color: #dcfce7 !important;
+    border: 1px solid #86efac !important;
+  }
+}
