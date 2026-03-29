@@ -7,6 +7,10 @@ import LinkRequestForm from "./link-request-form";
 import PendingSchoolInvitations from "./pending-school-invitations";
 import ClickPesaPayButton from "@/components/ClickPesaPayButton";
 import {
+  getSchoolCurrencyById,
+  resolveSchoolDisplay,
+} from "@/lib/dashboard/resolve-school-display";
+import {
   DEFAULT_SCHOOL_CURRENCY,
   formatCurrency,
   normalizeSchoolCurrency,
@@ -243,14 +247,34 @@ export default async function ParentDashboard() {
   const schoolIds = [...new Set(students.map((s) => s.school_id))];
   const currencyBySchoolId = new Map<string, string>();
   if (schoolIds.length > 0) {
-    const { data: schoolRows } = await supabase
-      .from("schools")
-      .select("id, currency")
-      .in("id", schoolIds);
-    for (const row of schoolRows ?? []) {
-      const r = row as { id: string; currency: string | null };
-      currencyBySchoolId.set(r.id, normalizeSchoolCurrency(r.currency));
-    }
+    const schoolDisplay = await resolveSchoolDisplay(user.id, supabase);
+
+    await Promise.all(
+      schoolIds.map(async (sid) => {
+        let raw: string | null = null;
+        if (
+          schoolDisplay != null &&
+          schoolDisplay.schoolId === sid &&
+          schoolDisplay.currency != null &&
+          String(schoolDisplay.currency).trim() !== ""
+        ) {
+          raw = schoolDisplay.currency;
+        }
+        if (raw == null || String(raw).trim() === "") {
+          const { data: schoolRow } = await supabase
+            .from("schools")
+            .select("currency")
+            .eq("id", sid)
+            .maybeSingle();
+          raw =
+            (schoolRow as { currency: string | null } | null)?.currency ?? null;
+        }
+        if (raw == null || String(raw).trim() === "") {
+          raw = await getSchoolCurrencyById(sid);
+        }
+        currencyBySchoolId.set(sid, normalizeSchoolCurrency(raw));
+      })
+    );
   }
 
   function currencyForStudent(studentId: string): string {
