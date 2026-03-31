@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useId, useRef, useState } from "react";
+import { Info } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UpgradeModal } from "@/components/upgrade-modal";
 
@@ -40,16 +41,21 @@ interface Props {
 
 function downloadTemplate() {
   const csv = `full_name,admission_number,class_name,parent_email
-John Doe,STU001,Grade 1,
-Jane Smith,STU002,Grade 2,parent@example.com
+John Doe,,Grade 1,john@example.com
+Jane Smith,,Grade 2,
+Ali Hamza,,Grade 1,
 `;
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = "students_import_template.csv";
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function downloadErrorReport(details: { line: number; reasons: string[] }[]) {
@@ -342,25 +348,45 @@ export default function StudentImportModal({
               )}
 
               {phase === "pick" || phase === "preview" ? (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={downloadTemplate}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={downloadTemplate}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    >
+                      Download template
+                    </button>
+                    <label className="inline-flex cursor-pointer items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="sr-only"
+                        disabled={pending}
+                        onChange={handleFileChange}
+                      />
+                      Choose CSV file
+                    </label>
+                  </div>
+                  <p
+                    className="flex gap-2 text-xs leading-relaxed text-slate-500 dark:text-zinc-400"
+                    title="Admission numbers auto-generate (e.g., MOU-001). Leave the admission_number column blank to use auto-generated numbers, or add your own values (format: PREFIX-###)."
                   >
-                    Download template
-                  </button>
-                  <label className="inline-flex cursor-pointer items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv,text/csv"
-                      className="sr-only"
-                      disabled={pending}
-                      onChange={handleFileChange}
+                    <Info
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-zinc-500"
+                      strokeWidth={2}
+                      aria-hidden
                     />
-                    Choose CSV file
-                  </label>
+                    <span>
+                      Admission numbers auto-generate (e.g., MOU-001). Leave the{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        admission_number
+                      </span>{" "}
+                      column blank to use auto-generated numbers, or add your own
+                      values (format: PREFIX-###).
+                    </span>
+                  </p>
                 </div>
               ) : null}
 
