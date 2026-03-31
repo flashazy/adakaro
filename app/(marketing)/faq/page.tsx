@@ -38,7 +38,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: "Can I import students in bulk?",
-    a: "Yes, on the Pro plan you can import students via CSV upload. Simply go to the Students page, click 'Import Students (CSV)', download the template, fill in your student data, and upload. Bulk import supports up to 500 students per file.",
+    a: "Yes, on the Pro plan you can import students via CSV upload. After upgrading to Pro, go to the Students page and click 'Import Students (CSV)'. In the modal, you can download a template CSV file with the correct column headers. Fill in your student data and upload — bulk import supports up to 500 students per file.",
   },
 ];
 

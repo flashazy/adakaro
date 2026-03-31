@@ -6,6 +6,7 @@ import {
   resolveSchoolDisplay,
 } from "@/lib/dashboard/resolve-school-display";
 import { PrintButton } from "../../../dashboard/receipts/[id]/print-button";
+import "../../../dashboard/receipts/[id]/receipt-print.css";
 import Link from "next/link";
 import { Building2 } from "lucide-react";
 import {

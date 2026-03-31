@@ -1,8 +1,11 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/supabase";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { peekNextAdmissionNumberWithClient } from "@/lib/admission-number";
+import type { PlanId } from "@/lib/plans";
 import { canAccessFeature, normalizePlanId } from "@/lib/plans";
 import { checkStudentLimit, getSchoolPlanRow } from "@/lib/plan-limits";
 import { QueryErrorBanner } from "../query-error-banner";
@@ -12,6 +15,49 @@ import { StudentList } from "./student-list";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Resolves the school's plan tier for feature gating. Direct `schools` SELECTs
+ * can fail or return no row under RLS; `get_my_school_for_dashboard` is
+ * SECURITY DEFINER and returns the true `plan` when the row matches this school.
+ */
+async function resolveSchoolPlanIdForFeatures(
+  supabase: SupabaseClient<Database>,
+  schoolId: string,
+  planFromSchoolRow: string | null | undefined
+): Promise<PlanId> {
+  let planId = normalizePlanId(planFromSchoolRow ?? "free");
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "get_my_school_for_dashboard",
+    {} as never
+  );
+  if (rpcError || rpcData == null) {
+    return planId;
+  }
+
+  let raw: unknown = rpcData;
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t || t === "null") return planId;
+    try {
+      raw = JSON.parse(t) as unknown;
+    } catch {
+      return planId;
+    }
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return planId;
+  }
+  const o = raw as { school_id?: string; plan?: string };
+  if (o.school_id !== schoolId) {
+    return planId;
+  }
+  if (typeof o.plan === "string" && o.plan.trim() !== "") {
+    planId = normalizePlanId(o.plan);
+  }
+  return planId;
+}
 
 export default async function StudentsPage() {
   const supabase = await createClient();
@@ -55,7 +101,11 @@ export default async function StudentsPage() {
   const classOptions = typedClasses.map((c) => ({ id: c.id, name: c.name }));
 
   const planRow = await getSchoolPlanRow(supabase, schoolId);
-  const planId = normalizePlanId(planRow?.plan ?? "free");
+  const planId = await resolveSchoolPlanIdForFeatures(
+    supabase,
+    schoolId,
+    planRow?.plan
+  );
   const canBulkImport = canAccessFeature(planId, "bulkImport");
   const studentLimitState = await checkStudentLimit(supabase, schoolId);
 

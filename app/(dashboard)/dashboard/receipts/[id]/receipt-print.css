@@ -1,0 +1,28 @@
+/**
+ * Receipt-only print: page margins + margin-box rules where supported.
+ * Imported only from admin/parent receipt pages.
+ */
+@media print {
+  @page {
+    margin: 2cm;
+    size: auto;
+    @bottom-left {
+      content: normal;
+    }
+    @bottom-center {
+      content: normal;
+    }
+    @bottom-right {
+      content: normal;
+    }
+    @top-left {
+      content: normal;
+    }
+    @top-center {
+      content: normal;
+    }
+    @top-right {
+      content: normal;
+    }
+  }
+}
