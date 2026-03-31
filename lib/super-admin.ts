@@ -31,20 +31,18 @@ export async function checkIsSuperAdmin(
     return true;
   }
 
-  const { data, error: profileErr } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
+  // @ts-expect-error get_user_role added in DB; add to types/supabase.ts when regenerated
+  const { data: role, error: profileError } = await supabase.rpc("get_user_role", {
+    user_id: userId,
+  });
 
   if (process.env.NODE_ENV === "development") {
-    console.info("[checkIsSuperAdmin] profiles.role fallback", {
+    console.info("[checkIsSuperAdmin] get_user_role fallback", {
       userId,
-      role: (data as { role: string } | null)?.role ?? null,
-      profileError: profileErr?.message ?? null,
+      role: role ?? null,
+      profileError: profileError?.message ?? null,
     });
   }
 
-  const row = data as { role: ProfileRole } | null;
-  return isSuperAdminRole(row?.role);
+  return role === "super_admin";
 }
