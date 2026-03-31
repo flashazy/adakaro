@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -32,30 +33,59 @@ export default async function SuperAdminSchoolDetailPage({
     redirect("/dashboard");
   }
 
-  const { data: schoolRow, error: schoolErr } = await supabase
-    .from("schools")
-    .select("id, name, plan, currency, created_at, created_by")
-    .eq("id", id)
-    .maybeSingle();
-
   type SchoolPick = Pick<
     Database["public"]["Tables"]["schools"]["Row"],
-    "id" | "name" | "plan" | "currency" | "created_at" | "created_by"
+    | "id"
+    | "name"
+    | "plan"
+    | "currency"
+    | "status"
+    | "suspension_reason"
+    | "created_at"
+    | "created_by"
   >;
 
-  let queryClient = supabase;
-  let school: SchoolPick | null = schoolRow as SchoolPick | null;
+  /** Prefer full row (includes suspension fields after migration 00041). */
+  async function loadSchoolRow(
+    client: SupabaseClient<Database>
+  ): Promise<SchoolPick | null> {
+    const full = await client
+      .from("schools")
+      .select(
+        "id, name, plan, currency, status, suspension_reason, created_at, created_by"
+      )
+      .eq("id", id)
+      .maybeSingle();
+    if (!full.error && full.data) {
+      return full.data as SchoolPick;
+    }
+    const base = await client
+      .from("schools")
+      .select("id, name, plan, currency, created_at, created_by")
+      .eq("id", id)
+      .maybeSingle();
+    if (base.error || !base.data) {
+      return null;
+    }
+    return {
+      ...(base.data as Pick<
+        SchoolPick,
+        "id" | "name" | "plan" | "currency" | "created_at" | "created_by"
+      >),
+      status: "active",
+      suspension_reason: null,
+    } as SchoolPick;
+  }
 
-  if (schoolErr || !school) {
+  let queryClient = supabase;
+  let school = await loadSchoolRow(supabase);
+
+  if (!school) {
     try {
       const admin = createAdminClient();
-      const { data: adminSchool, error: adminErr } = await admin
-        .from("schools")
-        .select("id, name, plan, currency, created_at, created_by")
-        .eq("id", id)
-        .maybeSingle();
-      if (!adminErr && adminSchool) {
-        school = adminSchool as SchoolPick;
+      const loaded = await loadSchoolRow(admin);
+      if (loaded) {
+        school = loaded;
         queryClient = admin;
       }
     } catch {
@@ -116,6 +146,8 @@ export default async function SuperAdminSchoolDetailPage({
     name: school.name,
     plan: school.plan,
     currency: school.currency,
+    status: school.status ?? "active",
+    suspension_reason: school.suspension_reason ?? null,
     created_at: school.created_at,
     created_by: school.created_by,
   };

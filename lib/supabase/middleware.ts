@@ -50,6 +50,14 @@ export async function updateSession(request: NextRequest) {
   const isSuperAdminRoute = pathname.startsWith("/super-admin");
   const isProtectedRoute =
     isAdminRoute || isParentRoute || isSuperAdminRoute;
+  const isSchoolSuspendedPage = pathname === "/school-suspended";
+
+  // Suspension page is for logged-in users only.
+  if (!user && isSchoolSuspendedPage) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
 
   // Unauthenticated users trying to access protected routes → login.
   if (!user && isProtectedRoute) {
@@ -69,7 +77,7 @@ export async function updateSession(request: NextRequest) {
         ? "admin"
         : "parent";
 
-    if (isAuthPage || isProtectedRoute) {
+    if (isAuthPage || isProtectedRoute || isSchoolSuspendedPage) {
       // SECURITY DEFINER — reliable even if profiles SELECT is flaky for this user.
       const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
         "is_super_admin",
@@ -90,6 +98,36 @@ export async function updateSession(request: NextRequest) {
           role = pr;
         }
       }
+    }
+
+    const { data: blockedBySuspension } =
+      await supabase.rpc("is_user_blocked_by_school_suspension");
+
+    if (blockedBySuspension === true) {
+      if (pathname.startsWith("/api")) {
+        return NextResponse.json(
+          {
+            error:
+              "This school account has been suspended. Please contact support for assistance.",
+          },
+          { status: 403 }
+        );
+      }
+      if (!isSchoolSuspendedPage) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/school-suspended";
+        return NextResponse.redirect(url);
+      }
+    } else if (isSchoolSuspendedPage) {
+      const url = request.nextUrl.clone();
+      if (role === "super_admin") {
+        url.pathname = "/super-admin";
+      } else if (role === "admin") {
+        url.pathname = "/dashboard";
+      } else {
+        url.pathname = "/parent-dashboard";
+      }
+      return NextResponse.redirect(url);
     }
 
     // Redirect authenticated users away from auth pages.

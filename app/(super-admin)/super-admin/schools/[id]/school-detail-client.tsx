@@ -14,6 +14,8 @@ export interface SchoolDetail {
   name: string;
   plan: string;
   currency: string;
+  status: "active" | "suspended";
+  suspension_reason: string | null;
   created_at: string;
   created_by: string;
 }
@@ -107,6 +109,10 @@ export function SchoolDetailClient({
 
   const [planOpen, setPlanOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [suspendOpen, setSuspendOpen] = useState(false);
+  const [activateOpen, setActivateOpen] = useState(false);
+  const [suspendReasonDraft, setSuspendReasonDraft] = useState("");
+  const [statusPending, setStatusPending] = useState(false);
 
   const stripQueryModalFlags = useCallback(() => {
     const sp = new URLSearchParams(searchParams.toString());
@@ -273,6 +279,62 @@ export function SchoolDetailClient({
     await refresh();
   }
 
+  async function submitSuspend(e: React.FormEvent) {
+    e.preventDefault();
+    setStatusPending(true);
+    try {
+      const url = new URL(
+        `/api/super-admin/schools/${school.id}/toggle-status`,
+        window.location.origin
+      );
+      url.searchParams.set("action", "suspend");
+      const trimmed = suspendReasonDraft.trim();
+      if (trimmed) url.searchParams.set("reason", trimmed);
+      const res = await fetch(url.toString(), { credentials: "same-origin" });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        alert(body.error || "Could not suspend school");
+        return;
+      }
+      setSchool((s) => ({
+        ...s,
+        status: "suspended",
+        suspension_reason: trimmed || null,
+      }));
+      setSuspendOpen(false);
+      setSuspendReasonDraft("");
+      await refresh();
+    } finally {
+      setStatusPending(false);
+    }
+  }
+
+  async function submitActivate() {
+    setStatusPending(true);
+    try {
+      const url = new URL(
+        `/api/super-admin/schools/${school.id}/toggle-status`,
+        window.location.origin
+      );
+      url.searchParams.set("action", "activate");
+      const res = await fetch(url.toString(), { credentials: "same-origin" });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        alert(body.error || "Could not activate school");
+        return;
+      }
+      setSchool((s) => ({
+        ...s,
+        status: "active",
+        suspension_reason: null,
+      }));
+      setActivateOpen(false);
+      await refresh();
+    } finally {
+      setStatusPending(false);
+    }
+  }
+
   async function resendInvitation(invitationId: string) {
     const res = await fetch("/api/super-admin/invitations/resend", {
       method: "POST",
@@ -329,6 +391,51 @@ export function SchoolDetailClient({
             Edit school
           </button>
         </div>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+            Status
+          </h2>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span
+              className={
+                school.status === "active"
+                  ? "inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                  : "inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-800 dark:bg-red-900/40 dark:text-red-200"
+              }
+            >
+              {school.status === "active" ? "Active" : "Suspended"}
+            </span>
+            {school.status === "active" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSuspendReasonDraft("");
+                  setSuspendOpen(true);
+                }}
+                className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-zinc-900 dark:text-red-300 dark:hover:bg-red-950/40"
+              >
+                Suspend school
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActivateOpen(true)}
+                className="rounded-lg border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-zinc-900 dark:text-emerald-200 dark:hover:bg-emerald-950/30"
+              >
+                Activate school
+              </button>
+            )}
+          </div>
+          {school.status === "suspended" && school.suspension_reason ? (
+            <p className="mt-3 text-sm text-slate-600 dark:text-zinc-400">
+              <span className="font-medium text-slate-800 dark:text-zinc-200">
+                Reason:{" "}
+              </span>
+              {school.suspension_reason}
+            </p>
+          ) : null}
+        </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -554,6 +661,84 @@ export function SchoolDetailClient({
               </button>
             </div>
           </form>
+        </ModalShell>
+      ) : null}
+
+      {suspendOpen ? (
+        <ModalShell
+          title="Suspend school"
+          onClose={() => !statusPending && setSuspendOpen(false)}
+        >
+          <form onSubmit={submitSuspend} className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-zinc-400">
+              All admins and parents linked to this school will be blocked from
+              the app until you activate the school again.
+            </p>
+            <div>
+              <label
+                htmlFor="suspend-reason"
+                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+              >
+                Reason (optional)
+              </label>
+              <textarea
+                id="suspend-reason"
+                value={suspendReasonDraft}
+                onChange={(e) => setSuspendReasonDraft(e.target.value)}
+                rows={3}
+                placeholder="Internal note for your team…"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={statusPending}
+                onClick={() => setSuspendOpen(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-zinc-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={statusPending}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {statusPending ? "Saving…" : "Confirm suspend"}
+              </button>
+            </div>
+          </form>
+        </ModalShell>
+      ) : null}
+
+      {activateOpen ? (
+        <ModalShell
+          title="Activate school"
+          onClose={() => !statusPending && setActivateOpen(false)}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-zinc-400">
+              Restore access for all users linked to this school?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={statusPending}
+                onClick={() => setActivateOpen(false)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-zinc-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={statusPending}
+                onClick={() => void submitActivate()}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {statusPending ? "Saving…" : "Confirm activate"}
+              </button>
+            </div>
+          </div>
         </ModalShell>
       ) : null}
 

@@ -7,6 +7,7 @@ export type Json =
   | Json[];
 
 export type UserRole = "admin" | "parent" | "super_admin";
+export type SchoolStatus = "active" | "suspended";
 export type StudentStatus = "active" | "inactive" | "graduated" | "transferred";
 export type PaymentMethod =
   | "cash"
@@ -61,6 +62,8 @@ export interface Database {
           logo_url: string | null;
           currency: string;
           plan: string;
+          status: SchoolStatus;
+          suspension_reason: string | null;
           plan_expires_at: string | null;
           student_limit: number | null;
           admin_limit: number | null;
@@ -78,6 +81,8 @@ export interface Database {
           logo_url?: string | null;
           currency?: string;
           plan?: string;
+          status?: SchoolStatus;
+          suspension_reason?: string | null;
           plan_expires_at?: string | null;
           student_limit?: number | null;
           admin_limit?: number | null;
@@ -94,6 +99,8 @@ export interface Database {
           logo_url?: string | null;
           currency?: string;
           plan?: string;
+          status?: SchoolStatus;
+          suspension_reason?: string | null;
           plan_expires_at?: string | null;
           student_limit?: number | null;
           admin_limit?: number | null;
@@ -595,6 +602,14 @@ export interface Database {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      is_user_blocked_by_school_suspension: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      school_is_operational: {
+        Args: { p_school_id: string };
+        Returns: boolean;
+      };
       super_admin_create_school: {
         Args: {
           p_name: string;
@@ -628,6 +643,7 @@ export interface Database {
     };
     Enums: {
       user_role: UserRole;
+      school_status: SchoolStatus;
       student_status: StudentStatus;
       payment_method: PaymentMethod;
       payment_status: PaymentStatusType;
