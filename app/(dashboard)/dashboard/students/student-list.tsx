@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { StudentRow } from "./student-row";
 
 interface ClassOption {
@@ -24,9 +24,44 @@ interface StudentListProps {
   classes: ClassOption[];
 }
 
+const ROW_OPTIONS = [10, 25, 50, 100] as const;
+
+function getPageNumbers(current: number, total: number): (number | "ellipsis")[] {
+  if (total <= 0) return [];
+  if (total <= 9) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  const pages: (number | "ellipsis")[] = [];
+  pages.push(1);
+
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+
+  if (start > 2) {
+    pages.push("ellipsis");
+  }
+
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+
+  if (end < total - 1) {
+    pages.push("ellipsis");
+  }
+
+  if (total > 1) {
+    pages.push(total);
+  }
+
+  return pages;
+}
+
 export function StudentList({ students, classes }: StudentListProps) {
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   const classNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -52,13 +87,40 @@ export function StudentList({ students, classes }: StudentListProps) {
     });
   }, [students, query, classFilter, classNameMap]);
 
+  const totalFiltered = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query, classFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const pageSlice = useMemo(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    return filtered.slice(startIndex, startIndex + rowsPerPage);
+  }, [filtered, currentPage, rowsPerPage]);
+
   const isFiltered = query !== "" || classFilter !== "";
+
+  const rangeStart = totalFiltered === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
+  const rangeEnd =
+    totalFiltered === 0 ? 0 : Math.min(currentPage * rowsPerPage, totalFiltered);
+
+  const pageNumbers = useMemo(
+    () => getPageNumbers(currentPage, totalPages),
+    [currentPage, totalPages]
+  );
 
   return (
     <div>
-      {/* Search & filter bar */}
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
+      {/* Search, filter & row limit */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative min-w-0 flex-1">
           <input
             type="text"
             value={query}
@@ -85,7 +147,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         <select
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
         >
           <option value="">All classes</option>
           {classes.map((c) => (
@@ -94,19 +156,39 @@ export function StudentList({ students, classes }: StudentListProps) {
             </option>
           ))}
         </select>
+
+        <label className="flex w-full items-center gap-2 sm:w-auto">
+          <span className="shrink-0 text-sm text-slate-500 dark:text-zinc-400">
+            Rows
+          </span>
+          <select
+            value={rowsPerPage}
+            onChange={(e) => {
+              setRowsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
+          >
+            {ROW_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {/* Showing X of Y */}
+      {/* Showing range */}
       <p className="mt-3 text-sm text-slate-500 dark:text-zinc-400">
         Showing{" "}
         <span className="font-medium text-slate-900 dark:text-white">
-          {filtered.length}
+          {rangeStart}–{rangeEnd}
         </span>{" "}
         of{" "}
         <span className="font-medium text-slate-900 dark:text-white">
-          {students.length}
+          {totalFiltered}
         </span>{" "}
-        student{students.length !== 1 ? "s" : ""}
+        student{totalFiltered !== 1 ? "s" : ""}
         {isFiltered && (
           <button
             type="button"
@@ -123,36 +205,90 @@ export function StudentList({ students, classes }: StudentListProps) {
 
       {/* Results */}
       {filtered.length > 0 ? (
-        <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          {/* Desktop header */}
-          <div className="hidden border-b border-slate-200 px-6 py-3 lg:grid lg:grid-cols-[100px_1fr_1fr_1fr_auto] lg:gap-4 dark:border-zinc-800">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-              Adm #
-            </p>
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-              Student
-            </p>
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-              Class
-            </p>
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-              Parent
-            </p>
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-              Actions
-            </p>
+        <>
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="max-h-[min(70vh,720px)] overflow-y-auto overflow-x-auto">
+              {/* Desktop header — sticky */}
+              <div className="sticky top-0 z-10 hidden border-b border-slate-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900 lg:grid lg:grid-cols-[100px_1fr_1fr_1fr_auto] lg:gap-4">
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  Adm #
+                </p>
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  Student
+                </p>
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  Class
+                </p>
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  Parent
+                </p>
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  Actions
+                </p>
+              </div>
+
+              <div className="divide-y divide-slate-200 dark:divide-zinc-800">
+                {pageSlice.map((student) => (
+                  <StudentRow
+                    key={student.id}
+                    student={student}
+                    classes={classes}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-            {filtered.map((student) => (
-              <StudentRow
-                key={student.id}
-                student={student}
-                classes={classes}
-              />
-            ))}
-          </div>
-        </div>
+          {totalPages > 1 ? (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Previous
+              </button>
+
+              <div className="flex flex-wrap items-center justify-center gap-1">
+                {pageNumbers.map((item, idx) =>
+                  item === "ellipsis" ? (
+                    <span
+                      key={`e-${idx}`}
+                      className="px-2 text-sm text-slate-400 dark:text-zinc-500"
+                    >
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCurrentPage(item)}
+                      className={`min-w-[2.25rem] rounded-md border px-3 py-1 text-sm dark:border-zinc-600 ${
+                        currentPage === item
+                          ? "border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-600"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-gray-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage >= totalPages}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
+        </>
       ) : (
         <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
           <p className="text-sm text-slate-500 dark:text-zinc-400">
