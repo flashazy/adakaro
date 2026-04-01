@@ -62,6 +62,78 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  /** School reactivation orders use order refs starting with REACT */
+  if (orderReference.startsWith("REACT")) {
+    const { data: reactRaw, error: reactErr } = await admin
+      .from("school_reactivation_bills")
+      .select("id, school_id, amount, status")
+      .eq("order_reference", orderReference)
+      .maybeSingle();
+
+    const reactBill = reactRaw as {
+      id: string;
+      school_id: string;
+      amount: number;
+      status: string;
+    } | null;
+
+    if (reactErr || !reactBill) {
+      console.error(
+        "[clickpesa webhook] reactivation bill not found:",
+        orderReference,
+        reactErr
+      );
+      return NextResponse.json({ error: "Bill not found" }, { status: 404 });
+    }
+
+    if (reactBill.status === "paid") {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+
+    const paidAmount = Math.min(amount, Number(reactBill.amount));
+
+    const { error: billUpdErr } = await admin
+      .from("school_reactivation_bills")
+      .update({
+        status: "paid",
+        paid_at: new Date().toISOString(),
+        payment_reference: paymentReference,
+        raw_webhook_last: payload as object,
+      } as never)
+      .eq("id", reactBill.id);
+
+    if (billUpdErr) {
+      console.error("[clickpesa webhook] reactivation bill update:", billUpdErr);
+      return NextResponse.json(
+        { error: "Failed to update reactivation bill" },
+        { status: 500 }
+      );
+    }
+
+    const { error: schoolErr } = await admin
+      .from("schools")
+      .update({
+        status: "active",
+        suspension_reason: null,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", reactBill.school_id);
+
+    if (schoolErr) {
+      console.error("[clickpesa webhook] school reactivate:", schoolErr);
+      return NextResponse.json(
+        { error: "Failed to reactivate school" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      received: true,
+      reactivation: true,
+      amount: paidAmount,
+    });
+  }
+
   const { data: billRaw, error: billError } = await admin
     .from("clickpesa_fee_bills")
     .select("id, student_id, fee_structure_id, parent_id, amount")

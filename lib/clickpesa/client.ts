@@ -81,12 +81,16 @@ export async function createCustomerControlNumber(params: {
   customerName?: string;
   customerEmail?: string | null;
   customerPhone?: string;
+  /** Defaults to school-fees wording for backward compatibility */
+  billDescription?: string;
 }) {
   const token = await getToken();
   const requestBody: Record<string, unknown> = {
     billReference: params.orderReference,
     billAmount: params.amount,
-    billDescription: `School fees — ref ${params.orderReference}`,
+    billDescription:
+      params.billDescription ??
+      `School fees — ref ${params.orderReference}`,
     billPaymentMode: "ALLOW_PARTIAL_AND_OVER_PAYMENT",
     customerName: params.customerName || "Parent",
   };

@@ -88,7 +88,14 @@ export default async function SchoolSuspendedPage() {
     rawReason && rawReason.length > 0 ? rawReason : DEFAULT_REASON_DISPLAY;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 dark:bg-zinc-950">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 py-8 dark:bg-zinc-950">
+      <div className="mb-6 w-full max-w-md rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-950 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-100">
+        <p className="font-medium leading-relaxed">
+          Payment processing is currently being set up. Please contact support to
+          reactivate your account.
+        </p>
+      </div>
+
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
           School Account Suspended
@@ -115,22 +122,39 @@ export default async function SchoolSuspendedPage() {
         </p>
 
         <p className="mt-6 text-sm font-medium text-slate-800 dark:text-zinc-200">
-          To reactivate your account, please make the payment below:
+          To reactivate your account, please contact support (online payment is
+          coming soon):
         </p>
 
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
-          <Link
-            href="/payment"
-            className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 sm:w-auto dark:bg-emerald-600 dark:hover:bg-emerald-500"
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled
+            title={`Payment processing is coming soon. Contact support at ${supportEmail} to reactivate your account.`}
+            className="inline-flex w-full cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-4 py-2.5 text-center text-sm font-semibold text-slate-500 shadow-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-500"
           >
-            Pay Now
-          </Link>
-          <Link
-            href="/"
-            className="inline-flex w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:w-auto"
-          >
-            Home
-          </Link>
+            Pay now — Coming soon
+          </button>
+          <p className="mt-6 text-sm font-medium text-slate-700 dark:text-zinc-300">
+            While you wait, you can:
+          </p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-4">
+            <a
+              href={`mailto:${supportEmail}`}
+              title="Email our support team for assistance"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+            >
+              Contact Support
+            </a>
+            <Link
+              href="/"
+              prefetch={false}
+              title="Go to the landing page"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+            >
+              Go to homepage
+            </Link>
+          </div>
         </div>
 
         <div className="mt-6 flex justify-end">

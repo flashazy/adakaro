@@ -470,6 +470,46 @@ export interface Database {
           amount?: number;
         };
       };
+      school_reactivation_bills: {
+        Row: {
+          id: string;
+          school_id: string;
+          user_id: string;
+          order_reference: string;
+          amount: number;
+          currency: string;
+          status: "pending" | "paid" | "failed";
+          control_number: string | null;
+          checkout_link: string | null;
+          payment_reference: string | null;
+          paid_at: string | null;
+          raw_webhook_last: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          user_id: string;
+          order_reference: string;
+          amount: number;
+          currency?: string;
+          status?: "pending" | "paid" | "failed";
+          control_number?: string | null;
+          checkout_link?: string | null;
+          payment_reference?: string | null;
+          paid_at?: string | null;
+          raw_webhook_last?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          status?: "pending" | "paid" | "failed";
+          control_number?: string | null;
+          checkout_link?: string | null;
+          payment_reference?: string | null;
+          paid_at?: string | null;
+          raw_webhook_last?: Json | null;
+        };
+      };
       clickpesa_payment_transactions: {
         Row: {
           id: string;

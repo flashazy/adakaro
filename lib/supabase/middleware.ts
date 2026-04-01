@@ -51,9 +51,15 @@ export async function updateSession(request: NextRequest) {
   const isProtectedRoute =
     isAdminRoute || isParentRoute || isSuperAdminRoute;
   const isSchoolSuspendedPage = pathname === "/school-suspended";
+  const isPaymentPage = pathname === "/payment";
+  /** Public marketing landing — allow suspended users to exit here without loop */
+  const isLandingPage = pathname === "/";
+  const isSchoolReactivationPaymentApi = pathname.startsWith(
+    "/api/payment/school-reactivation"
+  );
 
-  // Suspension page is for logged-in users only.
-  if (!user && isSchoolSuspendedPage) {
+  // Suspension and payment pages are for logged-in users only.
+  if (!user && (isSchoolSuspendedPage || isPaymentPage)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
@@ -77,7 +83,12 @@ export async function updateSession(request: NextRequest) {
         ? "admin"
         : "parent";
 
-    if (isAuthPage || isProtectedRoute || isSchoolSuspendedPage) {
+    if (
+      isAuthPage ||
+      isProtectedRoute ||
+      isSchoolSuspendedPage ||
+      isPaymentPage
+    ) {
       // SECURITY DEFINER — reliable even if profiles SELECT is flaky for this user.
       const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
         "is_super_admin",
@@ -104,7 +115,10 @@ export async function updateSession(request: NextRequest) {
       await supabase.rpc("is_user_blocked_by_school_suspension");
 
     if (blockedBySuspension === true) {
-      if (pathname.startsWith("/api")) {
+      if (
+        pathname.startsWith("/api") &&
+        !isSchoolReactivationPaymentApi
+      ) {
         return NextResponse.json(
           {
             error:
@@ -113,12 +127,22 @@ export async function updateSession(request: NextRequest) {
           { status: 403 }
         );
       }
-      if (!isSchoolSuspendedPage) {
+      if (!isSchoolSuspendedPage && !isPaymentPage && !isLandingPage) {
         const url = request.nextUrl.clone();
         url.pathname = "/school-suspended";
         return NextResponse.redirect(url);
       }
     } else if (isSchoolSuspendedPage) {
+      const url = request.nextUrl.clone();
+      if (role === "super_admin") {
+        url.pathname = "/super-admin";
+      } else if (role === "admin") {
+        url.pathname = "/dashboard";
+      } else {
+        url.pathname = "/parent-dashboard";
+      }
+      return NextResponse.redirect(url);
+    } else if (isPaymentPage) {
       const url = request.nextUrl.clone();
       if (role === "super_admin") {
         url.pathname = "/super-admin";
