@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminAction } from "@/lib/admin-activity-log";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { normalizePlanId } from "@/lib/plans";
 import { effectiveAdminLimit } from "@/lib/plan-limits";
@@ -128,6 +129,14 @@ export async function POST(request: NextRequest) {
   }
 
   console.info("[super-admin/invite] Link:", inviteLink);
+
+  void logAdminAction({
+    userId: user.id,
+    action: "invite_school_admin",
+    schoolId,
+    details: { invitation_pending: true },
+    request,
+  });
 
   return NextResponse.json({ ok: true, email, inviteLink });
 }

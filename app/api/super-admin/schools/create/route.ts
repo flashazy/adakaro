@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logAdminAction } from "@/lib/admin-activity-log";
+import { notifyNewSchoolCreated } from "@/lib/notifications/super-admin-email";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { isSchoolCurrencyCode } from "@/lib/currency";
 import { normalizePlanId } from "@/lib/plans";
@@ -120,6 +122,26 @@ export async function POST(request: NextRequest) {
       console.error("[super-admin/create-school] optional contact update", e);
     }
   }
+
+  void logAdminAction({
+    userId: user.id,
+    action: "create_school",
+    schoolId: id,
+    details: {
+      school_name: name,
+      currency: currencyRaw,
+      plan,
+    },
+    request,
+  });
+
+  void notifyNewSchoolCreated({
+    schoolId: id,
+    schoolName: name,
+    performedByEmail: user.email?.trim() || "unknown",
+    currency: currencyRaw,
+    plan,
+  });
 
   return NextResponse.json({ ok: true, schoolId: id });
 }

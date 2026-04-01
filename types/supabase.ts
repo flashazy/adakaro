@@ -52,6 +52,42 @@ export interface Database {
           updated_at?: string;
         };
       };
+      admin_activity_logs: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          user_email: string;
+          user_role: "admin" | "super_admin";
+          school_id: string | null;
+          action: string;
+          action_details: Json;
+          ip_address: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          user_email?: string;
+          user_role: "admin" | "super_admin";
+          school_id?: string | null;
+          action: string;
+          action_details?: Json;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string | null;
+          user_email?: string;
+          user_role?: "admin" | "super_admin";
+          school_id?: string | null;
+          action?: string;
+          action_details?: Json;
+          ip_address?: string | null;
+          user_agent?: string | null;
+        };
+      };
       schools: {
         Row: {
           id: string;

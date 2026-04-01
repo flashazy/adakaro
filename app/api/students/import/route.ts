@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { generateAdmissionNumberWithClient } from "@/lib/admission-number";
 import { canAccessFeature } from "@/lib/plans";
@@ -599,6 +600,16 @@ export async function POST(request: NextRequest) {
 
       if (successLines.length > 0) {
         revalidatePath("/dashboard/students");
+        void logAdminAction({
+          userId: user.id,
+          action: "import_students_bulk",
+          schoolId,
+          details: {
+            imported_count: successLines.length,
+            skipped_count: skippedWithReasons.length,
+          },
+          request,
+        });
       }
 
       return NextResponse.json({

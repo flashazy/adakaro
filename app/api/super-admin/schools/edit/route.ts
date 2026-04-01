@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { logAdminAction } from "@/lib/admin-activity-log";
+import { notifyPlanChangeIfNeeded } from "@/lib/notifications/super-admin-email";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { isSchoolCurrencyCode } from "@/lib/currency";
 import { normalizePlanId } from "@/lib/plans";
@@ -40,6 +43,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid currency." }, { status: 400 });
   }
 
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (e) {
+    console.error("[super-admin/edit] service role client", e);
+    return NextResponse.json(
+      {
+        error:
+          "Server configuration error. Ensure SUPABASE_SERVICE_ROLE_KEY is set.",
+      },
+      { status: 500 }
+    );
+  }
+
+  const { data: before } = await admin
+    .from("schools")
+    .select("name, currency, plan")
+    .eq("id", schoolId)
+    .maybeSingle();
+  const prev = before as { name: string; currency: string; plan: string } | null;
+
   const patch: Record<string, string> = {
     name,
     currency: currencyRaw,
@@ -49,10 +73,12 @@ export async function POST(request: NextRequest) {
     patch.plan = normalizedPlan;
   }
 
-  const { error } = await supabase
+  const { data: updated, error } = await admin
     .from("schools")
     .update(patch as never)
-    .eq("id", schoolId);
+    .eq("id", schoolId)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     console.error("[super-admin/edit]", error);
@@ -60,6 +86,48 @@ export async function POST(request: NextRequest) {
       { error: error.message || "Update failed." },
       { status: 500 }
     );
+  }
+
+  if (!updated) {
+    return NextResponse.json({ error: "School not found." }, { status: 404 });
+  }
+
+  void logAdminAction({
+    userId: user.id,
+    action: "edit_school",
+    schoolId,
+    details: {
+      previous: prev
+        ? {
+            name: prev.name,
+            currency: prev.currency,
+            plan: prev.plan,
+          }
+        : null,
+      updated: {
+        name,
+        currency: currencyRaw,
+        ...(hasPlan && normalizedPlan !== undefined
+          ? { plan: normalizedPlan }
+          : {}),
+      },
+    },
+    request,
+  });
+
+  if (
+    hasPlan &&
+    normalizedPlan !== undefined &&
+    prev &&
+    prev.plan !== normalizedPlan
+  ) {
+    void notifyPlanChangeIfNeeded({
+      schoolId,
+      schoolName: name,
+      performedByEmail: user.email?.trim() || "unknown",
+      oldPlan: prev.plan,
+      newPlan: normalizedPlan,
+    });
   }
 
   return NextResponse.json({

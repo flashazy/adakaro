@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { generateAdmissionNumberWithClient } from "@/lib/admission-number";
 import { checkStudentLimit } from "@/lib/plan-limits";
@@ -157,6 +158,15 @@ export async function POST(request: NextRequest) {
     }
 
     revalidatePath("/dashboard/students");
+
+    void logAdminAction({
+      userId: user.id,
+      action: "create_student",
+      schoolId,
+      details: { class_id: classId, admission_number: admissionNumber ?? undefined },
+      request,
+    });
+
     return NextResponse.json({
       ok: true,
       message: `Student "${fullName}" added.`,

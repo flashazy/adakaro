@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { escapeRegExp } from "@/lib/admission-number";
 import { checkStudentLimit } from "@/lib/plan-limits";
@@ -17,7 +18,7 @@ async function getSchoolId() {
   const schoolId = await getSchoolIdForUser(supabase, user.id);
   if (!schoolId) throw new Error("No school found");
 
-  return { supabase, schoolId };
+  return { supabase, schoolId, userId: user.id };
 }
 
 export interface StudentActionState {
@@ -44,7 +45,7 @@ export async function addStudent(
   if (!classId) return { error: "Please select a class." };
 
   try {
-    const { supabase, schoolId } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     let admissionNumber: string | null = null;
 
@@ -134,6 +135,17 @@ export async function addStudent(
     }
 
     revalidatePath("/dashboard/students");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "create_student",
+      {
+        class_id: classId,
+        admission_number: admissionNumber ?? undefined,
+      },
+      schoolId
+    );
+
     return { success: `Student "${fullName}" added.` };
   } catch (e) {
     return { error: (e as Error).message };
@@ -156,7 +168,7 @@ export async function updateStudent(
   if (!classId) return { error: "Please select a class." };
 
   try {
-    const { supabase } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     const { error } = await supabase
       .from("students")
@@ -178,6 +190,14 @@ export async function updateStudent(
     }
 
     revalidatePath("/dashboard/students");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "update_student",
+      { student_id: studentId, class_id: classId },
+      schoolId
+    );
+
     return { success: "Student updated." };
   } catch (e) {
     return { error: (e as Error).message };
@@ -188,7 +208,7 @@ export async function deleteStudent(
   studentId: string
 ): Promise<StudentActionState> {
   try {
-    const { supabase } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     const { error } = await supabase
       .from("students")
@@ -205,6 +225,14 @@ export async function deleteStudent(
     }
 
     revalidatePath("/dashboard/students");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "delete_student",
+      { student_id: studentId },
+      schoolId
+    );
+
     return { success: "Student deleted." };
   } catch (e) {
     return { error: (e as Error).message };

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { formatDate } from "@/lib/format-date";
 import { planDisplayName } from "@/lib/plans";
 import { useRouter } from "next/navigation";
@@ -92,7 +93,15 @@ export function SuperAdminDashboardClient({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Super Admin Dashboard</h1>
+        <div className="flex flex-wrap items-center gap-4">
+          <h1 className="text-2xl font-bold">Super Admin Dashboard</h1>
+          <Link
+            href="/super-admin/activity-logs"
+            className="text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+          >
+            Activity logs
+          </Link>
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           {pendingUpgrades.length > 0 ? (
             <span

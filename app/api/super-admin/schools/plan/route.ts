@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logAdminAction } from "@/lib/admin-activity-log";
+import { notifyPlanChangeIfNeeded } from "@/lib/notifications/super-admin-email";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { normalizePlanId } from "@/lib/plans";
 
@@ -46,6 +48,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { data: before } = await admin
+    .from("schools")
+    .select("plan, name")
+    .eq("id", schoolId)
+    .maybeSingle();
+  const beforeRow = before as { plan: string; name: string } | null;
+  const oldPlan = beforeRow?.plan ?? null;
+  const schoolName = beforeRow?.name?.trim() || "School";
+
   const { data: updated, error } = await admin
     .from("schools")
     .update({ plan, updated_at: new Date().toISOString() } as never)
@@ -73,6 +84,22 @@ export async function POST(request: NextRequest) {
     "by",
     user.id
   );
+
+  void logAdminAction({
+    userId: user.id,
+    action: "update_plan",
+    schoolId,
+    details: { old_plan: oldPlan, new_plan: plan },
+    request,
+  });
+
+  void notifyPlanChangeIfNeeded({
+    schoolId,
+    schoolName,
+    performedByEmail: user.email?.trim() || "unknown",
+    oldPlan,
+    newPlan: plan,
+  });
 
   return NextResponse.json({ ok: true, plan });
 }

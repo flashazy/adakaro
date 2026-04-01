@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminAction } from "@/lib/admin-activity-log";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 
 export async function POST(request: NextRequest) {
@@ -60,6 +61,14 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  void logAdminAction({
+    userId: user.id,
+    action: "school_member_removed",
+    schoolId,
+    details: { target_user_id: targetUserId },
+    request,
+  });
 
   return NextResponse.json({ ok: true });
 }

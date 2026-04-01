@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminAction } from "@/lib/admin-activity-log";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 
 export async function POST(request: NextRequest) {
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   const { data: row, error } = await supabase
     .from("school_invitations")
-    .select("id, token, status, expires_at, invited_email")
+    .select("id, school_id, token, status, expires_at, invited_email")
     .eq("id", invitationId)
     .single();
 
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
   }
 
   const inv = row as {
+    school_id: string;
     token: string;
     status: string;
     expires_at: string;
@@ -68,6 +70,14 @@ export async function POST(request: NextRequest) {
     "→",
     inv.invited_email
   );
+
+  void logAdminAction({
+    userId: user.id,
+    action: "resend_school_invitation",
+    schoolId: inv.school_id,
+    details: { invitation_id: invitationId },
+    request,
+  });
 
   return NextResponse.json({ ok: true, inviteLink });
 }

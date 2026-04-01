@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 
 async function getSchoolId() {
@@ -15,7 +16,7 @@ async function getSchoolId() {
   const schoolId = await getSchoolIdForUser(supabase, user.id);
   if (!schoolId) throw new Error("No school found");
 
-  return { supabase, schoolId };
+  return { supabase, schoolId, userId: user.id };
 }
 
 export interface FeeStructureActionState {
@@ -45,7 +46,7 @@ export async function addFeeStructure(
   }
 
   try {
-    const { supabase, schoolId } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     // Fetch fee type name to use as the structure name
     const { data: feeType } = await supabase
@@ -69,6 +70,20 @@ export async function addFeeStructure(
     if (error) return { error: error.message };
 
     revalidatePath("/dashboard/fee-structures");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "create_fee_structure",
+      {
+        fee_type_id: feeTypeId,
+        target_type: targetType,
+        class_id: targetType === "class" ? classId : undefined,
+        student_id: targetType === "student" ? studentId : undefined,
+        amount,
+      },
+      schoolId
+    );
+
     return { success: "Fee structure created." };
   } catch (e) {
     return { error: (e as Error).message };
@@ -90,7 +105,7 @@ export async function updateFeeStructure(
   if (isNaN(amount) || amount <= 0) return { error: "Amount must be greater than 0." };
 
   try {
-    const { supabase } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     const { data: feeType } = await supabase
       .from("fee_types")
@@ -114,6 +129,21 @@ export async function updateFeeStructure(
     if (error) return { error: error.message };
 
     revalidatePath("/dashboard/fee-structures");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "update_fee_structure",
+      {
+        fee_structure_id: id,
+        fee_type_id: feeTypeId,
+        target_type: targetType,
+        class_id: targetType === "class" ? classId : undefined,
+        student_id: targetType === "student" ? studentId : undefined,
+        amount,
+      },
+      schoolId
+    );
+
     return { success: "Fee structure updated." };
   } catch (e) {
     return { error: (e as Error).message };
@@ -124,7 +154,7 @@ export async function deleteFeeStructure(
   id: string
 ): Promise<FeeStructureActionState> {
   try {
-    const { supabase } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     const { error } = await supabase
       .from("fee_structures")
@@ -139,6 +169,14 @@ export async function deleteFeeStructure(
     }
 
     revalidatePath("/dashboard/fee-structures");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "delete_fee_structure",
+      { fee_structure_id: id },
+      schoolId
+    );
+
     return { success: "Fee structure deleted." };
   } catch (e) {
     return { error: (e as Error).message };

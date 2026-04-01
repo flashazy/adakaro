@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import type { PaymentMethod } from "@/types/supabase";
 
 const VALID_METHODS: PaymentMethod[] = [
@@ -77,6 +79,20 @@ export async function recordPayment(
     }
 
     revalidatePath("/dashboard/payments");
+
+    const schoolId = await getSchoolIdForUser(supabase, user.id);
+    void logAdminActionFromServerAction(
+      user.id,
+      "record_payment",
+      {
+        payment_id: paymentTyped.id,
+        amount,
+        payment_method: method,
+        fee_structure_id: feeStructureId,
+        student_id: studentId,
+      },
+      schoolId ?? undefined
+    );
 
     return {
       success: `Payment of ${amount.toLocaleString()} recorded.${receiptTyped ? ` Receipt: ${receiptTyped.receipt_number}` : ""}`,

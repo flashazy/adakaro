@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 
 async function getSchoolId() {
@@ -15,7 +16,7 @@ async function getSchoolId() {
   const schoolId = await getSchoolIdForUser(supabase, user.id);
   if (!schoolId) throw new Error("No school found");
 
-  return { supabase, schoolId };
+  return { supabase, schoolId, userId: user.id };
 }
 
 export interface ClassActionState {
@@ -35,7 +36,7 @@ export async function addClass(
   }
 
   try {
-    const { supabase, schoolId } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     const { error } = await supabase.from("classes").insert({
       school_id: schoolId,
@@ -51,6 +52,14 @@ export async function addClass(
     }
 
     revalidatePath("/dashboard/classes");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "create_class",
+      { class_name: name },
+      schoolId
+    );
+
     return { success: `Class "${name}" created.` };
   } catch (e) {
     return { error: (e as Error).message };
@@ -69,7 +78,7 @@ export async function updateClass(
   }
 
   try {
-    const { supabase } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     const { error } = await supabase
       .from("classes")
@@ -84,6 +93,14 @@ export async function updateClass(
     }
 
     revalidatePath("/dashboard/classes");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "update_class",
+      { class_id: classId, class_name: name },
+      schoolId
+    );
+
     return { success: `Class updated.` };
   } catch (e) {
     return { error: (e as Error).message };
@@ -92,7 +109,7 @@ export async function updateClass(
 
 export async function deleteClass(classId: string): Promise<ClassActionState> {
   try {
-    const { supabase } = await getSchoolId();
+    const { supabase, schoolId, userId } = await getSchoolId();
 
     const { error } = await supabase
       .from("classes")
@@ -107,6 +124,14 @@ export async function deleteClass(classId: string): Promise<ClassActionState> {
     }
 
     revalidatePath("/dashboard/classes");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "delete_class",
+      { class_id: classId },
+      schoolId
+    );
+
     return { success: "Class deleted." };
   } catch (e) {
     return { error: (e as Error).message };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminAction } from "@/lib/admin-activity-log";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import type { UserRole } from "@/types/supabase";
 
@@ -73,6 +74,14 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  void logAdminAction({
+    userId: user.id,
+    action: "school_member_role_change",
+    schoolId,
+    details: { target_user_id: targetUserId, new_role: role },
+    request,
+  });
 
   return NextResponse.json({ ok: true, role });
 }

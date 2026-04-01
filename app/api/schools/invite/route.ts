@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logAdminAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { normalizePlanId, planDisplayName } from "@/lib/plans";
 import { checkAdminLimit } from "@/lib/plan-limits";
@@ -154,6 +155,14 @@ export async function POST(request: NextRequest) {
       "[invite] Invitation created (email sending not configured). Link:",
       inviteLink
     );
+
+    void logAdminAction({
+      userId: user.id,
+      action: "invite_school_admin",
+      schoolId,
+      details: { invitation_created: true },
+      request,
+    });
 
     return NextResponse.json({
       ok: true,

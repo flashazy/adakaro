@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logAdminAction } from "@/lib/admin-activity-log";
+import {
+  notifySchoolActivated,
+  notifySchoolSuspended,
+} from "@/lib/notifications/super-admin-email";
+import { checkIsSuperAdmin } from "@/lib/super-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +25,10 @@ export async function GET(
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (!(await checkIsSuperAdmin(supabase, user.id))) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
   const action = request.nextUrl.searchParams.get("action");
@@ -65,7 +75,7 @@ export async function GET(
     .from("schools")
     .update(patch as never)
     .eq("id", schoolId)
-    .select("id, status, suspension_reason")
+    .select("id, name, status, suspension_reason")
     .maybeSingle();
 
   if (error) {
@@ -78,6 +88,36 @@ export async function GET(
 
   if (!data) {
     return NextResponse.json({ error: "School not found." }, { status: 404 });
+  }
+
+  void logAdminAction({
+    userId: user.id,
+    action: action === "suspend" ? "suspend_school" : "activate_school",
+    schoolId,
+    details:
+      action === "suspend"
+        ? { reason: reason ?? undefined }
+        : { previous_status: "suspended" },
+    request,
+  });
+
+  const schoolName =
+    (data as { name?: string }).name?.trim() || "School";
+  const performedByEmail = user.email?.trim() || "unknown";
+
+  if (action === "suspend") {
+    void notifySchoolSuspended({
+      schoolId,
+      schoolName,
+      performedByEmail,
+      reason,
+    });
+  } else {
+    void notifySchoolActivated({
+      schoolId,
+      schoolName,
+      performedByEmail,
+    });
   }
 
   return NextResponse.json({
