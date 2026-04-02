@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
-import { loadSuperAdminAnalytics } from "@/lib/analytics";
+import {
+  loadSuperAdminAnalytics,
+  parseAnalyticsSearchParams,
+} from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -31,7 +34,15 @@ export async function GET() {
     );
   }
 
-  const result = await loadSuperAdminAnalytics(admin);
+  const { fromIso, toIso, preset } = parseAnalyticsSearchParams(
+    request.nextUrl.searchParams
+  );
+
+  const result = await loadSuperAdminAnalytics(admin, {
+    fromIso,
+    toIso,
+    preset,
+  });
   if (!result.ok) {
     console.error("[api/super-admin/analytics]", result.message);
     return NextResponse.json({ error: result.message }, { status: 500 });

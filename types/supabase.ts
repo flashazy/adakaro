@@ -88,6 +88,43 @@ export interface Database {
           user_agent?: string | null;
         };
       };
+      admin_report_preferences: {
+        Row: {
+          id: string;
+          enabled: boolean;
+          frequency: "weekly" | "monthly" | null;
+          day_of_week: number | null;
+          day_of_month: number | null;
+          recipients: string[];
+          export_to_email_enabled: boolean;
+          last_sent: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          enabled?: boolean;
+          frequency?: "weekly" | "monthly" | null;
+          day_of_week?: number | null;
+          day_of_month?: number | null;
+          recipients?: string[];
+          export_to_email_enabled?: boolean;
+          last_sent?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          enabled?: boolean;
+          frequency?: "weekly" | "monthly" | null;
+          day_of_week?: number | null;
+          day_of_month?: number | null;
+          recipients?: string[];
+          export_to_email_enabled?: boolean;
+          last_sent?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       schools: {
         Row: {
           id: string;
