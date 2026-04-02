@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -24,8 +24,7 @@ import type {
   MonthlyTrendRow,
   SuperAdminAnalyticsPayload,
   TopSchoolRow,
-} from "@/lib/analytics";
-import { parsePresetToRange } from "@/lib/analytics";
+} from "@/lib/analytics-types";
 import { DEFAULT_SCHOOL_CURRENCY, formatCurrency } from "@/lib/currency";
 
 const PIE_ACTIVE = "#10b981";
@@ -34,6 +33,86 @@ const CHART_SCHOOLS = "#6366f1";
 const CHART_STUDENTS = "#0ea5e9";
 const CHART_REVENUE = "#a855f7";
 const DIST_COLORS = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#94a3b8"];
+
+function utcStartOfDay(d: Date): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0)
+  );
+}
+
+function utcEndOfDay(d: Date): Date {
+  return new Date(
+    Date.UTC(
+      d.getUTCFullYear(),
+      d.getUTCMonth(),
+      d.getUTCDate(),
+      23,
+      59,
+      59,
+      999
+    )
+  );
+}
+
+function addUtcDays(d: Date, n: number): Date {
+  const x = new Date(d.getTime());
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+}
+
+function addUtcMonths(d: Date, n: number): Date {
+  const x = new Date(d.getTime());
+  x.setUTCMonth(x.getUTCMonth() + n);
+  return x;
+}
+
+function parsePresetToRange(
+  preset: AnalyticsPreset | string,
+  customFrom?: string | null,
+  customTo?: string | null
+): { fromIso: string; toIso: string; preset: AnalyticsPreset | string } {
+  const now = new Date();
+  const end = utcEndOfDay(now);
+  let start: Date;
+
+  switch (preset) {
+    case "last30d":
+      start = utcStartOfDay(addUtcDays(end, -29));
+      break;
+    case "last3m":
+      start = utcStartOfDay(addUtcMonths(end, -3));
+      break;
+    case "last6m":
+      start = utcStartOfDay(addUtcMonths(end, -6));
+      break;
+    case "last12m":
+      start = utcStartOfDay(addUtcMonths(end, -12));
+      break;
+    case "custom": {
+      if (!customFrom?.trim() || !customTo?.trim()) {
+        return parsePresetToRange("last12m");
+      }
+      const a = new Date(`${customFrom.trim()}T00:00:00.000Z`);
+      const b = new Date(`${customTo.trim()}T23:59:59.999Z`);
+      if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || a > b) {
+        return parsePresetToRange("last12m");
+      }
+      return {
+        fromIso: a.toISOString(),
+        toIso: b.toISOString(),
+        preset: "custom",
+      };
+    }
+    default:
+      return parsePresetToRange("last12m");
+  }
+
+  return {
+    fromIso: start.toISOString(),
+    toIso: end.toISOString(),
+    preset,
+  };
+}
 
 type ChartView = "overview" | "revenueBySchool" | "studentDistribution" | "growthArea";
 
