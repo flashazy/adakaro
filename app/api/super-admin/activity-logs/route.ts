@@ -7,9 +7,18 @@ import type { Database } from "@/types/supabase";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 20;
+const ALLOWED_LIMITS = [20, 50, 100] as const;
 
 type LogRow = Database["public"]["Tables"]["admin_activity_logs"]["Row"];
+
+function parseLimit(raw: string | null): number {
+  const n = parseInt(raw ?? "", 10);
+  if (ALLOWED_LIMITS.includes(n as (typeof ALLOWED_LIMITS)[number])) {
+    return n;
+  }
+  return DEFAULT_PAGE_SIZE;
+}
 
 function csvEscape(value: string): string {
   if (/[",\n\r]/.test(value)) {
@@ -43,6 +52,7 @@ export async function GET(request: NextRequest) {
 
   const url = request.nextUrl;
   const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+  const limit = parseLimit(url.searchParams.get("limit"));
   const userSearch = url.searchParams.get("user")?.trim() ?? "";
   const schoolSearch = url.searchParams.get("school")?.trim() ?? "";
   const actionFilter = url.searchParams.get("action")?.trim() ?? "";
@@ -78,11 +88,13 @@ export async function GET(request: NextRequest) {
             }
           );
         }
+        const totalPages = 0;
         return NextResponse.json({
           logs: [],
           total: 0,
           page,
-          pageSize: PAGE_SIZE,
+          pageSize: limit,
+          totalPages,
           schoolNames: {},
         });
       }
@@ -168,15 +180,15 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const from = (page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
+  const rangeFrom = (page - 1) * limit;
+  const rangeTo = rangeFrom + limit - 1;
 
   const { data: rows, error, count } = await applyFilters(
     admin
       .from("admin_activity_logs")
       .select("*", { count: "exact" })
       .order("created_at", { ascending: false })
-  ).range(from, to);
+  ).range(rangeFrom, rangeTo);
 
   if (error) {
     console.error("[activity-logs]", error);
@@ -203,38 +215,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  if (exportCsv) {
-    const header =
-      "timestamp,user_email,user_role,school_name,action,details,ip_address\n";
-    const lines = logs.map((l) => {
-      const schoolName = l.school_id
-        ? schoolNames[l.school_id] ?? l.school_id
-        : "";
-      const details = JSON.stringify(l.action_details ?? {});
-      return [
-        csvEscape(l.created_at),
-        csvEscape(l.user_email ?? ""),
-        csvEscape(l.user_role),
-        csvEscape(schoolName),
-        csvEscape(l.action),
-        csvEscape(details),
-        csvEscape(l.ip_address ?? ""),
-      ].join(",");
-    });
-    return new NextResponse(header + lines.join("\n") + (lines.length ? "\n" : ""), {
-      status: 200,
-      headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": 'attachment; filename="activity-logs.csv"',
-      },
-    });
-  }
+  const total = count ?? 0;
+  const totalPages = total > 0 ? Math.ceil(total / limit) : 0;
 
   return NextResponse.json({
     logs,
-    total: count ?? 0,
+    total,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize: limit,
+    totalPages,
     schoolNames,
   });
 }
