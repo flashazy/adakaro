@@ -22,7 +22,19 @@ export async function PUT(request: Request) {
   try {
     const body = await request.json();
     const supabase = createAdminClient();
+    
+    // Get the existing row to get the ID
+    const { data: existing, error: fetchError } = await supabase
+      .from('admin_report_preferences')
+      .select('id')
+      .maybeSingle();
+    
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+    
     const dbBody = {
+      id: existing?.id || '00000000-0000-0000-0000-000000000001',
       enabled: body.enabled,
       frequency: body.frequency,
       day_of_week: body.day_of_week,
@@ -30,12 +42,13 @@ export async function PUT(request: Request) {
       recipients: body.recipients,
       updated_at: new Date().toISOString()
     };
-    // Use type assertion to bypass TypeScript strict checking
+    
     const { data, error } = await (supabase
       .from('admin_report_preferences') as any)
       .upsert(dbBody)
       .select()
       .single();
+      
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
