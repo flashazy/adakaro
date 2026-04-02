@@ -6,6 +6,7 @@ import {
   resolveSchoolDisplay,
 } from "@/lib/dashboard/resolve-school-display";
 import { PrintButton } from "./print-button";
+import { ReceiptWatchdogTracker } from "./receipt-watchdog-tracker";
 import "./receipt-print.css";
 import Link from "next/link";
 import { Building2 } from "lucide-react";
@@ -233,8 +234,24 @@ export default async function ReceiptPage({ params }: PageProps) {
   const methodDisplay =
     paymentTyped.payment_method?.replace(/_/g, " ") ?? "—";
 
+  const { data: profileForWatchdog } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const profileRole = (profileForWatchdog as { role: string } | null)?.role;
+  const watchdogRole: "admin" | "parent" =
+    profileRole === "admin" || profileRole === "super_admin"
+      ? "admin"
+      : "parent";
+
   return (
     <>
+      <ReceiptWatchdogTracker
+        paymentId={paymentId}
+        hasLogo={Boolean(schoolLogoUrl?.trim())}
+        role={watchdogRole}
+      />
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 print:hidden">
         <div className="mx-auto flex max-w-xl items-center justify-between py-4">
           <h1 className="text-lg font-semibold text-slate-900 dark:text-white">

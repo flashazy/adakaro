@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getSchoolCurrencyById,
   resolveSchoolDisplay,
 } from "@/lib/dashboard/resolve-school-display";
 import { PrintButton } from "../../../dashboard/receipts/[id]/print-button";
+import { ReceiptWatchdogTracker } from "../../../dashboard/receipts/[id]/receipt-watchdog-tracker";
 import "../../../dashboard/receipts/[id]/receipt-print.css";
 import Link from "next/link";
 import { Building2 } from "lucide-react";
@@ -252,6 +254,22 @@ export default async function ParentReceiptPage({ params }: PageProps) {
       raw = await getSchoolCurrencyById(student.school_id);
     }
     currencyCode = normalizeSchoolCurrency(raw);
+
+    /* Same canonical logo as admin: `schools.logo_url` via service role when RLS hides the row for parents. */
+    if (!schoolLogoUrl?.trim()) {
+      try {
+        const admin = createAdminClient();
+        const { data: logoRow } = await admin
+          .from("schools")
+          .select("logo_url")
+          .eq("id", student.school_id)
+          .maybeSingle();
+        const u = (logoRow as { logo_url: string | null } | null)?.logo_url?.trim();
+        if (u) schoolLogoUrl = u;
+      } catch {
+        /* SUPABASE_SERVICE_ROLE_KEY missing or admin client unavailable */
+      }
+    }
   }
 
   const dateIssuedSource =
@@ -261,8 +279,24 @@ export default async function ParentReceiptPage({ params }: PageProps) {
   const methodDisplay =
     paymentTyped.payment_method?.replace(/_/g, " ") ?? "—";
 
+  const { data: profileForWatchdog } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const profileRole = (profileForWatchdog as { role: string } | null)?.role;
+  const watchdogRole: "admin" | "parent" =
+    profileRole === "admin" || profileRole === "super_admin"
+      ? "admin"
+      : "parent";
+
   return (
     <>
+      <ReceiptWatchdogTracker
+        paymentId={paymentId}
+        hasLogo={Boolean(schoolLogoUrl?.trim())}
+        role={watchdogRole}
+      />
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 print:hidden">
         <div className="mx-auto flex max-w-xl items-center justify-between py-4">
           <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
