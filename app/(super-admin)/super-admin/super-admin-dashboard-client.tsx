@@ -96,6 +96,12 @@ export function SuperAdminDashboardClient({
         <div className="flex flex-wrap items-center gap-4">
           <h1 className="text-2xl font-bold">Super Admin Dashboard</h1>
           <Link
+            href="/super-admin/analytics"
+            className="text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+          >
+            Analytics
+          </Link>
+          <Link
             href="/super-admin/activity-logs"
             className="text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
           >
