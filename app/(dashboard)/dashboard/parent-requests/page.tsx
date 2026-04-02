@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdsForAdminUser } from "@/lib/dashboard/get-school-ids";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
@@ -55,19 +56,28 @@ export default async function ParentRequestsPage() {
     created_at: string;
   }[];
 
-  const parentIds = typedRequests.map((r) => r.parent_id);
+  const parentIds = [...new Set(typedRequests.map((r) => r.parent_id))];
   let parentMap: Record<string, { full_name: string; email: string | null }> =
     {};
   let profilesError: unknown = null;
   if (parentIds.length > 0) {
-    const { data: parents, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, email")
-      .in("id", parentIds);
-    profilesError = error;
-    const typedParents = (parents ?? []) as { id: string; full_name: string; email: string | null }[];
-    for (const p of typedParents) {
-      parentMap[p.id] = { full_name: p.full_name, email: p.email };
+    try {
+      const admin = createAdminClient();
+      const { data: parents, error } = await admin
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", parentIds);
+      profilesError = error;
+      const typedParents = (parents ?? []) as {
+        id: string;
+        full_name: string;
+        email: string | null;
+      }[];
+      for (const p of typedParents) {
+        parentMap[p.id] = { full_name: p.full_name, email: p.email };
+      }
+    } catch (e) {
+      profilesError = e instanceof Error ? e : new Error(String(e));
     }
   }
 

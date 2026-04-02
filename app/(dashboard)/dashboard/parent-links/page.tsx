@@ -11,8 +11,16 @@ import AddLinkForm from "./add-link-form";
 import LinkRow, { type ParentLinkData } from "./link-row";
 
 type Db = SupabaseClient<Database>;
+
+type ParentFetchResult = {
+  data: unknown;
+  error: unknown;
+  /** Distinct parent user ids we asked for; RLS can still return fewer profile rows with no error. */
+  idCount: number;
+};
+
 type FetchBundle = {
-  parentsRes: { data: unknown; error: unknown };
+  parentsRes: ParentFetchResult;
   studentsRes: { data: unknown; error: unknown };
   linksRes: { data: unknown; error: unknown };
 };
@@ -87,6 +95,71 @@ function anyQueryNeedsAdminFallback(bundle: FetchBundle): boolean {
   );
 }
 
+/**
+ * Parent dropdown: combine parent user ids from
+ * - `school_members` (this school, role parent), and
+ * - `parent_students` for any student at this school (`student_id` in this school's set),
+ * then load `profiles` for the deduplicated ids (includes linked parents regardless of profile role).
+ */
+async function fetchParentProfilesForSchool(
+  client: Db,
+  schoolId: string,
+  linkRowsAtSchool: { parent_id: string }[],
+  schoolStudentIds: Set<string>
+): Promise<ParentFetchResult> {
+  void linkRowsAtSchool;
+  const idSet = new Set<string>();
+
+  const memRes = await client
+    .from("school_members")
+    .select("user_id")
+    .eq("school_id", schoolId)
+    .eq("role", "parent");
+
+  const studentIds = [...schoolStudentIds];
+  const linkedRes =
+    studentIds.length > 0
+      ? await client
+          .from("parent_students")
+          .select("parent_id")
+          .in("student_id", studentIds)
+      : { data: [] as { parent_id: string }[], error: null };
+
+  if (!memRes.error) {
+    for (const row of (memRes.data ?? []) as { user_id: string }[]) {
+      idSet.add(row.user_id);
+    }
+  }
+
+  if (!linkedRes.error) {
+    for (const row of (linkedRes.data ?? []) as { parent_id: string }[]) {
+      if (row.parent_id) idSet.add(row.parent_id);
+    }
+  }
+
+  const ids = [...idSet];
+  if (ids.length === 0) {
+    return {
+      data: [],
+      error: memRes.error ?? linkedRes.error ?? null,
+      idCount: 0,
+    };
+  }
+
+  const profRes = await client
+    .from("profiles")
+    .select("id, full_name, email")
+    .in("id", ids)
+    .order("full_name");
+
+  const rows = (profRes.data ?? []) as unknown[];
+  return {
+    data: rows,
+    error: profRes.error ?? memRes.error ?? linkedRes.error ?? null,
+    idCount: ids.length,
+  };
+}
+
 /** Session-scoped client: full selects including class name. */
 async function fetchParentLinksWithClient(
   client: Db,
@@ -101,12 +174,7 @@ async function fetchParentLinksWithClient(
     ? "student:students(full_name, class:classes(name))"
     : "student:students(full_name)";
 
-  const [parentsRes, studentsRes, linksResAll] = await Promise.all([
-    client
-      .from("profiles")
-      .select("id, full_name, email")
-      .eq("role", "parent")
-      .order("full_name"),
+  const [studentsRes, linksResAll] = await Promise.all([
     client
       .from("students")
       .select(studentSelect)
@@ -120,8 +188,15 @@ async function fetchParentLinksWithClient(
   const studentRows = (studentsRes.data ?? []) as { id: string }[];
   const schoolStudentIds = new Set(studentRows.map((s) => s.id));
 
-  const rows = (linksResAll.data ?? []) as { student_id: string }[];
+  const rows = (linksResAll.data ?? []) as { student_id: string; parent_id: string }[];
   const filtered = rows.filter((r) => schoolStudentIds.has(r.student_id));
+
+  const parentsRes = await fetchParentProfilesForSchool(
+    client,
+    schoolId,
+    filtered,
+    schoolStudentIds
+  );
 
   return {
     parentsRes,
@@ -135,18 +210,11 @@ async function fetchParentLinksWithAdminClient(
   admin: Db,
   schoolId: string
 ): Promise<FetchBundle> {
-  const [parentsRes, studentsRes] = await Promise.all([
-    admin
-      .from("profiles")
-      .select("id, full_name, email")
-      .eq("role", "parent")
-      .order("full_name"),
-    admin
-      .from("students")
-      .select("id, full_name, admission_number, class_id, class:classes(name)")
-      .eq("school_id", schoolId)
-      .order("full_name"),
-  ]);
+  const studentsRes = await admin
+    .from("students")
+    .select("id, full_name, admission_number, class_id, class:classes(name)")
+    .eq("school_id", schoolId)
+    .order("full_name");
 
   const studentRows = (studentsRes.data ?? []) as { id: string }[];
   const studentIds = studentRows.map((s) => s.id);
@@ -160,6 +228,15 @@ async function fetchParentLinksWithAdminClient(
           )
           .in("student_id", studentIds)
       : { data: [] as unknown[], error: null };
+
+  const filteredRows = (linksRes.data ?? []) as { parent_id: string }[];
+
+  const parentsRes = await fetchParentProfilesForSchool(
+    admin,
+    schoolId,
+    filteredRows,
+    new Set(studentIds)
+  );
 
   return { parentsRes, studentsRes, linksRes };
 }
@@ -208,10 +285,18 @@ export default async function ParentLinksPage() {
     studentsRes.error != null ||
     linksRes.error != null;
 
+  const parentsData = parentsRes.data;
+  const parentsRlsLikelyStripped =
+    parentsRes.error == null &&
+    parentsRes.idCount > 0 &&
+    Array.isArray(parentsData) &&
+    parentsData.length === 0;
+
   if (
     anyQueryNeedsAdminFallback({ parentsRes, studentsRes, linksRes }) ||
     combinedSuggestsPermission ||
-    anyUserQueryFailed
+    anyUserQueryFailed ||
+    parentsRlsLikelyStripped
   ) {
     try {
       const admin = createAdminClient();
@@ -269,9 +354,8 @@ export default async function ParentLinksPage() {
   }[];
 
   /**
-   * Dropdown: `profiles.role = parent` misses users promoted to admin (e.g. after accepting
-   * a school invite) who still act as parents. Include every parent_id already linked to a
-   * student at this school using the embedded profile from the same query that powers the table.
+   * Dropdown is built from school-scoped profile ids; merge in any parent embed from links
+   * so rows still appear if the profile query omitted them (e.g. role edge cases).
    */
   const parentsById = new Map<
     string,
