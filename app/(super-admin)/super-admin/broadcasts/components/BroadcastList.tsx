@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Database } from "@/types/supabase";
+import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { ReadersModal } from "./ReadersModal";
 
 type BroadcastRow = Database["public"]["Tables"]["broadcasts"]["Row"];
@@ -33,6 +34,7 @@ export function BroadcastList({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [readersFor, setReadersFor] = useState<BroadcastRow | null>(null);
 
   const load = useCallback(async () => {
@@ -62,10 +64,12 @@ export function BroadcastList({
     void load();
   }, [load, refreshKey]);
 
-  async function handleDelete(id: string) {
-    if (!window.confirm("Delete this broadcast? School admins will no longer see it in their history.")) {
-      return;
-    }
+  const closeDeleteModal = useCallback(() => {
+    if (deletingId !== null) return;
+    setPendingDeleteId(null);
+  }, [deletingId]);
+
+  async function executeDelete(id: string) {
     setDeletingId(id);
     setError(null);
     try {
@@ -79,6 +83,7 @@ export function BroadcastList({
       }
       setItems((prev) => prev.filter((b) => b.id !== id));
       setReadersFor((cur) => (cur?.id === id ? null : cur));
+      setPendingDeleteId(null);
     } catch {
       setError("Something went wrong.");
     } finally {
@@ -96,6 +101,16 @@ export function BroadcastList({
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+      <ConfirmDeleteModal
+        open={pendingDeleteId !== null}
+        onClose={closeDeleteModal}
+        onConfirm={() => {
+          const id = pendingDeleteId;
+          if (!id) return;
+          void executeDelete(id);
+        }}
+        isDeleting={pendingDeleteId !== null && deletingId === pendingDeleteId}
+      />
       <ReadersModal
         open={readersFor !== null}
         broadcastId={readersFor?.id ?? null}
@@ -154,7 +169,7 @@ export function BroadcastList({
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleDelete(b.id)}
+                  onClick={() => setPendingDeleteId(b.id)}
                   disabled={deletingId === b.id}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50 dark:border-zinc-600 dark:text-red-300 dark:hover:bg-red-950/40"
                 >
