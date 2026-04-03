@@ -42,12 +42,55 @@ export async function getSchoolPlanRow(
   };
 }
 
+/**
+ * Resolves the school's plan tier for feature gating. Direct `schools` SELECTs
+ * can fail or return no row under RLS; `get_my_school_for_dashboard` is
+ * SECURITY DEFINER and returns the true `plan` when the row matches this school.
+ */
+export async function resolveSchoolPlanIdForFeatures(
+  supabase: SupabaseClient<Database>,
+  schoolId: string,
+  planFromSchoolRow: string | null | undefined
+): Promise<PlanId> {
+  let planId = normalizePlanId(planFromSchoolRow ?? "free");
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "get_my_school_for_dashboard",
+    {} as never
+  );
+  if (rpcError || rpcData == null) {
+    return planId;
+  }
+
+  let raw: unknown = rpcData;
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t || t === "null") return planId;
+    try {
+      raw = JSON.parse(t) as unknown;
+    } catch {
+      return planId;
+    }
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return planId;
+  }
+  const o = raw as { school_id?: string; plan?: string };
+  if (o.school_id !== schoolId) {
+    return planId;
+  }
+  if (typeof o.plan === "string" && o.plan.trim() !== "") {
+    planId = normalizePlanId(o.plan);
+  }
+  return planId;
+}
+
 export async function getCurrentPlan(
   supabase: SupabaseClient<Database>,
   schoolId: string
 ): Promise<PlanId> {
   const row = await getSchoolPlanRow(supabase, schoolId);
-  return normalizePlanId(row?.plan ?? "free");
+  return resolveSchoolPlanIdForFeatures(supabase, schoolId, row?.plan);
 }
 
 export async function checkStudentLimit(

@@ -4,8 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency } from "@/lib/currency";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
-import { canAccessFeature, normalizePlanId } from "@/lib/plans";
-import { getSchoolPlanRow } from "@/lib/plan-limits";
+import { canAccessFeature } from "@/lib/plans";
+import {
+  getSchoolPlanRow,
+  resolveSchoolPlanIdForFeatures,
+} from "@/lib/plan-limits";
 import { QueryErrorBanner } from "../query-error-banner";
 import { ReportsClient } from "./reports-client";
 
@@ -90,7 +93,11 @@ export default async function ReportsPage() {
   const currencyCode = normalizeSchoolCurrency(display.currency);
 
   const planRow = await getSchoolPlanRow(supabase, schoolId);
-  const planId = normalizePlanId(planRow?.plan ?? "free");
+  const planId = await resolveSchoolPlanIdForFeatures(
+    supabase,
+    schoolId,
+    planRow?.plan
+  );
   const canAdvancedReports = canAccessFeature(planId, "advancedReports");
 
   const fetchError = combineSupabaseErrors([

@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { canAccessFeature } from "@/lib/plans";
-import { getSchoolPlanRow } from "@/lib/plan-limits";
+import {
+  getSchoolPlanRow,
+  resolveSchoolPlanIdForFeatures,
+} from "@/lib/plan-limits";
 import {
   buildReportsExportCsv,
   type BalanceRow,
@@ -48,8 +51,12 @@ export async function POST(request: NextRequest) {
     }
 
     const planRow = await getSchoolPlanRow(supabase, schoolId);
-    const plan = planRow?.plan ?? "free";
-    if (!canAccessFeature(plan, "advancedReports")) {
+    const planId = await resolveSchoolPlanIdForFeatures(
+      supabase,
+      schoolId,
+      planRow?.plan
+    );
+    if (!canAccessFeature(planId, "advancedReports")) {
       return NextResponse.json(
         {
           error:
