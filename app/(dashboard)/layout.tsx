@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { BroadcastBanner } from "@/app/(dashboard)/school-admin/components/BroadcastBanner";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { getDisplayName } from "@/lib/display-name";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
+import { isSchoolAdminBroadcastAudience } from "@/lib/broadcasts/school-admin-audience";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 
 export default async function DashboardGroupLayout({
@@ -33,6 +35,11 @@ export default async function DashboardGroupLayout({
   } | null;
   const fullName = getDisplayName(user, profileRow?.full_name ?? null);
   const isSuperAdmin = await checkIsSuperAdmin(supabase, user.id);
+  const showSchoolAdminBroadcasts = await isSchoolAdminBroadcastAudience(
+    user.id,
+    supabase,
+    isSuperAdmin
+  );
 
   const schoolDisplay = await resolveSchoolDisplay(user.id, supabase);
 
@@ -83,6 +90,7 @@ export default async function DashboardGroupLayout({
           id="page-content"
           className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
         >
+          <BroadcastBanner showBroadcasts={showSchoolAdminBroadcasts} />
           {children}
         </div>
       </div>

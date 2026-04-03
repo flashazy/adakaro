@@ -125,6 +125,80 @@ export interface Database {
         };
         Relationships: [];
       };
+      broadcast_reads: {
+        Row: {
+          id: string;
+          broadcast_id: string;
+          user_id: string;
+          read_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          broadcast_id: string;
+          user_id: string;
+          read_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          read_at?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_reads_broadcast_id_fkey";
+            columns: ["broadcast_id"];
+            referencedRelation: "broadcasts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "broadcast_reads_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      broadcasts: {
+        Row: {
+          id: string;
+          title: string;
+          message: string;
+          is_urgent: boolean;
+          sent_by: string;
+          sent_at: string;
+          target_user_ids: string[] | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          message: string;
+          is_urgent?: boolean;
+          sent_by: string;
+          sent_at?: string;
+          target_user_ids?: string[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          message?: string;
+          is_urgent?: boolean;
+          sent_at?: string;
+          target_user_ids?: string[] | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "broadcasts_sent_by_fkey";
+            columns: ["sent_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       schools: {
         Row: {
           id: string;
@@ -781,4 +855,6 @@ export type ParentStudent = Database["public"]["Tables"]["parent_students"]["Row
 export type ParentLinkRequest = Database["public"]["Tables"]["parent_link_requests"]["Row"];
 export type SchoolInvitation = Database["public"]["Tables"]["school_invitations"]["Row"];
 export type UpgradeRequest = Database["public"]["Tables"]["upgrade_requests"]["Row"];
+export type Broadcast = Database["public"]["Tables"]["broadcasts"]["Row"];
+export type BroadcastRead = Database["public"]["Tables"]["broadcast_reads"]["Row"];
 export type StudentFeeBalance = Database["public"]["Views"]["student_fee_balances"]["Row"];

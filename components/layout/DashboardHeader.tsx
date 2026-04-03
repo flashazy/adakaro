@@ -224,6 +224,9 @@ export function DashboardHeader({
     "/super-admin/activity-logs"
   );
   const isSuperAdminWatchdog = pathname.startsWith("/super-admin/watchdog");
+  const isSuperAdminBroadcasts = pathname.startsWith(
+    "/super-admin/broadcasts"
+  );
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -260,6 +263,11 @@ export function DashboardHeader({
                 "/super-admin/watchdog",
                 "Watchdog",
                 isSuperAdminWatchdog
+              )}
+              {superAdminNavLink(
+                "/super-admin/broadcasts",
+                "Broadcast messages",
+                isSuperAdminBroadcasts
               )}
             </nav>
           ) : null}
