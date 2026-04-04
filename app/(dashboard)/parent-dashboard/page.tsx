@@ -7,14 +7,14 @@ import LinkRequestForm from "./link-request-form";
 import PendingSchoolInvitations from "./pending-school-invitations";
 import ClickPesaPayButton from "@/components/ClickPesaPayButton";
 import { FloatingScrollButton } from "@/components/ui/floating-scroll-button";
+import { getSchoolCurrencyById } from "@/lib/dashboard/resolve-school-display";
 import {
-  getSchoolCurrencyById,
-  resolveSchoolDisplay,
-} from "@/lib/dashboard/resolve-school-display";
-import {
+  currencyFlagEmoji,
   DEFAULT_SCHOOL_CURRENCY,
   formatCurrency,
   normalizeSchoolCurrency,
+  sortCurrencyCodes,
+  type SchoolCurrencyCode,
 } from "@/lib/currency";
 
 interface StudentWithClass {
@@ -43,6 +43,95 @@ interface PaymentRow {
   payment_date: string;
   fee_structure: { name: string } | null;
   receipt: { id: string; receipt_number: string } | null;
+}
+
+interface CurrencyTotalsAgg {
+  totalFees: number;
+  totalPaid: number;
+  totalBalance: number;
+}
+
+/** Batch-read school name + currency via service role (avoids RLS issues on `schools`). */
+async function loadParentSchoolCurrencies(
+  schoolIds: string[]
+): Promise<{
+  currencyBySchoolId: Map<string, SchoolCurrencyCode>;
+  schoolNameBySchoolId: Map<string, string>;
+}> {
+  const currencyBySchoolId = new Map<string, SchoolCurrencyCode>();
+  const schoolNameBySchoolId = new Map<string, string>();
+  if (schoolIds.length === 0) {
+    return { currencyBySchoolId, schoolNameBySchoolId };
+  }
+
+  try {
+    const admin = createAdminClient();
+    const { data: rows } = await admin
+      .from("schools")
+      .select("id, name, currency")
+      .in("id", schoolIds);
+    for (const row of rows ?? []) {
+      const r = row as {
+        id: string;
+        name: string | null;
+        currency: string | null;
+      };
+      currencyBySchoolId.set(r.id, normalizeSchoolCurrency(r.currency));
+      const n = r.name?.trim();
+      schoolNameBySchoolId.set(r.id, n && n.length > 0 ? n : "School");
+    }
+  } catch {
+    /* no service role */
+  }
+
+  for (const sid of schoolIds) {
+    if (!currencyBySchoolId.has(sid)) {
+      const raw = await getSchoolCurrencyById(sid);
+      currencyBySchoolId.set(sid, normalizeSchoolCurrency(raw));
+    }
+    if (!schoolNameBySchoolId.has(sid)) {
+      schoolNameBySchoolId.set(sid, "School");
+    }
+  }
+
+  return { currencyBySchoolId, schoolNameBySchoolId };
+}
+
+function aggregateBalancesByCurrency(
+  balances: BalanceRow[],
+  students: StudentWithClass[],
+  currencyBySchoolId: Map<string, SchoolCurrencyCode>
+): Map<SchoolCurrencyCode, CurrencyTotalsAgg> {
+  const studentToSchool = new Map(
+    students.map((s) => [s.id, s.school_id])
+  );
+  const map = new Map<SchoolCurrencyCode, CurrencyTotalsAgg>();
+
+  for (const s of students) {
+    const code =
+      currencyBySchoolId.get(s.school_id) ?? DEFAULT_SCHOOL_CURRENCY;
+    const c = normalizeSchoolCurrency(code);
+    if (!map.has(c)) {
+      map.set(c, { totalFees: 0, totalPaid: 0, totalBalance: 0 });
+    }
+  }
+
+  for (const b of balances) {
+    const schoolId = studentToSchool.get(b.student_id);
+    if (!schoolId) continue;
+    const code = normalizeSchoolCurrency(currencyBySchoolId.get(schoolId));
+    const agg = map.get(code) ?? {
+      totalFees: 0,
+      totalPaid: 0,
+      totalBalance: 0,
+    };
+    agg.totalFees += Number(b.total_fee);
+    agg.totalPaid += Number(b.total_paid);
+    agg.totalBalance += Number(b.balance);
+    map.set(code, agg);
+  }
+
+  return map;
 }
 
 export default async function ParentDashboard() {
@@ -246,37 +335,8 @@ export default async function ParentDashboard() {
   }
 
   const schoolIds = [...new Set(students.map((s) => s.school_id))];
-  const currencyBySchoolId = new Map<string, string>();
-  if (schoolIds.length > 0) {
-    const schoolDisplay = await resolveSchoolDisplay(user.id, supabase);
-
-    await Promise.all(
-      schoolIds.map(async (sid) => {
-        let raw: string | null = null;
-        if (
-          schoolDisplay != null &&
-          schoolDisplay.schoolId === sid &&
-          schoolDisplay.currency != null &&
-          String(schoolDisplay.currency).trim() !== ""
-        ) {
-          raw = schoolDisplay.currency;
-        }
-        if (raw == null || String(raw).trim() === "") {
-          const { data: schoolRow } = await supabase
-            .from("schools")
-            .select("currency")
-            .eq("id", sid)
-            .maybeSingle();
-          raw =
-            (schoolRow as { currency: string | null } | null)?.currency ?? null;
-        }
-        if (raw == null || String(raw).trim() === "") {
-          raw = await getSchoolCurrencyById(sid);
-        }
-        currencyBySchoolId.set(sid, normalizeSchoolCurrency(raw));
-      })
-    );
-  }
+  const { currencyBySchoolId, schoolNameBySchoolId } =
+    await loadParentSchoolCurrencies(schoolIds);
 
   function currencyForStudent(studentId: string): string {
     const st = students.find((s) => s.id === studentId);
@@ -284,18 +344,24 @@ export default async function ParentDashboard() {
     return currencyBySchoolId.get(st.school_id) ?? DEFAULT_SCHOOL_CURRENCY;
   }
 
-  const distinctCurrencies = [
-    ...new Set(students.map((s) => currencyBySchoolId.get(s.school_id) ?? DEFAULT_SCHOOL_CURRENCY)),
-  ];
-  const aggregateCurrency =
-    distinctCurrencies.length === 1 ? distinctCurrencies[0]! : null;
-
-  const totalFees = balances.reduce((sum, b) => sum + Number(b.total_fee), 0);
-  const totalPaid = balances.reduce((sum, b) => sum + Number(b.total_paid), 0);
-  const totalBalance = balances.reduce(
-    (sum, b) => sum + Number(b.balance),
-    0
+  const totalsByCurrency = aggregateBalancesByCurrency(
+    balances,
+    students,
+    currencyBySchoolId
   );
+  const distinctSorted = sortCurrencyCodes(totalsByCurrency.keys());
+  const singleCurrencyCode =
+    distinctSorted.length === 1 ? distinctSorted[0]! : null;
+
+  const totalFees = singleCurrencyCode
+    ? (totalsByCurrency.get(singleCurrencyCode)?.totalFees ?? 0)
+    : 0;
+  const totalPaid = singleCurrencyCode
+    ? (totalsByCurrency.get(singleCurrencyCode)?.totalPaid ?? 0)
+    : 0;
+  const totalBalance = singleCurrencyCode
+    ? (totalsByCurrency.get(singleCurrencyCode)?.totalBalance ?? 0)
+    : 0;
   const collectionPct =
     totalFees > 0 ? Math.round((totalPaid / totalFees) * 100) : 0;
 
@@ -346,69 +412,67 @@ export default async function ParentDashboard() {
           </div>
         ) : (
           <>
-            {/* Summary KPIs */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <KpiCard
-                label="My Children"
-                value={String(childCount)}
-                icon={
-                  <svg className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
-                  </svg>
-                }
-              />
-              <KpiCard
-                label="Total Fees"
-                value={
-                  aggregateCurrency
-                    ? formatCurrency(totalFees, aggregateCurrency)
-                    : "—"
-                }
-                subtitle={
-                  aggregateCurrency
-                    ? undefined
-                    : "Multiple currencies — see each child below"
-                }
-                icon={
-                  <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
-                  </svg>
-                }
-              />
-              <KpiCard
-                label="Paid"
-                value={
-                  aggregateCurrency
-                    ? formatCurrency(totalPaid, aggregateCurrency)
-                    : "—"
-                }
-                color="emerald"
-                subtitle={
-                  aggregateCurrency
-                    ? `${collectionPct}% collected`
-                    : "Per-student breakdown below"
-                }
-                icon={
-                  <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                  </svg>
-                }
-              />
-              <KpiCard
-                label="Balance Due"
-                value={
-                  aggregateCurrency
-                    ? formatCurrency(totalBalance, aggregateCurrency)
-                    : "—"
-                }
-                color={totalBalance > 0 ? "amber" : undefined}
-                icon={
-                  <svg className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                  </svg>
-                }
-              />
-            </div>
+            {/* Summary KPIs — multi-currency summary sits outside the 4-col grid so it never repeats as a grid fragment */}
+            {singleCurrencyCode ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <KpiCard
+                  label="My Children"
+                  value={String(childCount)}
+                  icon={
+                    <svg className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+                    </svg>
+                  }
+                />
+                <KpiCard
+                  label="Total Fees"
+                  value={formatCurrency(totalFees, singleCurrencyCode)}
+                  icon={
+                    <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
+                    </svg>
+                  }
+                />
+                <KpiCard
+                  label="Paid"
+                  value={formatCurrency(totalPaid, singleCurrencyCode)}
+                  color="emerald"
+                  subtitle={`${collectionPct}% collected`}
+                  icon={
+                    <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                  }
+                />
+                <KpiCard
+                  label="Balance Due"
+                  value={formatCurrency(totalBalance, singleCurrencyCode)}
+                  color={totalBalance > 0 ? "amber" : undefined}
+                  icon={
+                    <svg className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                  }
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+                <div className="shrink-0 lg:w-[min(100%,14rem)]">
+                  <KpiCard
+                    label="My Children"
+                    value={String(childCount)}
+                    icon={
+                      <svg className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+                      </svg>
+                    }
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <MultiCurrencySummary totalsByCurrency={totalsByCurrency} />
+                </div>
+              </div>
+            )}
 
             {/* Link another child */}
             <div className="mt-6">
@@ -416,7 +480,7 @@ export default async function ParentDashboard() {
             </div>
 
             {/* Per-student breakdown */}
-            <div className="mt-8 space-y-6">
+            <div className="mt-8 space-y-8">
               {students.map((student) => {
                 const sBalances = balances.filter(
                   (b) => b.student_id === student.id
@@ -440,51 +504,64 @@ export default async function ParentDashboard() {
                   (b) => b.balance > 0
                 );
                 const sc = currencyForStudent(student.id);
+                const sCollectionPct =
+                  sTotalFee > 0
+                    ? Math.round((sTotalPaid / sTotalFee) * 100)
+                    : 0;
+                const schoolDisplayName =
+                  schoolNameBySchoolId.get(student.school_id) ?? "School";
 
                 return (
                   <div
                     key={student.id}
-                    className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                    className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 dark:border-zinc-700/90 dark:bg-zinc-900 dark:shadow-lg dark:ring-zinc-700/50"
                   >
-                    {/* Student header */}
+                    {/* Student header: name + class, then school */}
                     <div className="border-b border-slate-200 bg-slate-50/50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-800/30">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-start gap-3">
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
                           {student.full_name.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h2 className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                            {student.full_name}
-                          </h2>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-zinc-400">
-                            {student.class && (
-                              <span className="inline-flex items-center gap-1">
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
-                                </svg>
-                                {student.class.name}
-                              </span>
-                            )}
-                            {student.admission_number && (
-                              <span className="inline-flex items-center gap-1">
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5" />
-                                </svg>
-                                {student.admission_number}
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                                {student.full_name}
+                              </h2>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600 dark:text-zinc-400">
+                                {student.class && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
+                                    </svg>
+                                    {student.class.name}
+                                  </span>
+                                )}
+                                {student.admission_number && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5" />
+                                    </svg>
+                                    {student.admission_number}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                                {schoolDisplayName}
+                              </p>
+                            </div>
+                            {sBalance > 0 && (
+                              <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
+                                {formatCurrency(sBalance, sc)} due
                               </span>
                             )}
                           </div>
                         </div>
-                        {sBalance > 0 && (
-                          <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-                            {formatCurrency(sBalance, sc)} due
-                          </span>
-                        )}
                       </div>
                     </div>
 
-                    {/* Fee summary bar */}
-                    <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200 dark:divide-zinc-800 dark:border-zinc-800">
+                    {/* Fee summary grid */}
+                    <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900/40">
                       <MiniStat
                         label="Total Fees"
                         value={formatCurrency(sTotalFee, sc)}
@@ -498,6 +575,9 @@ export default async function ParentDashboard() {
                         label="Paid"
                         value={formatCurrency(sTotalPaid, sc)}
                         color="emerald"
+                        subtitle={
+                          sTotalFee > 0 ? `${sCollectionPct}% of fees` : undefined
+                        }
                         icon={
                           <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -516,10 +596,10 @@ export default async function ParentDashboard() {
                       />
                     </div>
 
-                    {/* Outstanding fees breakdown */}
+                    {/* Outstanding fees */}
                     {outstandingFees.length > 0 && (
-                      <div className="border-b border-slate-200 dark:border-zinc-800">
-                        <div className="flex items-center gap-2 px-6 py-3">
+                      <div className="border-b border-slate-200 bg-slate-50/40 dark:border-zinc-800 dark:bg-zinc-900/60">
+                        <div className="flex items-center gap-2 border-b border-slate-200/80 px-6 py-3 dark:border-zinc-800">
                           <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                           </svg>
@@ -527,7 +607,7 @@ export default async function ParentDashboard() {
                             Outstanding fees
                           </p>
                         </div>
-                        <div className="divide-y divide-slate-100 dark:divide-zinc-800/50">
+                        <div className="divide-y divide-slate-200/80 dark:divide-zinc-800/50">
                           {outstandingFees.map((b) => (
                             <div
                               key={b.fee_structure_id}
@@ -563,18 +643,17 @@ export default async function ParentDashboard() {
 
                     {/* Recent payments */}
                     {sPayments.length > 0 ? (
-                      <div>
-                        <div className="flex items-center gap-2 px-6 py-3">
+                      <div className="bg-white dark:bg-zinc-900/40">
+                        <div className="flex items-center gap-2 border-b border-slate-200/80 px-6 py-3 dark:border-zinc-800">
                           <svg className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
                           </svg>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400/90">
                             Recent payments
                           </p>
                         </div>
 
-                        {/* Mobile-friendly payment list */}
-                        <div className="divide-y divide-slate-100 dark:divide-zinc-800/50">
+                        <div className="divide-y divide-slate-200/80 dark:divide-zinc-800/50">
                           {sPayments.map((p) => {
                             const feeStructure = p.fee_structure as {
                               name: string;
@@ -660,6 +739,61 @@ export default async function ParentDashboard() {
 
 // ─── Sub-components ─────────────────────────────────────────
 
+function MultiCurrencySummary({
+  totalsByCurrency,
+}: {
+  totalsByCurrency: Map<SchoolCurrencyCode, CurrencyTotalsAgg>;
+}) {
+  const codes = sortCurrencyCodes(totalsByCurrency.keys());
+  return (
+    <div className="h-full rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="border-b border-slate-100 pb-3 dark:border-zinc-800">
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+          Summary by Currency
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+          Totals are per school currency — amounts are not combined across
+          currencies.
+        </p>
+      </div>
+      {codes.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500 dark:text-zinc-400">
+          No fee data yet.
+        </p>
+      ) : (
+        <ul className="mt-4 space-y-4">
+          {codes.map((code) => {
+            const t = totalsByCurrency.get(code)!;
+            const pct =
+              t.totalFees > 0
+                ? Math.round((t.totalPaid / t.totalFees) * 100)
+                : 0;
+            return (
+              <li key={code}>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                    {currencyFlagEmoji(code)} {code}
+                  </span>
+                  <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                    {formatCurrency(t.totalBalance, code)}{" "}
+                    <span className="text-xs font-normal text-slate-500 dark:text-zinc-400">
+                      due
+                    </span>
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                  {formatCurrency(t.totalFees, code)} fees ·{" "}
+                  {formatCurrency(t.totalPaid, code)} paid ({pct}% collected)
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function KpiCard({
   label,
   value,
@@ -702,11 +836,13 @@ function MiniStat({
   label,
   value,
   color,
+  subtitle,
   icon,
 }: {
   label: string;
   value: string;
   color?: "emerald" | "amber";
+  subtitle?: string;
   icon: React.ReactNode;
 }) {
   const valueColor =
@@ -717,12 +853,17 @@ function MiniStat({
         : "text-slate-900 dark:text-white";
 
   return (
-    <div className="px-4 py-3 text-center">
+    <div className="px-3 py-3 text-center sm:px-4">
       <div className="mb-1 flex items-center justify-center gap-1">
         {icon}
         <p className="text-xs text-slate-500 dark:text-zinc-400">{label}</p>
       </div>
       <p className={`text-sm font-semibold ${valueColor}`}>{value}</p>
+      {subtitle ? (
+        <p className="mt-0.5 text-[11px] leading-tight text-slate-500 dark:text-zinc-500">
+          {subtitle}
+        </p>
+      ) : null}
     </div>
   );
 }

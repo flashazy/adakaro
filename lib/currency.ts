@@ -42,6 +42,33 @@ export function normalizeSchoolCurrency(
   return DEFAULT_SCHOOL_CURRENCY;
 }
 
+/** Flag emoji for parent dashboard / summaries (TZS, USD, KES, UGX). */
+const CURRENCY_FLAG_EMOJI: Record<SchoolCurrencyCode, string> = {
+  TZS: "🇹🇿",
+  USD: "🇺🇸",
+  KES: "🇰🇪",
+  UGX: "🇺🇬",
+};
+
+export function currencyFlagEmoji(
+  currencyCode: string | null | undefined
+): string {
+  const code = normalizeSchoolCurrency(currencyCode);
+  return CURRENCY_FLAG_EMOJI[code];
+}
+
+/** Stable order for multi-currency summaries (matches SCHOOL_CURRENCIES). */
+export function sortCurrencyCodes(
+  codes: Iterable<SchoolCurrencyCode>
+): SchoolCurrencyCode[] {
+  const order = new Map(
+    SCHOOL_CURRENCIES.map((c, i) => [c, i] as const)
+  );
+  return [...new Set(codes)].sort(
+    (a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99)
+  );
+}
+
 /**
  * Format a monetary amount for display using the school's currency.
  * Uses Intl with locales: TZS sw-TZ, KES en-KE, UGX en-UG, USD en-US.
