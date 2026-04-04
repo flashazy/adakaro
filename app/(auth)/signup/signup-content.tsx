@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signup, type AuthState } from "../actions";
+import { PasswordInput } from "@/components/auth/password-input";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -143,14 +144,12 @@ export default function SignupContent() {
           >
             Password
           </label>
-          <input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             autoComplete="new-password"
             required
             minLength={6}
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
             placeholder="At least 6 characters"
           />
         </div>
@@ -162,14 +161,12 @@ export default function SignupContent() {
           >
             Confirm password
           </label>
-          <input
+          <PasswordInput
             id="confirm_password"
             name="confirm_password"
-            type="password"
             autoComplete="new-password"
             required
             minLength={6}
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
             placeholder="Re-enter your password"
           />
         </div>
