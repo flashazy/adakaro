@@ -246,7 +246,23 @@ export async function updateSchoolCurrency(
     return { error: "No school found for your account." };
   }
 
-  const { error } = await supabase
+  const { data: isAdmin, error: adminErr } = await supabase.rpc(
+    "is_school_admin",
+    { p_school_id: schoolId } as never
+  );
+  if (adminErr || !isAdmin) {
+    return { error: "You must be a school admin to change currency." };
+  }
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not update school. Check server configuration (service role).",
+    };
+  }
+
+  const { error } = await admin
     .from("schools")
     .update({ currency } as never)
     .eq("id", schoolId);
