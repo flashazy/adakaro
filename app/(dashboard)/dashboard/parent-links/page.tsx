@@ -7,20 +7,12 @@ import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/supabase";
 import { QueryErrorBanner } from "../query-error-banner";
-import AddLinkForm from "./add-link-form";
-import LinkRow, { type ParentLinkData } from "./link-row";
+import { ParentLinksTable } from "./parent-links-table";
+import type { ParentLinkData } from "./link-row-types";
 
 type Db = SupabaseClient<Database>;
 
-type ParentFetchResult = {
-  data: unknown;
-  error: unknown;
-  /** Distinct parent user ids we asked for; RLS can still return fewer profile rows with no error. */
-  idCount: number;
-};
-
-type FetchBundle = {
-  parentsRes: ParentFetchResult;
+type LinksFetchBundle = {
   studentsRes: { data: unknown; error: unknown };
   linksRes: { data: unknown; error: unknown };
 };
@@ -42,7 +34,6 @@ function isRlsOrPermissionError(err: unknown): boolean {
   const codeRaw = o.code != null ? String(o.code) : "";
   const code = codeRaw.toUpperCase().replace(/^0+/, "") || codeRaw;
 
-  // Postgres privilege / RLS recursion (string or numeric codes from drivers)
   if (
     code === "42501" ||
     code === "42P17" ||
@@ -69,7 +60,6 @@ function isRlsOrPermissionError(err: unknown): boolean {
     return true;
   }
 
-  // Some clients only expose a nested cause or minimal shape — scan serialized form
   try {
     const blob = JSON.stringify(err).toLowerCase();
     if (
@@ -87,77 +77,11 @@ function isRlsOrPermissionError(err: unknown): boolean {
   return false;
 }
 
-function anyQueryNeedsAdminFallback(bundle: FetchBundle): boolean {
+function anyQueryNeedsAdminFallback(bundle: LinksFetchBundle): boolean {
   return (
-    isRlsOrPermissionError(bundle.parentsRes.error) ||
     isRlsOrPermissionError(bundle.studentsRes.error) ||
     isRlsOrPermissionError(bundle.linksRes.error)
   );
-}
-
-/**
- * Parent dropdown: combine parent user ids from
- * - `school_members` (this school, role parent), and
- * - `parent_students` for any student at this school (`student_id` in this school's set),
- * then load `profiles` for the deduplicated ids (includes linked parents regardless of profile role).
- */
-async function fetchParentProfilesForSchool(
-  client: Db,
-  schoolId: string,
-  linkRowsAtSchool: { parent_id: string }[],
-  schoolStudentIds: Set<string>
-): Promise<ParentFetchResult> {
-  void linkRowsAtSchool;
-  const idSet = new Set<string>();
-
-  const memRes = await client
-    .from("school_members")
-    .select("user_id")
-    .eq("school_id", schoolId)
-    .eq("role", "parent");
-
-  const studentIds = [...schoolStudentIds];
-  const linkedRes =
-    studentIds.length > 0
-      ? await client
-          .from("parent_students")
-          .select("parent_id")
-          .in("student_id", studentIds)
-      : { data: [] as { parent_id: string }[], error: null };
-
-  if (!memRes.error) {
-    for (const row of (memRes.data ?? []) as { user_id: string }[]) {
-      idSet.add(row.user_id);
-    }
-  }
-
-  if (!linkedRes.error) {
-    for (const row of (linkedRes.data ?? []) as { parent_id: string }[]) {
-      if (row.parent_id) idSet.add(row.parent_id);
-    }
-  }
-
-  const ids = [...idSet];
-  if (ids.length === 0) {
-    return {
-      data: [],
-      error: memRes.error ?? linkedRes.error ?? null,
-      idCount: 0,
-    };
-  }
-
-  const profRes = await client
-    .from("profiles")
-    .select("id, full_name, email")
-    .in("id", ids)
-    .order("full_name");
-
-  const rows = (profRes.data ?? []) as unknown[];
-  return {
-    data: rows,
-    error: profRes.error ?? memRes.error ?? linkedRes.error ?? null,
-    idCount: ids.length,
-  };
 }
 
 /** Session-scoped client: full selects including class name. */
@@ -165,7 +89,7 @@ async function fetchParentLinksWithClient(
   client: Db,
   schoolId: string,
   options: { includeClassJoin: boolean }
-): Promise<FetchBundle> {
+): Promise<LinksFetchBundle> {
   const studentSelect = options.includeClassJoin
     ? "id, full_name, admission_number, class_id, class:classes(name)"
     : "id, full_name, admission_number, class_id";
@@ -188,18 +112,10 @@ async function fetchParentLinksWithClient(
   const studentRows = (studentsRes.data ?? []) as { id: string }[];
   const schoolStudentIds = new Set(studentRows.map((s) => s.id));
 
-  const rows = (linksResAll.data ?? []) as { student_id: string; parent_id: string }[];
+  const rows = (linksResAll.data ?? []) as { student_id: string }[];
   const filtered = rows.filter((r) => schoolStudentIds.has(r.student_id));
 
-  const parentsRes = await fetchParentProfilesForSchool(
-    client,
-    schoolId,
-    filtered,
-    schoolStudentIds
-  );
-
   return {
-    parentsRes,
     studentsRes,
     linksRes: { data: filtered, error: linksResAll.error },
   };
@@ -209,7 +125,7 @@ async function fetchParentLinksWithClient(
 async function fetchParentLinksWithAdminClient(
   admin: Db,
   schoolId: string
-): Promise<FetchBundle> {
+): Promise<LinksFetchBundle> {
   const studentsRes = await admin
     .from("students")
     .select("id, full_name, admission_number, class_id, class:classes(name)")
@@ -229,16 +145,7 @@ async function fetchParentLinksWithAdminClient(
           .in("student_id", studentIds)
       : { data: [] as unknown[], error: null };
 
-  const filteredRows = (linksRes.data ?? []) as { parent_id: string }[];
-
-  const parentsRes = await fetchParentProfilesForSchool(
-    admin,
-    schoolId,
-    filteredRows,
-    new Set(studentIds)
-  );
-
-  return { parentsRes, studentsRes, linksRes };
+  return { studentsRes, linksRes };
 }
 
 export default async function ParentLinksPage() {
@@ -252,14 +159,13 @@ export default async function ParentLinksPage() {
   const schoolId = await getSchoolIdForUser(supabase, user.id);
   if (!schoolId) redirect("/dashboard");
 
-  let { parentsRes, studentsRes, linksRes } = await fetchParentLinksWithClient(
+  let { studentsRes, linksRes } = await fetchParentLinksWithClient(
     supabase,
     schoolId,
     { includeClassJoin: true }
   );
 
   let fetchError = combineSupabaseErrors([
-    parentsRes.error,
     studentsRes.error,
     linksRes.error,
   ]);
@@ -279,35 +185,22 @@ export default async function ParentLinksPage() {
       );
     })();
 
-  // Any failed query from the session client → one admin attempt (covers odd PostgREST shapes)
   const anyUserQueryFailed =
-    parentsRes.error != null ||
-    studentsRes.error != null ||
-    linksRes.error != null;
-
-  const parentsData = parentsRes.data;
-  const parentsRlsLikelyStripped =
-    parentsRes.error == null &&
-    parentsRes.idCount > 0 &&
-    Array.isArray(parentsData) &&
-    parentsData.length === 0;
+    studentsRes.error != null || linksRes.error != null;
 
   if (
-    anyQueryNeedsAdminFallback({ parentsRes, studentsRes, linksRes }) ||
+    anyQueryNeedsAdminFallback({ studentsRes, linksRes }) ||
     combinedSuggestsPermission ||
-    anyUserQueryFailed ||
-    parentsRlsLikelyStripped
+    anyUserQueryFailed
   ) {
     try {
       const admin = createAdminClient();
       const adminBundle = await fetchParentLinksWithAdminClient(admin, schoolId);
       const adminErr = combineSupabaseErrors([
-        adminBundle.parentsRes.error,
         adminBundle.studentsRes.error,
         adminBundle.linksRes.error,
       ]);
       if (!adminErr) {
-        parentsRes = adminBundle.parentsRes;
         studentsRes = adminBundle.studentsRes;
         linksRes = adminBundle.linksRes;
         fetchError = null;
@@ -326,8 +219,6 @@ export default async function ParentLinksPage() {
   if (fetchError) {
     console.error("[parent-links] error:", fetchError);
   }
-
-  const typedParents = (parentsRes.data ?? []) as { id: string; full_name: string; email: string | null }[];
 
   const typedStudentsRes = (studentsRes.data ?? []) as {
     id: string;
@@ -353,36 +244,6 @@ export default async function ParentLinksPage() {
     } | null;
   }[];
 
-  /**
-   * Dropdown is built from school-scoped profile ids; merge in any parent embed from links
-   * so rows still appear if the profile query omitted them (e.g. role edge cases).
-   */
-  const parentsById = new Map<
-    string,
-    { id: string; full_name: string; email: string | null }
-  >();
-  for (const p of typedParents) {
-    parentsById.set(p.id, {
-      id: p.id,
-      full_name: p.full_name,
-      email: p.email,
-    });
-  }
-  for (const l of typedLinks) {
-    const pr = l.parent;
-    if (pr && l.parent_id && !parentsById.has(l.parent_id)) {
-      parentsById.set(l.parent_id, {
-        id: l.parent_id,
-        full_name: pr.full_name ?? "Unknown",
-        email: pr.email ?? null,
-      });
-    }
-  }
-  const parents = [...parentsById.values()].sort((a, b) =>
-    a.full_name.localeCompare(b.full_name, undefined, { sensitivity: "base" })
-  );
-
-  // Build link rows with joined names
   const linkRows: ParentLinkData[] = typedLinks.map((l) => {
     const parent = l.parent as { full_name: string; email: string | null } | null;
     const student = l.student as {
@@ -402,7 +263,6 @@ export default async function ParentLinksPage() {
     };
   });
 
-  // Only show links for students in this school
   const schoolStudentIds = new Set(students.map((s) => s.id));
   const filteredLinks = linkRows.filter((l) => {
     const orig = typedLinks.find((r) => r.id === l.id);
@@ -411,7 +271,6 @@ export default async function ParentLinksPage() {
 
   return (
     <>
-      {/* Header */}
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mx-auto flex max-w-5xl items-center justify-between py-4">
           <div className="flex items-center gap-3">
@@ -422,10 +281,10 @@ export default async function ParentLinksPage() {
             </div>
             <div>
               <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Parent–Student Links
+                Approved Connections
               </h1>
               <p className="text-sm text-slate-500 dark:text-zinc-400">
-                Manage which parents can see which students
+                View and manage approved parent-student connections
               </p>
             </div>
           </div>
@@ -439,6 +298,25 @@ export default async function ParentLinksPage() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-8 py-8">
+        <nav
+          className="text-xs text-slate-500 dark:text-zinc-400"
+          aria-label="Breadcrumb"
+        >
+          <Link
+            href="/dashboard"
+            className="text-slate-600 transition-colors hover:text-indigo-600 dark:text-zinc-300 dark:hover:text-indigo-400"
+          >
+            Dashboard
+          </Link>
+          <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
+          <span className="text-slate-600 dark:text-zinc-300">
+            Parent Links
+          </span>
+          <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
+          <span className="font-medium text-slate-900 dark:text-white">
+            Approved Connections
+          </span>
+        </nav>
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load parent links data"
@@ -458,67 +336,13 @@ export default async function ParentLinksPage() {
           </QueryErrorBanner>
         ) : null}
 
-        {/* Add form */}
-        <AddLinkForm parents={parents} students={students} />
-
-        {/* Existing links */}
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-zinc-800">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
-              <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-              </svg>
-              Existing Links
-            </h2>
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-zinc-800 dark:text-zinc-400">
-              {filteredLinks.length}
-            </span>
+        {fetchError ? (
+          <div className="rounded-xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+            Fix the error above to load links.
           </div>
-
-          {!fetchError && filteredLinks.length === 0 ? (
-            <div className="px-6 py-12 text-center">
-              <svg className="mx-auto h-10 w-10 text-slate-300 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-              </svg>
-              <p className="mt-3 text-sm font-medium text-slate-900 dark:text-white">
-                No links yet
-              </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                Use the form above to link a parent account to a student.
-              </p>
-            </div>
-          ) : fetchError ? (
-            <div className="px-6 py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
-              Fix the error above to load links.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/50 dark:border-zinc-800 dark:bg-zinc-800/30">
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                      Parent
-                    </th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                      Student
-                    </th>
-                    <th className="hidden px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 sm:table-cell dark:text-zinc-400">
-                      Class
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLinks.map((link) => (
-                    <LinkRow key={link.id} link={link} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        ) : (
+          <ParentLinksTable links={filteredLinks} />
+        )}
       </main>
     </>
   );

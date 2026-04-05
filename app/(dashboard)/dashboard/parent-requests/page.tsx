@@ -130,7 +130,7 @@ export default async function ParentRequestsPage() {
             </div>
             <div>
               <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Parent Link Requests
+                Pending Approvals
               </h1>
               <p className="text-sm text-slate-500 dark:text-zinc-400">
                 Review and approve parent access requests
@@ -147,6 +147,25 @@ export default async function ParentRequestsPage() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-6 py-8">
+        <nav
+          className="text-xs text-slate-500 dark:text-zinc-400"
+          aria-label="Breadcrumb"
+        >
+          <Link
+            href="/dashboard"
+            className="text-slate-600 transition-colors hover:text-indigo-600 dark:text-zinc-300 dark:hover:text-indigo-400"
+          >
+            Dashboard
+          </Link>
+          <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
+          <span className="text-slate-600 dark:text-zinc-300">
+            Parent Links
+          </span>
+          <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
+          <span className="font-medium text-slate-900 dark:text-white">
+            Pending Approvals
+          </span>
+        </nav>
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load link requests"
@@ -182,7 +201,7 @@ export default async function ParentRequestsPage() {
               <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
               </svg>
-              Pending Requests
+              Pending Approvals
             </h2>
             <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
               {requests.length}

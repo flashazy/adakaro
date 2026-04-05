@@ -23,39 +23,6 @@ export interface LinkActionState {
   success?: string;
 }
 
-export async function addParentLink(
-  _prevState: LinkActionState,
-  formData: FormData
-): Promise<LinkActionState> {
-  const parentId = (formData.get("parent_id") as string)?.trim();
-  const studentId = (formData.get("student_id") as string)?.trim();
-
-  if (!parentId || !studentId) {
-    return { error: "Both parent and student are required." };
-  }
-
-  try {
-    const { supabase } = await getSchoolId();
-
-    const { error } = await supabase.from("parent_students").insert({
-      parent_id: parentId,
-      student_id: studentId,
-    } as never);
-
-    if (error) {
-      if (error.code === "23505") {
-        return { error: "This parent is already linked to this student." };
-      }
-      return { error: error.message };
-    }
-
-    revalidatePath("/dashboard/parent-links");
-    return { success: "Parent linked to student successfully." };
-  } catch (e) {
-    return { error: (e as Error).message };
-  }
-}
-
 export async function deleteParentLink(
   linkId: string
 ): Promise<LinkActionState> {

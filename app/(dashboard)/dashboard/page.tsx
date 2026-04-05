@@ -89,7 +89,7 @@ const NAV_LINKS = [
   },
   {
     href: "/dashboard/parent-links",
-    title: "Parent Links",
+    title: "Approved Connections",
     desc: "Link parents to students.",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -99,7 +99,7 @@ const NAV_LINKS = [
   },
   {
     href: "/dashboard/link-requests",
-    title: "Link Requests",
+    title: "Pending Approvals",
     desc: "Review parent access requests.",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -455,10 +455,6 @@ export default async function AdminDashboard() {
             Quick Actions
           </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <RequestUpgradeQuickAction
-              schoolId={schoolId!}
-              currentPlan={currentSchoolPlan}
-            />
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
@@ -478,6 +474,10 @@ export default async function AdminDashboard() {
                 </div>
               </Link>
             ))}
+            <RequestUpgradeQuickAction
+              schoolId={schoolId!}
+              currentPlan={currentSchoolPlan}
+            />
           </div>
         </div>
     </main>
