@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdsForAdminUser } from "@/lib/dashboard/get-school-ids";
@@ -237,6 +238,7 @@ export default async function ParentRequestsPage() {
           )}
         </div>
       </main>
+      <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

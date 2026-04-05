@@ -14,6 +14,7 @@ import { AddStudentForm } from "./add-student-form";
 import StudentImportModal from "./components/student-import-modal";
 import { StudentList } from "./student-list";
 import Link from "next/link";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +125,7 @@ export default async function StudentsPage() {
           <StudentList students={typedStudents} classes={classOptions} />
         ) : null}
       </main>
+      <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

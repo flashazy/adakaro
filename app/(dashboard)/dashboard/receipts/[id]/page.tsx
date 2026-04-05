@@ -9,6 +9,7 @@ import { PrintButton } from "./print-button";
 import { ReceiptWatchdogTracker } from "./receipt-watchdog-tracker";
 import "./receipt-print.css";
 import Link from "next/link";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { Building2 } from "lucide-react";
 import {
   DEFAULT_SCHOOL_CURRENCY,
@@ -397,6 +398,9 @@ export default async function ReceiptPage({ params }: PageProps) {
           </div>
         </div>
       </main>
+      <div className="print:hidden">
+        <SmartFloatingScrollButton sectionIds={[]} />
+      </div>
     </>
   );
 }

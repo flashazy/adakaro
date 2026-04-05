@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency } from "@/lib/currency";
@@ -160,6 +161,7 @@ export default async function ReportsPage() {
           canAdvancedReports={canAdvancedReports}
         />
       </main>
+      <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

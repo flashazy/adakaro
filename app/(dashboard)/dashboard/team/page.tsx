@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { createClient } from "@/lib/supabase/server";
 import { parseSchoolDashboardRpc } from "@/lib/dashboard/parse-school-dashboard-rpc";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
@@ -365,6 +366,7 @@ export default async function TeamPage() {
           showUpgradeLink={!canInvite}
         />
       </main>
+      <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

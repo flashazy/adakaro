@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BackToTopButton } from "@/components/ui/BackToTopButton";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { ContactForm } from "./contact-form";
 
 export const metadata: Metadata = {
@@ -95,7 +95,7 @@ export default function ContactPage() {
         </p>
       </div>
     </div>
-    <BackToTopButton />
+    <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

@@ -6,6 +6,7 @@ import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
 import { PaymentClient } from "./payment-client";
 import Link from "next/link";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
 export default async function PaymentsPage() {
   const supabase = await createClient();
@@ -126,6 +127,7 @@ export default async function PaymentsPage() {
           currencyCode={currencyCode}
         />
       </main>
+      <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

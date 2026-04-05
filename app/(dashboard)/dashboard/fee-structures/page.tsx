@@ -7,6 +7,7 @@ import { QueryErrorBanner } from "../query-error-banner";
 import { AddFeeStructureForm } from "./add-fee-structure-form";
 import { FeeStructureRow } from "./fee-structure-row";
 import Link from "next/link";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
 export default async function FeeStructuresPage() {
   const supabase = await createClient();
@@ -166,6 +167,7 @@ export default async function FeeStructuresPage() {
           </div>
         ) : null}
       </main>
+      <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

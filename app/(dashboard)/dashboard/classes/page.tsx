@@ -6,6 +6,7 @@ import { QueryErrorBanner } from "../query-error-banner";
 import { AddClassForm } from "./add-class-form";
 import { ClassRow } from "./class-row";
 import Link from "next/link";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
 export default async function ClassesPage() {
   const supabase = await createClient();
@@ -115,6 +116,7 @@ export default async function ClassesPage() {
           </div>
         ) : null}
       </main>
+      <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

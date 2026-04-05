@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BackToTopButton } from "@/components/ui/BackToTopButton";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
 export const metadata: Metadata = {
   title: "FAQ — Adakaro",
@@ -113,7 +113,7 @@ export default function FaqPage() {
         </p>
       </article>
     </div>
-    <BackToTopButton />
+    <SmartFloatingScrollButton sectionIds={[]} />
     </>
   );
 }

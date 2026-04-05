@@ -15,6 +15,8 @@ const LANDING_SECTION_IDS = [
 ] as const;
 
 const NEAR_BOTTOM_PX = 140;
+/** Pixels to scroll down per click when using step mode (no section IDs). */
+const SCROLL_STEP_PX = 500;
 /** Section is considered “active” when its top has crossed this line from the viewport top */
 const SECTION_ACTIVE_OFFSET_PX = 120;
 
@@ -56,10 +58,10 @@ export function HeroScrollDown({ targetId }: HeroScrollDownProps) {
   );
 }
 
-function getActiveSectionIndex(): number {
+function getActiveSectionIndex(sectionIds: readonly string[]): number {
   let active = 0;
-  for (let i = 0; i < LANDING_SECTION_IDS.length; i++) {
-    const id = LANDING_SECTION_IDS[i];
+  for (let i = 0; i < sectionIds.length; i++) {
+    const id = sectionIds[i];
     const el = document.getElementById(id);
     if (!el) continue;
     const top = el.getBoundingClientRect().top;
@@ -76,7 +78,19 @@ function isNearBottomOfPage(): boolean {
   return scrollBottom >= doc.scrollHeight - NEAR_BOTTOM_PX;
 }
 
-export function SmartFloatingScrollButton() {
+export interface SmartFloatingScrollButtonProps {
+  /**
+   * Section IDs in document order (e.g. landing). Omit to use the default landing list.
+   * Pass `[]` for long pages without sections — scrolls down in steps, then to top near bottom.
+   */
+  sectionIds?: readonly string[];
+}
+
+export function SmartFloatingScrollButton({
+  sectionIds: sectionIdsProp,
+}: SmartFloatingScrollButtonProps = {}) {
+  const sectionIds = sectionIdsProp ?? LANDING_SECTION_IDS;
+
   const [nearBottom, setNearBottom] = useState(false);
   const [scrollY, setScrollY] = useState(0);
 
@@ -102,8 +116,12 @@ export function SmartFloatingScrollButton() {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    const active = getActiveSectionIndex();
-    const nextId = LANDING_SECTION_IDS[active + 1];
+    if (sectionIds.length === 0) {
+      window.scrollBy({ top: SCROLL_STEP_PX, behavior: "smooth" });
+      return;
+    }
+    const active = getActiveSectionIndex(sectionIds);
+    const nextId = sectionIds[active + 1];
     const nextEl = nextId ? document.getElementById(nextId) : null;
     if (nextEl) {
       nextEl.scrollIntoView({ behavior: "smooth" });
@@ -123,7 +141,13 @@ export function SmartFloatingScrollButton() {
       onClick={handleClick}
       style={{ opacity: topFadeOpacity }}
       className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg shadow-slate-900/10 transition-[opacity,transform] duration-200 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-black/30 dark:hover:bg-zinc-700"
-      aria-label={showScrollUp ? "Scroll to top" : "Scroll to next section"}
+      aria-label={
+        showScrollUp
+          ? "Scroll to top"
+          : sectionIds.length === 0
+            ? "Scroll down"
+            : "Scroll to next section"
+      }
     >
       <span className="relative flex h-5 w-5 items-center justify-center">
         <ChevronDown
