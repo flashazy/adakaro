@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BackToTopButton } from "@/components/ui/BackToTopButton";
 import { ContactForm } from "./contact-form";
 
 export const metadata: Metadata = {
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   return (
+    <>
     <div className="min-h-screen bg-slate-50 px-4 py-12 dark:bg-zinc-950 sm:py-16">
       <div className="mx-auto max-w-3xl">
         <header className="mb-10 text-center sm:mb-12 sm:text-left">
@@ -93,5 +95,7 @@ export default function ContactPage() {
         </p>
       </div>
     </div>
+    <BackToTopButton />
+    </>
   );
 }

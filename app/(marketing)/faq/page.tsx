@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BackToTopButton } from "@/components/ui/BackToTopButton";
 
 export const metadata: Metadata = {
   title: "FAQ — Adakaro",
@@ -44,6 +45,7 @@ const faqs: { q: string; a: string }[] = [
 
 export default function FaqPage() {
   return (
+    <>
     <div className="min-h-screen bg-slate-50 px-4 py-12 dark:bg-zinc-950 sm:py-16">
       <article className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-10">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -111,5 +113,7 @@ export default function FaqPage() {
         </p>
       </article>
     </div>
+    <BackToTopButton />
+    </>
   );
 }
