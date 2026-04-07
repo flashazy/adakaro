@@ -25,5 +25,15 @@ export async function getSchoolIdForUser(
     .limit(1)
     .maybeSingle();
 
-  return (row as { school_id: string } | null)?.school_id ?? null;
+  const fromMember = (row as { school_id: string } | null)?.school_id ?? null;
+  if (fromMember) return fromMember;
+
+  const { data: ta } = await supabase
+    .from("teacher_assignments")
+    .select("school_id")
+    .eq("teacher_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  return (ta as { school_id: string } | null)?.school_id ?? null;
 }

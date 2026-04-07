@@ -3,10 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BroadcastBanner } from "@/app/(dashboard)/school-admin/components/BroadcastBanner";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
+import { TeacherDashboardHeader } from "@/components/layout/TeacherDashboardHeader";
 import { getDisplayName } from "@/lib/display-name";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { isSchoolAdminBroadcastAudience } from "@/lib/broadcasts/school-admin-audience";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
+import { checkIsTeacher } from "@/lib/teacher-auth";
+import { getPrimaryTeacherAssignmentLabel } from "@/lib/teacher-assignment-status";
 
 export default async function DashboardGroupLayout({
   children,
@@ -34,6 +37,49 @@ export default async function DashboardGroupLayout({
     avatar_url: string | null;
   } | null;
   const fullName = getDisplayName(user, profileRow?.full_name ?? null);
+
+  const isSchoolAdminOrPlatform =
+    profileRow?.role === "admin" || profileRow?.role === "super_admin";
+  if (
+    profileRow?.role === "teacher" ||
+    (!isSchoolAdminOrPlatform && (await checkIsTeacher(supabase, user.id)))
+  ) {
+    const schoolDisplay = await resolveSchoolDisplay(user.id, supabase);
+    const primaryAssignmentLabel = await getPrimaryTeacherAssignmentLabel(
+      supabase,
+      user.id
+    );
+    return (
+      <>
+        <a
+          href="#page-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-indigo-600 focus:px-3 focus:py-2 focus:text-white print:hidden"
+        >
+          Skip to content
+        </a>
+        <div className="print:hidden">
+          <TeacherDashboardHeader
+            fullName={fullName}
+            schoolLogoUrl={schoolDisplay?.logo_url ?? null}
+            schoolLogoVersion={schoolDisplay?.logo_version ?? null}
+            schoolName={schoolDisplay?.name ?? null}
+            schoolCurrency={schoolDisplay?.currency ?? null}
+            avatarUrl={profileRow?.avatar_url ?? null}
+            primaryAssignmentLabel={primaryAssignmentLabel}
+          />
+        </div>
+        <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:bg-white">
+          <div
+            id="page-content"
+            className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
+          >
+            {children}
+          </div>
+        </div>
+      </>
+    );
+  }
+
   const isSuperAdmin = await checkIsSuperAdmin(supabase, user.id);
   const showSchoolAdminBroadcasts = await isSchoolAdminBroadcastAudience(
     user.id,

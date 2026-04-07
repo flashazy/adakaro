@@ -63,6 +63,17 @@ async function fetchSchoolDisplayViaAdmin(
     schoolId = (created as { id: string } | null)?.id ?? null;
   }
 
+  if (!schoolId) {
+    const { data: ta } = await admin
+      .from("teacher_assignments")
+      .select("school_id")
+      .eq("teacher_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    schoolId = (ta as { school_id: string } | null)?.school_id ?? null;
+  }
+
   if (!schoolId) return null;
 
   const { data: school } = await admin

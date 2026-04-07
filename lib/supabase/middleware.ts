@@ -48,8 +48,9 @@ export async function updateSession(request: NextRequest) {
   const isAdminRoute = pathname.startsWith("/dashboard");
   const isParentRoute = pathname.startsWith("/parent-dashboard");
   const isSuperAdminRoute = pathname.startsWith("/super-admin");
+  const isTeacherRoute = pathname.startsWith("/teacher-dashboard");
   const isProtectedRoute =
-    isAdminRoute || isParentRoute || isSuperAdminRoute;
+    isAdminRoute || isParentRoute || isSuperAdminRoute || isTeacherRoute;
   const isSchoolSuspendedPage = pathname === "/school-suspended";
   const isPaymentPage = pathname === "/payment";
   /** Public marketing landing — allow suspended users to exit here without loop */
@@ -72,16 +73,33 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // If already on teacher dashboard, allow immediately - no redirects
+  if (
+    pathname === "/teacher-dashboard" ||
+    pathname.startsWith("/teacher-dashboard/")
+  ) {
+    const { data: asTeacher, error: teacherRpcErr } = await supabase.rpc(
+      "is_teacher",
+      {} as never
+    );
+    if (!teacherRpcErr && asTeacher === true) {
+      return supabaseResponse;
+    }
+  }
+
   if (user) {
     // JWT metadata first (always available); override from DB when present.
     // Using only metadata while the parent page requires profiles.role caused a
     // loop: page → redirect /dashboard, middleware → redirect /parent-dashboard.
-    let role: "admin" | "parent" | "super_admin" =
-      String(user.user_metadata?.role ?? "")
-        .toLowerCase()
-        .trim() === "admin"
+    const metaRole = String(user.user_metadata?.role ?? "")
+      .toLowerCase()
+      .trim();
+    let role: "admin" | "parent" | "super_admin" | "teacher" =
+      metaRole === "admin"
         ? "admin"
-        : "parent";
+        : metaRole === "teacher"
+          ? "teacher"
+          : "parent";
 
     if (
       isAuthPage ||
@@ -103,10 +121,29 @@ export async function updateSession(request: NextRequest) {
           .eq("id", user.id)
           .maybeSingle();
 
-        const pr = (profileRow as { role: "admin" | "parent" | "super_admin" } | null)
-          ?.role;
-        if (pr === "admin" || pr === "parent" || pr === "super_admin") {
+        const pr = (profileRow as {
+          role: "admin" | "parent" | "super_admin" | "teacher";
+        } | null)?.role;
+        if (
+          pr === "admin" ||
+          pr === "parent" ||
+          pr === "super_admin" ||
+          pr === "teacher"
+        ) {
           role = pr;
+        }
+      }
+
+      // If profiles SELECT missed the row (RLS timing) but JWT metadata defaulted to
+      // parent, we would send teachers parent-dashboard ↔ teacher-dashboard in a loop.
+      // is_teacher() is SECURITY DEFINER (see migration 00048).
+      if (role !== "super_admin" && role !== "teacher") {
+        const { data: asTeacher, error: teacherRpcErr } = await supabase.rpc(
+          "is_teacher",
+          {} as never
+        );
+        if (!teacherRpcErr && asTeacher === true) {
+          role = "teacher";
         }
       }
     }
@@ -138,6 +175,8 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/super-admin";
       } else if (role === "admin") {
         url.pathname = "/dashboard";
+      } else if (role === "teacher") {
+        url.pathname = "/teacher-dashboard";
       } else {
         url.pathname = "/parent-dashboard";
       }
@@ -148,6 +187,8 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/super-admin";
       } else if (role === "admin") {
         url.pathname = "/dashboard";
+      } else if (role === "teacher") {
+        url.pathname = "/teacher-dashboard";
       } else {
         url.pathname = "/parent-dashboard";
       }
@@ -161,6 +202,8 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/super-admin";
       } else if (role === "admin") {
         url.pathname = "/dashboard";
+      } else if (role === "teacher") {
+        url.pathname = "/teacher-dashboard";
       } else {
         url.pathname = "/parent-dashboard";
       }
@@ -170,14 +213,33 @@ export async function updateSession(request: NextRequest) {
     // Super admin routes: platform owners only.
     if (isSuperAdminRoute && role !== "super_admin") {
       const url = request.nextUrl.clone();
-      url.pathname = role === "parent" ? "/parent-dashboard" : "/dashboard";
+      if (role === "parent") {
+        url.pathname = "/parent-dashboard";
+      } else if (role === "teacher") {
+        url.pathname = "/teacher-dashboard";
+      } else {
+        url.pathname = "/dashboard";
+      }
+      return NextResponse.redirect(url);
+    }
+
+    if (isTeacherRoute && role !== "teacher") {
+      const url = request.nextUrl.clone();
+      if (role === "super_admin") {
+        url.pathname = "/super-admin";
+      } else if (role === "admin") {
+        url.pathname = "/dashboard";
+      } else {
+        url.pathname = "/parent-dashboard";
+      }
       return NextResponse.redirect(url);
     }
 
     // Enforce role-based access on protected routes.
     if (isAdminRoute && role !== "admin" && role !== "super_admin") {
       const url = request.nextUrl.clone();
-      url.pathname = "/parent-dashboard";
+      url.pathname =
+        role === "teacher" ? "/teacher-dashboard" : "/parent-dashboard";
       return NextResponse.redirect(url);
     }
 
@@ -186,6 +248,8 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       if (role === "super_admin") {
         url.pathname = "/super-admin";
+      } else if (role === "teacher") {
+        url.pathname = "/teacher-dashboard";
       } else {
         url.pathname = "/dashboard";
       }

@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = "admin" | "parent" | "super_admin";
+export type UserRole = "admin" | "parent" | "super_admin" | "teacher";
 export type SchoolStatus = "active" | "suspended";
 export type StudentStatus = "active" | "inactive" | "graduated" | "transferred";
 export type PaymentMethod =
@@ -368,6 +368,50 @@ export interface Database {
           updated_at?: string;
         };
       };
+      subjects: {
+        Row: {
+          id: string;
+          school_id: string;
+          name: string;
+          code: string | null;
+          description: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          name: string;
+          code?: string | null;
+          description?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          code?: string | null;
+          description?: string | null;
+          updated_at?: string;
+        };
+      };
+      subject_classes: {
+        Row: {
+          id: string;
+          subject_id: string;
+          class_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          subject_id: string;
+          class_id: string;
+          created_at?: string;
+        };
+        Update: {
+          subject_id?: string;
+          class_id?: string;
+        };
+      };
       students: {
         Row: {
           id: string;
@@ -683,6 +727,258 @@ export interface Database {
           raw_webhook?: Json | null;
         };
       };
+      teacher_assignments: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          school_id: string;
+          class_id: string;
+          subject: string;
+          subject_id: string | null;
+          academic_year: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          school_id: string;
+          class_id: string;
+          subject?: string;
+          subject_id?: string | null;
+          academic_year?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          teacher_id?: string;
+          school_id?: string;
+          class_id?: string;
+          subject?: string;
+          subject_id?: string | null;
+          academic_year?: string;
+          updated_at?: string;
+        };
+      };
+      teacher_attendance: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          school_id: string;
+          class_id: string;
+          student_id: string;
+          attendance_date: string;
+          status: "present" | "absent" | "late";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          school_id: string;
+          class_id: string;
+          student_id: string;
+          attendance_date: string;
+          status: "present" | "absent" | "late";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          teacher_id?: string;
+          school_id?: string;
+          class_id?: string;
+          student_id?: string;
+          attendance_date?: string;
+          status?: "present" | "absent" | "late";
+          updated_at?: string;
+        };
+      };
+      teacher_gradebook_assignments: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          class_id: string;
+          subject: string;
+          title: string;
+          max_score: number;
+          weight: number;
+          due_date: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          class_id: string;
+          subject?: string;
+          title: string;
+          max_score: number;
+          weight?: number;
+          due_date?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          teacher_id?: string;
+          class_id?: string;
+          subject?: string;
+          title?: string;
+          max_score?: number;
+          weight?: number;
+          due_date?: string | null;
+          updated_at?: string;
+        };
+      };
+      teacher_invitations: {
+        Row: {
+          id: string;
+          email: string;
+          school_id: string;
+          class_id: string | null;
+          subject: string;
+          academic_year: string;
+          token: string;
+          expires_at: string;
+          created_at: string;
+          updated_at: string;
+          used_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          school_id: string;
+          class_id?: string | null;
+          subject?: string;
+          academic_year?: string;
+          token: string;
+          expires_at: string;
+          created_at?: string;
+          updated_at?: string;
+          used_at?: string | null;
+        };
+        Update: {
+          email?: string;
+          school_id?: string;
+          class_id?: string | null;
+          subject?: string;
+          academic_year?: string;
+          token?: string;
+          expires_at?: string;
+          updated_at?: string;
+          used_at?: string | null;
+        };
+      };
+      teacher_scores: {
+        Row: {
+          id: string;
+          assignment_id: string;
+          student_id: string;
+          score: number | null;
+          comments: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assignment_id: string;
+          student_id: string;
+          score?: number | null;
+          comments?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          assignment_id?: string;
+          student_id?: string;
+          score?: number | null;
+          comments?: string | null;
+          updated_at?: string;
+        };
+      };
+      teacher_lessons: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          class_id: string;
+          subject: string;
+          lesson_date: string;
+          topic: string;
+          objectives: string | null;
+          materials: string | null;
+          procedure: string | null;
+          assessment: string | null;
+          homework: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          class_id: string;
+          subject?: string;
+          lesson_date: string;
+          topic?: string;
+          objectives?: string | null;
+          materials?: string | null;
+          procedure?: string | null;
+          assessment?: string | null;
+          homework?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          teacher_id?: string;
+          class_id?: string;
+          subject?: string;
+          lesson_date?: string;
+          topic?: string;
+          objectives?: string | null;
+          materials?: string | null;
+          procedure?: string | null;
+          assessment?: string | null;
+          homework?: string | null;
+          notes?: string | null;
+          updated_at?: string;
+        };
+      };
+      teacher_report_card_comments: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          school_id: string;
+          student_id: string;
+          subject: string;
+          academic_year: string;
+          comment: string | null;
+          status: "draft" | "submitted" | "approved";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          school_id: string;
+          student_id: string;
+          subject?: string;
+          academic_year?: string;
+          comment?: string | null;
+          status?: "draft" | "submitted" | "approved";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          teacher_id?: string;
+          school_id?: string;
+          student_id?: string;
+          subject?: string;
+          academic_year?: string;
+          comment?: string | null;
+          status?: "draft" | "submitted" | "approved";
+          updated_at?: string;
+        };
+      };
     };
     Views: {
       student_fee_balances: {
@@ -787,6 +1083,18 @@ export interface Database {
       };
       is_super_admin: {
         Args: Record<string, never>;
+        Returns: boolean;
+      };
+      is_teacher: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      is_teacher_for_class: {
+        Args: { p_class_id: string };
+        Returns: boolean;
+      };
+      is_teacher_for_school: {
+        Args: { p_school_id: string };
         Returns: boolean;
       };
       is_user_blocked_by_school_suspension: {

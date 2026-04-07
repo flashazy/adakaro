@@ -58,7 +58,8 @@ export async function login(
   const role: UserRole =
     profileRole === "admin" ||
     profileRole === "parent" ||
-    profileRole === "super_admin"
+    profileRole === "super_admin" ||
+    profileRole === "teacher"
       ? profileRole
       : String(user.user_metadata?.role ?? "")
               .toLowerCase()
@@ -89,7 +90,13 @@ export async function login(
     redirect(next);
   }
 
-  redirect(role === "admin" ? "/dashboard" : "/parent-dashboard");
+  if (role === "admin") {
+    redirect("/dashboard");
+  }
+  if (role === "teacher") {
+    redirect("/teacher-dashboard");
+  }
+  redirect("/parent-dashboard");
 }
 
 export async function signup(
@@ -102,6 +109,13 @@ export async function signup(
   const confirmPassword = formData.get("confirm_password") as string;
   const phone = (formData.get("phone") as string) || "";
   const role = (formData.get("role") as UserRole) || "parent";
+
+  if (role === "teacher" || role === "super_admin") {
+    return {
+      error:
+        "This role cannot be self-registered. Use a school invitation or contact support.",
+    };
+  }
 
   if (!fullName || !email || !password) {
     return { error: "Full name, email, and password are required." };
@@ -148,6 +162,8 @@ export async function signup(
     redirect(next);
   }
 
-  const destination = role === "admin" ? "/dashboard" : "/parent-dashboard";
-  redirect(destination);
+  if (role === "admin") {
+    redirect("/dashboard");
+  }
+  redirect("/parent-dashboard");
 }

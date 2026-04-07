@@ -1,53 +1,56 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const next = requestUrl.searchParams.get("next");
+
+  const supabase = await createClient();
 
   if (code) {
-    const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (!error) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        const { data: profileRow } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        const profileRole = (profileRow as { role: string } | null)?.role;
-
-        const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
-          "is_super_admin",
-          {} as never
-        );
-        const isSuper =
-          (!rpcSuperErr && rpcSuper === true) || profileRole === "super_admin";
-
-        let destination = "/parent-dashboard";
-        if (isSuper) {
-          destination = "/super-admin";
-        } else if (profileRole === "admin") {
-          destination = "/dashboard";
-        } else if (profileRole === "parent") {
-          destination = "/parent-dashboard";
-        } else {
-          const metaAdmin =
-            String(user.user_metadata?.role ?? "")
-              .toLowerCase()
-              .trim() === "admin";
-          destination = metaAdmin ? "/dashboard" : "/parent-dashboard";
-        }
-        return NextResponse.redirect(`${origin}${destination}`);
-      }
+    if (error) {
+      return NextResponse.redirect(new URL("/login", requestUrl.origin));
     }
   }
 
-  return NextResponse.redirect(`${origin}/login`);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.redirect(new URL("/login", requestUrl.origin));
+  }
+
+  const allowedNext = [
+    "/dashboard",
+    "/teacher-dashboard",
+    "/parent-dashboard",
+    "/super-admin",
+  ];
+  if (next && allowedNext.includes(next)) {
+    return NextResponse.redirect(new URL(next, requestUrl.origin));
+  }
+
+  const { data: profile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileErr || !profile) {
+    return NextResponse.redirect(new URL("/login", requestUrl.origin));
+  }
+
+  const roleRedirects: Record<string, string> = {
+    teacher: "/teacher-dashboard",
+    admin: "/dashboard",
+    parent: "/parent-dashboard",
+    super_admin: "/super-admin",
+  };
+
+  const redirectTo = roleRedirects[profile.role] || "/login";
+
+  return NextResponse.redirect(new URL(redirectTo, requestUrl.origin));
 }
