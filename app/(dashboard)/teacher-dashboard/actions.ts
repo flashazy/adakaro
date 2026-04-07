@@ -346,7 +346,7 @@ export async function upsertLessonAction(input: {
   };
 
   if (input.id) {
-    const { error } = await admin
+    const { error } = await (admin as Db)
       .from("teacher_lessons")
       .update(payload)
       .eq("id", input.id)

@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+interface ProfileRoleRow {
+  role: string;
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
@@ -43,6 +47,12 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/login", requestUrl.origin));
   }
 
+  const profileRow = profile as ProfileRoleRow;
+  const userRole = profileRow.role?.trim();
+  if (!userRole) {
+    return NextResponse.redirect(new URL("/login", requestUrl.origin));
+  }
+
   const roleRedirects: Record<string, string> = {
     teacher: "/teacher-dashboard",
     admin: "/dashboard",
@@ -50,7 +60,7 @@ export async function GET(request: Request) {
     super_admin: "/super-admin",
   };
 
-  const redirectTo = roleRedirects[profile.role] || "/login";
+  const redirectTo = roleRedirects[userRole] || "/login";
 
   return NextResponse.redirect(new URL(redirectTo, requestUrl.origin));
 }
