@@ -91,6 +91,8 @@ export async function saveAttendanceAction(input: {
   const admin = createAdminClient();
 
   for (const r of input.records) {
+    // Must match unique index column order: teacher_attendance_class_student_attendance_date_key
+    // is (class_id, student_id, attendance_date). Use attendance_date in the row, never "date".
     const { error } = await (admin as Db).from("teacher_attendance").upsert(
       {
         teacher_id: user.id,
@@ -100,7 +102,7 @@ export async function saveAttendanceAction(input: {
         attendance_date: input.date,
         status: r.status,
       },
-      { onConflict: "student_id,attendance_date,class_id" }
+      { onConflict: "class_id,student_id,attendance_date" }
     );
     if (error) {
       return { ok: false, error: error.message };
