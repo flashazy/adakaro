@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
       full_name?: string;
       class_id?: string;
       admission_number?: string | null;
+      gender?: string;
       parent_name?: string | null;
       parent_email?: string | null;
       parent_phone?: string | null;
@@ -67,6 +68,10 @@ export async function POST(request: NextRequest) {
       body.parent_phone != null && String(body.parent_phone).trim() !== ""
         ? String(body.parent_phone).trim()
         : null;
+    const genderRaw =
+      body.gender != null ? String(body.gender).trim().toLowerCase() : "";
+    const gender =
+      genderRaw === "male" || genderRaw === "female" ? genderRaw : "male";
 
     if (!fullName) {
       return NextResponse.json(
@@ -138,6 +143,7 @@ export async function POST(request: NextRequest) {
       class_id: classId,
       full_name: fullName,
       admission_number: admissionNumber,
+      gender,
       parent_name: parentName,
       parent_email: parentEmail,
       parent_phone: parentPhone,

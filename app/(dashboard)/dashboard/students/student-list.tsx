@@ -14,6 +14,7 @@ interface StudentData {
   admission_number: string | null;
   class_id: string;
   class: ClassOption | null;
+  gender: string | null;
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
@@ -209,7 +210,7 @@ export function StudentList({ students, classes }: StudentListProps) {
           <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="max-h-[min(70vh,720px)] overflow-y-auto overflow-x-auto">
               {/* Desktop header — sticky */}
-              <div className="sticky top-0 z-10 hidden border-b border-slate-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900 lg:grid lg:grid-cols-[100px_1fr_1fr_1fr_auto] lg:gap-4">
+              <div className="sticky top-0 z-10 hidden border-b border-slate-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900 lg:grid lg:grid-cols-[100px_1fr_1fr_2.5rem_1fr_auto] lg:gap-4">
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                   Adm #
                 </p>
@@ -218,6 +219,9 @@ export function StudentList({ students, classes }: StudentListProps) {
                 </p>
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                   Class
+                </p>
+                <p className="text-center text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  Gender
                 </p>
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                   Parent

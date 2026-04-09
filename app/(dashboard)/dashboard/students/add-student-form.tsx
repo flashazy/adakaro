@@ -277,6 +277,28 @@ export function AddStudentForm({
 
             <div>
               <label
+                htmlFor="gender"
+                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+              >
+                Gender <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="gender"
+                name="gender"
+                required
+                defaultValue=""
+                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              >
+                <option value="" disabled>
+                  Select gender
+                </option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
+
+            <div>
+              <label
                 htmlFor="parent_name"
                 className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
               >

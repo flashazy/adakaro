@@ -10,6 +10,7 @@ import {
   getSchoolPlanRow,
   resolveSchoolPlanIdForFeatures,
 } from "@/lib/plan-limits";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 import { QueryErrorBanner } from "../query-error-banner";
 import { ReportsClient } from "./reports-client";
 
@@ -57,10 +58,13 @@ export default async function ReportsPage() {
   const schoolId = display.schoolId;
 
   // Get student IDs for this school first (needed for payments filter)
-  const { data: schoolStudents, error: schoolStudentsError } = await supabase
-    .from("students")
-    .select("id, class_id")
-    .eq("school_id", schoolId);
+  const { data: schoolStudents, error: schoolStudentsError } =
+    await orderStudentsByGenderThenName(
+      supabase
+        .from("students")
+        .select("id, class_id")
+        .eq("school_id", schoolId)
+    );
 
   const typedSchoolStudents = (schoolStudents ?? []) as { id: string; class_id: string }[];
   const studentIds = typedSchoolStudents.map((s) => s.id);

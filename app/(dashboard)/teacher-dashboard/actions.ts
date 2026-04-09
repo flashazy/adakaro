@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -44,12 +45,13 @@ export async function loadAttendanceData(classId: string, date: string) {
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
-  const { data: students } = await admin
-    .from("students")
-    .select("id, full_name")
-    .eq("class_id", classId)
-    .eq("status", "active")
-    .order("full_name");
+  const { data: students } = await orderStudentsByGenderThenName(
+    admin
+      .from("students")
+      .select("id, full_name")
+      .eq("class_id", classId)
+      .eq("status", "active")
+  );
 
   const { data: rows } = await admin
     .from("teacher_attendance")
@@ -145,10 +147,9 @@ export async function loadAttendanceHistory(classId: string, limit = 14) {
   const ids = [...new Set(list.map((r) => r.student_id))];
   const nameById = new Map<string, string>();
   if (ids.length > 0) {
-    const { data: studs } = await admin
-      .from("students")
-      .select("id, full_name")
-      .in("id", ids);
+    const { data: studs } = await orderStudentsByGenderThenName(
+      admin.from("students").select("id, full_name").in("id", ids)
+    );
     for (const s of studs ?? []) {
       const row = s as { id: string; full_name: string };
       nameById.set(row.id, row.full_name);
@@ -397,12 +398,13 @@ export async function loadGradebookMatrix(assignmentId: string) {
     return { ok: false as const, error: "Assignment not found." };
   }
 
-  const { data: students } = await admin
-    .from("students")
-    .select("id, full_name")
-    .eq("class_id", ga.class_id)
-    .eq("status", "active")
-    .order("full_name");
+  const { data: students } = await orderStudentsByGenderThenName(
+    admin
+      .from("students")
+      .select("id, full_name")
+      .eq("class_id", ga.class_id)
+      .eq("status", "active")
+  );
 
   const { data: scoreRows } = await admin
     .from("teacher_scores")

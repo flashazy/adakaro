@@ -13,6 +13,7 @@ import {
   formatCurrency,
   normalizeSchoolCurrency,
 } from "@/lib/currency";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
 const NAV_LINKS = [
   {
@@ -324,10 +325,9 @@ export default async function AdminDashboard() {
   }
 
   // Get student IDs for this school first
-  const { data: schoolStudents } = await supabase
-    .from("students")
-    .select("id")
-    .eq("school_id", schoolId!);
+  const { data: schoolStudents } = await orderStudentsByGenderThenName(
+    supabase.from("students").select("id").eq("school_id", schoolId!)
+  );
 
   const typedSchoolStudents = (schoolStudents ?? []) as { id: string }[];
   const studentIds = typedSchoolStudents.map((s) => s.id);

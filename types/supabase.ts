@@ -423,7 +423,7 @@ export interface Database {
           parent_email: string | null;
           parent_phone: string | null;
           date_of_birth: string | null;
-          gender: string | null;
+          gender: "male" | "female" | null;
           status: StudentStatus;
           created_at: string;
           updated_at: string;
@@ -438,7 +438,7 @@ export interface Database {
           parent_email?: string | null;
           parent_phone?: string | null;
           date_of_birth?: string | null;
-          gender?: string | null;
+          gender?: "male" | "female" | null;
           status?: StudentStatus;
           created_at?: string;
           updated_at?: string;
@@ -451,7 +451,7 @@ export interface Database {
           parent_email?: string | null;
           parent_phone?: string | null;
           date_of_birth?: string | null;
-          gender?: string | null;
+          gender?: "male" | "female" | null;
           status?: StudentStatus;
           updated_at?: string;
         };
@@ -894,6 +894,107 @@ export interface Database {
           comments?: string | null;
           updated_at?: string;
         };
+      };
+      teacher_subjects: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          subject_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          subject_id: string;
+          created_at?: string;
+        };
+        Update: {
+          teacher_id?: string;
+          subject_id?: string;
+        };
+        Relationships: [];
+      };
+      lesson_plans: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          class_id: string;
+          subject_id: string;
+          lesson_date: string;
+          period: number;
+          duration_minutes: number;
+          total_boys: number;
+          total_girls: number;
+          total_pupils: number;
+          present_count: number;
+          main_competence: string;
+          specific_competence: string;
+          main_activities: string;
+          specific_activities: string;
+          teaching_resources: string;
+          "references": string;
+          teaching_learning_process: Json;
+          teaching_activities: string;
+          learning_activities: string;
+          materials: string;
+          reference_materials: string;
+          remarks: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          class_id: string;
+          subject_id: string;
+          lesson_date: string;
+          period: number;
+          duration_minutes: number;
+          total_boys?: number;
+          total_girls?: number;
+          total_pupils?: number;
+          present_count?: number;
+          main_competence?: string;
+          specific_competence?: string;
+          main_activities?: string;
+          specific_activities?: string;
+          teaching_resources?: string;
+          "references"?: string;
+          teaching_learning_process?: Json;
+          teaching_activities?: string;
+          learning_activities?: string;
+          materials?: string;
+          reference_materials?: string;
+          remarks?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          teacher_id?: string;
+          class_id?: string;
+          subject_id?: string;
+          lesson_date?: string;
+          period?: number;
+          duration_minutes?: number;
+          total_boys?: number;
+          total_girls?: number;
+          total_pupils?: number;
+          present_count?: number;
+          main_competence?: string;
+          specific_competence?: string;
+          main_activities?: string;
+          specific_activities?: string;
+          teaching_resources?: string;
+          "references"?: string;
+          teaching_learning_process?: Json;
+          teaching_activities?: string;
+          learning_activities?: string;
+          materials?: string;
+          reference_materials?: string;
+          remarks?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       teacher_lessons: {
         Row: {

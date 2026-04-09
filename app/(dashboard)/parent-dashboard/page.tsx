@@ -16,6 +16,7 @@ import {
   sortCurrencyCodes,
   type SchoolCurrencyCode,
 } from "@/lib/currency";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
 interface StudentWithClass {
   id: string;
@@ -309,10 +310,12 @@ export default async function ParentDashboard() {
 
   if (childCount > 0) {
     const [studentsRes, balancesRes, paymentsRes] = await Promise.all([
-      supabase
-        .from("students")
-        .select("id, full_name, admission_number, school_id, class:classes(name)")
-        .in("id", studentIds),
+      orderStudentsByGenderThenName(
+        supabase
+          .from("students")
+          .select("id, full_name, admission_number, school_id, class:classes(name)")
+          .in("id", studentIds)
+      ),
       supabase
         .from("student_fee_balances")
         .select(

@@ -7,6 +7,7 @@ import { QueryErrorBanner } from "../query-error-banner";
 import { PaymentClient } from "./payment-client";
 import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
 export default async function PaymentsPage() {
   const supabase = await createClient();
@@ -22,11 +23,13 @@ export default async function PaymentsPage() {
   const currencyCode = normalizeSchoolCurrency(display.currency);
 
   // Fetch students (no status filter — column may not exist)
-  const { data: students, error: studentsError } = await supabase
-    .from("students")
-    .select("id, full_name, admission_number, class:classes(name)")
-    .eq("school_id", schoolId)
-    .order("full_name");
+  const { data: students, error: studentsError } =
+    await orderStudentsByGenderThenName(
+      supabase
+        .from("students")
+        .select("id, full_name, admission_number, class:classes(name)")
+        .eq("school_id", schoolId)
+    );
 
 
   const typedStudents = (students ?? []) as { id: string; full_name: string; admission_number: string | null; class: { name: string } | null }[];

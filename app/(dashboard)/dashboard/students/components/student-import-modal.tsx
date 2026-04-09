@@ -13,7 +13,10 @@ interface ValidatedRow {
   full_name: string;
   admission_number: string | null;
   class_name: string | null;
+  gender: "male" | "female" | null;
+  parent_name: string | null;
   parent_email: string | null;
+  parent_phone: string | null;
   status: "valid" | "warning" | "error";
   errors: string[];
   warnings: string[];
@@ -40,10 +43,10 @@ interface Props {
 }
 
 function downloadTemplate() {
-  const csv = `full_name,admission_number,class_name,parent_email
-John Doe,,Grade 1,john@example.com
-Jane Smith,,Grade 2,
-Ali Hamza,,Grade 1,
+  const csv = `full_name,admission_number,class_name,gender,parent_name,parent_email,parent_phone
+John Doe,,Grade 1,male,Jane Doe,john@example.com,+255700000000
+Jane Smith,,Grade 2,female,,,
+Ali Hamza,,Grade 1,male,,,
 `;
   const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -213,7 +216,15 @@ export default function StudentImportModal({
         full_name: r.full_name,
         admission_number: r.admission_number,
         class_name: r.class_name,
+        gender:
+          r.gender === "female"
+            ? "female"
+            : r.gender === "male"
+              ? "male"
+              : "",
+        parent_name: r.parent_name,
         parent_email: r.parent_email,
+        parent_phone: r.parent_phone,
       }));
 
     if (payload.length === 0) {
@@ -319,7 +330,10 @@ export default function StudentImportModal({
                   Import students from CSV
                 </h2>
                 <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                  Up to {MAX_ROWS} rows · max {MAX_BYTES / (1024 * 1024)}MB · class names must match exactly
+                  Up to {MAX_ROWS} rows · max {MAX_BYTES / (1024 * 1024)}MB · class names must match exactly ·{" "}
+                  <span className="font-medium text-slate-700 dark:text-zinc-300">
+                    gender: male or female (blank cell defaults to male)
+                  </span>
                 </p>
               </div>
               <button
@@ -371,7 +385,7 @@ export default function StudentImportModal({
                   </div>
                   <p
                     className="flex gap-2 text-xs leading-relaxed text-slate-500 dark:text-zinc-400"
-                    title="Admission numbers auto-generate (e.g., MOU-001). Leave the admission_number column blank to use auto-generated numbers, or add your own values (format: PREFIX-###)."
+                    title="Include all header columns. Gender must be male or female (or blank for default male)."
                   >
                     <Info
                       className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-zinc-500"
@@ -379,12 +393,41 @@ export default function StudentImportModal({
                       aria-hidden
                     />
                     <span>
-                      Admission numbers auto-generate (e.g., MOU-001). Leave the{" "}
+                      Columns (in order):{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        full_name
+                      </span>{" "}
+                      (required),{" "}
                       <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
                         admission_number
                       </span>{" "}
-                      column blank to use auto-generated numbers, or add your own
-                      values (format: PREFIX-###).
+                      (optional),{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        class_name
+                      </span>{" "}
+                      (match a class name exactly; blank uses your default class),{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        gender
+                      </span>{" "}
+                      (<span className="font-mono text-[0.7rem]">male</span> or{" "}
+                      <span className="font-mono text-[0.7rem]">female</span>
+                      ; blank defaults to male),{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        parent_name
+                      </span>
+                      ,{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        parent_email
+                      </span>
+                      ,{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        parent_phone
+                      </span>{" "}
+                      (optional). Admission numbers auto-generate (e.g., MOU-001); leave{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        admission_number
+                      </span>{" "}
+                      blank for auto-generated values, or use PREFIX-###.
                     </span>
                   </p>
                 </div>
@@ -435,7 +478,7 @@ export default function StudentImportModal({
                       Preview (first {Math.min(10, rows.length)} of {rows.length} rows)
                     </p>
                     <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-800">
-                      <table className="w-full min-w-[640px] text-left text-sm">
+                      <table className="w-full min-w-[960px] text-left text-sm">
                         <thead>
                           <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50">
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">#</th>
@@ -443,7 +486,10 @@ export default function StudentImportModal({
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Name</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Admission</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Class</th>
+                            <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Gender</th>
+                            <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Parent name</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Parent email</th>
+                            <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Parent phone</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Notes</th>
                           </tr>
                         </thead>
@@ -455,7 +501,12 @@ export default function StudentImportModal({
                               <td className="px-3 py-2 text-slate-900 dark:text-white">{r.full_name || "—"}</td>
                               <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">{r.admission_number ?? "—"}</td>
                               <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">{r.class_name ?? "—"}</td>
+                              <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">
+                                {r.gender === "male" || r.gender === "female" ? r.gender : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">{r.parent_name ?? "—"}</td>
                               <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">{r.parent_email ?? "—"}</td>
+                              <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">{r.parent_phone ?? "—"}</td>
                               <td className="px-3 py-2 text-xs text-slate-600 dark:text-zinc-400">
                                 {[...r.errors, ...r.warnings].join(" · ") || "—"}
                               </td>

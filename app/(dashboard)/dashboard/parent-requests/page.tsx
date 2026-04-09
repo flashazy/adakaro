@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdsForAdminUser } from "@/lib/dashboard/get-school-ids";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 import { QueryErrorBanner } from "../query-error-banner";
 import RequestRow, { type RequestData } from "./request-row";
 
@@ -23,11 +24,12 @@ export default async function ParentRequestsPage() {
   // student rows used in policy subqueries. Fallback keeps older DBs working until migrated.
   const [rpcRes, studentsRes] = await Promise.all([
     supabase.rpc("get_pending_parent_link_requests_for_admin"),
-    supabase
-      .from("students")
-      .select("id, full_name, admission_number, class:classes(name)")
-      .in("school_id", schoolIds)
-      .order("full_name"),
+    orderStudentsByGenderThenName(
+      supabase
+        .from("students")
+        .select("id, full_name, admission_number, class:classes(name)")
+        .in("school_id", schoolIds)
+    ),
   ]);
 
   let requestsRes: {

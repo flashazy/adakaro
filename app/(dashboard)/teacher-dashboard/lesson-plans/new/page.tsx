@@ -1,0 +1,74 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { checkIsTeacher } from "@/lib/teacher-auth";
+import { ensureTeacherHasAssignmentsOrRedirect } from "@/lib/teacher-assignment-status";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { getTeacherClasses, getTeacherSubjects } from "../actions";
+import { LessonPlanForm } from "../components/LessonPlanForm";
+
+export const metadata = {
+  title: "New lesson plan — Teacher",
+};
+
+function normalizeClassSubjectOptions(
+  raw: unknown[]
+): { id: string; name: string }[] {
+  const out: { id: string; name: string }[] = [];
+  for (const item of raw) {
+    const o = item as { id?: string; name?: string } | null;
+    if (o?.id && o?.name) out.push({ id: o.id, name: o.name });
+  }
+  return out;
+}
+
+export default async function NewLessonPlanPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  if (!(await checkIsTeacher(supabase, user.id))) redirect("/dashboard");
+  await ensureTeacherHasAssignmentsOrRedirect(supabase, user.id);
+
+  const [classesRaw, subjectsRaw] = await Promise.all([
+    getTeacherClasses(),
+    getTeacherSubjects(),
+  ]);
+
+  const classes = normalizeClassSubjectOptions(
+    (classesRaw ?? []) as unknown[]
+  );
+  const subjects = normalizeClassSubjectOptions(
+    (subjectsRaw ?? []) as unknown[]
+  );
+
+  return (
+    <>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+              New lesson plan
+            </h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+              Fill in the form and save. Class and date drive pupil counts and
+              present total.
+            </p>
+          </div>
+          <Link
+            href="/teacher-dashboard/lesson-plans"
+            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+          >
+            ← Back to lesson plans
+          </Link>
+        </div>
+
+        <LessonPlanForm mode="create" classes={classes} subjects={subjects} />
+      </div>
+      <div className="print:hidden">
+        <SmartFloatingScrollButton sectionIds={[]} />
+      </div>
+    </>
+  );
+}

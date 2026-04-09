@@ -18,9 +18,16 @@ interface StudentData {
   admission_number: string | null;
   class_id: string;
   class: ClassOption | null;
+  gender: string | null;
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
+}
+
+function genderAbbrev(g: string | null | undefined): string {
+  if (g === "male") return "M";
+  if (g === "female") return "F";
+  return "—";
 }
 
 interface StudentRowProps {
@@ -107,6 +114,29 @@ export function StudentRow({ student, classes }: StudentRowProps) {
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-zinc-400">
+              Gender <span className="text-red-500">*</span>
+            </label>
+            <select
+              name="gender"
+              defaultValue={
+                student.gender === "female"
+                  ? "female"
+                  : student.gender === "male"
+                    ? "male"
+                    : ""
+              }
+              required
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            >
+              <option value="" disabled>
+                Select gender
+              </option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-zinc-400">
               Parent name
             </label>
             <input
@@ -169,7 +199,7 @@ export function StudentRow({ student, classes }: StudentRowProps) {
   return (
     <div className="relative px-6 py-4">
       {/* Desktop row */}
-      <div className="hidden lg:grid lg:grid-cols-[100px_1fr_1fr_1fr_auto] lg:items-center lg:gap-4">
+      <div className="hidden lg:grid lg:grid-cols-[100px_1fr_1fr_2.5rem_1fr_auto] lg:items-center lg:gap-4">
         <p className="truncate text-sm font-mono text-slate-600 dark:text-zinc-400">
           {student.admission_number || "—"}
         </p>
@@ -178,6 +208,9 @@ export function StudentRow({ student, classes }: StudentRowProps) {
         </p>
         <p className="text-sm text-slate-600 dark:text-zinc-400">
           {student.class?.name || "—"}
+        </p>
+        <p className="text-center text-sm font-medium tabular-nums text-slate-700 dark:text-zinc-300">
+          {genderAbbrev(student.gender)}
         </p>
         <div className="min-w-0">
           <p className="truncate text-sm text-slate-900 dark:text-white">
@@ -217,9 +250,14 @@ export function StudentRow({ student, classes }: StudentRowProps) {
               </p>
             )}
           </div>
-          <span className="shrink-0 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
-            {student.class?.name || "—"}
-          </span>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+              {student.class?.name || "—"}
+            </span>
+            <span className="text-xs font-medium tabular-nums text-slate-600 dark:text-zinc-400">
+              {genderAbbrev(student.gender)}
+            </span>
+          </div>
         </div>
         <div className="text-xs text-slate-500 dark:text-zinc-400">
           <p>

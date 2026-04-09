@@ -16,7 +16,10 @@ const HEADER_FIELDS = [
   "full_name",
   "admission_number",
   "class_name",
+  "gender",
+  "parent_name",
   "parent_email",
+  "parent_phone",
 ] as const;
 
 export interface ValidatedImportRow {
@@ -24,7 +27,10 @@ export interface ValidatedImportRow {
   full_name: string;
   admission_number: string | null;
   class_name: string | null;
+  gender: "male" | "female" | null;
+  parent_name: string | null;
   parent_email: string | null;
+  parent_phone: string | null;
   status: "valid" | "warning" | "error";
   errors: string[];
   warnings: string[];
@@ -107,12 +113,39 @@ function mapHeaderRow(headerCells: string[]): number[] | null {
   return idx;
 }
 
+/** Empty cell defaults to male with a warning; invalid values are errors. */
+function parseGenderCell(raw: string): {
+  gender: "male" | "female" | null;
+  genderWarnings: string[];
+  genderErrors: string[];
+} {
+  const g = raw.trim().toLowerCase();
+  if (g === "") {
+    return {
+      gender: "male",
+      genderWarnings: ["gender was empty; defaulted to male."],
+      genderErrors: [],
+    };
+  }
+  if (g === "male" || g === "female") {
+    return { gender: g, genderWarnings: [], genderErrors: [] };
+  }
+  return {
+    gender: null,
+    genderWarnings: [],
+    genderErrors: ["gender must be male or female."],
+  };
+}
+
 function validateOneDataRow(
   line: number,
   full_name: string,
   admission_number: string | null,
   class_name: string | null,
+  gender_raw: string,
+  parent_name: string | null,
   parent_email: string | null,
+  parent_phone: string | null,
   classNameToId: Map<string, string>,
   sortedClassNames: string[],
   defaultClassId: string | null,
@@ -121,6 +154,14 @@ function validateOneDataRow(
 ): ValidatedImportRow {
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  const {
+    gender: parsedGender,
+    genderWarnings,
+    genderErrors,
+  } = parseGenderCell(gender_raw);
+  errors.push(...genderErrors);
+  warnings.push(...genderWarnings);
 
   const classNameTrimmed = (class_name ?? "").trim();
   const cn = classNameTrimmed === "" ? null : classNameTrimmed;
@@ -188,7 +229,10 @@ function validateOneDataRow(
     full_name: full_name.trim(),
     admission_number,
     class_name: cn,
+    gender: errors.length > 0 ? null : parsedGender,
+    parent_name,
     parent_email,
+    parent_phone,
     status,
     errors,
     warnings,
@@ -213,7 +257,10 @@ function validateAndBuildRows(
         full_name: "",
         admission_number: null,
         class_name: null,
+        gender: null,
+        parent_name: null,
         parent_email: null,
+        parent_phone: null,
         status: "error",
         errors: [
           `Header must include columns: ${HEADER_FIELDS.join(", ")} (order may vary).`,
@@ -235,10 +282,15 @@ function validateAndBuildRows(
     const full_name = (cells[headerIdx[0]] ?? "").trim();
     const admission_raw = (cells[headerIdx[1]] ?? "").trim();
     const class_name_cell = (cells[headerIdx[2]] ?? "").trim();
-    const parent_email_raw = (cells[headerIdx[3]] ?? "").trim();
+    const gender_raw = (cells[headerIdx[3]] ?? "").trim();
+    const parent_name_raw = (cells[headerIdx[4]] ?? "").trim();
+    const parent_email_raw = (cells[headerIdx[5]] ?? "").trim();
+    const parent_phone_raw = (cells[headerIdx[6]] ?? "").trim();
 
     const admission_number = admission_raw === "" ? null : admission_raw;
+    const parent_name = parent_name_raw === "" ? null : parent_name_raw;
     const parent_email = parent_email_raw === "" ? null : parent_email_raw;
+    const parent_phone = parent_phone_raw === "" ? null : parent_phone_raw;
 
     out.push(
       validateOneDataRow(
@@ -246,7 +298,10 @@ function validateAndBuildRows(
         full_name,
         admission_number,
         class_name_cell === "" ? null : class_name_cell,
+        gender_raw,
+        parent_name,
         parent_email,
+        parent_phone,
         classNameToId,
         sortedClassNames,
         defaultClassId,
@@ -265,7 +320,10 @@ function validateImportRows(
     full_name: string;
     admission_number: string | null;
     class_name: string | null;
+    gender: string;
+    parent_name: string | null;
     parent_email: string | null;
+    parent_phone: string | null;
   }[],
   classNameToId: Map<string, string>,
   sortedClassNames: string[],
@@ -280,7 +338,10 @@ function validateImportRows(
       row.full_name,
       row.admission_number,
       row.class_name,
+      row.gender,
+      row.parent_name,
       row.parent_email,
+      row.parent_phone,
       classNameToId,
       sortedClassNames,
       defaultClassId,
@@ -299,7 +360,10 @@ type ImportBody =
         full_name: string;
         admission_number: string | null;
         class_name: string | null;
+        gender: string;
+        parent_name: string | null;
         parent_email: string | null;
+        parent_phone: string | null;
       }[];
     };
 
@@ -560,9 +624,10 @@ export async function POST(request: NextRequest) {
           class_id: r.resolved_class_id,
           full_name: r.full_name,
           admission_number: admissionToUse,
+          gender: r.gender ?? "male",
           parent_email: r.parent_email,
-          parent_name: null,
-          parent_phone: null,
+          parent_name: r.parent_name,
+          parent_phone: r.parent_phone,
         };
 
         const { error: insErr } = await supabase.from("students").insert(row as never);

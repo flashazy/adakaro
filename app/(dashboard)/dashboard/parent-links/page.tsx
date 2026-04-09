@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 import type { Database } from "@/types/supabase";
 import { QueryErrorBanner } from "../query-error-banner";
 import { ParentLinksTable } from "./parent-links-table";
@@ -100,11 +101,9 @@ async function fetchParentLinksWithClient(
     : "student:students(full_name)";
 
   const [studentsRes, linksResAll] = await Promise.all([
-    client
-      .from("students")
-      .select(studentSelect)
-      .eq("school_id", schoolId)
-      .order("full_name"),
+    orderStudentsByGenderThenName(
+      client.from("students").select(studentSelect).eq("school_id", schoolId)
+    ),
     client.from("parent_students").select(
       `id, parent_id, student_id, parent:profiles(full_name, email), ${linkStudentSelect}`
     ),
@@ -127,11 +126,12 @@ async function fetchParentLinksWithAdminClient(
   admin: Db,
   schoolId: string
 ): Promise<LinksFetchBundle> {
-  const studentsRes = await admin
-    .from("students")
-    .select("id, full_name, admission_number, class_id, class:classes(name)")
-    .eq("school_id", schoolId)
-    .order("full_name");
+  const studentsRes = await orderStudentsByGenderThenName(
+    admin
+      .from("students")
+      .select("id, full_name, admission_number, class_id, class:classes(name)")
+      .eq("school_id", schoolId)
+  );
 
   const studentRows = (studentsRes.data ?? []) as { id: string }[];
   const studentIds = studentRows.map((s) => s.id);

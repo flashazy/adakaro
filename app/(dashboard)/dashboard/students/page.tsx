@@ -15,6 +15,7 @@ import StudentImportModal from "./components/student-import-modal";
 import { StudentList } from "./student-list";
 import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
 export const dynamic = "force-dynamic";
 
@@ -35,11 +36,12 @@ export default async function StudentsPage() {
     .eq("school_id", schoolId)
     .order("name");
 
-  const { data: students, error: studentsError } = await supabase
-    .from("students")
-    .select("*, class:classes(id, name)")
-    .eq("school_id", schoolId)
-    .order("full_name");
+  const { data: students, error: studentsError } = await orderStudentsByGenderThenName(
+    supabase
+      .from("students")
+      .select("*, class:classes(id, name)")
+      .eq("school_id", schoolId)
+  );
 
   const listError = combineSupabaseErrors([classesError, studentsError]);
   if (listError) {
@@ -53,6 +55,7 @@ export default async function StudentsPage() {
     admission_number: string | null;
     class_id: string;
     class: { id: string; name: string } | null;
+    gender: string | null;
     parent_name: string | null;
     parent_email: string | null;
     parent_phone: string | null;

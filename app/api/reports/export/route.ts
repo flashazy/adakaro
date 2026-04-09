@@ -14,6 +14,7 @@ import {
   type ReportExportTab,
   type StudentClassRow,
 } from "@/lib/reports/build-export-csv";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
 const TABS: ReportExportTab[] = [
   "student-fees",
@@ -82,10 +83,13 @@ export async function POST(request: NextRequest) {
     const dateFrom = String(body.dateFrom ?? "");
     const dateTo = String(body.dateTo ?? "");
 
-    const { data: schoolStudents, error: schoolStudentsError } = await supabase
-      .from("students")
-      .select("id, class_id")
-      .eq("school_id", schoolId);
+    const { data: schoolStudents, error: schoolStudentsError } =
+      await orderStudentsByGenderThenName(
+        supabase
+          .from("students")
+          .select("id, class_id")
+          .eq("school_id", schoolId)
+      );
 
     if (schoolStudentsError) {
       return NextResponse.json(

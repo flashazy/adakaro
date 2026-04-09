@@ -8,6 +8,7 @@ import { AddFeeStructureForm } from "./add-fee-structure-form";
 import { FeeStructureRow } from "./fee-structure-row";
 import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
 export default async function FeeStructuresPage() {
   const supabase = await createClient();
@@ -34,11 +35,12 @@ export default async function FeeStructuresPage() {
         .select("id, name")
         .eq("school_id", schoolId)
         .order("name"),
-      supabase
-        .from("students")
-        .select("id, full_name, admission_number")
-        .eq("school_id", schoolId)
-        .order("full_name"),
+      orderStudentsByGenderThenName(
+        supabase
+          .from("students")
+          .select("id, full_name, admission_number")
+          .eq("school_id", schoolId)
+      ),
       supabase
         .from("fee_structures")
         .select(

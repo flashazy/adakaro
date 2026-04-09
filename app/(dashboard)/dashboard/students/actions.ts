@@ -37,12 +37,17 @@ export async function addStudent(
   const admissionNumberRaw =
     (formData.get("admission_number") as string)?.trim() || null;
   const classId = (formData.get("class_id") as string)?.trim();
+  const genderRaw = (formData.get("gender") as string)?.trim();
   const parentName = (formData.get("parent_name") as string)?.trim() || null;
   const parentEmail = (formData.get("parent_email") as string)?.trim() || null;
   const parentPhone = (formData.get("parent_phone") as string)?.trim() || null;
 
   if (!fullName) return { error: "Student name is required." };
   if (!classId) return { error: "Please select a class." };
+  if (genderRaw !== "male" && genderRaw !== "female") {
+    return { error: "Please select a gender." };
+  }
+  const gender = genderRaw;
 
   try {
     const { supabase, schoolId, userId } = await getSchoolId();
@@ -120,6 +125,7 @@ export async function addStudent(
       class_id: classId,
       full_name: fullName,
       admission_number: admissionNumber,
+      gender,
       parent_name: parentName,
       parent_email: parentEmail,
       parent_phone: parentPhone,
@@ -160,12 +166,17 @@ export async function updateStudent(
   const admissionNumber =
     (formData.get("admission_number") as string)?.trim() || null;
   const classId = (formData.get("class_id") as string)?.trim();
+  const genderRaw = (formData.get("gender") as string)?.trim();
   const parentName = (formData.get("parent_name") as string)?.trim() || null;
   const parentEmail = (formData.get("parent_email") as string)?.trim() || null;
   const parentPhone = (formData.get("parent_phone") as string)?.trim() || null;
 
   if (!fullName) return { error: "Student name is required." };
   if (!classId) return { error: "Please select a class." };
+  if (genderRaw !== "male" && genderRaw !== "female") {
+    return { error: "Please select a gender." };
+  }
+  const gender = genderRaw;
 
   try {
     const { supabase, schoolId, userId } = await getSchoolId();
@@ -176,6 +187,7 @@ export async function updateStudent(
         full_name: fullName,
         admission_number: admissionNumber,
         class_id: classId,
+        gender,
         parent_name: parentName,
         parent_email: parentEmail,
         parent_phone: parentPhone,

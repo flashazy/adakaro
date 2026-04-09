@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 import type { Database } from "@/types/supabase";
 import {
   SchoolDetailClient,
@@ -122,12 +123,12 @@ export default async function SuperAdminSchoolDetailPage({
     };
   });
 
-  const { data: studentsRaw } = await queryClient
-    .from("students")
-    .select("id, full_name, admission_number, status")
-    .eq("school_id", id)
-    .order("full_name")
-    .limit(200);
+  const { data: studentsRaw } = await orderStudentsByGenderThenName(
+    queryClient
+      .from("students")
+      .select("id, full_name, admission_number, status")
+      .eq("school_id", id)
+  ).limit(200);
 
   const { count: studentCount } = await queryClient
     .from("students")
