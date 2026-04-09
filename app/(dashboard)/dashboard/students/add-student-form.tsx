@@ -172,11 +172,14 @@ export function AddStudentForm({
               {studentLimit} students used.
             </div>
           ) : null}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div>
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-zinc-300">
+            Student Information
+          </h3>
+          <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="flex flex-col gap-1">
               <label
                 htmlFor="full_name"
-                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
                 Full name <span className="text-red-500">*</span>
               </label>
@@ -185,7 +188,7 @@ export function AddStudentForm({
                 name="full_name"
                 type="text"
                 required
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="e.g. Jane Doe"
                 onBlur={(e) => {
                   e.currentTarget.value = toTitleCase(e.currentTarget.value);
@@ -193,15 +196,15 @@ export function AddStudentForm({
               />
             </div>
 
-            <div>
+            <div className="flex flex-col gap-1">
               <label
                 htmlFor="admission_number"
-                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
                 Admission number
               </label>
               {hasAdmissionPrefix ? (
-                <div className="mt-1.5 flex gap-2">
+                <div className="flex gap-2">
                   <input
                     type="hidden"
                     name="admission_default_snapshot"
@@ -215,7 +218,7 @@ export function AddStudentForm({
                     autoComplete="off"
                     value={admissionValue}
                     onChange={(e) => setAdmissionValue(e.target.value)}
-                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                    className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                     placeholder={`e.g. ${effectivePrefix}-001`}
                   />
                   <button
@@ -225,7 +228,7 @@ export function AddStudentForm({
                       admissionInputRef.current?.focus();
                       admissionInputRef.current?.select();
                     }}
-                    className="shrink-0 rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    className="h-10 shrink-0 rounded-lg border border-gray-200 px-2 text-slate-600 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
                   >
                     <Pencil className="h-4 w-4" aria-hidden />
                   </button>
@@ -235,15 +238,13 @@ export function AddStudentForm({
                   id="admission_number"
                   name="admission_number"
                   type="text"
-                  className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                   placeholder="e.g. ADM-001 (optional)"
                 />
               )}
               {hasAdmissionPrefix ? (
-                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                  Pre-filled with the next number. You can edit it; if you leave
-                  it as suggested, the next free sequence number is assigned
-                  when you save.
+                <p className="mt-1 text-xs text-gray-500 dark:text-zinc-400">
+                  Auto-generated. You can edit.
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
@@ -253,10 +254,10 @@ export function AddStudentForm({
               )}
             </div>
 
-            <div>
+            <div className="flex flex-col gap-1">
               <label
                 htmlFor="class_id"
-                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
                 Class <span className="text-red-500">*</span>
               </label>
@@ -264,7 +265,7 @@ export function AddStudentForm({
                 id="class_id"
                 name="class_id"
                 required
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 <option value="">Select a class</option>
                 {classes.map((c) => (
@@ -275,10 +276,10 @@ export function AddStudentForm({
               </select>
             </div>
 
-            <div>
+            <div className="flex flex-col gap-1">
               <label
                 htmlFor="gender"
-                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
                 Gender <span className="text-red-500">*</span>
               </label>
@@ -287,7 +288,7 @@ export function AddStudentForm({
                 name="gender"
                 required
                 defaultValue=""
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 <option value="" disabled>
                   Select gender
@@ -296,11 +297,16 @@ export function AddStudentForm({
                 <option value="female">Female</option>
               </select>
             </div>
+          </div>
 
-            <div>
+          <h3 className="mb-2 mt-4 text-sm font-semibold text-gray-700 dark:text-zinc-300">
+            Parent Information
+          </h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="flex flex-col gap-1">
               <label
                 htmlFor="parent_name"
-                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
                 Parent name
               </label>
@@ -308,7 +314,7 @@ export function AddStudentForm({
                 id="parent_name"
                 name="parent_name"
                 type="text"
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="Parent's full name"
                 onBlur={(e) => {
                   e.currentTarget.value = toTitleCase(e.currentTarget.value);
@@ -316,10 +322,10 @@ export function AddStudentForm({
               />
             </div>
 
-            <div>
+            <div className="flex flex-col gap-1">
               <label
                 htmlFor="parent_email"
-                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
                 Parent email
               </label>
@@ -327,7 +333,7 @@ export function AddStudentForm({
                 id="parent_email"
                 name="parent_email"
                 type="email"
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="parent@example.com"
                 onBlur={(e) => {
                   e.currentTarget.value = toLowercaseEmail(
@@ -337,10 +343,10 @@ export function AddStudentForm({
               />
             </div>
 
-            <div>
+            <div className="flex flex-col gap-1">
               <label
                 htmlFor="parent_phone"
-                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
                 Parent phone
               </label>
@@ -348,13 +354,13 @@ export function AddStudentForm({
                 id="parent_phone"
                 name="parent_phone"
                 type="tel"
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="+254 700 000 000"
               />
             </div>
           </div>
 
-          <div className="mt-5 flex items-center justify-between">
+          <div className="mt-4 flex items-center justify-between">
             <SubmitButton disabled={atStudentLimit} />
           </div>
 

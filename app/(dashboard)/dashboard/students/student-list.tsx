@@ -63,6 +63,8 @@ export function StudentList({ students, classes }: StudentListProps) {
   const [classFilter, setClassFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Partial<StudentData>>({});
 
   const classNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -79,12 +81,24 @@ export function StudentList({ students, classes }: StudentListProps) {
       if (!q) return true;
 
       const name = s.full_name?.toLowerCase() ?? "";
-      const adm = s.admission_number?.toLowerCase() ?? "";
+      const adm = (s.admission_number ?? "").toLowerCase();
       const className = (
         s.class?.name ?? classNameMap.get(s.class_id) ?? ""
       ).toLowerCase();
+      const gender = (s.gender ?? "").toLowerCase();
+      const parentName = (s.parent_name ?? "").toLowerCase();
+      const parentEmail = (s.parent_email ?? "").toLowerCase();
+      const parentPhone = (s.parent_phone ?? "").toLowerCase();
 
-      return name.includes(q) || adm.includes(q) || className.includes(q);
+      return (
+        name.includes(q) ||
+        adm.includes(q) ||
+        className.includes(q) ||
+        gender.includes(q) ||
+        parentName.includes(q) ||
+        parentEmail.includes(q) ||
+        parentPhone.includes(q)
+      );
     });
   }, [students, query, classFilter, classNameMap]);
 
@@ -117,17 +131,45 @@ export function StudentList({ students, classes }: StudentListProps) {
     [currentPage, totalPages]
   );
 
+  function handleEdit(student: StudentData) {
+    setEditingId(student.id);
+    setEditValues({
+      full_name: student.full_name,
+      admission_number: student.admission_number,
+      class_id: student.class_id,
+      gender: student.gender,
+      parent_name: student.parent_name,
+      parent_email: student.parent_email,
+      parent_phone: student.parent_phone,
+    });
+  }
+
+  function handleChange(field: string, value: string) {
+    setEditValues((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleInlineSave() {
+    console.log("Updated:", editValues);
+    setEditingId(null);
+    setEditValues({});
+  }
+
+  function handleInlineCancel() {
+    setEditingId(null);
+    setEditValues({});
+  }
+
   return (
     <div>
       {/* Search, filter & row limit */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="relative min-w-0 flex-1">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative min-w-0 flex-1 sm:max-w-xl">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, admission # or class…"
-            className="block w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-10 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            placeholder="Search students…"
+            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pl-3 pr-10 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-64 sm:flex-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
           />
           <svg
             className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -145,10 +187,11 @@ export function StudentList({ students, classes }: StudentListProps) {
           </svg>
         </div>
 
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
         <select
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
+          className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
         >
           <option value="">All classes</option>
           {classes.map((c) => (
@@ -159,7 +202,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         </select>
 
         <label className="flex w-full items-center gap-2 sm:w-auto">
-          <span className="shrink-0 text-sm text-slate-500 dark:text-zinc-400">
+          <span className="shrink-0 text-sm text-gray-500 dark:text-zinc-400">
             Rows
           </span>
           <select
@@ -168,7 +211,7 @@ export function StudentList({ students, classes }: StudentListProps) {
               setRowsPerPage(Number(e.target.value));
               setCurrentPage(1);
             }}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
+            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
           >
             {ROW_OPTIONS.map((n) => (
               <option key={n} value={n}>
@@ -177,6 +220,7 @@ export function StudentList({ students, classes }: StudentListProps) {
             ))}
           </select>
         </label>
+        </div>
       </div>
 
       {/* Showing range */}
@@ -208,38 +252,46 @@ export function StudentList({ students, classes }: StudentListProps) {
       {filtered.length > 0 ? (
         <>
           <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="max-h-[min(70vh,720px)] overflow-y-auto overflow-x-auto">
-              {/* Desktop header — sticky */}
-              <div className="sticky top-0 z-10 hidden border-b border-slate-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900 lg:grid lg:grid-cols-[100px_1fr_1fr_2.5rem_1fr_auto] lg:gap-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                  Adm #
-                </p>
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                  Student
-                </p>
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                  Class
-                </p>
-                <p className="text-center text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                  Gender
-                </p>
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                  Parent
-                </p>
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                  Actions
-                </p>
-              </div>
-
-              <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-                {pageSlice.map((student) => (
-                  <StudentRow
-                    key={student.id}
-                    student={student}
-                    classes={classes}
-                  />
-                ))}
-              </div>
+            <div className="max-h-[min(70vh,720px)] overflow-x-auto overflow-y-auto">
+              <table className="w-full table-fixed border-collapse">
+                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                  <tr>
+                    <th className="w-[120px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                      ADM #
+                    </th>
+                    <th className="w-[220px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                      Student
+                    </th>
+                    <th className="w-[120px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                      Class
+                    </th>
+                    <th className="w-[80px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                      Gender
+                    </th>
+                    <th className="w-[280px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                      Parent
+                    </th>
+                    <th className="w-[120px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
+                  {pageSlice.map((student) => (
+                    <StudentRow
+                      key={student.id}
+                      student={student}
+                      classes={classes}
+                      editingId={editingId}
+                      editValues={editValues}
+                      onInlineEdit={handleEdit}
+                      onInlineChange={handleChange}
+                      onInlineSave={handleInlineSave}
+                      onInlineCancel={handleInlineCancel}
+                    />
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 

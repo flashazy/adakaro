@@ -111,7 +111,7 @@ export default async function StudentsPage() {
             message={listError}
           />
         ) : null}
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
           <StudentImportModal
             classes={classOptions}
             canBulkImport={canBulkImport}
