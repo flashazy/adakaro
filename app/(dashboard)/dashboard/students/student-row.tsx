@@ -33,8 +33,9 @@ interface StudentRowProps {
   editValues: Partial<StudentData>;
   onInlineEdit: (student: StudentData) => void;
   onInlineChange: (field: string, value: string) => void;
-  onInlineSave: () => void;
+  onInlineSave: () => void | Promise<void>;
   onInlineCancel: () => void;
+  isSaving?: boolean;
 }
 
 const inlineCls =
@@ -49,6 +50,7 @@ export function StudentRow({
   onInlineChange,
   onInlineSave,
   onInlineCancel,
+  isSaving = false,
 }: StudentRowProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,16 +192,18 @@ export function StudentRow({
                 <button
                   type="button"
                   onClick={onInlineCancel}
-                  className="rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-800 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  disabled={isSaving}
+                  className="rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={onInlineSave}
-                  className="rounded-md bg-blue-600 px-2 py-1 text-sm text-white hover:bg-blue-500"
+                  onClick={() => void onInlineSave()}
+                  disabled={isSaving}
+                  className="rounded-md bg-blue-600 px-2 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
                 >
-                  Save
+                  {isSaving ? "Saving…" : "Save"}
                 </button>
               </>
             ) : (
@@ -292,16 +296,18 @@ export function StudentRow({
                 <button
                   type="button"
                   onClick={onInlineCancel}
-                  className="rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-800 dark:border-zinc-600 dark:text-zinc-200"
+                  disabled={isSaving}
+                  className="rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-800 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={onInlineSave}
-                  className="rounded-md bg-blue-600 px-2 py-1 text-sm text-white"
+                  onClick={() => void onInlineSave()}
+                  disabled={isSaving}
+                  className="rounded-md bg-blue-600 px-2 py-1 text-sm text-white disabled:opacity-50"
                 >
-                  Save
+                  {isSaving ? "Saving…" : "Save"}
                 </button>
               </div>
             </div>

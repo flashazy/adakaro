@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { StudentRow } from "./student-row";
+import { updateStudent } from "./actions";
 
 interface ClassOption {
   id: string;
@@ -59,12 +61,18 @@ function getPageNumbers(current: number, total: number): (number | "ellipsis")[]
 }
 
 export function StudentList({ students, classes }: StudentListProps) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<StudentData>>({});
+  const [inlineSaveError, setInlineSaveError] = useState<string | null>(null);
+  const [inlineSaveSuccess, setInlineSaveSuccess] = useState<string | null>(
+    null
+  );
+  const [isSaving, setIsSaving] = useState(false);
 
   const classNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -131,7 +139,9 @@ export function StudentList({ students, classes }: StudentListProps) {
     [currentPage, totalPages]
   );
 
-  function handleEdit(student: StudentData) {
+  const handleEdit = useCallback((student: StudentData) => {
+    setInlineSaveError(null);
+    setInlineSaveSuccess(null);
     setEditingId(student.id);
     setEditValues({
       full_name: student.full_name,
@@ -142,22 +152,76 @@ export function StudentList({ students, classes }: StudentListProps) {
       parent_email: student.parent_email,
       parent_phone: student.parent_phone,
     });
-  }
+  }, []);
 
   function handleChange(field: string, value: string) {
     setEditValues((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleInlineSave() {
-    console.log("Updated:", editValues);
-    setEditingId(null);
-    setEditValues({});
-  }
+  const handleInlineSave = useCallback(async () => {
+    if (!editingId) return;
+
+    const fullName = (editValues.full_name ?? "").trim();
+    const genderRaw = (editValues.gender ?? "").trim();
+
+    setInlineSaveError(null);
+    setInlineSaveSuccess(null);
+
+    if (!fullName) {
+      setInlineSaveError("Student name is required.");
+      return;
+    }
+    if (genderRaw !== "male" && genderRaw !== "female") {
+      setInlineSaveError("Please select male or female for gender.");
+      return;
+    }
+
+    const classId = (editValues.class_id ?? "").trim();
+    if (!classId) {
+      setInlineSaveError("Please select a class.");
+      return;
+    }
+
+    const fd = new FormData();
+    fd.set("full_name", fullName);
+    fd.set(
+      "admission_number",
+      (editValues.admission_number ?? "").trim()
+    );
+    fd.set("class_id", classId);
+    fd.set("gender", genderRaw);
+    fd.set("parent_name", (editValues.parent_name ?? "").trim());
+    fd.set("parent_email", (editValues.parent_email ?? "").trim());
+    fd.set("parent_phone", (editValues.parent_phone ?? "").trim());
+
+    setIsSaving(true);
+    try {
+      const result = await updateStudent(editingId, fd);
+      if (result.error) {
+        setInlineSaveError(result.error);
+        return;
+      }
+      setInlineSaveSuccess(result.success ?? "Student updated.");
+      setEditingId(null);
+      setEditValues({});
+      router.refresh();
+    } finally {
+      setIsSaving(false);
+    }
+  }, [editingId, editValues, router]);
 
   function handleInlineCancel() {
     setEditingId(null);
     setEditValues({});
+    setInlineSaveError(null);
+    setInlineSaveSuccess(null);
   }
+
+  useEffect(() => {
+    if (!inlineSaveSuccess) return;
+    const t = window.setTimeout(() => setInlineSaveSuccess(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [inlineSaveSuccess]);
 
   return (
     <div>
@@ -248,6 +312,20 @@ export function StudentList({ students, classes }: StudentListProps) {
         )}
       </p>
 
+      {inlineSaveError ? (
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
+          {inlineSaveError}
+        </p>
+      ) : null}
+      {inlineSaveSuccess ? (
+        <p
+          className="mt-2 text-sm text-emerald-600 dark:text-emerald-400"
+          role="status"
+        >
+          {inlineSaveSuccess}
+        </p>
+      ) : null}
+
       {/* Results */}
       {filtered.length > 0 ? (
         <>
@@ -288,6 +366,7 @@ export function StudentList({ students, classes }: StudentListProps) {
                       onInlineChange={handleChange}
                       onInlineSave={handleInlineSave}
                       onInlineCancel={handleInlineCancel}
+                      isSaving={isSaving}
                     />
                   ))}
                 </tbody>
