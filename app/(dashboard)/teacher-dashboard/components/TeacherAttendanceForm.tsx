@@ -239,6 +239,13 @@ export function TeacherAttendanceForm({
     setHasChanges(true);
   };
 
+  /** Reload attendance for this class/date from the server (last saved). */
+  const resetToSavedAttendance = () => {
+    startTransition(() => {
+      void syncAttendance();
+    });
+  };
+
   const handleSave = async () => {
     if (!classId) return;
     setSaveError(null);
@@ -577,8 +584,9 @@ export function TeacherAttendanceForm({
                   </button>
                   <button
                     type="button"
-                    onClick={markAllPresent}
-                    className="h-9 rounded-lg bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200/80 dark:bg-green-950/40 dark:text-green-400 dark:hover:bg-green-950/60"
+                    onClick={resetToSavedAttendance}
+                    disabled={!classId || students.length === 0 || isPending}
+                    className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   >
                     Reset
                   </button>
