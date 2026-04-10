@@ -160,103 +160,114 @@ export function LessonPlanForm({
         <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
           Section 1 — Basic information
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700 dark:text-zinc-300">
-              Date <span className="text-red-600">*</span>
-            </span>
-            <input
-              type="date"
-              name="lesson_date"
-              required
-              value={lessonDate}
-              onChange={(e) => setLessonDate(e.target.value)}
-              className="h-10 rounded-lg border border-gray-200 px-3 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700 dark:text-zinc-300">
-              Subject <span className="text-red-600">*</span>
-            </span>
-            <select
-              name="subject_id"
-              required
-              defaultValue={initialData?.subject_id ?? ""}
-              className="h-10 rounded-lg border border-gray-200 px-3 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-            >
-              <option value="">Select subject</option>
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700 dark:text-zinc-300">
-              Class <span className="text-red-600">*</span>
-            </span>
-            <select
-              name="class_id"
-              required
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              className="h-10 rounded-lg border border-gray-200 px-3 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-            >
-              <option value="">Select class</option>
-              {classList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700 dark:text-zinc-300">
-              Period <span className="text-red-600">*</span>
-            </span>
-            <select
-              name="period"
-              required
-              defaultValue={initialData?.period ?? 1}
-              className="h-10 rounded-lg border border-gray-200 px-3 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-            >
-              {PERIODS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                  {p === 1
-                    ? "st"
-                    : p === 2
-                      ? "nd"
-                      : p === 3
-                        ? "rd"
-                        : "th"}{" "}
-                  period
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-            <span className="font-medium text-slate-700 dark:text-zinc-300">
-              Time / duration (minutes) <span className="text-red-600">*</span>
-            </span>
-            <select
-              name="duration_minutes"
-              required
-              defaultValue={initialData?.duration_minutes ?? 40}
-              className="h-10 max-w-xs rounded-lg border border-gray-200 px-3 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-            >
-              {DURATIONS.map((m) => (
-                <option key={m} value={m}>
-                  {m} minutes
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
+                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  Date <span className="text-red-600">*</span>
+                </th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  Subject <span className="text-red-600">*</span>
+                </th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  Class <span className="text-red-600">*</span>
+                </th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  Period <span className="text-red-600">*</span>
+                </th>
+                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  Time <span className="text-red-600">*</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-slate-100 dark:border-zinc-700">
+                <td className="px-3 py-2 align-top">
+                  <label className="sr-only">Date</label>
+                  <input
+                    type="date"
+                    name="lesson_date"
+                    required
+                    value={lessonDate}
+                    onChange={(e) => setLessonDate(e.target.value)}
+                    className="h-10 w-full min-w-[10rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  />
+                </td>
+                <td className="px-3 py-2 align-top">
+                  <label className="sr-only">Subject</label>
+                  <select
+                    name="subject_id"
+                    required
+                    defaultValue={initialData?.subject_id ?? ""}
+                    className="h-10 w-full min-w-[8rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  >
+                    <option value="">Select subject</option>
+                    {subjects.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-3 py-2 align-top">
+                  <label className="sr-only">Class</label>
+                  <select
+                    name="class_id"
+                    required
+                    value={classId}
+                    onChange={(e) => setClassId(e.target.value)}
+                    className="h-10 w-full min-w-[8rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  >
+                    <option value="">Select class</option>
+                    {classList.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-3 py-2 align-top">
+                  <label className="sr-only">Period</label>
+                  <select
+                    name="period"
+                    required
+                    defaultValue={initialData?.period ?? 1}
+                    className="h-10 w-full min-w-[7rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  >
+                    {PERIODS.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                        {p === 1
+                          ? "st"
+                          : p === 2
+                            ? "nd"
+                            : p === 3
+                              ? "rd"
+                              : "th"}{" "}
+                        period
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-3 py-2 align-top">
+                  <label className="sr-only">Time (minutes)</label>
+                  <select
+                    name="duration_minutes"
+                    required
+                    defaultValue={initialData?.duration_minutes ?? 40}
+                    className="h-10 w-full min-w-[7rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  >
+                    {DURATIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {m} minutes
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -280,75 +291,86 @@ export function LessonPlanForm({
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
-                <th className="px-4 py-2 text-left font-semibold text-slate-900 dark:text-white" />
                 <th
-                  colSpan={2}
+                  colSpan={6}
                   className="px-4 py-2 text-center font-semibold text-slate-900 dark:text-white"
                 >
                   Number of Pupils
                 </th>
               </tr>
               <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
-                <th className="px-4 py-2 text-left font-semibold text-slate-900 dark:text-white" />
-                <th className="px-4 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                <th
+                  colSpan={3}
+                  className="px-4 py-2 text-center font-semibold text-slate-900 dark:text-white"
+                >
                   Registered
                 </th>
-                <th className="px-4 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                <th
+                  colSpan={3}
+                  className="px-4 py-2 text-center font-semibold text-slate-900 dark:text-white"
+                >
                   Present
+                </th>
+              </tr>
+              <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
+                <th className="px-2 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                  Girls
+                </th>
+                <th className="px-2 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                  Boys
+                </th>
+                <th className="px-2 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                  Total
+                </th>
+                <th className="px-2 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                  Girls
+                </th>
+                <th className="px-2 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                  Boys
+                </th>
+                <th className="px-2 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                  Total
                 </th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-b border-slate-100 dark:border-zinc-700">
-                <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
-                  Girls
-                </td>
-                <td className="px-4 py-2 text-center tabular-nums text-slate-900 dark:text-white">
+                <td className="px-2 py-2 text-center tabular-nums text-slate-900 dark:text-white">
                   {loadingStats && classId ? (
                     <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
                   ) : (
                     demographics.girls
                   )}
                 </td>
-                <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
-                  {loadingStats && classId && lessonDate ? (
-                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
-                  ) : (
-                    presentByGender.girls
-                  )}
-                </td>
-              </tr>
-              <tr className="border-b border-slate-100 dark:border-zinc-700">
-                <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
-                  Boys
-                </td>
-                <td className="px-4 py-2 text-center tabular-nums text-slate-900 dark:text-white">
+                <td className="px-2 py-2 text-center tabular-nums text-slate-900 dark:text-white">
                   {loadingStats && classId ? (
                     <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
                   ) : (
                     demographics.boys
                   )}
                 </td>
-                <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
-                  {loadingStats && classId && lessonDate ? (
-                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
-                  ) : (
-                    presentByGender.boys
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
-                  Total
-                </td>
-                <td className="px-4 py-2 text-center tabular-nums text-slate-900 dark:text-white">
+                <td className="px-2 py-2 text-center tabular-nums text-slate-900 dark:text-white">
                   {loadingStats && classId ? (
                     <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
                   ) : (
                     demographics.total
                   )}
                 </td>
-                <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                <td className="px-2 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {loadingStats && classId && lessonDate ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
+                  ) : (
+                    presentByGender.girls
+                  )}
+                </td>
+                <td className="px-2 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {loadingStats && classId && lessonDate ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
+                  ) : (
+                    presentByGender.boys
+                  )}
+                </td>
+                <td className="px-2 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
                   {loadingStats && classId && lessonDate ? (
                     <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
                   ) : (

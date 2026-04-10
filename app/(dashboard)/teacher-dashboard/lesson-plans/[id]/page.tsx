@@ -76,90 +76,101 @@ export default async function LessonPlanViewPage({
             {v.schoolName?.trim() || "_______________________________"}
           </p>
 
-          <dl className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="font-medium text-slate-500 dark:text-zinc-400">
-                Subject
-              </dt>
-              <dd className="text-slate-900 dark:text-white">{v.subjectName}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500 dark:text-zinc-400">
-                Class
-              </dt>
-              <dd className="text-slate-900 dark:text-white">{v.className}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500 dark:text-zinc-400">
-                Date
-              </dt>
-              <dd className="text-slate-900 dark:text-white">
-                {v.lessonDateDisplay}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500 dark:text-zinc-400">
-                Period
-              </dt>
-              <dd className="text-slate-900 dark:text-white">{v.periodLabel}</dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="font-medium text-slate-500 dark:text-zinc-400">
-                Time / duration
-              </dt>
-              <dd className="text-slate-900 dark:text-white">
-                {v.durationMinutes} minutes
-              </dd>
-            </div>
-          </dl>
+          <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
+                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                    Date
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                    Subject
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                    Class
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                    Period
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                    Time
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-100 dark:border-zinc-700">
+                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                    {v.lessonDateDisplay}
+                  </td>
+                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                    {v.subjectName}
+                  </td>
+                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                    {v.className}
+                  </td>
+                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                    {v.periodLabel}
+                  </td>
+                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                    {v.durationMinutes} minutes
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           <div className="mt-6 overflow-x-auto rounded-lg border border-slate-100 dark:border-zinc-700">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800">
-                  <th className="px-4 py-2 text-left font-semibold" />
                   <th
-                    colSpan={2}
+                    colSpan={6}
                     className="px-4 py-2 text-center font-semibold"
                   >
                     Number of Pupils
                   </th>
                 </tr>
-                <tr className="bg-slate-100 dark:bg-zinc-800">
-                  <th className="px-4 py-2 text-left font-semibold" />
-                  <th className="px-4 py-2 text-center font-semibold">
+                <tr className="border-b border-slate-200 bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800">
+                  <th
+                    colSpan={3}
+                    className="px-4 py-2 text-center font-semibold"
+                  >
                     Registered
                   </th>
-                  <th className="px-4 py-2 text-center font-semibold">
+                  <th
+                    colSpan={3}
+                    className="px-4 py-2 text-center font-semibold"
+                  >
                     Present
                   </th>
+                </tr>
+                <tr className="bg-slate-100 dark:bg-zinc-800">
+                  <th className="px-2 py-2 text-center font-semibold">Girls</th>
+                  <th className="px-2 py-2 text-center font-semibold">Boys</th>
+                  <th className="px-2 py-2 text-center font-semibold">Total</th>
+                  <th className="px-2 py-2 text-center font-semibold">Girls</th>
+                  <th className="px-2 py-2 text-center font-semibold">Boys</th>
+                  <th className="px-2 py-2 text-center font-semibold">Total</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="border-t border-slate-100 dark:border-zinc-700">
-                  <td className="px-4 py-2 font-medium">Girls</td>
-                  <td className="px-4 py-2 text-center tabular-nums">
+                  <td className="px-2 py-2 text-center tabular-nums">
                     {v.registeredGirls}
                   </td>
-                  <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
-                    {v.presentGirls}
-                  </td>
-                </tr>
-                <tr className="border-t border-slate-100 dark:border-zinc-700">
-                  <td className="px-4 py-2 font-medium">Boys</td>
-                  <td className="px-4 py-2 text-center tabular-nums">
+                  <td className="px-2 py-2 text-center tabular-nums">
                     {v.registeredBoys}
                   </td>
-                  <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
-                    {v.presentBoys}
-                  </td>
-                </tr>
-                <tr className="border-t border-slate-100 dark:border-zinc-700">
-                  <td className="px-4 py-2 font-medium">Total</td>
-                  <td className="px-4 py-2 text-center tabular-nums">
+                  <td className="px-2 py-2 text-center tabular-nums">
                     {v.registeredTotal}
                   </td>
-                  <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                  <td className="px-2 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {v.presentGirls}
+                  </td>
+                  <td className="px-2 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {v.presentBoys}
+                  </td>
+                  <td className="px-2 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
                     {v.presentTotal}
                   </td>
                 </tr>

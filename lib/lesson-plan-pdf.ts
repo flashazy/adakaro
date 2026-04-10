@@ -127,79 +127,18 @@ function section(
 
 function basicInformationTable(doc: jsPDF, pageW: number, y: number, input: LessonPlanPdfInput): number {
   const w = contentWidth(pageW);
-  const labelW = 48;
-  const valueW = w - labelW;
+  const colW = w / 5;
 
   autoTable(doc, {
     startY: y,
-    body: [
-      ["Date", input.lessonDateDisplay],
-      ["Subject", input.subjectName],
-      ["Class", input.className],
-      ["Period", input.periodLabel],
-      ["Time", `${input.durationMinutes} minutes`],
-    ],
-    theme: "grid",
-    styles: {
-      font: "times",
-      fontSize: 10,
-      cellPadding: 2,
-      ...TABLE_LINE,
-    },
-    columnStyles: {
-      0: { fontStyle: "bold", cellWidth: labelW },
-      1: { cellWidth: valueW },
-    },
-    margin: { left: MARGIN, right: MARGIN },
-  });
-
-  const docWithTable = doc as unknown as { lastAutoTable: { finalY: number } };
-  return docWithTable.lastAutoTable.finalY + 8;
-}
-
-function demographicsTable(doc: jsPDF, pageW: number, y: number, input: LessonPlanPdfInput): number {
-  const w = contentWidth(pageW);
-  const col0 = w * 0.28;
-  const col1 = (w - col0) / 2;
-
-  autoTable(doc, {
-    startY: y,
-    head: [
-      [
-        { content: "" },
-        {
-          content: "Number of Pupils",
-          colSpan: 2,
-          styles: { halign: "center", fontStyle: "bold" },
-        },
-      ],
-      [
-        { content: "" },
-        {
-          content: "Registered",
-          styles: { halign: "center", fontStyle: "bold" },
-        },
-        {
-          content: "Present",
-          styles: { halign: "center", fontStyle: "bold" },
-        },
-      ],
-    ],
+    head: [["Date", "Subject", "Class", "Period", "Time"]],
     body: [
       [
-        "Girls",
-        String(input.registeredGirls),
-        String(input.presentGirls),
-      ],
-      [
-        "Boys",
-        String(input.registeredBoys),
-        String(input.presentBoys),
-      ],
-      [
-        "Total",
-        String(input.registeredTotal),
-        String(input.presentTotal),
+        input.lessonDateDisplay,
+        input.subjectName,
+        input.className,
+        input.periodLabel,
+        `${input.durationMinutes} minutes`,
       ],
     ],
     theme: "grid",
@@ -216,9 +155,87 @@ function demographicsTable(doc: jsPDF, pageW: number, y: number, input: LessonPl
       ...TABLE_LINE,
     },
     columnStyles: {
-      0: { cellWidth: col0, fontStyle: "bold", halign: "left" },
-      1: { cellWidth: col1, halign: "center" },
-      2: { cellWidth: col1, halign: "center" },
+      0: { cellWidth: colW, halign: "left" },
+      1: { cellWidth: colW, halign: "left" },
+      2: { cellWidth: colW, halign: "left" },
+      3: { cellWidth: colW, halign: "left" },
+      4: { cellWidth: colW, halign: "left" },
+    },
+    margin: { left: MARGIN, right: MARGIN },
+  });
+
+  const docWithTable = doc as unknown as { lastAutoTable: { finalY: number } };
+  return docWithTable.lastAutoTable.finalY + 8;
+}
+
+function demographicsTable(doc: jsPDF, pageW: number, y: number, input: LessonPlanPdfInput): number {
+  const w = contentWidth(pageW);
+  const dataCol = w / 6;
+
+  autoTable(doc, {
+    startY: y,
+    head: [
+      [
+        {
+          content: "Number of Pupils",
+          colSpan: 6,
+          styles: { halign: "center", fontStyle: "bold" },
+        },
+      ],
+      [
+        {
+          content: "Registered",
+          colSpan: 3,
+          styles: { halign: "center", fontStyle: "bold" },
+        },
+        {
+          content: "Present",
+          colSpan: 3,
+          styles: { halign: "center", fontStyle: "bold" },
+        },
+      ],
+      [
+        { content: "Girls", styles: { halign: "center", fontStyle: "bold" } },
+        { content: "Boys", styles: { halign: "center", fontStyle: "bold" } },
+        { content: "Total", styles: { halign: "center", fontStyle: "bold" } },
+        { content: "Girls", styles: { halign: "center", fontStyle: "bold" } },
+        { content: "Boys", styles: { halign: "center", fontStyle: "bold" } },
+        { content: "Total", styles: { halign: "center", fontStyle: "bold" } },
+      ],
+    ],
+    body: [
+      [
+        String(input.registeredGirls),
+        String(input.registeredBoys),
+        String(input.registeredTotal),
+        String(input.presentGirls),
+        String(input.presentBoys),
+        String(input.presentTotal),
+      ],
+    ],
+    theme: "grid",
+    styles: {
+      font: "times",
+      fontSize: 10,
+      cellPadding: 2,
+      ...TABLE_LINE,
+    },
+    headStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
+      fontStyle: "bold",
+      ...TABLE_LINE,
+    },
+    bodyStyles: {
+      fontStyle: "normal",
+    },
+    columnStyles: {
+      0: { cellWidth: dataCol, halign: "center" },
+      1: { cellWidth: dataCol, halign: "center" },
+      2: { cellWidth: dataCol, halign: "center" },
+      3: { cellWidth: dataCol, halign: "center" },
+      4: { cellWidth: dataCol, halign: "center" },
+      5: { cellWidth: dataCol, halign: "center" },
     },
     margin: { left: MARGIN, right: MARGIN },
   });
