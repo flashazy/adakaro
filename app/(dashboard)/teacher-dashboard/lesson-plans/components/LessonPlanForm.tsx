@@ -155,35 +155,36 @@ export function LessonPlanForm({
   return (
     <form action={formAction} className="space-y-8">
 
+      <div className="grid grid-cols-1 gap-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 xl:grid-cols-[minmax(0,47fr)_minmax(0,53fr)] xl:items-stretch">
       {/* Section 1 — Basic info */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-        <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
+      <section className="flex h-full min-h-0 flex-col border-b border-slate-200 p-6 dark:border-zinc-700 xl:border-b-0 xl:border-r">
+        <h2 className="mb-4 shrink-0 text-lg font-semibold text-slate-900 dark:text-white">
           Section 1 — Basic information
         </h2>
-        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
-          <table className="min-w-full text-sm">
+        <div className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-slate-200 dark:border-zinc-700">
+          <table className="w-full min-w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
-                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+              <tr className="bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
+                <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                   Date <span className="text-red-600">*</span>
                 </th>
-                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                   Subject <span className="text-red-600">*</span>
                 </th>
-                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                   Class <span className="text-red-600">*</span>
                 </th>
-                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                   Period <span className="text-red-600">*</span>
                 </th>
-                <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
                   Time <span className="text-red-600">*</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b border-slate-100 dark:border-zinc-700">
-                <td className="px-3 py-2 align-top">
+              <tr>
+                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
                   <label className="sr-only">Date</label>
                   <input
                     type="date"
@@ -194,7 +195,7 @@ export function LessonPlanForm({
                     className="h-10 w-full min-w-[10rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                   />
                 </td>
-                <td className="px-3 py-2 align-top">
+                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
                   <label className="sr-only">Subject</label>
                   <select
                     name="subject_id"
@@ -210,7 +211,7 @@ export function LessonPlanForm({
                     ))}
                   </select>
                 </td>
-                <td className="px-3 py-2 align-top">
+                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
                   <label className="sr-only">Class</label>
                   <select
                     name="class_id"
@@ -227,7 +228,7 @@ export function LessonPlanForm({
                     ))}
                   </select>
                 </td>
-                <td className="px-3 py-2 align-top">
+                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
                   <label className="sr-only">Period</label>
                   <select
                     name="period"
@@ -250,7 +251,7 @@ export function LessonPlanForm({
                     ))}
                   </select>
                 </td>
-                <td className="px-3 py-2 align-top">
+                <td className="border-b border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
                   <label className="sr-only">Time (minutes)</label>
                   <select
                     name="duration_minutes"
@@ -268,17 +269,21 @@ export function LessonPlanForm({
               </tr>
             </tbody>
           </table>
+          <div
+            className="grid min-h-0 flex-1 grid-cols-5"
+            aria-hidden
+          >
+            <div className="border-r border-slate-200 dark:border-zinc-700" />
+            <div className="border-r border-slate-200 dark:border-zinc-700" />
+            <div className="border-r border-slate-200 dark:border-zinc-700" />
+            <div className="border-r border-slate-200 dark:border-zinc-700" />
+            <div />
+          </div>
         </div>
       </section>
 
-      {/* Hidden fields: synced with auto-calculated values on submit */}
-      <input type="hidden" name="total_boys" value={demographics.boys} />
-      <input type="hidden" name="total_girls" value={demographics.girls} />
-      <input type="hidden" name="total_pupils" value={demographics.total} />
-      <input type="hidden" name="present_count" value={presentCount} />
-
       {/* Section 2 — Demographics (read-only, auto) */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+      <section className="flex h-full min-h-0 flex-col p-6">
         <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
           Section 2 — Class profile (auto-filled)
         </h2>
@@ -287,7 +292,7 @@ export function LessonPlanForm({
           counts students marked present or late in saved attendance for the
           selected date (0 if none recorded), split by gender where known.
         </p>
-        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
@@ -334,7 +339,7 @@ export function LessonPlanForm({
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b border-slate-100 dark:border-zinc-700">
+              <tr>
                 <td className="px-2 py-2 text-center tabular-nums text-slate-900 dark:text-white">
                   {loadingStats && classId ? (
                     <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
@@ -382,6 +387,13 @@ export function LessonPlanForm({
           </table>
         </div>
       </section>
+      </div>
+
+      {/* Hidden fields: synced with auto-calculated values on submit */}
+      <input type="hidden" name="total_boys" value={demographics.boys} />
+      <input type="hidden" name="total_girls" value={demographics.girls} />
+      <input type="hidden" name="total_pupils" value={demographics.total} />
+      <input type="hidden" name="present_count" value={presentCount} />
 
       {/* Section 3 — Competences, then required activities & resources (Tanzania format) */}
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">

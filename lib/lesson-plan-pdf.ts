@@ -125,12 +125,64 @@ function section(
   return yy + 5;
 }
 
-function basicInformationTable(doc: jsPDF, pageW: number, y: number, input: LessonPlanPdfInput): number {
-  const w = contentWidth(pageW);
-  const colW = w / 5;
+function lastAutoTableFinalY(doc: jsPDF): number {
+  return (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
+    .finalY;
+}
+
+/**
+ * One shared horizontal at the bottom; verticals only where a panel is shorter.
+ * Body cell bottom borders are cleared in autoTable when sideBySide is used.
+ */
+function drawUnifiedTwoTableBlockEdges(
+  doc: jsPDF,
+  yLeftBottom: number,
+  yRightBottom: number,
+  basicW: number,
+  demoW: number,
+  marginLeft: number
+): void {
+  const bottomY = Math.max(yLeftBottom, yRightBottom);
+  const rightX = marginLeft + basicW + demoW;
+  doc.setDrawColor(
+    TABLE_LINE.lineColor[0],
+    TABLE_LINE.lineColor[1],
+    TABLE_LINE.lineColor[2]
+  );
+  doc.setLineWidth(TABLE_LINE.lineWidth);
+  doc.line(marginLeft, bottomY, rightX, bottomY);
+  if (yLeftBottom < bottomY - 0.15) {
+    const colW = basicW / 5;
+    /** Left outer + four internal dividers; shared edge at marginLeft + basicW is drawn by the taller table. */
+    for (let i = 0; i <= 4; i++) {
+      const x = marginLeft + i * colW;
+      doc.line(x, yLeftBottom, x, bottomY);
+    }
+  }
+  if (yRightBottom < bottomY - 0.15) {
+    doc.line(rightX, yRightBottom, rightX, bottomY);
+  }
+}
+
+function basicInformationTable(
+  doc: jsPDF,
+  y: number,
+  input: LessonPlanPdfInput,
+  layout: { startX: number; tableWidth: number; sideBySide?: boolean }
+): number {
+  const pageFullW = doc.internal.pageSize.getWidth();
+  const colW = layout.tableWidth / 5;
+  const lw = TABLE_LINE.lineWidth;
 
   autoTable(doc, {
     startY: y,
+    tableWidth: layout.tableWidth,
+    margin: {
+      left: layout.startX,
+      right: pageFullW - layout.startX - layout.tableWidth,
+      top: 0,
+      bottom: 0,
+    },
     head: [["Date", "Subject", "Class", "Period", "Time"]],
     body: [
       [
@@ -161,19 +213,43 @@ function basicInformationTable(doc: jsPDF, pageW: number, y: number, input: Less
       3: { cellWidth: colW, halign: "left" },
       4: { cellWidth: colW, halign: "left" },
     },
-    margin: { left: MARGIN, right: MARGIN },
+    didParseCell: layout.sideBySide
+      ? (data) => {
+          if (data.section !== "body") return;
+          const body = data.table.body;
+          if (!body?.length || data.row.index !== body.length - 1) return;
+          data.cell.styles.lineWidth = {
+            top: lw,
+            left: lw,
+            right: lw,
+            bottom: 0,
+          };
+        }
+      : undefined,
   });
 
-  const docWithTable = doc as unknown as { lastAutoTable: { finalY: number } };
-  return docWithTable.lastAutoTable.finalY + 8;
+  return lastAutoTableFinalY(doc);
 }
 
-function demographicsTable(doc: jsPDF, pageW: number, y: number, input: LessonPlanPdfInput): number {
-  const w = contentWidth(pageW);
-  const dataCol = w / 6;
+function demographicsTable(
+  doc: jsPDF,
+  y: number,
+  input: LessonPlanPdfInput,
+  layout: { startX: number; tableWidth: number; sideBySide?: boolean }
+): number {
+  const pageFullW = doc.internal.pageSize.getWidth();
+  const dataCol = layout.tableWidth / 6;
+  const lw = TABLE_LINE.lineWidth;
 
   autoTable(doc, {
     startY: y,
+    tableWidth: layout.tableWidth,
+    margin: {
+      left: layout.startX,
+      right: pageFullW - layout.startX - layout.tableWidth,
+      top: 0,
+      bottom: 0,
+    },
     head: [
       [
         {
@@ -237,11 +313,22 @@ function demographicsTable(doc: jsPDF, pageW: number, y: number, input: LessonPl
       4: { cellWidth: dataCol, halign: "center" },
       5: { cellWidth: dataCol, halign: "center" },
     },
-    margin: { left: MARGIN, right: MARGIN },
+    didParseCell: layout.sideBySide
+      ? (data) => {
+          if (data.section !== "body") return;
+          const body = data.table.body;
+          if (!body?.length || data.row.index !== body.length - 1) return;
+          data.cell.styles.lineWidth = {
+            top: lw,
+            left: lw,
+            right: lw,
+            bottom: 0,
+          };
+        }
+      : undefined,
   });
 
-  const docWithTable = doc as unknown as { lastAutoTable: { finalY: number } };
-  return docWithTable.lastAutoTable.finalY + 10;
+  return lastAutoTableFinalY(doc);
 }
 
 function teachingLearningProcessPdfTable(
@@ -332,8 +419,29 @@ export function buildLessonPlanPdf(input: LessonPlanPdfInput): Uint8Array {
 
   let y = drawHeader(doc, pageW, input.schoolName ?? "");
 
-  y = basicInformationTable(doc, pageW, y, input);
-  y = demographicsTable(doc, pageW, y, input);
+  const w = contentWidth(pageW);
+  const basicTableW = w * 0.47;
+  const demoTableW = w - basicTableW;
+  const yTables = y;
+  const yBasic = basicInformationTable(doc, yTables, input, {
+    startX: MARGIN,
+    tableWidth: basicTableW,
+    sideBySide: true,
+  });
+  const yDemo = demographicsTable(doc, yTables, input, {
+    startX: MARGIN + basicTableW,
+    tableWidth: demoTableW,
+    sideBySide: true,
+  });
+  drawUnifiedTwoTableBlockEdges(
+    doc,
+    yBasic,
+    yDemo,
+    basicTableW,
+    demoTableW,
+    MARGIN
+  );
+  y = Math.max(yBasic, yDemo) + 10;
 
   y = section(doc, pageW, "Main Competence", input.mainCompetence, y);
   y = section(doc, pageW, "Specific Competence", input.specificCompetence, y);

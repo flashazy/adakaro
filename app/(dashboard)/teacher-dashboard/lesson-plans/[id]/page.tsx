@@ -76,50 +76,64 @@ export default async function LessonPlanViewPage({
             {v.schoolName?.trim() || "_______________________________"}
           </p>
 
-          <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
-            <table className="min-w-full text-sm">
+          <div className="mt-6 grid grid-cols-1 gap-0 overflow-hidden rounded-lg border border-slate-200 dark:border-zinc-700 lg:grid-cols-[minmax(0,47fr)_minmax(0,53fr)] lg:items-stretch">
+          <div className="flex h-full min-h-0 flex-col border-b border-slate-200 p-3 dark:border-zinc-700 lg:border-b-0 lg:border-r">
+          <div className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-slate-200 dark:border-zinc-700">
+            <table className="w-full min-w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
-                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                <tr className="bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
+                  <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                     Date
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                     Subject
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                     Class
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                     Period
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
+                  <th className="border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 dark:text-white">
                     Time
                   </th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-slate-100 dark:border-zinc-700">
-                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                <tr>
+                  <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-900 dark:border-zinc-700 dark:text-white">
                     {v.lessonDateDisplay}
                   </td>
-                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                  <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-900 dark:border-zinc-700 dark:text-white">
                     {v.subjectName}
                   </td>
-                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                  <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-900 dark:border-zinc-700 dark:text-white">
                     {v.className}
                   </td>
-                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                  <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-900 dark:border-zinc-700 dark:text-white">
                     {v.periodLabel}
                   </td>
-                  <td className="px-3 py-2 text-slate-900 dark:text-white">
+                  <td className="border-b border-slate-200 px-3 py-2 text-slate-900 dark:text-white">
                     {v.durationMinutes} minutes
                   </td>
                 </tr>
               </tbody>
             </table>
+            <div
+              className="grid min-h-0 flex-1 grid-cols-5"
+              aria-hidden
+            >
+              <div className="border-r border-slate-200 dark:border-zinc-700" />
+              <div className="border-r border-slate-200 dark:border-zinc-700" />
+              <div className="border-r border-slate-200 dark:border-zinc-700" />
+              <div className="border-r border-slate-200 dark:border-zinc-700" />
+              <div />
+            </div>
+          </div>
           </div>
 
-          <div className="mt-6 overflow-x-auto rounded-lg border border-slate-100 dark:border-zinc-700">
+          <div className="flex h-full min-h-0 flex-col p-3">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800">
@@ -154,7 +168,7 @@ export default async function LessonPlanViewPage({
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-t border-slate-100 dark:border-zinc-700">
+                <tr>
                   <td className="px-2 py-2 text-center tabular-nums">
                     {v.registeredGirls}
                   </td>
@@ -176,6 +190,8 @@ export default async function LessonPlanViewPage({
                 </tr>
               </tbody>
             </table>
+          </div>
+          </div>
           </div>
         </div>
 
