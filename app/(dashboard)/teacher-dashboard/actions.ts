@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
-import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
+import {
+  orderStudentsByGenderThenName,
+  sortStudentsByGenderThenName,
+} from "@/lib/student-list-order";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -45,13 +48,21 @@ export async function loadAttendanceData(classId: string, date: string) {
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
-  const { data: students } = await orderStudentsByGenderThenName(
+  const { data: studentRows } = await orderStudentsByGenderThenName(
     admin
       .from("students")
-      .select("id, full_name")
+      .select("id, full_name, gender")
       .eq("class_id", classId)
       .eq("status", "active")
   );
+
+  const students = sortStudentsByGenderThenName(
+    (studentRows ?? []) as {
+      id: string;
+      full_name: string;
+      gender: string | null;
+    }[]
+  ).map(({ id, full_name }) => ({ id, full_name }));
 
   const { data: rows } = await admin
     .from("teacher_attendance")
@@ -68,7 +79,7 @@ export async function loadAttendanceData(classId: string, date: string) {
 
   return {
     ok: true as const,
-    students: (students ?? []) as { id: string; full_name: string }[],
+    students,
     attendance: byStudent,
   };
 }
