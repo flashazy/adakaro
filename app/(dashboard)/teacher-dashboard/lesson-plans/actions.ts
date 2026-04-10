@@ -193,22 +193,45 @@ export async function getTeacherSubjects() {
   if (!user.user) return [];
 
   const admin = createAdminClient();
+  const teacherId = user.user.id;
 
-  const { data, error } = await admin
+  const { data: tsRows } = await admin
     .from("teacher_subjects")
-    .select(
-      `
-      subject:subjects (
-        id,
-        name
-      )
-    `
-    )
-    .eq("teacher_id", user.user.id);
+    .select("subject_id")
+    .eq("teacher_id", teacherId);
+
+  let subjectIds = [
+    ...new Set(
+      (tsRows ?? []).map((r) => (r as { subject_id: string }).subject_id)
+    ),
+  ];
+
+  if (subjectIds.length === 0) {
+    const { data: taRows } = await admin
+      .from("teacher_assignments")
+      .select("subject_id")
+      .eq("teacher_id", teacherId)
+      .not("subject_id", "is", null);
+
+    subjectIds = [
+      ...new Set(
+        (taRows ?? [])
+          .map((r) => (r as { subject_id: string | null }).subject_id)
+          .filter((id): id is string => id != null)
+      ),
+    ];
+  }
+
+  if (subjectIds.length === 0) return [];
+
+  const { data: subjects, error } = await admin
+    .from("subjects")
+    .select("id, name")
+    .in("id", subjectIds)
+    .order("name");
 
   if (error) return [];
-  type Row = { subject: { id: string; name: string } | null };
-  return (data as Row[] | null)?.map((item) => item.subject).filter(Boolean) || [];
+  return (subjects ?? []) as { id: string; name: string }[];
 }
 
 /** Counts only (boys / girls / total). No student rows — ordering does not apply. */

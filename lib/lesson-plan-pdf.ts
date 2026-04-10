@@ -1,5 +1,5 @@
 /**
- * Tanzania-style lesson plan PDF (Times layout, demographics table, signature).
+ * Tanzania government–style lesson plan PDF (Times, A4, full grid tables).
  * Used by the export API route and server actions.
  */
 
@@ -32,52 +32,185 @@ export interface LessonPlanPdfInput {
   remarks: string;
 }
 
-const MARGIN = 14;
-const MAX_Y = 275;
+/** A4 print margins (mm). */
+const MARGIN = 18;
 const PAGE_TOP = 20;
+const PAGE_BOTTOM = 282;
+
+const TABLE_LINE = {
+  lineColor: [0, 0, 0] as [number, number, number],
+  lineWidth: 0.15,
+};
+
+function contentWidth(pageW: number): number {
+  return pageW - 2 * MARGIN;
+}
 
 function ensureSpace(doc: jsPDF, y: number, needed: number): number {
-  if (y + needed > MAX_Y) {
+  if (y + needed > PAGE_BOTTOM) {
     doc.addPage();
     return PAGE_TOP;
   }
   return y;
 }
 
-function section(doc: jsPDF, title: string, body: string, y: number): number {
-  let yy = ensureSpace(doc, y, 14);
+function drawHeader(doc: jsPDF, pageW: number, schoolName: string): number {
+  const cx = pageW / 2;
+  const school = schoolName?.trim() || "_______________________________";
+
   doc.setFont("times", "bold");
-  doc.setFontSize(11);
-  doc.text(title, MARGIN, yy);
-  yy += 6;
-  doc.setFont("times", "normal");
-  doc.setFontSize(10);
+  doc.setFontSize(14);
+  doc.text(school, cx, 22, { align: "center" });
+
+  doc.setFontSize(12);
+  const title = "TEACHER'S LESSON PLAN";
+  const titleY = 31;
+  doc.text(title, cx, titleY, { align: "center" });
+  const tw = doc.getTextWidth(title);
+  doc.setLineWidth(0.35);
+  doc.line(cx - tw / 2, titleY + 1.2, cx + tw / 2, titleY + 1.2);
+
+  return 40;
+}
+
+/** `Label: content` on one line; wraps with hanging indent; underlines content only. */
+function section(
+  doc: jsPDF,
+  pageW: number,
+  title: string,
+  body: string,
+  y: number,
+  gapAfterLabelMm = 0
+): number {
   const text = body?.trim() || "—";
-  const lines = doc.splitTextToSize(text, 180);
-  for (let i = 0; i < lines.length; i++) {
+  let yy = ensureSpace(doc, y, 10);
+
+  doc.setFontSize(10);
+  doc.setFont("times", "bold");
+  const labelW = doc.getTextWidth(title);
+  doc.setFont("times", "normal");
+  const colon = ": ";
+  const colonW = doc.getTextWidth(colon);
+  const contentX = MARGIN + labelW + gapAfterLabelMm + colonW;
+  const lineWidth = pageW - MARGIN - contentX;
+  const contentLines = doc.splitTextToSize(text, lineWidth);
+
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.2);
+
+  doc.setFont("times", "bold");
+  doc.text(title, MARGIN, yy);
+  doc.setFont("times", "normal");
+  doc.text(colon, MARGIN + labelW + gapAfterLabelMm, yy);
+
+  const first = contentLines[0] ?? "";
+  doc.text(first, contentX, yy);
+  let lineW = doc.getTextWidth(first);
+  doc.line(contentX, yy + 0.9, contentX + lineW, yy + 0.9);
+  yy += 5;
+
+  for (let i = 1; i < contentLines.length; i++) {
     yy = ensureSpace(doc, yy, 6);
-    doc.text(lines[i], MARGIN, yy);
+    const line = contentLines[i];
+    doc.text(line, contentX, yy);
+    lineW = doc.getTextWidth(line);
+    doc.line(contentX, yy + 0.9, contentX + lineW, yy + 0.9);
     yy += 5;
   }
-  return yy + 4;
+
+  return yy + 5;
+}
+
+function basicInformationTable(doc: jsPDF, pageW: number, y: number, input: LessonPlanPdfInput): number {
+  const w = contentWidth(pageW);
+  const labelW = 48;
+  const valueW = w - labelW;
+
+  autoTable(doc, {
+    startY: y,
+    body: [
+      ["Date", input.lessonDateDisplay],
+      ["Subject", input.subjectName],
+      ["Class", input.className],
+      ["Period", input.periodLabel],
+      ["Time", `${input.durationMinutes} minutes`],
+    ],
+    theme: "grid",
+    styles: {
+      font: "times",
+      fontSize: 10,
+      cellPadding: 2,
+      ...TABLE_LINE,
+    },
+    columnStyles: {
+      0: { fontStyle: "bold", cellWidth: labelW },
+      1: { cellWidth: valueW },
+    },
+    margin: { left: MARGIN, right: MARGIN },
+  });
+
+  const docWithTable = doc as unknown as { lastAutoTable: { finalY: number } };
+  return docWithTable.lastAutoTable.finalY + 8;
+}
+
+function demographicsTable(doc: jsPDF, pageW: number, y: number, input: LessonPlanPdfInput): number {
+  const w = contentWidth(pageW);
+  const colW = w / 4;
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Total Pupils", "Boys", "Girls", "Present"]],
+    body: [
+      [
+        String(input.totalPupils),
+        String(input.totalBoys),
+        String(input.totalGirls),
+        String(input.presentCount),
+      ],
+    ],
+    theme: "grid",
+    styles: {
+      font: "times",
+      fontSize: 10,
+      cellPadding: 2,
+      ...TABLE_LINE,
+    },
+    headStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
+      fontStyle: "bold",
+      ...TABLE_LINE,
+    },
+    columnStyles: {
+      0: { cellWidth: colW, halign: "center" },
+      1: { cellWidth: colW, halign: "center" },
+      2: { cellWidth: colW, halign: "center" },
+      3: { cellWidth: colW, halign: "center" },
+    },
+    margin: { left: MARGIN, right: MARGIN },
+  });
+
+  const docWithTable = doc as unknown as { lastAutoTable: { finalY: number } };
+  return docWithTable.lastAutoTable.finalY + 10;
 }
 
 function teachingLearningProcessPdfTable(
   doc: jsPDF,
+  pageW: number,
   y: number,
   tlp: TeachingLearningProcess
 ): number {
-  let yy = ensureSpace(doc, y, 16);
+  let yy = ensureSpace(doc, y, 20);
   doc.setFont("times", "bold");
   doc.setFontSize(11);
-  doc.text("Teaching and Learning Process", MARGIN, yy);
-  yy += 6;
+  doc.text("Teaching and Learning Process", pageW / 2, yy, { align: "center" });
+  yy += 7;
 
+  const w = contentWidth(pageW);
   const body = TEACHING_LEARNING_PROCESS_STAGES.map(({ key, label }) => {
     const s = tlp[key];
     const time = s?.time;
-    const timeCell =
-      time === null || time === undefined ? "—" : String(time);
+    const timeCell = time === null || time === undefined ? "—" : String(time);
     return [
       label,
       timeCell,
@@ -99,21 +232,47 @@ function teachingLearningProcessPdfTable(
       ],
     ],
     body,
-    styles: { font: "times", fontSize: 8, cellPadding: 1.5 },
-    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] },
+    theme: "grid",
+    styles: {
+      font: "times",
+      fontSize: 8,
+      cellPadding: 1.8,
+      valign: "top",
+      ...TABLE_LINE,
+    },
+    headStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
+      fontStyle: "bold",
+      fontSize: 8,
+      ...TABLE_LINE,
+    },
     columnStyles: {
       0: { cellWidth: 26 },
-      1: { cellWidth: 18 },
-      2: { cellWidth: 40 },
-      3: { cellWidth: 40 },
-      4: { cellWidth: 40 },
+      1: { cellWidth: 16 },
+      2: { cellWidth: (w - 26 - 16) / 3 },
+      3: { cellWidth: (w - 26 - 16) / 3 },
+      4: { cellWidth: (w - 26 - 16) / 3 },
     },
+    margin: { left: MARGIN, right: MARGIN },
   });
 
-  const docWithTable = doc as unknown as {
-    lastAutoTable: { finalY: number };
-  };
+  const docWithTable = doc as unknown as { lastAutoTable: { finalY: number } };
   return docWithTable.lastAutoTable.finalY + 10;
+}
+
+function drawFooter(
+  doc: jsPDF,
+  y: number,
+  lessonDateDisplay: string,
+  teacherName: string
+): void {
+  y = ensureSpace(doc, y, 20);
+  doc.setFont("times", "normal");
+  doc.setFontSize(10);
+  doc.text(`Date: ${lessonDateDisplay}`, MARGIN, y);
+  y += 8;
+  doc.text(`Teacher's name: ${teacherName}`, MARGIN, y);
 }
 
 /** Builds PDF bytes for download/print. */
@@ -121,76 +280,28 @@ export function buildLessonPlanPdf(input: LessonPlanPdfInput): Uint8Array {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
 
-  doc.setFont("times", "bold");
-  doc.setFontSize(14);
-  doc.text("LESSON PLAN", pageW / 2, 18, { align: "center" });
+  let y = drawHeader(doc, pageW, input.schoolName ?? "");
 
-  doc.setFont("times", "normal");
-  doc.setFontSize(10);
-  let y = 28;
-  doc.text(
-    `School: ${input.schoolName?.trim() || "_______________________________"}`,
-    MARGIN,
-    y
-  );
-  y += 8;
+  y = basicInformationTable(doc, pageW, y, input);
+  y = demographicsTable(doc, pageW, y, input);
 
-  y = ensureSpace(doc, y, 40);
-  doc.setFont("times", "bold");
-  doc.text("Basic information", MARGIN, y);
-  y += 6;
-  doc.setFont("times", "normal");
-  doc.text(`Subject: ${input.subjectName}`, MARGIN, y);
-  y += 5;
-  doc.text(`Class: ${input.className}`, MARGIN, y);
-  y += 5;
-  doc.text(`Date: ${input.lessonDateDisplay}`, MARGIN, y);
-  y += 5;
-  doc.text(`Period: ${input.periodLabel}`, MARGIN, y);
-  y += 5;
-  doc.text(`Time / Duration: ${input.durationMinutes} minutes`, MARGIN, y);
-  y += 10;
-
-  autoTable(doc, {
-    startY: y,
-    head: [["Total pupils", "Boys", "Girls", "Present"]],
-    body: [
-      [
-        String(input.totalPupils),
-        String(input.totalBoys),
-        String(input.totalGirls),
-        String(input.presentCount),
-      ],
-    ],
-    styles: { font: "times", fontSize: 10 },
-    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] },
-  });
-
-  const docWithTable = doc as unknown as {
-    lastAutoTable: { finalY: number };
-  };
-  y = docWithTable.lastAutoTable.finalY + 10;
-
-  y = section(doc, "Main Competence", input.mainCompetence, y);
-  y = section(doc, "Specific Competence", input.specificCompetence, y);
-  y = section(doc, "Main Activities", input.mainActivities, y);
-  y = section(doc, "Specific Activities", input.specificActivities, y);
+  y = section(doc, pageW, "Main Competence", input.mainCompetence, y);
+  y = section(doc, pageW, "Specific Competence", input.specificCompetence, y);
+  y = section(doc, pageW, "Main Activity", input.mainActivities, y);
+  y = section(doc, pageW, "Specific Activities", input.specificActivities, y);
   y = section(
     doc,
+    pageW,
     "Teaching and Learning Resources",
     input.teachingResources,
-    y
+    y,
+    1.4
   );
-  y = teachingLearningProcessPdfTable(doc, y, input.teachingLearningProcess);
-  y = section(doc, "References", input.referencesContent, y);
-  y = section(doc, "Remarks / Evaluation", input.remarks, y);
+  y = section(doc, pageW, "References", input.referencesContent, y);
+  y = teachingLearningProcessPdfTable(doc, pageW, y, input.teachingLearningProcess);
+  y = section(doc, pageW, "Remarks", input.remarks, y);
 
-  y = ensureSpace(doc, y, 20);
-  doc.setFont("times", "normal");
-  doc.setFontSize(10);
-  doc.text("Teacher's signature / name: ___________________________", MARGIN, y);
-  y += 8;
-  doc.text(`Date: _______________     Teacher: ${input.teacherName}`, MARGIN, y);
+  drawFooter(doc, y, input.lessonDateDisplay, input.teacherName);
 
   const buf = doc.output("arraybuffer");
   return new Uint8Array(buf as ArrayBuffer);

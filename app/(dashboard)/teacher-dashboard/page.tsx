@@ -246,10 +246,10 @@ export default async function TeacherDashboardPage() {
                       Enter grades
                     </Link>
                     <Link
-                      href={`/teacher-dashboard/lessons?classId=${a.classId}`}
+                      href="/teacher-dashboard/lesson-plans"
                       className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:flex-none"
                     >
-                      Plan lesson
+                      Lesson Plans
                     </Link>
                   </div>
                 </div>

@@ -580,7 +580,7 @@ export function TeacherAttendanceForm({
                     onClick={markAllPresent}
                     className="h-9 rounded-lg bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200/80 dark:bg-green-950/40 dark:text-green-400 dark:hover:bg-green-950/60"
                   >
-                    Reset (All Present)
+                    Reset
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
