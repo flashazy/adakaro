@@ -17,6 +17,7 @@ interface StudentData {
   class_id: string;
   class: ClassOption | null;
   gender: string | null;
+  enrollment_date: string;
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
@@ -148,6 +149,7 @@ export function StudentList({ students, classes }: StudentListProps) {
       admission_number: student.admission_number,
       class_id: student.class_id,
       gender: student.gender,
+      enrollment_date: student.enrollment_date,
       parent_name: student.parent_name,
       parent_email: student.parent_email,
       parent_phone: student.parent_phone,
@@ -176,6 +178,12 @@ export function StudentList({ students, classes }: StudentListProps) {
       return;
     }
 
+    const enrollmentDateRaw = (editValues.enrollment_date ?? "").trim();
+    if (!enrollmentDateRaw) {
+      setInlineSaveError("Enrollment date is required.");
+      return;
+    }
+
     const classId = (editValues.class_id ?? "").trim();
     if (!classId) {
       setInlineSaveError("Please select a class.");
@@ -190,6 +198,7 @@ export function StudentList({ students, classes }: StudentListProps) {
     );
     fd.set("class_id", classId);
     fd.set("gender", genderRaw);
+    fd.set("enrollment_date", (editValues.enrollment_date ?? "").trim());
     fd.set("parent_name", (editValues.parent_name ?? "").trim());
     fd.set("parent_email", (editValues.parent_email ?? "").trim());
     fd.set("parent_phone", (editValues.parent_phone ?? "").trim());
@@ -342,6 +351,9 @@ export function StudentList({ students, classes }: StudentListProps) {
                     </th>
                     <th className="w-[120px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
                       Class
+                    </th>
+                    <th className="w-[118px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                      Enrolled
                     </th>
                     <th className="w-[80px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
                       Gender

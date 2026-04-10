@@ -35,6 +35,12 @@ async function assertTeacherForClass(
   return { ok: true, schoolId };
 }
 
+function normalizeAttendanceDateOnly(iso: string): string | null {
+  const d = iso.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  return d;
+}
+
 export async function loadAttendanceData(classId: string, date: string) {
   const supabase = await createClient();
   const {
@@ -48,34 +54,55 @@ export async function loadAttendanceData(classId: string, date: string) {
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
+  const dateOnly = normalizeAttendanceDateOnly(date);
+  if (!dateOnly) {
+    return { ok: false as const, error: "Invalid date. Use YYYY-MM-DD." };
+  }
+
   const { data: studentRows } = await orderStudentsByGenderThenName(
     admin
       .from("students")
       .select("id, full_name, gender")
       .eq("class_id", classId)
       .eq("status", "active")
+      .lte("enrollment_date", dateOnly)
   );
 
-  const students = sortStudentsByGenderThenName(
-    (studentRows ?? []) as {
-      id: string;
-      full_name: string;
-      gender: string | null;
-    }[]
-  ).map(({ id, full_name }) => ({ id, full_name }));
+  type StudentRow = { id: string; full_name: string; gender: string | null };
+  let mergedRows = (studentRows ?? []) as StudentRow[];
+  const baseIds = new Set(mergedRows.map((s) => s.id));
 
   const { data: rows } = await admin
     .from("teacher_attendance")
     .select("student_id, status")
     .eq("teacher_id", user.id)
     .eq("class_id", classId)
-    .eq("attendance_date", date);
+    .eq("attendance_date", dateOnly);
 
   const byStudent: Record<string, AttendanceStatus> = {};
+  const idsWithAttendanceOnDate = new Set<string>();
   for (const r of rows ?? []) {
     const row = r as { student_id: string; status: AttendanceStatus };
     byStudent[row.student_id] = row.status;
+    idsWithAttendanceOnDate.add(row.student_id);
   }
+
+  const missingIds = [...idsWithAttendanceOnDate].filter((id) => !baseIds.has(id));
+  if (missingIds.length > 0) {
+    const { data: extraRows } = await orderStudentsByGenderThenName(
+      admin
+        .from("students")
+        .select("id, full_name, gender")
+        .eq("class_id", classId)
+        .eq("status", "active")
+        .in("id", missingIds)
+    );
+    mergedRows = [...mergedRows, ...((extraRows ?? []) as StudentRow[])];
+  }
+
+  const students = sortStudentsByGenderThenName(mergedRows).map(
+    ({ id, full_name }) => ({ id, full_name })
+  );
 
   return {
     ok: true as const,

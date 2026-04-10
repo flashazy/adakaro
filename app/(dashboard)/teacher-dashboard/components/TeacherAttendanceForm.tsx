@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { countAttendanceRollup } from "@/lib/attendance-counts";
 import {
   loadAttendanceData,
   loadAttendanceHistory,
@@ -62,19 +63,6 @@ type HistoryRow = {
   student_id: string;
   student_name: string;
 };
-
-function countAttendanceStatuses(rows: HistoryRow[]) {
-  let present = 0;
-  let absent = 0;
-  let late = 0;
-  for (const r of rows) {
-    const s = String(r.status).toLowerCase();
-    if (s === "present") present++;
-    else if (s === "absent") absent++;
-    else if (s === "late") late++;
-  }
-  return { present, absent, late };
-}
 
 function groupHistoryDatesByMonth(dates: string[]) {
   const byMonth = new Map<string, string[]>();
@@ -781,7 +769,7 @@ export function TeacherAttendanceForm({
                       {dates.map((d) => {
                         const rows = historyByDate[d] ?? [];
                         const { present, absent, late } =
-                          countAttendanceStatuses(rows);
+                          countAttendanceRollup(rows);
                         return (
                           <div
                             key={d}

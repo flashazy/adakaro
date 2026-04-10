@@ -6,6 +6,10 @@ import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { escapeRegExp } from "@/lib/admission-number";
 import { checkStudentLimit } from "@/lib/plan-limits";
+import {
+  parseOptionalEnrollmentDate,
+  todayIsoLocal,
+} from "@/lib/enrollment-date";
 
 async function getSchoolId() {
   const supabase = await createClient();
@@ -41,6 +45,13 @@ export async function addStudent(
   const parentName = (formData.get("parent_name") as string)?.trim() || null;
   const parentEmail = (formData.get("parent_email") as string)?.trim() || null;
   const parentPhone = (formData.get("parent_phone") as string)?.trim() || null;
+  const enrollmentDateRaw =
+    (formData.get("enrollment_date") as string)?.trim() ?? "";
+  const enrollmentParsed = parseOptionalEnrollmentDate(enrollmentDateRaw);
+  if (enrollmentParsed.error) {
+    return { error: enrollmentParsed.error };
+  }
+  const enrollmentDate = enrollmentParsed.iso ?? todayIsoLocal();
 
   if (!fullName) return { error: "Student name is required." };
   if (!classId) return { error: "Please select a class." };
@@ -126,6 +137,7 @@ export async function addStudent(
       full_name: fullName,
       admission_number: admissionNumber,
       gender,
+      enrollment_date: enrollmentDate,
       parent_name: parentName,
       parent_email: parentEmail,
       parent_phone: parentPhone,
@@ -170,6 +182,15 @@ export async function updateStudent(
   const parentName = (formData.get("parent_name") as string)?.trim() || null;
   const parentEmail = (formData.get("parent_email") as string)?.trim() || null;
   const parentPhone = (formData.get("parent_phone") as string)?.trim() || null;
+  const enrollmentDateRaw =
+    (formData.get("enrollment_date") as string)?.trim() ?? "";
+  const enrollmentParsed = parseOptionalEnrollmentDate(enrollmentDateRaw);
+  if (enrollmentParsed.error) {
+    return { error: enrollmentParsed.error };
+  }
+  if (!enrollmentParsed.iso) {
+    return { error: "Enrollment date is required (YYYY-MM-DD)." };
+  }
 
   if (!fullName) return { error: "Student name is required." };
   if (!classId) return { error: "Please select a class." };
@@ -188,6 +209,7 @@ export async function updateStudent(
         admission_number: admissionNumber,
         class_id: classId,
         gender,
+        enrollment_date: enrollmentParsed.iso,
         parent_name: parentName,
         parent_email: parentEmail,
         parent_phone: parentPhone,

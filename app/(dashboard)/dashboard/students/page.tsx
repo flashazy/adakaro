@@ -56,6 +56,7 @@ export default async function StudentsPage() {
     class_id: string;
     class: { id: string; name: string } | null;
     gender: string | null;
+    enrollment_date: string;
     parent_name: string | null;
     parent_email: string | null;
     parent_phone: string | null;

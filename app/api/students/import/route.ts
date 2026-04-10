@@ -7,12 +7,16 @@ import { generateAdmissionNumberWithClient } from "@/lib/admission-number";
 import { canAccessFeature } from "@/lib/plans";
 import { checkStudentLimit, getSchoolPlanRow } from "@/lib/plan-limits";
 import type { Database } from "@/types/supabase";
+import {
+  parseOptionalEnrollmentDate,
+  todayIsoLocal,
+} from "@/lib/enrollment-date";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_ROWS = 500;
 const MAX_BYTES = 5 * 1024 * 1024;
 
-const HEADER_FIELDS = [
+const REQUIRED_HEADER_FIELDS = [
   "full_name",
   "admission_number",
   "class_name",
@@ -28,6 +32,8 @@ export interface ValidatedImportRow {
   admission_number: string | null;
   class_name: string | null;
   gender: "male" | "female" | null;
+  /** Resolved YYYY-MM-DD, or null to use today at import time. */
+  enrollment_date: string | null;
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
@@ -102,15 +108,19 @@ function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
-function mapHeaderRow(headerCells: string[]): number[] | null {
+function mapHeaderRow(headerCells: string[]): {
+  requiredIdx: number[];
+  enrollmentDateIdx: number | null;
+} | null {
   const norm = headerCells.map(normalizeHeader);
-  const idx: number[] = [];
-  for (const want of HEADER_FIELDS) {
+  const requiredIdx: number[] = [];
+  for (const want of REQUIRED_HEADER_FIELDS) {
     const pos = norm.indexOf(want);
     if (pos === -1) return null;
-    idx.push(pos);
+    requiredIdx.push(pos);
   }
-  return idx;
+  const ed = norm.indexOf("enrollment_date");
+  return { requiredIdx, enrollmentDateIdx: ed === -1 ? null : ed };
 }
 
 /** Empty cell defaults to male with a warning; invalid values are errors. */
@@ -143,6 +153,7 @@ function validateOneDataRow(
   admission_number: string | null,
   class_name: string | null,
   gender_raw: string,
+  enrollment_date_raw: string,
   parent_name: string | null,
   parent_email: string | null,
   parent_phone: string | null,
@@ -162,6 +173,14 @@ function validateOneDataRow(
   } = parseGenderCell(gender_raw);
   errors.push(...genderErrors);
   warnings.push(...genderWarnings);
+
+  const enrollmentParsed = parseOptionalEnrollmentDate(enrollment_date_raw);
+  if (enrollmentParsed.error) {
+    errors.push(enrollmentParsed.error);
+  }
+  const enrollment_date = enrollmentParsed.error
+    ? null
+    : enrollmentParsed.iso;
 
   const classNameTrimmed = (class_name ?? "").trim();
   const cn = classNameTrimmed === "" ? null : classNameTrimmed;
@@ -230,6 +249,7 @@ function validateOneDataRow(
     admission_number,
     class_name: cn,
     gender: errors.length > 0 ? null : parsedGender,
+    enrollment_date,
     parent_name,
     parent_email,
     parent_phone,
@@ -258,12 +278,13 @@ function validateAndBuildRows(
         admission_number: null,
         class_name: null,
         gender: null,
+        enrollment_date: null,
         parent_name: null,
         parent_email: null,
         parent_phone: null,
         status: "error",
         errors: [
-          `Header must include columns: ${HEADER_FIELDS.join(", ")} (order may vary).`,
+          `Header must include columns: ${REQUIRED_HEADER_FIELDS.join(", ")} (order may vary). Optional: enrollment_date (YYYY-MM-DD).`,
         ],
         warnings: [],
         resolved_class_id: null,
@@ -273,19 +294,24 @@ function validateAndBuildRows(
 
   const dataRows = grid.slice(1);
   const admissionFirstLine = new Map<string, number>();
+  const hi = headerIdx.requiredIdx;
 
   const out: ValidatedImportRow[] = [];
 
   for (let r = 0; r < dataRows.length; r++) {
     const line = r + 2;
     const cells = dataRows[r];
-    const full_name = (cells[headerIdx[0]] ?? "").trim();
-    const admission_raw = (cells[headerIdx[1]] ?? "").trim();
-    const class_name_cell = (cells[headerIdx[2]] ?? "").trim();
-    const gender_raw = (cells[headerIdx[3]] ?? "").trim();
-    const parent_name_raw = (cells[headerIdx[4]] ?? "").trim();
-    const parent_email_raw = (cells[headerIdx[5]] ?? "").trim();
-    const parent_phone_raw = (cells[headerIdx[6]] ?? "").trim();
+    const full_name = (cells[hi[0]] ?? "").trim();
+    const admission_raw = (cells[hi[1]] ?? "").trim();
+    const class_name_cell = (cells[hi[2]] ?? "").trim();
+    const gender_raw = (cells[hi[3]] ?? "").trim();
+    const parent_name_raw = (cells[hi[4]] ?? "").trim();
+    const parent_email_raw = (cells[hi[5]] ?? "").trim();
+    const parent_phone_raw = (cells[hi[6]] ?? "").trim();
+    const enrollment_date_raw =
+      headerIdx.enrollmentDateIdx != null
+        ? (cells[headerIdx.enrollmentDateIdx] ?? "").trim()
+        : "";
 
     const admission_number = admission_raw === "" ? null : admission_raw;
     const parent_name = parent_name_raw === "" ? null : parent_name_raw;
@@ -299,6 +325,7 @@ function validateAndBuildRows(
         admission_number,
         class_name_cell === "" ? null : class_name_cell,
         gender_raw,
+        enrollment_date_raw,
         parent_name,
         parent_email,
         parent_phone,
@@ -321,6 +348,7 @@ function validateImportRows(
     admission_number: string | null;
     class_name: string | null;
     gender: string;
+    enrollment_date?: string | null;
     parent_name: string | null;
     parent_email: string | null;
     parent_phone: string | null;
@@ -339,6 +367,7 @@ function validateImportRows(
       row.admission_number,
       row.class_name,
       row.gender,
+      row.enrollment_date ?? "",
       row.parent_name,
       row.parent_email,
       row.parent_phone,
@@ -361,6 +390,7 @@ type ImportBody =
         admission_number: string | null;
         class_name: string | null;
         gender: string;
+        enrollment_date?: string | null;
         parent_name: string | null;
         parent_email: string | null;
         parent_phone: string | null;
@@ -625,6 +655,7 @@ export async function POST(request: NextRequest) {
           full_name: r.full_name,
           admission_number: admissionToUse,
           gender: r.gender ?? "male",
+          enrollment_date: r.enrollment_date ?? todayIsoLocal(),
           parent_email: r.parent_email,
           parent_name: r.parent_name,
           parent_phone: r.parent_phone,

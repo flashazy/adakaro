@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { addStudent, type StudentActionState } from "./actions";
+import { todayIsoLocal } from "@/lib/enrollment-date";
 
 /** Title-case one segment (handles O'Connor-style apostrophes). */
 function capitalizeNameSegment(segment: string): string {
@@ -296,6 +297,26 @@ export function AddStudentForm({
                 <option value="male">Male</option>
                 <option value="female">Female</option>
               </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="enrollment_date"
+                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
+              >
+                Enrollment date
+              </label>
+              <input
+                id="enrollment_date"
+                name="enrollment_date"
+                type="date"
+                defaultValue={todayIsoLocal()}
+                suppressHydrationWarning
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              />
+              <p className="text-xs text-gray-500 dark:text-zinc-400">
+                Defaults to today; change for a back-dated enrolment.
+              </p>
             </div>
           </div>
 

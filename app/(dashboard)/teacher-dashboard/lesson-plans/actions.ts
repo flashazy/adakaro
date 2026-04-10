@@ -242,12 +242,12 @@ export async function getClassDemographics(classId: string) {
 export async function getAttendanceCount(classId: string, date: string) {
   const admin = createAdminClient();
 
-  const { count, error } = await admin
+  const { count } = await admin
     .from("teacher_attendance")
     .select("id", { count: "exact", head: true })
     .eq("class_id", classId)
     .eq("attendance_date", date)
-    .eq("status", "present");
+    .in("status", ["present", "late"]);
 
-  return count || 0;
+  return count ?? 0;
 }

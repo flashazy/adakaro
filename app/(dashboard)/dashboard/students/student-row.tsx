@@ -2,6 +2,7 @@
 
 import { Fragment, useState, useTransition } from "react";
 import { deleteStudent, type StudentActionState } from "./actions";
+import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
 
 interface ClassOption {
   id: string;
@@ -15,6 +16,7 @@ interface StudentData {
   class_id: string;
   class: ClassOption | null;
   gender: string | null;
+  enrollment_date: string;
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
@@ -129,6 +131,22 @@ export function StudentRow({
             </span>
           )}
         </td>
+        <td className="w-[118px] px-4 py-3 align-middle">
+          {isInline ? (
+            <input
+              type="date"
+              value={editValues.enrollment_date ?? student.enrollment_date}
+              onChange={(e) =>
+                onInlineChange("enrollment_date", e.target.value)
+              }
+              className={inlineCls}
+            />
+          ) : (
+            <span className="text-sm tabular-nums text-gray-700 dark:text-zinc-300">
+              {formatEnrollmentDateDisplay(student.enrollment_date)}
+            </span>
+          )}
+        </td>
         <td className="w-[80px] px-4 py-3 align-middle">
           {isInline ? (
             <select
@@ -230,7 +248,7 @@ export function StudentRow({
 
       <tr className="lg:hidden">
         <td
-          colSpan={6}
+          colSpan={7}
           className="border-b border-slate-200 px-4 py-3 align-middle dark:border-zinc-800"
         >
           {isInline ? (
@@ -271,6 +289,15 @@ export function StudentRow({
                 <option value="male">Male</option>
                 <option value="female">Female</option>
               </select>
+              <input
+                type="date"
+                value={editValues.enrollment_date ?? student.enrollment_date}
+                onChange={(e) =>
+                  onInlineChange("enrollment_date", e.target.value)
+                }
+                className={inlineCls}
+                title="Enrollment date"
+              />
               <input
                 type="text"
                 value={editValues.parent_name ?? ""}
@@ -333,6 +360,10 @@ export function StudentRow({
                   </span>
                 </div>
               </div>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">
+                Enrolled:{" "}
+                {formatEnrollmentDateDisplay(student.enrollment_date)}
+              </p>
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-gray-900 dark:text-white">
                   {parentName}
@@ -368,7 +399,7 @@ export function StudentRow({
       {error && (
         <tr>
           <td
-            colSpan={6}
+            colSpan={7}
             className="border-b border-slate-200 bg-red-50/50 px-4 py-2 dark:border-zinc-800 dark:bg-red-950/20"
           >
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
@@ -378,7 +409,7 @@ export function StudentRow({
 
       {showDeleteConfirm && (
         <tr>
-          <td colSpan={6} className="p-0">
+          <td colSpan={7} className="p-0">
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
               <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white">

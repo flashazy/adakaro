@@ -424,6 +424,7 @@ export interface Database {
           parent_phone: string | null;
           date_of_birth: string | null;
           gender: "male" | "female" | null;
+          enrollment_date: string;
           status: StudentStatus;
           created_at: string;
           updated_at: string;
@@ -439,6 +440,7 @@ export interface Database {
           parent_phone?: string | null;
           date_of_birth?: string | null;
           gender?: "male" | "female" | null;
+          enrollment_date?: string;
           status?: StudentStatus;
           created_at?: string;
           updated_at?: string;
@@ -452,6 +454,7 @@ export interface Database {
           parent_phone?: string | null;
           date_of_birth?: string | null;
           gender?: "male" | "female" | null;
+          enrollment_date?: string;
           status?: StudentStatus;
           updated_at?: string;
         };

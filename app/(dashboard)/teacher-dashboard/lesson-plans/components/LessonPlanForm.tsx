@@ -104,7 +104,7 @@ export function LessonPlanForm({
     boys: initialData?.total_boys ?? 0,
     girls: initialData?.total_girls ?? 0,
   });
-  /** Auto-calculated from `teacher_attendance` for class + date. */
+  /** Auto-calculated from `teacher_attendance` (present + late) for class + date. */
   const [presentCount, setPresentCount] = useState(
     initialData?.present_count ?? 0
   );
@@ -265,8 +265,9 @@ export function LessonPlanForm({
           Section 2 — Class profile (auto-filled)
         </h2>
         <p className="mb-4 text-sm text-slate-500 dark:text-zinc-400">
-          Totals come from active enrolment for the class; present count uses
-          saved attendance for the selected date (0 if none recorded).
+          Totals come from active enrolment for the class; the Present figure
+          counts students marked present or late in saved attendance for the
+          selected date (0 if none recorded).
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">

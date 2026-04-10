@@ -14,6 +14,7 @@ interface ValidatedRow {
   admission_number: string | null;
   class_name: string | null;
   gender: "male" | "female" | null;
+  enrollment_date: string | null;
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
@@ -43,10 +44,10 @@ interface Props {
 }
 
 function downloadTemplate() {
-  const csv = `full_name,admission_number,class_name,gender,parent_name,parent_email,parent_phone
-John Doe,,Grade 1,male,Jane Doe,john@example.com,+255700000000
-Jane Smith,,Grade 2,female,,,
-Ali Hamza,,Grade 1,male,,,
+  const csv = `full_name,admission_number,class_name,gender,parent_name,parent_email,parent_phone,enrollment_date
+John Doe,,Grade 1,male,Jane Doe,john@example.com,+255700000000,
+Jane Smith,,Grade 2,female,,,,
+Ali Hamza,,Grade 1,male,,,,2024-01-15
 `;
   const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -222,6 +223,7 @@ export default function StudentImportModal({
             : r.gender === "male"
               ? "male"
               : "",
+        enrollment_date: r.enrollment_date,
         parent_name: r.parent_name,
         parent_email: r.parent_email,
         parent_phone: r.parent_phone,
@@ -423,7 +425,13 @@ export default function StudentImportModal({
                       <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
                         parent_phone
                       </span>{" "}
-                      (optional). Admission numbers auto-generate (e.g., MOU-001); leave{" "}
+                      (optional),{" "}
+                      <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
+                        enrollment_date
+                      </span>{" "}
+                      (optional,{" "}
+                      <span className="font-mono text-[0.7rem]">YYYY-MM-DD</span>
+                      ; blank defaults to today). Admission numbers auto-generate (e.g., MOU-001); leave{" "}
                       <span className="font-mono text-[0.7rem] text-slate-600 dark:text-zinc-300">
                         admission_number
                       </span>{" "}
@@ -478,7 +486,7 @@ export default function StudentImportModal({
                       Preview (first {Math.min(10, rows.length)} of {rows.length} rows)
                     </p>
                     <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-800">
-                      <table className="w-full min-w-[960px] text-left text-sm">
+                      <table className="w-full min-w-[1040px] text-left text-sm">
                         <thead>
                           <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50">
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">#</th>
@@ -487,6 +495,7 @@ export default function StudentImportModal({
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Admission</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Class</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Gender</th>
+                            <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Enrolled</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Parent name</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Parent email</th>
                             <th className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400">Parent phone</th>
@@ -503,6 +512,9 @@ export default function StudentImportModal({
                               <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">{r.class_name ?? "—"}</td>
                               <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">
                                 {r.gender === "male" || r.gender === "female" ? r.gender : "—"}
+                              </td>
+                              <td className="px-3 py-2 font-mono text-xs text-slate-700 dark:text-zinc-300">
+                                {r.enrollment_date ?? "—"}
                               </td>
                               <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">{r.parent_name ?? "—"}</td>
                               <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">{r.parent_email ?? "—"}</td>
