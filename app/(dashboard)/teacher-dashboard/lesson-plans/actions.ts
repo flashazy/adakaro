@@ -274,3 +274,53 @@ export async function getAttendanceCount(classId: string, date: string) {
 
   return count ?? 0;
 }
+
+/** Present + late on the date, split by student gender (for lesson plan PDF / preview). */
+export async function getAttendancePresentByGender(
+  classId: string,
+  date: string
+): Promise<{ boys: number; girls: number; total: number }> {
+  const admin = createAdminClient();
+
+  const { data: rows, error } = await admin
+    .from("teacher_attendance")
+    .select("student_id")
+    .eq("class_id", classId)
+    .eq("attendance_date", date)
+    .in("status", ["present", "late"]);
+
+  if (error || !rows?.length) {
+    return { boys: 0, girls: 0, total: 0 };
+  }
+
+  const attendanceRows = rows as { student_id: string }[];
+  const studentIds = attendanceRows.map((r) => r.student_id);
+
+  const { data: studs } = await admin
+    .from("students")
+    .select("id, gender")
+    .in("id", studentIds);
+
+  const studRows = (studs ?? []) as {
+    id: string;
+    gender: "male" | "female" | null;
+  }[];
+
+  const genderById = new Map(
+    studRows.map((s) => [s.id, s.gender])
+  );
+
+  let boys = 0;
+  let girls = 0;
+  for (const sid of studentIds) {
+    const g = genderById.get(sid);
+    if (g === "male") boys++;
+    else if (g === "female") girls++;
+  }
+
+  return {
+    boys,
+    girls,
+    total: studentIds.length,
+  };
+}

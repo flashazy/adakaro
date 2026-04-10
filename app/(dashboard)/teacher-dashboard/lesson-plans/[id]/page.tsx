@@ -116,22 +116,51 @@ export default async function LessonPlanViewPage({
           <div className="mt-6 overflow-x-auto rounded-lg border border-slate-100 dark:border-zinc-700">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-slate-100 dark:bg-zinc-800">
-                  <th className="px-4 py-2 text-left font-semibold">
-                    Total pupils
+                <tr className="border-b border-slate-200 bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800">
+                  <th className="px-4 py-2 text-left font-semibold" />
+                  <th
+                    colSpan={2}
+                    className="px-4 py-2 text-center font-semibold"
+                  >
+                    Number of Pupils
                   </th>
-                  <th className="px-4 py-2 text-left font-semibold">Boys</th>
-                  <th className="px-4 py-2 text-left font-semibold">Girls</th>
-                  <th className="px-4 py-2 text-left font-semibold">Present</th>
+                </tr>
+                <tr className="bg-slate-100 dark:bg-zinc-800">
+                  <th className="px-4 py-2 text-left font-semibold" />
+                  <th className="px-4 py-2 text-center font-semibold">
+                    Registered
+                  </th>
+                  <th className="px-4 py-2 text-center font-semibold">
+                    Present
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="border-t border-slate-100 dark:border-zinc-700">
-                  <td className="px-4 py-2 tabular-nums">{v.totalPupils}</td>
-                  <td className="px-4 py-2 tabular-nums">{v.totalBoys}</td>
-                  <td className="px-4 py-2 tabular-nums">{v.totalGirls}</td>
-                  <td className="px-4 py-2 tabular-nums text-emerald-700 dark:text-emerald-400">
-                    {v.presentCount}
+                  <td className="px-4 py-2 font-medium">Girls</td>
+                  <td className="px-4 py-2 text-center tabular-nums">
+                    {v.registeredGirls}
+                  </td>
+                  <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {v.presentGirls}
+                  </td>
+                </tr>
+                <tr className="border-t border-slate-100 dark:border-zinc-700">
+                  <td className="px-4 py-2 font-medium">Boys</td>
+                  <td className="px-4 py-2 text-center tabular-nums">
+                    {v.registeredBoys}
+                  </td>
+                  <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {v.presentBoys}
+                  </td>
+                </tr>
+                <tr className="border-t border-slate-100 dark:border-zinc-700">
+                  <td className="px-4 py-2 font-medium">Total</td>
+                  <td className="px-4 py-2 text-center tabular-nums">
+                    {v.registeredTotal}
+                  </td>
+                  <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {v.presentTotal}
                   </td>
                 </tr>
               </tbody>

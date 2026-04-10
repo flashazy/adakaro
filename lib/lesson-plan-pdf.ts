@@ -18,10 +18,14 @@ export interface LessonPlanPdfInput {
   lessonDateDisplay: string;
   periodLabel: string;
   durationMinutes: number;
-  totalPupils: number;
-  totalBoys: number;
-  totalGirls: number;
-  presentCount: number;
+  /** Class roster (registered). */
+  registeredGirls: number;
+  registeredBoys: number;
+  registeredTotal: number;
+  /** Attendance on lesson date (present + late). */
+  presentGirls: number;
+  presentBoys: number;
+  presentTotal: number;
   mainCompetence: string;
   specificCompetence: string;
   mainActivities: string;
@@ -155,17 +159,47 @@ function basicInformationTable(doc: jsPDF, pageW: number, y: number, input: Less
 
 function demographicsTable(doc: jsPDF, pageW: number, y: number, input: LessonPlanPdfInput): number {
   const w = contentWidth(pageW);
-  const colW = w / 4;
+  const col0 = w * 0.28;
+  const col1 = (w - col0) / 2;
 
   autoTable(doc, {
     startY: y,
-    head: [["Total Pupils", "Boys", "Girls", "Present"]],
+    head: [
+      [
+        { content: "" },
+        {
+          content: "Number of Pupils",
+          colSpan: 2,
+          styles: { halign: "center", fontStyle: "bold" },
+        },
+      ],
+      [
+        { content: "" },
+        {
+          content: "Registered",
+          styles: { halign: "center", fontStyle: "bold" },
+        },
+        {
+          content: "Present",
+          styles: { halign: "center", fontStyle: "bold" },
+        },
+      ],
+    ],
     body: [
       [
-        String(input.totalPupils),
-        String(input.totalBoys),
-        String(input.totalGirls),
-        String(input.presentCount),
+        "Girls",
+        String(input.registeredGirls),
+        String(input.presentGirls),
+      ],
+      [
+        "Boys",
+        String(input.registeredBoys),
+        String(input.presentBoys),
+      ],
+      [
+        "Total",
+        String(input.registeredTotal),
+        String(input.presentTotal),
       ],
     ],
     theme: "grid",
@@ -182,10 +216,9 @@ function demographicsTable(doc: jsPDF, pageW: number, y: number, input: LessonPl
       ...TABLE_LINE,
     },
     columnStyles: {
-      0: { cellWidth: colW, halign: "center" },
-      1: { cellWidth: colW, halign: "center" },
-      2: { cellWidth: colW, halign: "center" },
-      3: { cellWidth: colW, halign: "center" },
+      0: { cellWidth: col0, fontStyle: "bold", halign: "left" },
+      1: { cellWidth: col1, halign: "center" },
+      2: { cellWidth: col1, halign: "center" },
     },
     margin: { left: MARGIN, right: MARGIN },
   });

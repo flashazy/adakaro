@@ -3,6 +3,10 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { LessonPlanPdfInput } from "@/lib/lesson-plan-pdf";
 import { parseTeachingLearningProcess } from "@/lib/teaching-learning-process";
+import {
+  getAttendancePresentByGender,
+  getClassDemographics,
+} from "./actions";
 
 /** Ordinal labels for periods 1–12 (Tanzania-style). */
 export function periodLabel(period: number): string {
@@ -108,6 +112,11 @@ export async function loadLessonPlanPdfInput(
     schoolName = (school as { name: string } | null)?.name ?? null;
   }
 
+  const [roster, presentByGender] = await Promise.all([
+    getClassDemographics(plan.class_id),
+    getAttendancePresentByGender(plan.class_id, plan.lesson_date),
+  ]);
+
   const input: LessonPlanPdfInput = {
     schoolName,
     teacherName:
@@ -119,10 +128,12 @@ export async function loadLessonPlanPdfInput(
     lessonDateDisplay: formatDateDisplay(plan.lesson_date),
     periodLabel: periodLabel(plan.period),
     durationMinutes: plan.duration_minutes,
-    totalPupils: plan.total_pupils,
-    totalBoys: plan.total_boys,
-    totalGirls: plan.total_girls,
-    presentCount: plan.present_count,
+    registeredGirls: roster.girls,
+    registeredBoys: roster.boys,
+    registeredTotal: roster.total,
+    presentGirls: presentByGender.girls,
+    presentBoys: presentByGender.boys,
+    presentTotal: presentByGender.total,
     mainCompetence: plan.main_competence,
     specificCompetence: plan.specific_competence,
     mainActivities: plan.main_activities,

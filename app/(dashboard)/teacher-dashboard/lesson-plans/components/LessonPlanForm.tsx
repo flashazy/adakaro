@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
   createLessonPlan,
-  getAttendanceCount,
+  getAttendancePresentByGender,
   getClassDemographics,
   updateLessonPlan,
 } from "../actions";
@@ -108,6 +108,11 @@ export function LessonPlanForm({
   const [presentCount, setPresentCount] = useState(
     initialData?.present_count ?? 0
   );
+  const [presentByGender, setPresentByGender] = useState({
+    boys: 0,
+    girls: 0,
+    total: 0,
+  });
   const [loadingStats, setLoadingStats] = useState(false);
 
   const classList = useMemo(() => dedupeClasses(classes), [classes]);
@@ -118,6 +123,7 @@ export function LessonPlanForm({
       if (!classId) {
         setDemographics({ total: 0, boys: 0, girls: 0 });
         setPresentCount(0);
+        setPresentByGender({ boys: 0, girls: 0, total: 0 });
         return;
       }
       setLoadingStats(true);
@@ -128,11 +134,12 @@ export function LessonPlanForm({
           boys: d.boys,
           girls: d.girls,
         });
-        const present =
+        const p =
           lessonDate.trim() !== ""
-            ? await getAttendanceCount(classId, lessonDate)
-            : 0;
-        setPresentCount(present);
+            ? await getAttendancePresentByGender(classId, lessonDate)
+            : { boys: 0, girls: 0, total: 0 };
+        setPresentByGender(p);
+        setPresentCount(p.total);
       } finally {
         setLoadingStats(false);
       }
@@ -265,59 +272,92 @@ export function LessonPlanForm({
           Section 2 — Class profile (auto-filled)
         </h2>
         <p className="mb-4 text-sm text-slate-500 dark:text-zinc-400">
-          Totals come from active enrolment for the class; the Present figure
+          Registered counts come from active enrolment for the class. Present
           counts students marked present or late in saved attendance for the
-          selected date (0 if none recorded).
+          selected date (0 if none recorded), split by gender where known.
         </p>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
-            <p className="text-xs font-medium uppercase text-slate-500 dark:text-zinc-400">
-              Total pupils
-            </p>
-            {loadingStats && classId ? (
-              <div className="mt-2 h-8 w-16 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
-            ) : (
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">
-                {demographics.total}
-              </p>
-            )}
-          </div>
-          <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
-            <p className="text-xs font-medium uppercase text-slate-500 dark:text-zinc-400">
-              Boys
-            </p>
-            {loadingStats && classId ? (
-              <div className="mt-2 h-8 w-16 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
-            ) : (
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">
-                {demographics.boys}
-              </p>
-            )}
-          </div>
-          <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
-            <p className="text-xs font-medium uppercase text-slate-500 dark:text-zinc-400">
-              Girls
-            </p>
-            {loadingStats && classId ? (
-              <div className="mt-2 h-8 w-16 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
-            ) : (
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">
-                {demographics.girls}
-              </p>
-            )}
-          </div>
-          <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
-            <p className="text-xs font-medium uppercase text-slate-500 dark:text-zinc-400">
-              Present
-            </p>
-            {loadingStats && classId && lessonDate ? (
-              <div className="mt-2 h-8 w-16 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
-            ) : (
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
-                {presentCount}
-              </p>
-            )}
-          </div>
+        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
+                <th className="px-4 py-2 text-left font-semibold text-slate-900 dark:text-white" />
+                <th
+                  colSpan={2}
+                  className="px-4 py-2 text-center font-semibold text-slate-900 dark:text-white"
+                >
+                  Number of Pupils
+                </th>
+              </tr>
+              <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
+                <th className="px-4 py-2 text-left font-semibold text-slate-900 dark:text-white" />
+                <th className="px-4 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                  Registered
+                </th>
+                <th className="px-4 py-2 text-center font-semibold text-slate-900 dark:text-white">
+                  Present
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-slate-100 dark:border-zinc-700">
+                <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
+                  Girls
+                </td>
+                <td className="px-4 py-2 text-center tabular-nums text-slate-900 dark:text-white">
+                  {loadingStats && classId ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
+                  ) : (
+                    demographics.girls
+                  )}
+                </td>
+                <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {loadingStats && classId && lessonDate ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
+                  ) : (
+                    presentByGender.girls
+                  )}
+                </td>
+              </tr>
+              <tr className="border-b border-slate-100 dark:border-zinc-700">
+                <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
+                  Boys
+                </td>
+                <td className="px-4 py-2 text-center tabular-nums text-slate-900 dark:text-white">
+                  {loadingStats && classId ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
+                  ) : (
+                    demographics.boys
+                  )}
+                </td>
+                <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {loadingStats && classId && lessonDate ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
+                  ) : (
+                    presentByGender.boys
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
+                  Total
+                </td>
+                <td className="px-4 py-2 text-center tabular-nums text-slate-900 dark:text-white">
+                  {loadingStats && classId ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
+                  ) : (
+                    demographics.total
+                  )}
+                </td>
+                <td className="px-4 py-2 text-center tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {loadingStats && classId && lessonDate ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-slate-200 dark:bg-zinc-600" />
+                  ) : (
+                    presentByGender.total
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
