@@ -15,6 +15,20 @@ type AttendanceStatus = "present" | "absent" | "late";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
+/** Postgres numeric / JSON may arrive as string; normalize for UI. */
+function normalizeScoreValue(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeText(value: unknown): string | null {
+  if (value == null) return null;
+  const s = String(value).trim();
+  return s.length > 0 ? s : null;
+}
+
 async function assertTeacherForClass(
   userId: string,
   classId: string
@@ -255,6 +269,8 @@ export async function createGradebookAssignmentAction(input: {
     return { ok: false, error: "Unauthorized." };
   }
 
+  const admin = createAdminClient();
+
   const gate = await assertTeacherForClass(user.id, input.classId);
   if (!gate.ok) return { ok: false, error: gate.error };
 
@@ -270,7 +286,6 @@ export async function createGradebookAssignmentAction(input: {
     };
   }
 
-  const admin = createAdminClient();
   const { data: created, error } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .insert({
@@ -306,11 +321,12 @@ export async function loadGradebookAssignmentsForClass(
     return { ok: false as const, error: "Unauthorized." };
   }
 
+  const admin = createAdminClient();
+
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
-  const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .select("id, title, max_score, weight, due_date, subject")
     .eq("teacher_id", user.id)
@@ -334,9 +350,201 @@ export async function loadGradebookAssignmentsForClass(
   };
 }
 
+/**
+ * All assignments for a class/subject with every student's scores — for the overview matrix.
+ */
+export async function loadGradebookClassMatrix(classId: string, subject: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !(await checkIsTeacher(supabase, user.id))) {
+    return { ok: false as const, error: "Unauthorized." };
+  }
+
+  const admin = createAdminClient();
+  const gate = await assertTeacherForClass(user.id, classId);
+  if (!gate.ok) return { ok: false as const, error: gate.error };
+
+  const { data: assignmentRows, error: aErr } = await (admin as Db)
+    .from("teacher_gradebook_assignments")
+    .select("id, title, max_score, weight, due_date, subject, created_at")
+    .eq("teacher_id", user.id)
+    .eq("class_id", classId)
+    .eq("subject", subject)
+    .order("created_at", { ascending: true });
+
+  if (aErr) {
+    return { ok: false as const, error: aErr.message };
+  }
+
+  const assignments = (assignmentRows ?? []) as {
+    id: string;
+    title: string;
+    max_score: number;
+    weight: number;
+    due_date: string | null;
+    subject: string;
+    created_at?: string;
+  }[];
+
+  const { data: students } = await orderStudentsByGenderThenName(
+    admin
+      .from("students")
+      .select("id, full_name, gender")
+      .eq("class_id", classId)
+      .eq("status", "active")
+  );
+
+  const rawStudents = (students ?? []) as {
+    id: string;
+    full_name: string;
+    gender: string | null;
+  }[];
+  const seenIds = new Set<string>();
+  const studentList = rawStudents.filter((row) => {
+    const id = String(row?.id ?? "").trim();
+    const name = String(row?.full_name ?? "").trim();
+    if (!id || !name) return false;
+    if (seenIds.has(id)) return false;
+    seenIds.add(id);
+    return true;
+  });
+
+  const assignmentIds = assignments.map((a) => a.id);
+  const scoreMatrix: Record<
+    string,
+    Record<
+      string,
+      {
+        score: number | null;
+        comments: string | null;
+        remarks: string | null;
+      }
+    >
+  > = {};
+
+  if (assignmentIds.length > 0) {
+    const { data: scoreRows, error: scoresError } = await (admin as Db)
+      .from("teacher_scores")
+      .select("assignment_id, student_id, score, comments, remarks")
+      .in("assignment_id", assignmentIds);
+
+    if (scoresError) {
+      return { ok: false as const, error: scoresError.message };
+    }
+
+    for (const row of scoreRows ?? []) {
+      const r = row as {
+        assignment_id: string;
+        student_id: string;
+        score: unknown;
+        comments: string | null;
+        remarks: string | null;
+      };
+      if (!scoreMatrix[r.assignment_id]) {
+        scoreMatrix[r.assignment_id] = {};
+      }
+      scoreMatrix[r.assignment_id][r.student_id] = {
+        score: normalizeScoreValue(r.score),
+        comments: r.comments,
+        remarks: normalizeText(r.remarks),
+      };
+    }
+  }
+
+  return {
+    ok: true as const,
+    assignments,
+    students: studentList as {
+      id: string;
+      full_name: string;
+      gender: string | null;
+    }[],
+    scoreMatrix,
+  };
+}
+
+/** School / class / teacher / term for full gradebook report (class + subject). */
+export async function loadFullGradeReportMeta(
+  classId: string,
+  subject: string
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !(await checkIsTeacher(supabase, user.id))) {
+    return { ok: false as const, error: "Unauthorized." };
+  }
+
+  const admin = createAdminClient();
+  const gate = await assertTeacherForClass(user.id, classId);
+  if (!gate.ok) return { ok: false as const, error: gate.error };
+
+  const subj = subject.trim();
+  const { data: cls } = await admin
+    .from("classes")
+    .select("name, school_id")
+    .eq("id", classId)
+    .maybeSingle();
+
+  const classRow = cls as { name: string; school_id: string } | null;
+  const className = classRow?.name?.trim() ?? "Class";
+
+  let schoolName = "School";
+  if (classRow?.school_id) {
+    const { data: sch } = await admin
+      .from("schools")
+      .select("name")
+      .eq("id", classRow.school_id)
+      .maybeSingle();
+    schoolName =
+      ((sch as { name: string } | null)?.name ?? "").trim() || schoolName;
+  }
+
+  const { data: ta } = await admin
+    .from("teacher_assignments")
+    .select("academic_year")
+    .eq("teacher_id", user.id)
+    .eq("class_id", classId)
+    .eq("subject", subj)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const termLabel =
+    ((ta as { academic_year: string } | null)?.academic_year ?? "").trim() ||
+    "—";
+
+  const { data: prof } = await admin
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const teacherName =
+    ((prof as { full_name: string } | null)?.full_name ?? "").trim() ||
+    "Teacher";
+
+  return {
+    ok: true as const,
+    schoolName,
+    className,
+    subject: subj,
+    teacherName,
+    termLabel,
+  };
+}
+
 export async function saveScoresAction(input: {
   assignmentId: string;
-  scores: { studentId: string; score: number | null; comments?: string | null }[];
+  scores: {
+    studentId: string;
+    score: number | null;
+    comments?: string | null;
+    remarks?: string | null;
+  }[];
 }) {
   const supabase = await createClient();
   const {
@@ -347,7 +555,7 @@ export async function saveScoresAction(input: {
   }
 
   const admin = createAdminClient();
-  const { data: g } = await admin
+  const { data: g } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .select("id, teacher_id")
     .eq("id", input.assignmentId)
@@ -365,6 +573,7 @@ export async function saveScoresAction(input: {
         student_id: s.studentId,
         score: s.score,
         comments: s.comments ?? null,
+        remarks: s.remarks ?? null,
       },
       { onConflict: "assignment_id,student_id" }
     );
@@ -444,7 +653,7 @@ export async function loadGradebookMatrix(assignmentId: string) {
   }
 
   const admin = createAdminClient();
-  const { data: g } = await admin
+  const { data: g } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .select(
       "id, class_id, subject, title, max_score, weight, due_date, teacher_id"
@@ -470,37 +679,176 @@ export async function loadGradebookMatrix(assignmentId: string) {
   const { data: students } = await orderStudentsByGenderThenName(
     admin
       .from("students")
-      .select("id, full_name")
+      .select("id, full_name, gender")
       .eq("class_id", ga.class_id)
       .eq("status", "active")
   );
 
-  const { data: scoreRows } = await admin
+  const { data: scoreRows, error: scoresError } = await (admin as Db)
     .from("teacher_scores")
-    .select("student_id, score, comments")
+    .select("student_id, score, comments, remarks")
     .eq("assignment_id", assignmentId);
+
+  if (scoresError) {
+    return { ok: false as const, error: scoresError.message };
+  }
 
   const scoreByStudent: Record<
     string,
-    { score: number | null; comments: string | null }
+    {
+      score: number | null;
+      comments: string | null;
+      remarks: string | null;
+    }
   > = {};
   for (const s of scoreRows ?? []) {
     const row = s as {
       student_id: string;
-      score: number | null;
+      score: unknown;
       comments: string | null;
+      remarks: string | null;
     };
     scoreByStudent[row.student_id] = {
-      score: row.score,
+      score: normalizeScoreValue(row.score),
       comments: row.comments,
+      remarks: normalizeText(row.remarks),
     };
   }
 
   return {
     ok: true as const,
     assignment: ga,
-    students: (students ?? []) as { id: string; full_name: string }[],
+    students: (students ?? []) as {
+      id: string;
+      full_name: string;
+      gender: string | null;
+    }[],
     scoreByStudent,
+  };
+}
+
+/** Loads persisted scores for one assignment (for refresh / focused score sync). */
+export async function loadScoresForAssignment(assignmentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !(await checkIsTeacher(supabase, user.id))) {
+    return { ok: false as const, error: "Unauthorized." };
+  }
+
+  const admin = createAdminClient();
+  const { data: g } = await (admin as Db)
+    .from("teacher_gradebook_assignments")
+    .select("id, teacher_id")
+    .eq("id", assignmentId)
+    .single();
+
+  const ga = g as { id: string; teacher_id: string } | null;
+  if (!ga || ga.teacher_id !== user.id) {
+    return { ok: false as const, error: "Assignment not found." };
+  }
+
+  const { data: scoreRows, error: scoresError } = await (admin as Db)
+    .from("teacher_scores")
+    .select("student_id, score, comments, remarks")
+    .eq("assignment_id", assignmentId);
+
+  if (scoresError) {
+    return { ok: false as const, error: scoresError.message };
+  }
+
+  const scoreByStudent: Record<
+    string,
+    {
+      score: number | null;
+      comments: string | null;
+      remarks: string | null;
+    }
+  > = {};
+  for (const s of scoreRows ?? []) {
+    const row = s as {
+      student_id: string;
+      score: unknown;
+      comments: string | null;
+      remarks: string | null;
+    };
+    scoreByStudent[row.student_id] = {
+      score: normalizeScoreValue(row.score),
+      comments: row.comments,
+      remarks: normalizeText(row.remarks),
+    };
+  }
+
+  return { ok: true as const, scoreByStudent };
+}
+
+/** School, class, and teacher display names for PDF export. */
+export async function loadGradeReportContext(assignmentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !(await checkIsTeacher(supabase, user.id))) {
+    return { ok: false as const, error: "Unauthorized." };
+  }
+
+  const admin = createAdminClient();
+  const { data: g } = await (admin as Db)
+    .from("teacher_gradebook_assignments")
+    .select("id, title, subject, class_id, teacher_id")
+    .eq("id", assignmentId)
+    .single();
+
+  const ga = g as {
+    id: string;
+    title: string;
+    subject: string;
+    class_id: string;
+    teacher_id: string;
+  } | null;
+
+  if (!ga || ga.teacher_id !== user.id) {
+    return { ok: false as const, error: "Assignment not found." };
+  }
+
+  const { data: cls } = await admin
+    .from("classes")
+    .select("name, school_id")
+    .eq("id", ga.class_id)
+    .maybeSingle();
+
+  const classRow = cls as { name: string; school_id: string } | null;
+  const className = classRow?.name?.trim() ?? "Class";
+
+  let schoolName = "School";
+  if (classRow?.school_id) {
+    const { data: sch } = await admin
+      .from("schools")
+      .select("name")
+      .eq("id", classRow.school_id)
+      .maybeSingle();
+    schoolName =
+      ((sch as { name: string } | null)?.name ?? "").trim() || schoolName;
+  }
+
+  const { data: prof } = await admin
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const teacherName =
+    ((prof as { full_name: string } | null)?.full_name ?? "").trim() ||
+    "Teacher";
+
+  return {
+    ok: true as const,
+    schoolName,
+    className,
+    assignmentTitle: ga.title,
+    subject: ga.subject,
+    teacherName,
   };
 }
 
