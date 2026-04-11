@@ -127,7 +127,9 @@ export default async function TeachersPage() {
   const subjectOptionsByClassIdResolved =
     subjectsData?.subjectOptionsByClassId ?? {};
 
-  const taRes = await supabase
+  // Service role bypasses RLS so school admins always see all rows for this school.
+  // The user-scoped client can return no rows if policies / JWT context do not match.
+  const taRes = await admin
     .from("teacher_assignments")
     .select(
       `
