@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { ensureTeacherHasAssignmentsOrRedirect } from "@/lib/teacher-assignment-status";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
-import { getTeacherClasses, getTeacherSubjects } from "../actions";
+import { getTeacherClasses, getTeacherSubjectsByClass } from "../actions";
 import { LessonPlanForm } from "../components/LessonPlanForm";
 
 export const metadata = {
@@ -31,16 +31,13 @@ export default async function NewLessonPlanPage() {
   if (!(await checkIsTeacher(supabase, user.id))) redirect("/dashboard");
   await ensureTeacherHasAssignmentsOrRedirect(supabase, user.id);
 
-  const [classesRaw, subjectsRaw] = await Promise.all([
+  const [classesRaw, subjectsByClassId] = await Promise.all([
     getTeacherClasses(),
-    getTeacherSubjects(),
+    getTeacherSubjectsByClass(),
   ]);
 
   const classes = normalizeClassSubjectOptions(
     (classesRaw ?? []) as unknown[]
-  );
-  const subjects = normalizeClassSubjectOptions(
-    (subjectsRaw ?? []) as unknown[]
   );
 
   return (
@@ -52,8 +49,8 @@ export default async function NewLessonPlanPage() {
               New lesson plan
             </h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-              Fill in the form and save. Class and date drive pupil counts and
-              present total.
+              Choose a class first, then a subject you teach for that class. Class
+              and date drive pupil counts and present total.
             </p>
           </div>
           <Link
@@ -64,7 +61,11 @@ export default async function NewLessonPlanPage() {
           </Link>
         </div>
 
-        <LessonPlanForm mode="create" classes={classes} subjects={subjects} />
+        <LessonPlanForm
+          mode="create"
+          classes={classes}
+          subjectsByClassId={subjectsByClassId}
+        />
       </div>
       <div className="print:hidden">
         <SmartFloatingScrollButton sectionIds={[]} />

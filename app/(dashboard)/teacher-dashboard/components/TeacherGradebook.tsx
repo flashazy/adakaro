@@ -77,13 +77,17 @@ export function TeacherGradebook({
         set.add(o.subject?.trim() || "General");
       }
     }
-    return [...set];
+    return [...set].sort((a, b) => a.localeCompare(b));
   }, [options, classId]);
 
   useEffect(() => {
-    const o = options.find((x) => x.classId === classId);
-    if (o && !subject) setSubject(o.subject?.trim() || "General");
-  }, [classId, options, subject]);
+    const subs = subjectsForClass;
+    if (subs.length === 0) {
+      setSubject("");
+      return;
+    }
+    setSubject((prev) => (subs.includes(prev) ? prev : subs[0]));
+  }, [classId, subjectsForClass]);
 
   const fetchAssignments = useCallback(async () => {
     setError(null);

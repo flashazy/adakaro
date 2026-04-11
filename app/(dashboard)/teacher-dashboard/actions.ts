@@ -35,6 +35,25 @@ async function assertTeacherForClass(
   return { ok: true, schoolId };
 }
 
+async function assertTeacherTeachesSubjectInClass(
+  userId: string,
+  classId: string,
+  subjectLabel: string
+): Promise<boolean> {
+  const trimmed = subjectLabel.trim();
+  if (!trimmed) return false;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("teacher_assignments")
+    .select("id")
+    .eq("teacher_id", userId)
+    .eq("class_id", classId)
+    .eq("subject", trimmed)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
+}
+
 function normalizeAttendanceDateOnly(iso: string): string | null {
   const d = iso.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
@@ -238,6 +257,18 @@ export async function createGradebookAssignmentAction(input: {
 
   const gate = await assertTeacherForClass(user.id, input.classId);
   if (!gate.ok) return { ok: false, error: gate.error };
+
+  const teaches = await assertTeacherTeachesSubjectInClass(
+    user.id,
+    input.classId,
+    input.subject
+  );
+  if (!teaches) {
+    return {
+      ok: false,
+      error: "You are not assigned to teach this subject for this class.",
+    };
+  }
 
   const admin = createAdminClient();
   const { data: created, error } = await (admin as Db)

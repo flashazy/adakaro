@@ -21,6 +21,23 @@ function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+/** Single year string like "2025" — not a range. */
+function parseRequiredSingleCalendarYear(raw: string):
+  | { ok: true; year: string }
+  | { ok: false; error: string } {
+  const t = raw.trim();
+  if (!t) {
+    return { ok: false, error: "Academic year is required." };
+  }
+  if (!/^\d{4}$/.test(t)) {
+    return {
+      ok: false,
+      error: "Academic year must be a four-digit year (e.g. 2025).",
+    };
+  }
+  return { ok: true, year: t };
+}
+
 /**
  * Permission check using service role only — avoids RLS recursion on `profiles`
  * (e.g. is_super_admin() evaluated under profiles policies when using the user session).
@@ -431,7 +448,12 @@ export async function assignTeacherToClassAction(
   const teacherId = String(formData.get("teacher_id") ?? "").trim();
   const classId = String(formData.get("class_id") ?? "").trim();
   const subjectId = String(formData.get("subject_id") ?? "").trim();
-  const academicYear = String(formData.get("academic_year") ?? "").trim();
+  const academicYearRaw = String(formData.get("academic_year") ?? "");
+  const yearParsed = parseRequiredSingleCalendarYear(academicYearRaw);
+  if (!yearParsed.ok) {
+    return { ok: false, error: yearParsed.error };
+  }
+  const academicYear = yearParsed.year;
 
   if (!teacherId || !classId) {
     return { ok: false, error: "Teacher and class are required." };
@@ -530,7 +552,7 @@ export async function assignTeacherToClassAction(
     class_id: classId,
     subject_id: subjectId,
     subject: subjectName,
-    academic_year: academicYear || "",
+    academic_year: academicYear,
   });
 
   if (error) {
@@ -560,7 +582,12 @@ export async function updateTeacherAssignmentAction(
   const assignmentId = String(formData.get("assignment_id") ?? "").trim();
   const classId = String(formData.get("class_id") ?? "").trim();
   const subjectId = String(formData.get("subject_id") ?? "").trim();
-  const academicYear = String(formData.get("academic_year") ?? "").trim();
+  const academicYearRaw = String(formData.get("academic_year") ?? "");
+  const yearParsed = parseRequiredSingleCalendarYear(academicYearRaw);
+  if (!yearParsed.ok) {
+    return { ok: false, error: yearParsed.error };
+  }
+  const academicYear = yearParsed.year;
 
   if (!assignmentId || !classId) {
     return { ok: false, error: "Assignment and class are required." };
@@ -642,7 +669,7 @@ export async function updateTeacherAssignmentAction(
       class_id: classId,
       subject_id: subjectId,
       subject: subjectName,
-      academic_year: academicYear || "",
+      academic_year: academicYear,
     })
     .eq("id", assignmentId)
     .eq("school_id", schoolId);

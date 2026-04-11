@@ -749,7 +749,7 @@ export interface Database {
           class_id: string;
           subject?: string;
           subject_id?: string | null;
-          academic_year?: string;
+          academic_year: string;
           created_at?: string;
           updated_at?: string;
         };

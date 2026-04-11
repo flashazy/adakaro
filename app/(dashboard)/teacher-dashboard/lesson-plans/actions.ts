@@ -7,6 +7,45 @@ import type { Json } from "@/types/supabase";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- admin client typing
+type Db = any;
+
+async function assertTeacherTeachesSubjectForClass(
+  admin: ReturnType<typeof createAdminClient>,
+  teacherId: string,
+  classId: string,
+  subjectId: string
+): Promise<boolean> {
+  const { data: rows } = await admin
+    .from("teacher_assignments")
+    .select("subject_id, subject")
+    .eq("teacher_id", teacherId)
+    .eq("class_id", classId);
+
+  if (!rows?.length) return false;
+
+  const { data: subjRow } = await admin
+    .from("subjects")
+    .select("name")
+    .eq("id", subjectId)
+    .maybeSingle();
+  const catalogName =
+    (subjRow as { name: string } | null)?.name?.trim() ?? "";
+
+  for (const raw of rows) {
+    const r = raw as { subject_id: string | null; subject: string };
+    if (r.subject_id === subjectId) return true;
+    if (
+      !r.subject_id &&
+      catalogName &&
+      r.subject?.trim() === catalogName
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function teachingLearningProcessFromForm(formData: FormData): Json {
   const raw = formData.get("teaching_learning_process");
   if (typeof raw !== "string" || !raw.trim()) {
@@ -85,10 +124,28 @@ export async function createLessonPlan(formData: FormData) {
     throw new Error("Duration must be at least 1 minute");
   }
 
+  const classId = String(formData.get("class_id") ?? "").trim();
+  const subjectId = String(formData.get("subject_id") ?? "").trim();
+  if (!classId || !subjectId) {
+    throw new Error("Class and subject are required.");
+  }
+
+  const allowed = await assertTeacherTeachesSubjectForClass(
+    admin,
+    user.user.id,
+    classId,
+    subjectId
+  );
+  if (!allowed) {
+    throw new Error(
+      "You are not assigned to teach this subject for this class."
+    );
+  }
+
   const data = {
     teacher_id: user.user.id,
-    class_id: formData.get("class_id"),
-    subject_id: formData.get("subject_id"),
+    class_id: classId,
+    subject_id: subjectId,
     lesson_date: formData.get("lesson_date"),
     period,
     duration_minutes,
@@ -134,9 +191,27 @@ export async function updateLessonPlan(id: string, formData: FormData) {
     throw new Error("Duration must be at least 1 minute");
   }
 
+  const classId = String(formData.get("class_id") ?? "").trim();
+  const subjectId = String(formData.get("subject_id") ?? "").trim();
+  if (!classId || !subjectId) {
+    throw new Error("Class and subject are required.");
+  }
+
+  const allowed = await assertTeacherTeachesSubjectForClass(
+    admin,
+    user.user.id,
+    classId,
+    subjectId
+  );
+  if (!allowed) {
+    throw new Error(
+      "You are not assigned to teach this subject for this class."
+    );
+  }
+
   const data = {
-    class_id: formData.get("class_id"),
-    subject_id: formData.get("subject_id"),
+    class_id: classId,
+    subject_id: subjectId,
     lesson_date: formData.get("lesson_date"),
     period,
     duration_minutes,
@@ -210,52 +285,44 @@ export async function getTeacherClasses() {
   return (data as Row[] | null)?.map((item) => item.class).filter(Boolean) || [];
 }
 
-export async function getTeacherSubjects() {
+/** Subjects the teacher teaches per class (from `teacher_assignments`). */
+export async function getTeacherSubjectsByClass(): Promise<
+  Record<string, { id: string; name: string }[]>
+> {
   const supabase = await createClient();
   const { data: user } = await supabase.auth.getUser();
-
-  if (!user.user) return [];
+  if (!user.user) return {};
 
   const admin = createAdminClient();
-  const teacherId = user.user.id;
+  const { data: rows } = await (admin as Db)
+    .from("teacher_assignments")
+    .select("class_id, subject_id, subjects ( id, name ), subject")
+    .eq("teacher_id", user.user.id);
 
-  const { data: tsRows } = await admin
-    .from("teacher_subjects")
-    .select("subject_id")
-    .eq("teacher_id", teacherId);
+  const map: Record<string, { id: string; name: string }[]> = {};
 
-  let subjectIds = [
-    ...new Set(
-      (tsRows ?? []).map((r) => (r as { subject_id: string }).subject_id)
-    ),
-  ];
-
-  if (subjectIds.length === 0) {
-    const { data: taRows } = await admin
-      .from("teacher_assignments")
-      .select("subject_id")
-      .eq("teacher_id", teacherId)
-      .not("subject_id", "is", null);
-
-    subjectIds = [
-      ...new Set(
-        (taRows ?? [])
-          .map((r) => (r as { subject_id: string | null }).subject_id)
-          .filter((id): id is string => id != null)
-      ),
-    ];
+  for (const raw of rows ?? []) {
+    const r = raw as {
+      class_id: string;
+      subject_id: string | null;
+      subjects: { id: string; name: string } | null;
+      subject: string;
+    };
+    if (!r.subject_id || !r.subjects?.id) continue;
+    const list = map[r.class_id] ?? [];
+    if (!list.some((x) => x.id === r.subject_id)) {
+      list.push({
+        id: r.subject_id,
+        name: r.subjects.name?.trim() || "General",
+      });
+      map[r.class_id] = list;
+    }
   }
 
-  if (subjectIds.length === 0) return [];
-
-  const { data: subjects, error } = await admin
-    .from("subjects")
-    .select("id, name")
-    .in("id", subjectIds)
-    .order("name");
-
-  if (error) return [];
-  return (subjects ?? []) as { id: string; name: string }[];
+  for (const k of Object.keys(map)) {
+    map[k].sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return map;
 }
 
 /** Counts only (boys / girls / total). No student rows — ordering does not apply. */

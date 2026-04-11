@@ -43,8 +43,8 @@ export default async function LessonPlansPage() {
             <thead className="bg-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left">Date</th>
-                <th className="px-4 py-3 text-left">Subject</th>
                 <th className="px-4 py-3 text-left">Class</th>
+                <th className="px-4 py-3 text-left">Subject</th>
                 <th className="px-4 py-3 text-left">Period</th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
@@ -56,10 +56,10 @@ export default async function LessonPlansPage() {
                     {format(new Date(plan.lesson_date), "dd/MM/yyyy")}
                   </td>
                   <td className="px-4 py-3">
-                    {plan.subjects?.name ?? "-"}
+                    {plan.classes?.name ?? "-"}
                   </td>
                   <td className="px-4 py-3">
-                    {plan.classes?.name ?? "-"}
+                    {plan.subjects?.name ?? "-"}
                   </td>
                   <td className="px-4 py-3">
                     {formatPeriodForDisplay(plan.period)}

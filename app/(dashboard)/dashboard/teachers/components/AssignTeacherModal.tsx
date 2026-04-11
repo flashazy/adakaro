@@ -31,6 +31,17 @@ interface AssignTeacherModalProps {
   modalFlash: TeacherActionState | null;
 }
 
+function academicYearSelectValues(): string[] {
+  const y = new Date().getFullYear();
+  return [y - 1, y, y + 1, y + 2, y + 3, y + 4].map(String);
+}
+
+function initialYearFromAssignment(raw: string): string {
+  const m = raw.trim().match(/^(\d{4})/);
+  if (m) return m[1];
+  return String(new Date().getFullYear());
+}
+
 function flash(state: TeacherActionState | null) {
   if (!state) return null;
   if (state.ok && state.message) {
@@ -65,14 +76,21 @@ export function AssignTeacherModal({
   const [subjectId, setSubjectId] = useState(
     modal.mode === "edit" && modal.row.subjectId ? modal.row.subjectId : ""
   );
+  const [yearVal, setYearVal] = useState(() =>
+    modal.mode === "edit"
+      ? initialYearFromAssignment(modal.row.academicYear)
+      : String(new Date().getFullYear())
+  );
 
   useEffect(() => {
     if (modal.mode === "edit") {
       setClassId(modal.row.classId);
       setSubjectId(modal.row.subjectId ?? "");
+      setYearVal(initialYearFromAssignment(modal.row.academicYear));
     } else {
       setClassId("");
       setSubjectId("");
+      setYearVal(String(new Date().getFullYear()));
     }
   }, [modal]);
 
@@ -83,6 +101,16 @@ export function AssignTeacherModal({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+
+  const yearOptions = useMemo(() => {
+    const base = academicYearSelectValues();
+    if (yearVal && /^\d{4}$/.test(yearVal) && !base.includes(yearVal)) {
+      return [...base, yearVal].sort(
+        (a, b) => Number(a) - Number(b)
+      );
+    }
+    return base;
+  }, [yearVal]);
 
   const filteredSubjects = useMemo(() => {
     if (!classId) return [];
@@ -114,7 +142,9 @@ export function AssignTeacherModal({
   const canSubmit =
     Boolean(classId) &&
     Boolean(subjectId) &&
-    filteredSubjects.length > 0;
+    filteredSubjects.length > 0 &&
+    Boolean(yearVal) &&
+    /^\d{4}$/.test(yearVal.trim());
 
   return (
     <div
@@ -216,17 +246,27 @@ export function AssignTeacherModal({
           </label>
           <label className="block text-sm">
             <span className="text-slate-700 dark:text-zinc-300">
-              Academic year (optional)
+              Academic year{" "}
+              <span className="text-red-600" title="Required">
+                *
+              </span>
             </span>
-            <input
+            <select
               name="academic_year"
-              type="text"
-              defaultValue={
-                modal.mode === "edit" ? modal.row.academicYear : ""
-              }
+              required
+              value={yearVal}
+              onChange={(e) => setYearVal(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-              placeholder="2025–2026"
-            />
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-slate-500 dark:text-zinc-400">
+              Calendar year (January–December), e.g. 2025.
+            </span>
           </label>
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <button

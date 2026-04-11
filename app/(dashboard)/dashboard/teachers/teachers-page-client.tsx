@@ -63,6 +63,18 @@ interface TeachersPageClientProps {
 
 const ASSIGNMENTS_PAGE_SIZE = 20;
 
+/** Dropdown: window around current calendar year (default always in list). */
+function academicYearSelectValues(): string[] {
+  const y = new Date().getFullYear();
+  return [y - 1, y, y + 1, y + 2, y + 3, y + 4].map(String);
+}
+
+/** Show one year; legacy values like "2025–2026" → "2025". */
+function displaySingleCalendarYear(raw: string): string {
+  const m = raw.trim().match(/^(\d{4})/);
+  return m ? m[1] : raw.trim() || "—";
+}
+
 type SortKey = "teacher" | "class" | "subject";
 
 export function TeachersPageClient({
@@ -74,6 +86,9 @@ export function TeachersPageClient({
   const [modal, setModal] = useState<AssignModalState | null>(null);
   const [assignClassId, setAssignClassId] = useState("");
   const [assignSubjectId, setAssignSubjectId] = useState("");
+  const [assignYear, setAssignYear] = useState(() =>
+    String(new Date().getFullYear())
+  );
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("teacher");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -154,6 +169,12 @@ export function TeachersPageClient({
   useEffect(() => {
     setAssignmentPage((p) => Math.min(p, assignmentTotalPages));
   }, [assignmentTotalPages]);
+
+  useEffect(() => {
+    if (assignState?.ok) {
+      setAssignYear(String(new Date().getFullYear()));
+    }
+  }, [assignState]);
 
   function handleSortHeader(key: SortKey) {
     if (sortKey === key) {
@@ -302,14 +323,27 @@ export function TeachersPageClient({
             </label>
             <label className="block text-sm sm:col-span-2">
               <span className="text-slate-700 dark:text-zinc-300">
-                Academic year (optional)
+                Academic year{" "}
+                <span className="text-red-600" title="Required">
+                  *
+                </span>
               </span>
-              <input
+              <select
                 name="academic_year"
-                type="text"
+                required
+                value={assignYear}
+                onChange={(e) => setAssignYear(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                placeholder="2025–2026"
-              />
+              >
+                {academicYearSelectValues().map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-500 dark:text-zinc-400">
+                Calendar year (January–December), e.g. 2025.
+              </span>
             </label>
           </div>
           <button
@@ -443,7 +477,7 @@ export function TeachersPageClient({
                             {a.subject || "—"}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-zinc-400">
-                            {a.academicYear?.trim() ? a.academicYear : "—"}
+                            {displaySingleCalendarYear(a.academicYear)}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-right">
                             <div className="flex justify-end gap-1">

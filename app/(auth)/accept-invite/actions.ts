@@ -214,7 +214,12 @@ export async function acceptTeacherInviteAction(
           school_id: invite.school_id,
           class_id: invite.class_id,
           subject: invite.subject || "",
-          academic_year: invite.academic_year || "",
+          academic_year: (() => {
+            const raw = String(invite.academic_year ?? "").trim();
+            const m = raw.match(/^(\d{4})/);
+            if (m) return m[1];
+            return String(new Date().getFullYear());
+          })(),
         });
       if (aErr) {
         throw new Error(

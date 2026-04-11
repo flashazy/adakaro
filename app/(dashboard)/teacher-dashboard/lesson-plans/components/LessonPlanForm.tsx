@@ -66,7 +66,8 @@ export interface LessonPlanFormInitialData {
 
 interface LessonPlanFormProps {
   classes: LessonPlanFormClassOption[];
-  subjects: LessonPlanFormSubjectOption[];
+  /** Subjects the teacher may teach for each class (from assignments). */
+  subjectsByClassId: Record<string, LessonPlanFormSubjectOption[]>;
   mode: "create" | "edit";
   planId?: string;
   initialData?: LessonPlanFormInitialData | null;
@@ -93,13 +94,16 @@ function dedupeClasses(
 
 export function LessonPlanForm({
   classes,
-  subjects,
+  subjectsByClassId,
   mode,
   planId,
   initialData,
 }: LessonPlanFormProps) {
   const [classId, setClassId] = useState(
     initialData?.class_id ?? ""
+  );
+  const [subjectId, setSubjectId] = useState(
+    initialData?.subject_id ?? ""
   );
   const [lessonDate, setLessonDate] = useState(
     initialData?.lesson_date ?? todayIsoDate()
@@ -165,6 +169,22 @@ export function LessonPlanForm({
 
   const classList = useMemo(() => dedupeClasses(classes), [classes]);
 
+  const subjectOptionsForClass = useMemo(() => {
+    if (!classId) return [];
+    return subjectsByClassId[classId] ?? [];
+  }, [classId, subjectsByClassId]);
+
+  useEffect(() => {
+    const list = subjectOptionsForClass;
+    if (list.length === 0) {
+      setSubjectId("");
+      return;
+    }
+    setSubjectId((prev) =>
+      list.some((s) => s.id === prev) ? prev : list[0].id
+    );
+  }, [classId, subjectOptionsForClass]);
+
   /** Load pupil counts + present count together when class or date changes. */
   useEffect(() => {
     const run = async () => {
@@ -228,10 +248,10 @@ export function LessonPlanForm({
                   Date <span className="text-red-600">*</span>
                 </th>
                 <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
-                  Subject <span className="text-red-600">*</span>
+                  Class <span className="text-red-600">*</span>
                 </th>
                 <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
-                  Class <span className="text-red-600">*</span>
+                  Subject <span className="text-red-600">*</span>
                 </th>
                 <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                   Period <span className="text-red-600">*</span>
@@ -255,22 +275,6 @@ export function LessonPlanForm({
                   />
                 </td>
                 <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
-                  <label className="sr-only">Subject</label>
-                  <select
-                    name="subject_id"
-                    required
-                    defaultValue={initialData?.subject_id ?? ""}
-                    className="h-10 w-full min-w-[8rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                  >
-                    <option value="">Select subject</option>
-                    {subjects.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
                   <label className="sr-only">Class</label>
                   <select
                     name="class_id"
@@ -283,6 +287,30 @@ export function LessonPlanForm({
                     {classList.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
+                  <label className="sr-only">Subject</label>
+                  <select
+                    name="subject_id"
+                    required
+                    value={subjectId}
+                    onChange={(e) => setSubjectId(e.target.value)}
+                    disabled={!classId || subjectOptionsForClass.length === 0}
+                    className="h-10 w-full min-w-[8rem] rounded-lg border border-gray-200 px-2 text-slate-900 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  >
+                    <option value="">
+                      {!classId
+                        ? "Select a class first…"
+                        : subjectOptionsForClass.length === 0
+                          ? "No subjects for this class in your assignments"
+                          : "Select subject"}
+                    </option>
+                    {subjectOptionsForClass.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
                       </option>
                     ))}
                   </select>

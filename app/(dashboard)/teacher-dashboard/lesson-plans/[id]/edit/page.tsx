@@ -8,7 +8,7 @@ import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import {
   getLessonPlanById,
   getTeacherClasses,
-  getTeacherSubjects,
+  getTeacherSubjectsByClass,
 } from "../../actions";
 import {
   LessonPlanForm,
@@ -51,19 +51,30 @@ export default async function EditLessonPlanPage({
   if (!planRaw) notFound();
   const plan = planRaw as LessonPlanRow;
 
-  const [classesRaw, subjectsRaw] = await Promise.all([
+  const [classesRaw, subjectsByClassId] = await Promise.all([
     getTeacherClasses(),
-    getTeacherSubjects(),
+    getTeacherSubjectsByClass(),
   ]);
 
   const classes = normalizeClassSubjectOptions(
     (classesRaw ?? []) as unknown[]
   );
-  const subjects = normalizeClassSubjectOptions(
-    (subjectsRaw ?? []) as unknown[]
-  );
 
   const admin = createAdminClient();
+  const planClassId = plan.class_id;
+  const subList = subjectsByClassId[planClassId] ?? [];
+  if (!subList.some((s) => s.id === plan.subject_id)) {
+    const { data: row } = await admin
+      .from("subjects")
+      .select("id, name")
+      .eq("id", plan.subject_id)
+      .maybeSingle();
+    const r = row as { id: string; name: string } | null;
+    if (r?.id && r?.name) {
+      subjectsByClassId[planClassId] = [...subList, { id: r.id, name: r.name }];
+    }
+  }
+
   if (!classes.some((c) => c.id === plan.class_id)) {
     const { data: row } = await admin
       .from("classes")
@@ -73,16 +84,6 @@ export default async function EditLessonPlanPage({
     const r = row as { id: string; name: string } | null;
     if (r?.id && r?.name) classes.push({ id: r.id, name: r.name });
   }
-  if (!subjects.some((s) => s.id === plan.subject_id)) {
-    const { data: row } = await admin
-      .from("subjects")
-      .select("id, name")
-      .eq("id", plan.subject_id)
-      .maybeSingle();
-    const r = row as { id: string; name: string } | null;
-    if (r?.id && r?.name) subjects.push({ id: r.id, name: r.name });
-  }
-
   const initialData: LessonPlanFormInitialData = {
     class_id: plan.class_id,
     subject_id: plan.subject_id,
@@ -128,7 +129,7 @@ export default async function EditLessonPlanPage({
           mode="edit"
           planId={id}
           classes={classes}
-          subjects={subjects}
+          subjectsByClassId={subjectsByClassId}
           initialData={initialData}
         />
       </div>

@@ -94,6 +94,32 @@ export default async function TeacherDashboardPage() {
   const options = await getTeacherClassOptions(user.id);
 
   const rows = options;
+  const groupedByClass = (() => {
+    const map = new Map<
+      string,
+      {
+        classId: string;
+        className: string;
+        items: typeof rows;
+      }
+    >();
+    for (const o of rows) {
+      const g = map.get(o.classId);
+      if (g) {
+        g.items.push(o);
+      } else {
+        map.set(o.classId, {
+          classId: o.classId,
+          className: o.className,
+          items: [o],
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) =>
+      a.className.localeCompare(b.className)
+    );
+  })();
+
   const classIds = [...new Set(rows.map((r) => r.classId))];
   const counts = new Map<string, number>();
   if (classIds.length > 0) {
@@ -216,31 +242,46 @@ export default async function TeacherDashboardPage() {
             My classes
           </h2>
           <div className="mt-4 grid gap-6 lg:grid-cols-2">
-            {rows.map((a) => {
-              const className = a.className;
-              const n = counts.get(a.classId) ?? 0;
-              const subj = a.subject?.trim() || "General";
-              const year = a.academicYear?.trim() || "—";
+            {groupedByClass.map((g) => {
+              const n = counts.get(g.classId) ?? 0;
+              const subjectLabels = [
+                ...new Set(
+                  g.items.map((a) => a.subject?.trim() || "General")
+                ),
+              ].sort((a, b) => a.localeCompare(b));
+              const years = [
+                ...new Set(
+                  g.items
+                    .map((a) => a.academicYear?.trim())
+                    .filter((y): y is string => Boolean(y))
+                ),
+              ];
+              const yearLabel = years.length === 0 ? "—" : years.join(", ");
               return (
                 <div
-                  key={a.assignmentId}
+                  key={g.classId}
                   className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-shadow duration-200 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
                 >
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {className} — {subj}
+                    {g.className}
                   </h3>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-zinc-500">
-                    {n} student{n === 1 ? "" : "s"} • Year {year}
+                  <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-slate-700 dark:text-zinc-300">
+                    {subjectLabels.map((s) => (
+                      <li key={s}>{s}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-zinc-500">
+                    {n} student{n === 1 ? "" : "s"} • Year {yearLabel}
                   </p>
                   <div className="mt-5 flex flex-wrap gap-2 sm:gap-3">
                     <Link
-                      href={`/teacher-dashboard/attendance?classId=${a.classId}`}
+                      href={`/teacher-dashboard/attendance?classId=${g.classId}`}
                       className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white transition-colors duration-150 hover:bg-indigo-500 sm:flex-none"
                     >
                       Take attendance
                     </Link>
                     <Link
-                      href={`/teacher-dashboard/grades?classId=${a.classId}`}
+                      href={`/teacher-dashboard/grades?classId=${g.classId}`}
                       className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:flex-none"
                     >
                       Enter grades
@@ -249,7 +290,7 @@ export default async function TeacherDashboardPage() {
                       href="/teacher-dashboard/lesson-plans"
                       className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:flex-none"
                     >
-                      Lesson Plans
+                      Lesson plans
                     </Link>
                   </div>
                 </div>
