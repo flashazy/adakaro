@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Search } from "lucide-react";
 import {
   addTeacherAction,
   assignTeacherToClassAction,
@@ -60,7 +61,9 @@ interface TeachersPageClientProps {
   >;
 }
 
-type TabKey = "assigned" | "unassigned";
+const ASSIGNMENTS_PAGE_SIZE = 20;
+
+type SortKey = "teacher" | "class" | "subject";
 
 export function TeachersPageClient({
   teachers,
@@ -68,10 +71,13 @@ export function TeachersPageClient({
   classOptions,
   subjectOptionsByClassId,
 }: TeachersPageClientProps) {
-  const [tab, setTab] = useState<TabKey>("assigned");
   const [modal, setModal] = useState<AssignModalState | null>(null);
   const [assignClassId, setAssignClassId] = useState("");
   const [assignSubjectId, setAssignSubjectId] = useState("");
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("teacher");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [assignmentPage, setAssignmentPage] = useState(1);
 
   const assignSubjects = useMemo(() => {
     if (!assignClassId) return [];
@@ -95,15 +101,68 @@ export function TeachersPageClient({
   const [removeTeacherState, removeTeacherAction, removeTeacherPending] =
     useActionState(removeTeacherFromSchoolAction, null as TeacherActionState | null);
 
-  const assignedTeacherIds = useMemo(
-    () => new Set(assignments.map((a) => a.teacherId)),
-    [assignments]
+  const filteredSortedAssignments = useMemo(() => {
+    let rows = [...assignments];
+    const q = assignmentSearch.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter((a) => {
+        const subj = (a.subject || "").toLowerCase();
+        return (
+          a.teacherName.toLowerCase().includes(q) ||
+          a.className.toLowerCase().includes(q) ||
+          subj.includes(q)
+        );
+      });
+    }
+    const mult = sortDir === "asc" ? 1 : -1;
+    rows.sort((a, b) => {
+      const va =
+        sortKey === "teacher"
+          ? a.teacherName
+          : sortKey === "class"
+            ? a.className
+            : a.subject || "";
+      const vb =
+        sortKey === "teacher"
+          ? b.teacherName
+          : sortKey === "class"
+            ? b.className
+            : b.subject || "";
+      return (
+        va.localeCompare(vb, undefined, { sensitivity: "base" }) * mult
+      );
+    });
+    return rows;
+  }, [assignments, assignmentSearch, sortKey, sortDir]);
+
+  const assignmentTotalPages = Math.max(
+    1,
+    Math.ceil(filteredSortedAssignments.length / ASSIGNMENTS_PAGE_SIZE)
+  );
+  const assignmentSafePage = Math.min(assignmentPage, assignmentTotalPages);
+  const assignmentStart =
+    (assignmentSafePage - 1) * ASSIGNMENTS_PAGE_SIZE;
+  const assignmentPageRows = filteredSortedAssignments.slice(
+    assignmentStart,
+    assignmentStart + ASSIGNMENTS_PAGE_SIZE
   );
 
-  const unassignedTeachers = useMemo(
-    () => teachers.filter((t) => !assignedTeacherIds.has(t.userId)),
-    [teachers, assignedTeacherIds]
-  );
+  useEffect(() => {
+    setAssignmentPage(1);
+  }, [assignmentSearch]);
+
+  useEffect(() => {
+    setAssignmentPage((p) => Math.min(p, assignmentTotalPages));
+  }, [assignmentTotalPages]);
+
+  function handleSortHeader(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
 
   const modalFormAction =
     modal?.mode === "edit" ? updateAction : assignAction;
@@ -172,8 +231,7 @@ export function TeachersPageClient({
           Assign class &amp; subject
         </h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-          Teachers only see classes you assign here. You can also assign from the
-          Unassigned tab.
+          Teachers only see classes you assign here.
         </p>
         <form action={assignAction} className="mt-4 space-y-3">
           {flash(assignState)}
@@ -275,140 +333,210 @@ export function TeachersPageClient({
           Teacher assignments
         </h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-          Assigned teachers have class access. Unassigned teachers see a locked
-          dashboard until you assign them.
+          All class and subject assignments. Teachers without a row here have no
+          class access until you add one using the form above.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2 border-b border-slate-200 pb-3 dark:border-zinc-800">
-          <button
-            type="button"
-            onClick={() => setTab("assigned")}
-            className={
-              tab === "assigned"
-                ? "rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
-                : "rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            }
-          >
-            Assigned teachers
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("unassigned")}
-            className={
-              tab === "unassigned"
-                ? "rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
-                : "rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            }
-          >
-            Unassigned teachers
-            {unassignedTeachers.length > 0 ? (
-              <span className="ml-1.5 rounded-full bg-white/20 px-1.5 text-xs">
-                {unassignedTeachers.length}
-              </span>
-            ) : null}
-          </button>
+
+        <div className="relative mt-4 max-w-md">
+          <label htmlFor="teacher-assignments-search" className="sr-only">
+            Search by teacher, class, or subject
+          </label>
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            aria-hidden
+          />
+          <input
+            id="teacher-assignments-search"
+            type="search"
+            value={assignmentSearch}
+            onChange={(e) => setAssignmentSearch(e.target.value)}
+            placeholder="Search teacher, class, or subject…"
+            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-300 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+          />
         </div>
 
-        {tab === "assigned" ? (
-          <div className="mt-4">
-            {flash(removeAssignState)}
-            {assignments.length === 0 ? (
-              <p className="text-sm text-slate-600 dark:text-zinc-400">
-                No assignments yet. Use the form above or assign from the
-                Unassigned tab.
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-200 dark:divide-zinc-800">
-                {assignments.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"
-                  >
-                    <div className="text-sm">
-                      <p className="font-medium text-slate-900 dark:text-white">
-                        {a.teacherName} · {a.className} — {a.subject || "General"}
-                      </p>
-                      <p className="text-slate-500 dark:text-zinc-400">
-                        {a.academicYear ? a.academicYear : "—"}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setModal({
-                            mode: "edit",
-                            row: {
-                              id: a.id,
-                              classId: a.classId,
-                              subjectId: a.subjectId,
-                              subjectName: a.subject,
-                              academicYear: a.academicYear,
-                            },
-                          })
-                        }
-                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                      >
-                        Edit assignment
-                      </button>
-                      <form action={removeAssignAction}>
-                        <input type="hidden" name="assignment_id" value={a.id} />
+        <div className="mt-4">
+          {flash(removeAssignState)}
+          {assignments.length === 0 ? (
+            <p className="text-sm text-slate-600 dark:text-zinc-400">
+              No assignments yet. Use the form above to add one.
+            </p>
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
                         <button
-                          type="submit"
-                          disabled={removeAssignPending}
-                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                          type="button"
+                          onClick={() => handleSortHeader("teacher")}
+                          className="inline-flex items-center gap-1 rounded hover:text-slate-900 dark:hover:text-white"
                         >
-                          {removeAssignPending ? "Removing…" : "Remove assignment"}
+                          Teacher
+                          {sortKey === "teacher" ? (
+                            <span className="text-xs text-slate-500" aria-hidden>
+                              {sortDir === "asc" ? "↑" : "↓"}
+                            </span>
+                          ) : null}
                         </button>
-                      </form>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : (
-          <div className="mt-4">
-            {unassignedTeachers.length === 0 ? (
-              <p className="text-sm text-slate-600 dark:text-zinc-400">
-                Every teacher has at least one class assignment.
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-200 dark:divide-zinc-800">
-                {unassignedTeachers.map((t) => (
-                  <li
-                    key={t.userId}
-                    className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"
-                  >
-                    <div>
-                      <p className="font-medium text-slate-900 dark:text-white">
-                        {t.fullName}
-                      </p>
-                      <p className="text-sm text-slate-500 dark:text-zinc-400">
-                        {t.email ?? "No email"} ·{" "}
-                        <span className="text-amber-700 dark:text-amber-300">
-                          Not assigned
-                        </span>
-                      </p>
-                    </div>
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                        <button
+                          type="button"
+                          onClick={() => handleSortHeader("class")}
+                          className="inline-flex items-center gap-1 rounded hover:text-slate-900 dark:hover:text-white"
+                        >
+                          Class
+                          {sortKey === "class" ? (
+                            <span className="text-xs text-slate-500" aria-hidden>
+                              {sortDir === "asc" ? "↑" : "↓"}
+                            </span>
+                          ) : null}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                        <button
+                          type="button"
+                          onClick={() => handleSortHeader("subject")}
+                          className="inline-flex items-center gap-1 rounded hover:text-slate-900 dark:hover:text-white"
+                        >
+                          Subject
+                          {sortKey === "subject" ? (
+                            <span className="text-xs text-slate-500" aria-hidden>
+                              {sortDir === "asc" ? "↑" : "↓"}
+                            </span>
+                          ) : null}
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                        Year
+                      </th>
+                      <th className="px-3 py-2 text-right font-medium text-slate-700 dark:text-zinc-300">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-zinc-700">
+                    {filteredSortedAssignments.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="px-3 py-6 text-center text-slate-500 dark:text-zinc-400"
+                        >
+                          No assignments match your search.
+                        </td>
+                      </tr>
+                    ) : (
+                      assignmentPageRows.map((a) => (
+                        <tr
+                          key={a.id}
+                          className="bg-white hover:bg-slate-50/90 dark:bg-zinc-900 dark:hover:bg-zinc-800/80"
+                        >
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-white">
+                            {a.teacherName}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-800 dark:text-zinc-200">
+                            {a.className}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-800 dark:text-zinc-200">
+                            {a.subject || "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-zinc-400">
+                            {a.academicYear?.trim() ? a.academicYear : "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              <button
+                                type="button"
+                                title="Edit"
+                                onClick={() =>
+                                  setModal({
+                                    mode: "edit",
+                                    row: {
+                                      id: a.id,
+                                      classId: a.classId,
+                                      subjectId: a.subjectId,
+                                      subjectName: a.subject,
+                                      academicYear: a.academicYear,
+                                    },
+                                  })
+                                }
+                                className="rounded border border-slate-200 px-2 py-1 text-sm text-slate-800 hover:bg-slate-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                              >
+                                ✏️
+                              </button>
+                              <form
+                                action={removeAssignAction}
+                                className="inline"
+                                onSubmit={(e) => {
+                                  if (!confirm("Are you sure?")) {
+                                    e.preventDefault();
+                                  }
+                                }}
+                              >
+                                <input
+                                  type="hidden"
+                                  name="assignment_id"
+                                  value={a.id}
+                                />
+                                <button
+                                  type="submit"
+                                  title="Delete"
+                                  disabled={removeAssignPending}
+                                  className="rounded border border-slate-200 px-2 py-1 text-sm text-slate-800 hover:bg-slate-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                >
+                                  {removeAssignPending ? "…" : "🗑️"}
+                                </button>
+                              </form>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {filteredSortedAssignments.length > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-zinc-400">
+                  <span>
+                    {`${assignmentStart + 1}–${Math.min(
+                      assignmentStart + ASSIGNMENTS_PAGE_SIZE,
+                      filteredSortedAssignments.length
+                    )} of ${filteredSortedAssignments.length}`}
+                  </span>
+                  <div className="flex gap-2">
                     <button
                       type="button"
+                      disabled={assignmentSafePage <= 1}
                       onClick={() =>
-                        setModal({
-                          mode: "assign",
-                          teacherId: t.userId,
-                          teacherName: t.fullName,
-                        })
+                        setAssignmentPage((p) => Math.max(1, p - 1))
                       }
-                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+                      className="rounded border border-slate-200 bg-white px-3 py-1.5 text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
                     >
-                      Assign
+                      Previous
                     </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+                    <button
+                      type="button"
+                      disabled={
+                        assignmentSafePage >= assignmentTotalPages
+                      }
+                      onClick={() =>
+                        setAssignmentPage((p) =>
+                          Math.min(assignmentTotalPages, p + 1)
+                        )
+                      }
+                      className="rounded border border-slate-200 bg-white px-3 py-1.5 text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
