@@ -73,13 +73,25 @@ export async function createLessonPlan(formData: FormData) {
 
   const admin = createAdminClient();
 
+  const periodRaw = formData.get("period");
+  const period =
+    typeof periodRaw === "string" ? periodRaw.trim() : String(periodRaw ?? "").trim();
+
+  const durationRaw = formData.get("duration_minutes");
+  const duration_minutes = parseInt(String(durationRaw), 10);
+
+  if (!period) throw new Error("Period is required");
+  if (!Number.isFinite(duration_minutes) || duration_minutes < 1) {
+    throw new Error("Duration must be at least 1 minute");
+  }
+
   const data = {
     teacher_id: user.user.id,
     class_id: formData.get("class_id"),
     subject_id: formData.get("subject_id"),
     lesson_date: formData.get("lesson_date"),
-    period: parseInt(formData.get("period") as string),
-    duration_minutes: parseInt(formData.get("duration_minutes") as string),
+    period,
+    duration_minutes,
     total_boys: parseInt(formData.get("total_boys") as string) || 0,
     total_girls: parseInt(formData.get("total_girls") as string) || 0,
     total_pupils: parseInt(formData.get("total_pupils") as string) || 0,
@@ -110,12 +122,24 @@ export async function updateLessonPlan(id: string, formData: FormData) {
 
   const admin = createAdminClient();
 
+  const periodRaw = formData.get("period");
+  const period =
+    typeof periodRaw === "string" ? periodRaw.trim() : String(periodRaw ?? "").trim();
+
+  const durationRaw = formData.get("duration_minutes");
+  const duration_minutes = parseInt(String(durationRaw), 10);
+
+  if (!period) throw new Error("Period is required");
+  if (!Number.isFinite(duration_minutes) || duration_minutes < 1) {
+    throw new Error("Duration must be at least 1 minute");
+  }
+
   const data = {
     class_id: formData.get("class_id"),
     subject_id: formData.get("subject_id"),
     lesson_date: formData.get("lesson_date"),
-    period: parseInt(formData.get("period") as string),
-    duration_minutes: parseInt(formData.get("duration_minutes") as string),
+    period,
+    duration_minutes,
     total_boys: parseInt(formData.get("total_boys") as string) || 0,
     total_girls: parseInt(formData.get("total_girls") as string) || 0,
     total_pupils: parseInt(formData.get("total_pupils") as string) || 0,

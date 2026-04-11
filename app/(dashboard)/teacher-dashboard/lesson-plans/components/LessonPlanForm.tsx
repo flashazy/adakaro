@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
+  DURATION_PRESETS,
+  PERIOD_CHECKBOX_RANGE,
+  isConsecutivePeriods,
+  ordinalPeriod,
+  parsePeriodsFromDb,
+  periodsToStorageString,
+} from "@/lib/lesson-plan-period";
+import {
   createLessonPlan,
   getAttendancePresentByGender,
   getClassDemographics,
@@ -39,7 +47,7 @@ export interface LessonPlanFormInitialData {
   class_id: string;
   subject_id: string;
   lesson_date: string;
-  period: number;
+  period: string | number;
   duration_minutes: number;
   total_boys: number;
   total_girls: number;
@@ -64,8 +72,7 @@ interface LessonPlanFormProps {
   initialData?: LessonPlanFormInitialData | null;
 }
 
-const DURATIONS = [30, 40, 45, 60, 90, 120] as const;
-const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const DURATION_KINDS = ["40", "60", "80", "120", "custom"] as const;
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -115,6 +122,47 @@ export function LessonPlanForm({
   });
   const [loadingStats, setLoadingStats] = useState(false);
 
+  const [periodSelection, setPeriodSelection] = useState<number[]>(() =>
+    parsePeriodsFromDb(initialData?.period)
+  );
+
+  const [durationKind, setDurationKind] = useState<
+    (typeof DURATION_KINDS)[number]
+  >(() => {
+    const d = initialData?.duration_minutes ?? 40;
+    return DURATION_PRESETS.includes(
+      d as (typeof DURATION_PRESETS)[number]
+    )
+      ? (String(d) as "40" | "60" | "80" | "120")
+      : "custom";
+  });
+  const [customMinutes, setCustomMinutes] = useState(() => {
+    const d = initialData?.duration_minutes ?? 40;
+    return DURATION_PRESETS.includes(
+      d as (typeof DURATION_PRESETS)[number]
+    )
+      ? ""
+      : String(d);
+  });
+
+  const effectiveDurationMinutes =
+    durationKind === "custom"
+      ? Math.min(
+          999,
+          Math.max(1, parseInt(customMinutes.trim() || "40", 10) || 40)
+        )
+      : parseInt(durationKind, 10);
+
+  function togglePeriod(p: number) {
+    setPeriodSelection((prev) => {
+      const next = prev.includes(p)
+        ? prev.filter((x) => x !== p)
+        : [...prev, p].sort((a, b) => a - b);
+      if (next.length === 0) return prev;
+      return next;
+    });
+  }
+
   const classList = useMemo(() => dedupeClasses(classes), [classes]);
 
   /** Load pupil counts + present count together when class or date changes. */
@@ -153,7 +201,18 @@ export function LessonPlanForm({
       : createLessonPlan;
 
   return (
-    <form action={formAction} className="space-y-8">
+    <form
+      action={formAction}
+      className="space-y-8"
+      onSubmit={(e) => {
+        if (!isConsecutivePeriods(periodSelection)) {
+          e.preventDefault();
+          alert(
+            "Choose consecutive periods only (for example 1st and 2nd, not 1st and 3rd)."
+          );
+        }
+      }}
+    >
 
       <div className="grid grid-cols-1 gap-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 xl:grid-cols-[minmax(0,47fr)_minmax(0,53fr)] xl:items-stretch">
       {/* Section 1 — Basic info */}
@@ -230,41 +289,86 @@ export function LessonPlanForm({
                 </td>
                 <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
                   <label className="sr-only">Period</label>
-                  <select
+                  <input
+                    type="hidden"
                     name="period"
-                    required
-                    defaultValue={initialData?.period ?? 1}
-                    className="h-10 w-full min-w-[7rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                  >
-                    {PERIODS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                        {p === 1
-                          ? "st"
-                          : p === 2
-                            ? "nd"
-                            : p === 3
-                              ? "rd"
-                              : "th"}{" "}
-                        period
-                      </option>
-                    ))}
-                  </select>
+                    value={periodsToStorageString(periodSelection)}
+                    readOnly
+                  />
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {PERIOD_CHECKBOX_RANGE.slice(0, 5).map((p) => (
+                        <label
+                          key={p}
+                          className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-900 dark:text-white"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={periodSelection.includes(p)}
+                            onChange={() => togglePeriod(p)}
+                            className="rounded border-gray-300"
+                          />
+                          <span>{ordinalPeriod(p)}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {PERIOD_CHECKBOX_RANGE.slice(5, 10).map((p) => (
+                        <label
+                          key={p}
+                          className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-900 dark:text-white"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={periodSelection.includes(p)}
+                            onChange={() => togglePeriod(p)}
+                            className="rounded border-gray-300"
+                          />
+                          <span>{ordinalPeriod(p)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </td>
                 <td className="border-b border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
                   <label className="sr-only">Time (minutes)</label>
-                  <select
+                  <input
+                    type="hidden"
                     name="duration_minutes"
-                    required
-                    defaultValue={initialData?.duration_minutes ?? 40}
+                    value={effectiveDurationMinutes}
+                    readOnly
+                  />
+                  <select
+                    value={durationKind}
+                    onChange={(e) => {
+                      const v = e.target.value as (typeof DURATION_KINDS)[number];
+                      if (v === "custom" && !customMinutes.trim()) {
+                        setCustomMinutes(
+                          durationKind !== "custom" ? durationKind : "40"
+                        );
+                      }
+                      setDurationKind(v);
+                    }}
                     className="h-10 w-full min-w-[7rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                   >
-                    {DURATIONS.map((m) => (
-                      <option key={m} value={m}>
-                        {m} minutes
-                      </option>
-                    ))}
+                    <option value="40">40 minutes</option>
+                    <option value="60">60 minutes</option>
+                    <option value="80">80 minutes</option>
+                    <option value="120">120 minutes</option>
+                    <option value="custom">Custom</option>
                   </select>
+                  {durationKind === "custom" && (
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={customMinutes}
+                      onChange={(e) => setCustomMinutes(e.target.value)}
+                      className="mt-2 h-10 w-full min-w-[7rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                      placeholder="Minutes"
+                      aria-label="Custom duration in minutes"
+                    />
+                  )}
                 </td>
               </tr>
             </tbody>

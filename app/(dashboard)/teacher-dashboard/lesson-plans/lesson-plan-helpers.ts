@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatPeriodForDisplay } from "@/lib/lesson-plan-period";
 import type { LessonPlanPdfInput } from "@/lib/lesson-plan-pdf";
 import { parseTeachingLearningProcess } from "@/lib/teaching-learning-process";
 import {
@@ -59,7 +60,7 @@ export async function loadLessonPlanPdfInput(
     class_id: string;
     subject_id: string;
     lesson_date: string;
-    period: number;
+    period: string | number;
     duration_minutes: number;
     total_boys: number;
     total_girls: number;
@@ -126,7 +127,7 @@ export async function loadLessonPlanPdfInput(
       (subjectRow as { name: string } | null)?.name?.trim() || "—",
     className: (classRow as { name: string } | null)?.name?.trim() || "—",
     lessonDateDisplay: formatDateDisplay(plan.lesson_date),
-    periodLabel: periodLabel(plan.period),
+    periodLabel: formatPeriodForDisplay(plan.period),
     durationMinutes: plan.duration_minutes,
     registeredGirls: roster.girls,
     registeredBoys: roster.boys,

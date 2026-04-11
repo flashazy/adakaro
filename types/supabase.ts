@@ -924,7 +924,7 @@ export interface Database {
           class_id: string;
           subject_id: string;
           lesson_date: string;
-          period: number;
+          period: string;
           duration_minutes: number;
           total_boys: number;
           total_girls: number;
@@ -951,7 +951,7 @@ export interface Database {
           class_id: string;
           subject_id: string;
           lesson_date: string;
-          period: number;
+          period: string;
           duration_minutes: number;
           total_boys?: number;
           total_girls?: number;
@@ -977,7 +977,7 @@ export interface Database {
           class_id?: string;
           subject_id?: string;
           lesson_date?: string;
-          period?: number;
+          period?: string;
           duration_minutes?: number;
           total_boys?: number;
           total_girls?: number;

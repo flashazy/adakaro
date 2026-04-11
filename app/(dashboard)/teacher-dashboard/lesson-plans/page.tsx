@@ -1,27 +1,16 @@
 import { format } from "date-fns";
 import Link from "next/link";
+import { formatPeriodForDisplay } from "@/lib/lesson-plan-period";
 import { getLessonPlans } from "./actions";
 import { LessonPlanDeleteButton } from "./components/LessonPlanDeleteButton";
 
 type PlanRow = {
   id: string;
   lesson_date: string;
-  period: number;
+  period: string;
   classes?: { name: string } | null;
   subjects?: { name: string } | null;
 };
-
-function periodLabel(period: number): string {
-  const suffix =
-    period === 1
-      ? "st"
-      : period === 2
-        ? "nd"
-        : period === 3
-          ? "rd"
-          : "th";
-  return `${period}${suffix} Period`;
-}
 
 export default async function LessonPlansPage() {
   const lessonPlans = (await getLessonPlans()) as PlanRow[];
@@ -72,7 +61,9 @@ export default async function LessonPlansPage() {
                   <td className="px-4 py-3">
                     {plan.classes?.name ?? "-"}
                   </td>
-                  <td className="px-4 py-3">{periodLabel(plan.period)}</td>
+                  <td className="px-4 py-3">
+                    {formatPeriodForDisplay(plan.period)}
+                  </td>
                   <td className="space-x-2 px-4 py-3">
                     <Link
                       href={`/teacher-dashboard/lesson-plans/${plan.id}`}
