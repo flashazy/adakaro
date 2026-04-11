@@ -74,6 +74,8 @@ async function syncSubjectClassLinks(
   subjectId: string,
   classIds: string[]
 ): Promise<{ ok: false; error: string } | { ok: true }> {
+  const uniqueClassIds = [...new Set(classIds)];
+
   const { error: delErr } = await admin
     .from("subject_classes")
     .delete()
@@ -81,14 +83,46 @@ async function syncSubjectClassLinks(
   if (delErr) {
     return { ok: false, error: delErr.message || "Could not update class links." };
   }
-  if (classIds.length === 0) return { ok: true };
+  if (uniqueClassIds.length === 0) return { ok: true };
+
   const { error: insErr } = await (admin as Db).from("subject_classes").insert(
-    classIds.map((class_id) => ({ subject_id: subjectId, class_id }))
+    uniqueClassIds.map((class_id) => ({ subject_id: subjectId, class_id }))
   );
   if (insErr) {
+    const code = (insErr as { code?: string }).code;
+    if (code === "23505") {
+      return {
+        ok: false,
+        error: "This subject is already assigned to this class.",
+      };
+    }
     return { ok: false, error: insErr.message || "Could not save class links." };
   }
   return { ok: true };
+}
+
+/** When insert fails on unique (school_id, name), detect if a class in the form is already linked to that subject. */
+async function existingSubjectHasOverlapWithSelectedClasses(
+  admin: ReturnType<typeof createAdminClient>,
+  schoolId: string,
+  subjectName: string,
+  classIds: string[]
+): Promise<boolean> {
+  if (classIds.length === 0) return false;
+  const { data: row } = await admin
+    .from("subjects")
+    .select("id")
+    .eq("school_id", schoolId)
+    .eq("name", subjectName)
+    .maybeSingle();
+  if (!row) return false;
+  const subjectId = (row as { id: string }).id;
+  const { data: links } = await admin
+    .from("subject_classes")
+    .select("class_id")
+    .eq("subject_id", subjectId)
+    .in("class_id", classIds);
+  return (links ?? []).length > 0;
 }
 
 export async function fetchSubjectsForSchoolAdmin(
@@ -208,9 +242,17 @@ export async function createSubjectAction(
 
   if (error) {
     if (error.code === "23505") {
+      const overlap = await existingSubjectHasOverlapWithSelectedClasses(
+        admin,
+        schoolId,
+        name,
+        classIds
+      );
       return {
         ok: false,
-        error: "A subject with this name already exists for your school.",
+        error: overlap
+          ? "This subject is already assigned to this class."
+          : "A subject with this name already exists for your school.",
       };
     }
     return { ok: false, error: error.message || "Could not create subject." };

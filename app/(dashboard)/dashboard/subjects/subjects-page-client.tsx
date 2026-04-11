@@ -77,9 +77,11 @@ function SubjectClassPicker({
   defaultSelectedIds?: string[];
 }) {
   const listboxId = useId();
-  const [selectedIds, setSelectedIds] = useState<string[]>(() => [
-    ...(defaultSelectedIds ?? []),
-  ]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
+    (defaultSelectedIds ?? []).filter((id) =>
+      classOptions.some((c) => c.id === id)
+    )
+  );
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -124,7 +126,7 @@ function SubjectClassPicker({
   const canAddMore = classOptions.some((c) => !selectedSet.has(c.id));
 
   return (
-    <div className="mt-2 space-y-3">
+    <div ref={containerRef} className="relative z-10 mt-2 space-y-3 overflow-visible">
       {selectedIds.map((id) => (
         <input key={id} type="hidden" name="class_ids" value={id} />
       ))}
@@ -161,7 +163,7 @@ function SubjectClassPicker({
         )}
       </div>
 
-      <div ref={containerRef} className="relative">
+      <div className="relative">
         <p className="text-xs font-medium text-slate-600 dark:text-zinc-400">
           Add more classes
         </p>
@@ -185,7 +187,7 @@ function SubjectClassPicker({
           <div
             id={listboxId}
             role="listbox"
-            className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
+            className="absolute z-[110] mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
           >
             {available.length === 0 ? (
               <p className="px-3 py-2.5 text-sm text-slate-500 dark:text-zinc-400">
@@ -246,6 +248,17 @@ export function SubjectsPageClient({
       router.refresh();
     }
   }, [createState, updateState, deleteState, router]);
+
+  const closeEditModal = () => setEditing(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setEditing(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [editing]);
 
   const rows = initialRows;
 
@@ -429,14 +442,31 @@ export function SubjectsPageClient({
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-subject-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeEditModal();
+          }}
         >
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
-            <h3
-              id="edit-subject-title"
-              className="text-lg font-semibold text-slate-900 dark:text-white"
-            >
-              Edit subject
-            </h3>
+          <div
+            className="animate-subject-modal-in w-full max-w-md overflow-visible rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3
+                id="edit-subject-title"
+                className="text-lg font-semibold text-slate-900 dark:text-white"
+              >
+                Edit subject
+              </h3>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+                aria-label="Close dialog"
+              >
+                <X className="h-5 w-5" strokeWidth={2} />
+              </button>
+            </div>
             <form
               action={updateAction}
               className="mt-4 space-y-3"
@@ -495,7 +525,7 @@ export function SubjectsPageClient({
               <div className="flex flex-wrap justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setEditing(null)}
+                  onClick={closeEditModal}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
                   Cancel
