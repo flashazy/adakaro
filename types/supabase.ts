@@ -796,6 +796,39 @@ export interface Database {
           updated_at?: string;
         };
       };
+      teacher_documents: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          document_name: string;
+          file_url: string;
+          file_type: string;
+          file_size: number | null;
+          category: string;
+          uploaded_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          document_name: string;
+          file_url: string;
+          file_type: string;
+          file_size?: number | null;
+          category?: string;
+          uploaded_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          document_name?: string;
+          file_url?: string;
+          file_type?: string;
+          file_size?: number | null;
+          category?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       teacher_gradebook_assignments: {
         Row: {
           id: string;

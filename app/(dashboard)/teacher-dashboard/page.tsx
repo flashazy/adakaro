@@ -12,6 +12,7 @@ import { getDisplayName } from "@/lib/display-name";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { getTeacherClassOptions } from "./data";
 import { TeacherDashboardLocked } from "./components/TeacherDashboardLocked";
+import { TeacherDocuments } from "./components/TeacherDocuments";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,25 @@ export default async function TeacherDashboardPage() {
     .gte("lesson_date", today);
 
   const options = await getTeacherClassOptions(user.id);
+
+  const { data: teacherDocumentsRows } = await supabase
+    .from("teacher_documents")
+    .select(
+      "id, document_name, file_url, file_type, file_size, category, uploaded_at"
+    )
+    .eq("teacher_id", user.id)
+    .order("uploaded_at", { ascending: false });
+
+  const teacherDocuments =
+    (teacherDocumentsRows ?? []) as {
+      id: string;
+      document_name: string;
+      file_url: string;
+      file_type: string;
+      file_size: number | null;
+      category: string;
+      uploaded_at: string;
+    }[];
 
   const rows = options;
   const groupedByClass = (() => {
@@ -298,6 +318,8 @@ export default async function TeacherDashboardPage() {
             })}
           </div>
         </section>
+
+        <TeacherDocuments initialDocuments={teacherDocuments} />
       </div>
       <div className="print:hidden">
         <SmartFloatingScrollButton sectionIds={[]} />
