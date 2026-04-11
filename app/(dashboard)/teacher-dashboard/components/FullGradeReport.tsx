@@ -56,8 +56,8 @@ function scoreGradeForAssignment(
   return { scoreLabel, grade: letter, pct };
 }
 
-/** Tanzania C grade starts at 45%; below that is failing (D/F range for reporting). */
-const PASSING_MIN_PCT = 45;
+/** Tanzania: passing at ≥30% (grades D–A); below 30% is F (failing band for this report). */
+const PASSING_MIN_PCT = 30;
 
 type Cell = {
   id: string;
@@ -66,66 +66,99 @@ type Cell = {
   gender: string | null;
 };
 
-export interface SegmentStats {
-  combinedPct: string;
-  combinedLetter: string;
-  combinedCount: number;
-  boysPct: string;
-  boysLetter: string;
-  boysCount: number;
-  girlsPct: string;
-  girlsLetter: string;
-  girlsCount: number;
+export interface PassRateStats {
+  passRateLine: string;
+  boysLine: string;
+  girlsLine: string;
 }
 
-function emptySegmentStats(): SegmentStats {
+export interface FailRateStats {
+  failRateLine: string;
+  boysLine: string;
+  girlsLine: string;
+}
+
+function pctRate(part: number, whole: number): number {
+  if (whole <= 0) return 0;
+  return Math.round((part / whole) * 1000) / 10;
+}
+
+/** Letter for pass-rate % using Tanzania bands (same as student score %). */
+function passRateLineWithGrade(
+  part: number,
+  whole: number,
+  outOfNoun: "students" | "boys" | "girls"
+): string {
+  const r = pctRate(part, whole);
+  return `${r}% (${part} out of ${whole} ${outOfNoun}) (${tanzaniaLetterGrade(r)})`;
+}
+
+function emptyPassFailStats(): {
+  passing: PassRateStats;
+  failing: FailRateStats;
+} {
+  const empty = "— (0 out of 0 students)";
+  const emptyBoys = "— (0 out of 0 boys)";
+  const emptyGirls = "— (0 out of 0 girls)";
   return {
-    combinedPct: "—",
-    combinedLetter: "—",
-    combinedCount: 0,
-    boysPct: "0%",
-    boysLetter: "F",
-    boysCount: 0,
-    girlsPct: "0%",
-    girlsLetter: "F",
-    girlsCount: 0,
+    passing: {
+      passRateLine: empty,
+      boysLine: emptyBoys,
+      girlsLine: emptyGirls,
+    },
+    failing: {
+      failRateLine: empty,
+      boysLine: emptyBoys,
+      girlsLine: emptyGirls,
+    },
   };
 }
 
-function computeSegmentStats(cells: Cell[]): SegmentStats {
-  if (cells.length === 0) return emptySegmentStats();
+function computePassFailRates(cells: Cell[]): {
+  passing: PassRateStats;
+  failing: FailRateStats;
+} {
+  if (cells.length === 0) return emptyPassFailStats();
 
-  const mean = (arr: { pct: number }[]) =>
-    Math.round(
-      (arr.reduce((a, b) => a + b.pct, 0) / arr.length) * 10
-    ) / 10;
+  const total = cells.length;
+  const passingCells = cells.filter((c) => c.pct >= PASSING_MIN_PCT);
+  const failingCells = cells.filter((c) => c.pct < PASSING_MIN_PCT);
 
-  const pctLabel = (n: number | null) =>
-    n != null ? `${Math.round(n * 10) / 10}%` : "—";
+  const boysAll = cells.filter((c) => c.gender === "male");
+  const girlsAll = cells.filter((c) => c.gender === "female");
+  const boysPass = passingCells.filter((c) => c.gender === "male");
+  const girlsPass = passingCells.filter((c) => c.gender === "female");
+  const boysFail = failingCells.filter((c) => c.gender === "male");
+  const girlsFail = failingCells.filter((c) => c.gender === "female");
 
-  const boys = cells.filter((c) => c.gender === "male");
-  const girls = cells.filter((c) => c.gender === "female");
-  const combinedNum = mean(cells);
-  const boysNum = boys.length ? mean(boys) : null;
-  const girlsNum = girls.length ? mean(girls) : null;
+  const passCount = passingCells.length;
+  const failCount = failingCells.length;
 
-  return {
-    combinedPct: pctLabel(combinedNum),
-    combinedLetter: tanzaniaLetterGrade(combinedNum),
-    combinedCount: cells.length,
-    boysPct: boys.length === 0 ? "0%" : pctLabel(boysNum),
-    boysLetter:
-      boys.length === 0 ? "F" : boysNum != null ? tanzaniaLetterGrade(boysNum) : "—",
-    boysCount: boys.length,
-    girlsPct: girls.length === 0 ? "0%" : pctLabel(girlsNum),
-    girlsLetter:
-      girls.length === 0
-        ? "F"
-        : girlsNum != null
-          ? tanzaniaLetterGrade(girlsNum)
-          : "—",
-    girlsCount: girls.length,
+  const passing: PassRateStats = {
+    passRateLine: passRateLineWithGrade(passCount, total, "students"),
+    boysLine:
+      boysAll.length > 0
+        ? passRateLineWithGrade(boysPass.length, boysAll.length, "boys")
+        : "— (0 out of 0 boys)",
+    girlsLine:
+      girlsAll.length > 0
+        ? passRateLineWithGrade(girlsPass.length, girlsAll.length, "girls")
+        : "— (0 out of 0 girls)",
   };
+
+  const failing: FailRateStats = {
+    failRateLine: `${pctRate(failCount, total)}% (${failCount} out of ${total} students)`,
+    boysLine:
+      boysAll.length > 0
+        ? `${pctRate(boysFail.length, boysAll.length)}% (${boysFail.length} out of ${boysAll.length} boys)`
+        : "— (0 out of 0 boys)",
+    girlsLine:
+      girlsAll.length > 0
+        ? `${pctRate(girlsFail.length, girlsAll.length)}% (${girlsFail.length} out of ${girlsAll.length} girls)`
+        : "— (0 out of 0 girls)",
+  };
+
+  return { passing, failing };
 }
 
 function computeReportStatsForAssignment(
@@ -142,8 +175,7 @@ function computeReportStatsForAssignment(
     cells.push({ id: s.id, pct: p, letter, gender: s.gender });
   }
 
-  const passingCells = cells.filter((c) => c.pct >= PASSING_MIN_PCT);
-  const failingCells = cells.filter((c) => c.pct < PASSING_MIN_PCT);
+  const { passing, failing } = computePassFailRates(cells);
 
   const dist = { A: 0, B: 0, C: 0, D: 0, F: 0 };
   for (const c of cells) {
@@ -156,8 +188,8 @@ function computeReportStatsForAssignment(
   }
 
   return {
-    passing: computeSegmentStats(passingCells),
-    failing: computeSegmentStats(failingCells),
+    passing,
+    failing,
     dist,
   };
 }
@@ -215,50 +247,66 @@ function buildStudentRanking(
   });
 }
 
-function formatSegmentLines(prefix: string, seg: SegmentStats): string[] {
+function formatPassingLines(prefix: string, seg: PassRateStats): string[] {
   return [
     prefix,
-    `Combined average: ${seg.combinedPct} (Grade: ${seg.combinedLetter}) — ${seg.combinedCount} students`,
-    `Boys average: ${seg.boysPct} (Grade: ${seg.boysLetter}) — ${seg.boysCount} boys`,
-    `Girls average: ${seg.girlsPct} (Grade: ${seg.girlsLetter}) — ${seg.girlsCount} girls`,
+    `Pass rate: ${seg.passRateLine}`,
+    `Boys pass rate: ${seg.boysLine}`,
+    `Girls pass rate: ${seg.girlsLine}`,
   ];
 }
 
-function SegmentStatsBlock({
-  title,
-  subtitle,
-  seg,
-}: {
-  title: string;
-  subtitle: string;
-  seg: SegmentStats;
-}) {
+function formatFailingLines(prefix: string, seg: FailRateStats): string[] {
+  return [
+    prefix,
+    `Fail rate: ${seg.failRateLine}`,
+    `Boys fail rate: ${seg.boysLine}`,
+    `Girls fail rate: ${seg.girlsLine}`,
+  ];
+}
+
+function PassRateBlock({ seg }: { seg: PassRateStats }) {
   return (
     <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-zinc-600 dark:bg-zinc-950/50">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-zinc-300">
-        {title}
+        Passing students
       </p>
       <p className="mt-0.5 text-[11px] text-slate-500 dark:text-zinc-500">
-        {subtitle}
+        Score ≥ 30%
       </p>
       <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-slate-800 dark:text-zinc-200">
         <p>
-          <span className="font-medium">Combined average:</span> {seg.combinedPct}{" "}
-          <span className="text-slate-600 dark:text-zinc-400">
-            (Grade: {seg.combinedLetter}) — {seg.combinedCount} students
-          </span>
+          <span className="font-medium">Pass rate:</span> {seg.passRateLine}
         </p>
         <p>
-          <span className="font-medium">Boys average:</span> {seg.boysPct}{" "}
-          <span className="text-slate-600 dark:text-zinc-400">
-            (Grade: {seg.boysLetter}) — {seg.boysCount} boys
-          </span>
+          <span className="font-medium">Boys pass rate:</span> {seg.boysLine}
         </p>
         <p>
-          <span className="font-medium">Girls average:</span> {seg.girlsPct}{" "}
-          <span className="text-slate-600 dark:text-zinc-400">
-            (Grade: {seg.girlsLetter}) — {seg.girlsCount} girls
-          </span>
+          <span className="font-medium">Girls pass rate:</span> {seg.girlsLine}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function FailRateBlock({ seg }: { seg: FailRateStats }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-zinc-600 dark:bg-zinc-950/50">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-zinc-300">
+        Failing students
+      </p>
+      <p className="mt-0.5 text-[11px] text-slate-500 dark:text-zinc-500">
+        Score &lt; 30%
+      </p>
+      <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-slate-800 dark:text-zinc-200">
+        <p>
+          <span className="font-medium">Fail rate:</span> {seg.failRateLine}
+        </p>
+        <p>
+          <span className="font-medium">Boys fail rate:</span> {seg.boysLine}
+        </p>
+        <p>
+          <span className="font-medium">Girls fail rate:</span> {seg.girlsLine}
         </p>
       </div>
     </div>
@@ -281,13 +329,13 @@ function buildPlainTextReport(
     `Assignment: ${assignment.title} (max ${assignment.max_score})`,
     "",
     "CLASS STATISTICS (this assignment)",
-    ...formatSegmentLines(
-      "PASSING STUDENTS (score ≥ 45%)",
+    ...formatPassingLines(
+      "PASSING STUDENTS (score ≥ 30%)",
       stats.passing
     ),
     "",
-    ...formatSegmentLines(
-      "FAILING STUDENTS (score < 45%)",
+    ...formatFailingLines(
+      "FAILING STUDENTS (score < 30%)",
       stats.failing
     ),
     "",
@@ -363,8 +411,7 @@ export function FullGradeReport({
   const stats = useMemo(() => {
     if (!selectedAssignment) {
       return {
-        passing: emptySegmentStats(),
-        failing: emptySegmentStats(),
+        ...emptyPassFailStats(),
         dist: { A: 0, B: 0, C: 0, D: 0, F: 0 },
       };
     }
@@ -588,16 +635,8 @@ export function FullGradeReport({
                         </span>
                       </h3>
                       <div className="mt-3 space-y-3">
-                        <SegmentStatsBlock
-                          title="Passing students"
-                          subtitle="Score ≥ 45%"
-                          seg={stats.passing}
-                        />
-                        <SegmentStatsBlock
-                          title="Failing students"
-                          subtitle="Score &lt; 45%"
-                          seg={stats.failing}
-                        />
+                        <PassRateBlock seg={stats.passing} />
+                        <FailRateBlock seg={stats.failing} />
                         <div className="rounded-md border border-dashed border-slate-200 bg-white/80 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950/30">
                           <p className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-zinc-300">
                             Grade distribution (all scored)
@@ -624,7 +663,7 @@ export function FullGradeReport({
                           {ranking.map((r) => (
                             <li
                               key={`${r.rank}-${r.name}`}
-                              className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm text-slate-800 dark:text-zinc-200"
+                              className="flex flex-nowrap items-baseline gap-x-2 overflow-x-auto text-sm text-slate-800 dark:text-zinc-200"
                             >
                               <span className="w-7 shrink-0 tabular-nums font-semibold text-slate-600 dark:text-zinc-400">
                                 {r.rank}.

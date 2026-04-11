@@ -3,16 +3,17 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-export interface SegmentStatsPdf {
-  combinedPct: string;
-  combinedLetter: string;
-  combinedCount: number;
-  boysPct: string;
-  boysLetter: string;
-  boysCount: number;
-  girlsPct: string;
-  girlsLetter: string;
-  girlsCount: number;
+/** Lines include Tanzania letter after the count, e.g. `80% (4 out of 5 students) (A)`. */
+export interface PassRateStatsPdf {
+  passRateLine: string;
+  boysLine: string;
+  girlsLine: string;
+}
+
+export interface FailRateStatsPdf {
+  failRateLine: string;
+  boysLine: string;
+  girlsLine: string;
 }
 
 export interface RankingRowPdf {
@@ -33,8 +34,8 @@ export interface FullGradeReportPdfInput {
   /** Selected assignment only */
   assignmentTitle: string;
   assignmentMaxScore: number;
-  passing: SegmentStatsPdf;
-  failing: SegmentStatsPdf;
+  passing: PassRateStatsPdf;
+  failing: FailRateStatsPdf;
   dist: { A: number; B: number; C: number; D: number; F: number };
   ranking: RankingRowPdf[];
   rows: {
@@ -47,13 +48,13 @@ export interface FullGradeReportPdfInput {
   }[];
 }
 
-function writeSegmentStats(
+function writePassRates(
   doc: jsPDF,
   margin: number,
   y: number,
   title: string,
   subtitle: string,
-  seg: SegmentStatsPdf
+  seg: PassRateStatsPdf
 ): number {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
@@ -67,9 +68,40 @@ function writeSegmentStats(
   y += 4.5;
   doc.setFontSize(9);
   const lines = [
-    `Combined average: ${seg.combinedPct} (Grade: ${seg.combinedLetter}) — ${seg.combinedCount} students`,
-    `Boys average: ${seg.boysPct} (Grade: ${seg.boysLetter}) — ${seg.boysCount} boys`,
-    `Girls average: ${seg.girlsPct} (Grade: ${seg.girlsLetter}) — ${seg.girlsCount} girls`,
+    `Pass rate: ${seg.passRateLine}`,
+    `Boys pass rate: ${seg.boysLine}`,
+    `Girls pass rate: ${seg.girlsLine}`,
+  ];
+  for (const line of lines) {
+    doc.text(line, margin, y);
+    y += 4;
+  }
+  return y + 2;
+}
+
+function writeFailRates(
+  doc: jsPDF,
+  margin: number,
+  y: number,
+  title: string,
+  subtitle: string,
+  seg: FailRateStatsPdf
+): number {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text(title, margin, y);
+  y += 4;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(80, 80, 80);
+  doc.text(subtitle, margin, y);
+  doc.setTextColor(0, 0, 0);
+  y += 4.5;
+  doc.setFontSize(9);
+  const lines = [
+    `Fail rate: ${seg.failRateLine}`,
+    `Boys fail rate: ${seg.boysLine}`,
+    `Girls fail rate: ${seg.girlsLine}`,
   ];
   for (const line of lines) {
     doc.text(line, margin, y);
@@ -116,20 +148,20 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
   doc.text("Class statistics (this assignment)", margin, y);
   y += 6;
 
-  y = writeSegmentStats(
+  y = writePassRates(
     doc,
     margin,
     y,
     "Passing students",
-    "Score >= 45%",
+    "Score >= 30%",
     data.passing
   );
-  y = writeSegmentStats(
+  y = writeFailRates(
     doc,
     margin,
     y,
     "Failing students",
-    "Score < 45%",
+    "Score < 30%",
     data.failing
   );
 
