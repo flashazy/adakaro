@@ -1047,6 +1047,70 @@ export interface Database {
           updated_at?: string;
         };
       };
+      report_cards: {
+        Row: {
+          id: string;
+          student_id: string;
+          class_id: string;
+          school_id: string;
+          teacher_id: string;
+          term: string;
+          academic_year: string;
+          status:
+            | "draft"
+            | "pending_review"
+            | "approved"
+            | "changes_requested";
+          submitted_at: string | null;
+          reviewed_by: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          admin_note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          class_id: string;
+          school_id: string;
+          teacher_id: string;
+          term?: string;
+          academic_year?: string;
+          status?:
+            | "draft"
+            | "pending_review"
+            | "approved"
+            | "changes_requested";
+          submitted_at?: string | null;
+          reviewed_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          admin_note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          student_id?: string;
+          class_id?: string;
+          school_id?: string;
+          teacher_id?: string;
+          term?: string;
+          academic_year?: string;
+          status?:
+            | "draft"
+            | "pending_review"
+            | "approved"
+            | "changes_requested";
+          submitted_at?: string | null;
+          reviewed_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          admin_note?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       teacher_report_card_comments: {
         Row: {
           id: string;
@@ -1059,6 +1123,10 @@ export interface Database {
           status: "draft" | "submitted" | "approved";
           created_at: string;
           updated_at: string;
+          term: string;
+          report_card_id: string;
+          score_percent: number | null;
+          letter_grade: string | null;
         };
         Insert: {
           id?: string;
@@ -1071,6 +1139,10 @@ export interface Database {
           status?: "draft" | "submitted" | "approved";
           created_at?: string;
           updated_at?: string;
+          term?: string;
+          report_card_id: string;
+          score_percent?: number | null;
+          letter_grade?: string | null;
         };
         Update: {
           teacher_id?: string;
@@ -1081,7 +1153,12 @@ export interface Database {
           comment?: string | null;
           status?: "draft" | "submitted" | "approved";
           updated_at?: string;
+          term?: string;
+          report_card_id?: string;
+          score_percent?: number | null;
+          letter_grade?: string | null;
         };
+        Relationships: [];
       };
     };
     Views: {
