@@ -135,6 +135,19 @@ export function TeacherDocuments({
     return () => window.removeEventListener("keydown", onKey);
   }, [imagePreview]);
 
+  /** Smooth-scroll when landing on dashboard with #my-documents (e.g. from another teacher route). */
+  useEffect(() => {
+    if (typeof window === "undefined" || window.location.hash !== "#my-documents") {
+      return;
+    }
+    const el = document.getElementById("my-documents");
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, []);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return documents.filter((d) => {
@@ -252,7 +265,10 @@ export function TeacherDocuments({
   return (
     <>
       <Toaster richColors position="top-center" />
-      <section className="mb-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <section
+        id="my-documents"
+        className="mb-6 scroll-mt-28 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">

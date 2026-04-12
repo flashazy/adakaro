@@ -81,6 +81,19 @@ export function TeacherDashboardHeader({
     ].join(" ");
   };
 
+  const onMyDocumentsNavClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (
+      pathname === "/teacher-dashboard" ||
+      pathname === "/teacher-dashboard/"
+    ) {
+      e.preventDefault();
+      document
+        .getElementById("my-documents")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.history.replaceState(null, "", "#my-documents");
+    }
+  };
+
   const userAvatar = (
     <div className="flex h-10 w-10 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100 dark:border-zinc-600 dark:bg-zinc-800">
       {avatarUrl?.trim() ? (
@@ -188,6 +201,13 @@ export function TeacherDashboardHeader({
               </Link>
             ))}
             <Link
+              href="/teacher-dashboard#my-documents"
+              onClick={onMyDocumentsNavClick}
+              className={navLinkClass("/teacher-dashboard/my-documents")}
+            >
+              My Documents
+            </Link>
+            <Link
               href="/"
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-zinc-800"
             >
@@ -280,6 +300,13 @@ export function TeacherDashboardHeader({
               {label}
             </Link>
           ))}
+          <Link
+            href="/teacher-dashboard#my-documents"
+            onClick={onMyDocumentsNavClick}
+            className={navLinkClass("/teacher-dashboard/my-documents")}
+          >
+            My Documents
+          </Link>
           <Link
             href="/"
             className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-zinc-800"
