@@ -63,7 +63,7 @@ export async function upsertReportCardComment(input: {
       ? letterGradeFromPercent(input.scorePercent)
       : null;
 
-  const { data: existing } = await admin
+  const { data: existing, error: existingLookupErr } = await admin
     .from("teacher_report_card_comments")
     .select("id")
     .eq("teacher_id", user.id)
@@ -73,9 +73,16 @@ export async function upsertReportCardComment(input: {
     .eq("term", input.term)
     .maybeSingle();
 
+  if (existingLookupErr) {
+    console.error(
+      "[upsertReportCardComment] comment lookup failed",
+      existingLookupErr
+    );
+    return { ok: false, error: existingLookupErr.message };
+  }
+
   const payload = {
     teacher_id: user.id,
-    school_id: input.schoolId,
     student_id: input.studentId,
     subject: input.subject,
     academic_year: input.academicYear,
@@ -87,25 +94,25 @@ export async function upsertReportCardComment(input: {
     status: "draft" as const,
   };
 
-  const error = existing
-    ? (
-        await admin
-          .from("teacher_report_card_comments")
-          .update({
-            comment: payload.comment,
-            score_percent: payload.score_percent,
-            letter_grade: payload.letter_grade,
-            report_card_id: rc.id,
-          })
-          .eq("id", (existing as { id: string }).id)
-      ).error
-    : (
-        await admin.from("teacher_report_card_comments").insert(
-          payload as Database["public"]["Tables"]["teacher_report_card_comments"]["Insert"]
-        )
-      ).error;
+  const mutation = existing
+    ? await admin
+        .from("teacher_report_card_comments")
+        .update({
+          comment: payload.comment,
+          score_percent: payload.score_percent,
+          letter_grade: payload.letter_grade,
+          report_card_id: rc.id,
+        })
+        .eq("id", (existing as { id: string }).id)
+    : await admin.from("teacher_report_card_comments").insert(
+        payload as Database["public"]["Tables"]["teacher_report_card_comments"]["Insert"]
+      );
 
-  if (error) return { ok: false, error: error.message };
+  const error = mutation.error;
+  if (error) {
+    console.error("[upsertReportCardComment] insert/update failed", error);
+    return { ok: false, error: error.message };
+  }
   revalidatePath("/teacher-dashboard/report-cards");
   return { ok: true };
 }

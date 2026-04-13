@@ -1148,7 +1148,6 @@ export interface Database {
         Row: {
           id: string;
           teacher_id: string;
-          school_id: string;
           student_id: string;
           subject: string;
           academic_year: string;
@@ -1164,7 +1163,6 @@ export interface Database {
         Insert: {
           id?: string;
           teacher_id: string;
-          school_id: string;
           student_id: string;
           subject?: string;
           academic_year?: string;
@@ -1179,7 +1177,6 @@ export interface Database {
         };
         Update: {
           teacher_id?: string;
-          school_id?: string;
           student_id?: string;
           subject?: string;
           academic_year?: string;

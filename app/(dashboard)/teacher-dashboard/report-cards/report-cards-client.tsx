@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   adminApproveReportCard,
   adminRequestChangesReportCard,
@@ -22,6 +23,24 @@ import {
   downloadBulkReportCardsPdf,
   downloadReportCardPdf,
 } from "./components/ReportCardPDF";
+
+type DraftRow = { comment: string; score: string };
+
+function emptyDraftRow(): DraftRow {
+  return { comment: "", score: "" };
+}
+
+function getDraftRow(
+  store: Record<string, Record<string, DraftRow>>,
+  studentId: string,
+  subject: string
+): DraftRow {
+  return store[studentId]?.[subject] ?? emptyDraftRow();
+}
+
+function draftRowsEqual(a: DraftRow, b: DraftRow): boolean {
+  return a.comment === b.comment && a.score === b.score;
+}
 
 function statusLabel(
   s: string | null
@@ -56,10 +75,11 @@ function buildSubjectRows(
     : [...new Set(student.comments.map((c) => c.subject))];
   return list.map((subject) => {
     const c = bySub.get(subject);
-    const pct =
-      c?.scorePercent != null && Number.isFinite(c.scorePercent)
-        ? `${Math.round(c.scorePercent * 10) / 10}%`
-        : "—";
+    const pctNum =
+      c?.scorePercent != null ? Number(c.scorePercent) : Number.NaN;
+    const pct = Number.isFinite(pctNum)
+      ? `${Math.round(pctNum * 10) / 10}%`
+      : "—";
     const g = c?.letterGrade?.trim() || "—";
     return {
       subject,
@@ -146,12 +166,39 @@ export function ReportCardsPageClient({
   const [studentId, setStudentId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  const [drafts, setDrafts] = useState<
-    Record<string, Record<string, { comment: string; score: string }>>
+  const [drafts, setDrafts] = useState<Record<string, Record<string, DraftRow>>>(
+    {}
+  );
+  const [baselineDrafts, setBaselineDrafts] = useState<
+    Record<string, Record<string, DraftRow>>
   >({});
+
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
+  const baselineDraftsRef = useRef(baselineDrafts);
+  baselineDraftsRef.current = baselineDrafts;
+  const autosaveTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
+
+  const clearAutosaveTimers = useCallback(() => {
+    for (const k of Object.keys(autosaveTimersRef.current)) {
+      clearTimeout(autosaveTimersRef.current[k]);
+      delete autosaveTimersRef.current[k];
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => clearAutosaveTimers();
+  }, [clearAutosaveTimers]);
+
+  useEffect(() => {
+    clearAutosaveTimers();
+  }, [studentId, clearAutosaveTimers]);
 
   const load = useCallback(async () => {
     if (!classId) return;
+    clearAutosaveTimers();
     setLoading(true);
     try {
       const subs = await getSubjectsForClass(classId);
@@ -164,7 +211,7 @@ export function ReportCardsPageClient({
       }
       setStudents(res.students);
       setAttendanceByStudent(res.attendanceByStudent);
-      const d: typeof drafts = {};
+      const d: Record<string, Record<string, DraftRow>> = {};
       for (const s of res.students) {
         d[s.studentId] = {};
         for (const c of s.comments) {
@@ -176,6 +223,7 @@ export function ReportCardsPageClient({
         }
       }
       setDrafts(d);
+      setBaselineDrafts(JSON.parse(JSON.stringify(d)) as typeof d);
       setStudentId((prev) => {
         if (!res.students.length) return null;
         if (prev && res.students.some((x) => x.studentId === prev)) return prev;
@@ -184,7 +232,7 @@ export function ReportCardsPageClient({
     } finally {
       setLoading(false);
     }
-  }, [classId, term, academicYear]);
+  }, [classId, term, academicYear, clearAutosaveTimers]);
 
   useEffect(() => {
     void load();
@@ -221,28 +269,73 @@ export function ReportCardsPageClient({
     attendanceByStudent,
   ]);
 
-  const saveSubject = async (subject: string) => {
-    if (!selectedStudent || !selectedClass) return;
-    const row = drafts[selectedStudent.studentId]?.[subject] ?? {
-      comment: "",
-      score: "",
-    };
-    const scoreNum = row.score.trim() === "" ? null : Number(row.score);
-    const res = await upsertReportCardComment({
-      studentId: selectedStudent.studentId,
-      classId: selectedClass.classId,
+  const saveSubject = useCallback(
+    async (subject: string, options?: { silent?: boolean }) => {
+      if (!selectedStudent || !selectedClass) return;
+      const row = getDraftRow(
+        draftsRef.current,
+        selectedStudent.studentId,
+        subject
+      );
+      const scoreNum = row.score.trim() === "" ? null : Number(row.score);
+      const res = await upsertReportCardComment({
+        studentId: selectedStudent.studentId,
+        classId: selectedClass.classId,
+        schoolId,
+        term,
+        academicYear,
+        subject,
+        comment: row.comment.trim() || null,
+        scorePercent:
+          scoreNum != null && Number.isFinite(scoreNum) ? scoreNum : null,
+      });
+      if (!res.ok) {
+        toast.error(res.error);
+      } else if (!options?.silent) {
+        toast.success("Saved");
+      }
+      await load();
+    },
+    [
+      selectedStudent,
+      selectedClass,
       schoolId,
       term,
       academicYear,
-      subject,
-      comment: row.comment.trim() || null,
-      scorePercent:
-        scoreNum != null && Number.isFinite(scoreNum) ? scoreNum : null,
-    });
-    if (!res.ok) toast.error(res.error);
-    else toast.success("Saved");
-    await load();
-  };
+      load,
+    ]
+  );
+
+  const scheduleAutosave = useCallback(
+    (subject: string) => {
+      if (!selectedStudent) return;
+      const sid = selectedStudent.studentId;
+      const key = `${sid}:${subject}`;
+      const prev = autosaveTimersRef.current[key];
+      if (prev) clearTimeout(prev);
+      autosaveTimersRef.current[key] = setTimeout(() => {
+        delete autosaveTimersRef.current[key];
+        const cur = getDraftRow(draftsRef.current, sid, subject);
+        const base = getDraftRow(baselineDraftsRef.current, sid, subject);
+        if (!draftRowsEqual(cur, base)) {
+          void saveSubject(subject, { silent: true });
+        }
+      }, 2000);
+    },
+    [selectedStudent, saveSubject]
+  );
+
+  const hasUnsavedForSelected = useMemo(() => {
+    if (!selectedStudent) return false;
+    const subs = subjects.length > 0 ? subjects : ["General"];
+    return subs.some(
+      (subject) =>
+        !draftRowsEqual(
+          getDraftRow(drafts, selectedStudent.studentId, subject),
+          getDraftRow(baselineDrafts, selectedStudent.studentId, subject)
+        )
+    );
+  }, [drafts, baselineDrafts, selectedStudent, subjects]);
 
   const applyTemplate = (template: string) => {
     if (!selectedStudent || !subjects[0]) return;
@@ -358,8 +451,9 @@ export function ReportCardsPageClient({
                 key={t}
                 type="button"
                 onClick={() => {
-                  if (!selectedStudent) return;
+                  if (!selectedStudent || !subjects[0]) return;
                   applyTemplate(t);
+                  scheduleAutosave(subjects[0]);
                   toast.message("Template inserted for first subject — edit as needed.");
                 }}
                 className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
@@ -373,6 +467,9 @@ export function ReportCardsPageClient({
 
       {selectedStudent && selectedClass && (
         <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-zinc-700 dark:bg-zinc-900/30">
+          <p className="text-xs text-slate-500 dark:text-zinc-500">
+            Each subject auto-saves 2 seconds after you stop typing (or use Save).
+          </p>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-base font-semibold text-slate-900 dark:text-white">
               {selectedStudent.fullName}
@@ -380,7 +477,16 @@ export function ReportCardsPageClient({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setPreviewOpen(true)}
+                onClick={() => {
+                  if (hasUnsavedForSelected) {
+                    const proceed = window.confirm(
+                      "You have unsaved changes. Save before previewing?\n\n" +
+                        "Click OK to preview with last saved data, or Cancel to stay and save."
+                    );
+                    if (!proceed) return;
+                  }
+                  setPreviewOpen(true);
+                }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
               >
                 Preview report card
@@ -419,19 +525,37 @@ export function ReportCardsPageClient({
           </div>
 
           {(subjects.length > 0 ? subjects : ["General"]).map((subject) => {
-            const row =
-              drafts[selectedStudent.studentId]?.[subject] ?? {
-                comment: "",
-                score: "",
-              };
+            const row = getDraftRow(
+              drafts,
+              selectedStudent.studentId,
+              subject
+            );
+            const baselineRow = getDraftRow(
+              baselineDrafts,
+              selectedStudent.studentId,
+              subject
+            );
+            const isDirty = !draftRowsEqual(row, baselineRow);
             return (
               <div
                 key={subject}
-                className="rounded-lg border border-slate-200 bg-white p-3 dark:border-zinc-600 dark:bg-zinc-950"
+                className={cn(
+                  "rounded-lg border bg-white p-3 dark:bg-zinc-950",
+                  isDirty
+                    ? "border-amber-400 ring-2 ring-amber-300/60 dark:border-amber-600 dark:ring-amber-700/50"
+                    : "border-slate-200 dark:border-zinc-600"
+                )}
               >
-                <p className="text-sm font-medium text-slate-800 dark:text-zinc-200">
-                  {subject}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                    {subject}
+                  </p>
+                  {isDirty ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                      Unsaved
+                    </span>
+                  ) : null}
+                </div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-3">
                   <label className="text-sm sm:col-span-1">
                     <span className="text-slate-600 dark:text-zinc-400">
@@ -443,7 +567,7 @@ export function ReportCardsPageClient({
                       max={100}
                       step={0.1}
                       value={row.score}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setDrafts((prev) => ({
                           ...prev,
                           [selectedStudent.studentId]: {
@@ -453,8 +577,9 @@ export function ReportCardsPageClient({
                               score: e.target.value,
                             },
                           },
-                        }))
-                      }
+                        }));
+                        scheduleAutosave(subject);
+                      }}
                       className="mt-1 w-full rounded border border-slate-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-900"
                     />
                   </label>
@@ -464,7 +589,7 @@ export function ReportCardsPageClient({
                     </span>
                     <textarea
                       value={row.comment}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setDrafts((prev) => ({
                           ...prev,
                           [selectedStudent.studentId]: {
@@ -474,8 +599,9 @@ export function ReportCardsPageClient({
                               comment: e.target.value,
                             },
                           },
-                        }))
-                      }
+                        }));
+                        scheduleAutosave(subject);
+                      }}
                       rows={2}
                       className="mt-1 w-full rounded border border-slate-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-900"
                     />

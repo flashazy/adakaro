@@ -269,15 +269,22 @@ export async function loadStudentsReportData(
       report_card_id: string;
       subject: string;
       comment: string | null;
-      score_percent: number | null;
+      score_percent: number | string | null;
       letter_grade: string | null;
     }[]) {
+      const rawPct = row.score_percent;
+      const parsed =
+        rawPct != null && String(rawPct).trim() !== ""
+          ? Number(rawPct)
+          : null;
+      const scorePercent =
+        parsed != null && Number.isFinite(parsed) ? parsed : null;
       const list = commentsByCard.get(row.report_card_id) ?? [];
       list.push({
         id: row.id,
         subject: row.subject,
         comment: row.comment,
-        scorePercent: row.score_percent,
+        scorePercent,
         letterGrade: row.letter_grade,
       });
       commentsByCard.set(row.report_card_id, list);
@@ -333,7 +340,6 @@ export async function loadStudentsReportData(
 }
 
 export async function ensureReportCard(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: Db,
   userId: string,
   studentId: string,
@@ -342,15 +348,35 @@ export async function ensureReportCard(
   term: string,
   academicYear: string
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const { data: existing } = await admin
+  const { data: existing, error: selectErr } = await admin
     .from("report_cards")
-    .select("id")
+    .select("id, class_id")
     .eq("student_id", studentId)
     .eq("term", term)
     .eq("academic_year", academicYear)
     .maybeSingle();
 
-  if (existing) return { ok: true, id: (existing as { id: string }).id };
+  if (selectErr) {
+    return { ok: false, error: selectErr.message };
+  }
+
+  if (existing) {
+    const ex = existing as { id: string; class_id: string };
+    /**
+     * `loadStudentsReportData` filters cards by `class_id`. If the student moved
+     * class (or legacy rows had a stale class_id), saves would attach comments
+     * to a row that never appeared in the UI. Align `class_id` with the class
+     * the teacher is editing from.
+     */
+    if (ex.class_id !== classId) {
+      const { error: alignErr } = await admin
+        .from("report_cards")
+        .update({ class_id: classId })
+        .eq("id", ex.id);
+      if (alignErr) return { ok: false, error: alignErr.message };
+    }
+    return { ok: true, id: ex.id };
+  }
 
   const { data: created, error } = await admin
     .from("report_cards")
