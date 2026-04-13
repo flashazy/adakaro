@@ -455,33 +455,49 @@ export function FullGradeReport({
   }, [meta, selectedAssignment, students, classDraft, stats, ranking]);
 
   const handlePrint = useCallback(() => {
-    const el = reportRef.current;
-    if (!el) return;
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Grade report</title>`
-    );
-    w.document.write(
-      `<style>
-        body{font-family:system-ui,-apple-system,sans-serif;padding:24px;color:#111;background:#fff;max-width:900px;margin:0 auto;}
-        h1{font-size:20px;margin:0 0 4px;font-weight:700;text-align:center;}
-        .meta{font-size:13px;margin-bottom:16px;line-height:1.5;text-align:center;}
-        .box{border:1px solid #ccc;border-radius:8px;padding:16px;margin-bottom:20px;background:#fafafa;}
-        .box h2{font-size:14px;margin:0 0 10px;font-weight:700;}
-        table{width:100%;border-collapse:collapse;font-size:11px;}
-        th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top;}
-        th{background:#334155;color:#fff;font-weight:600;}
-        tr:nth-child(even){background:#f8fafc;}
-        @media print{body{padding:12px;}}
-      </style></head><body>`
-    );
-    w.document.write(el.innerHTML);
-    w.document.write(`</body></html>`);
-    w.document.close();
-    w.focus();
-    w.print();
-    w.close();
+    if (!reportRef.current) return;
+
+    document.getElementById("full-grade-report-print-styles")?.remove();
+
+    const style = document.createElement("style");
+    style.id = "full-grade-report-print-styles";
+    style.textContent = `
+      @media print {
+        html, body { background: #fff !important; }
+        body * { visibility: hidden !important; }
+        #full-grade-report-print-surface,
+        #full-grade-report-print-surface * {
+          visibility: visible !important;
+        }
+        #full-grade-report-print-surface {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          max-width: none !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+
+    const removeStyle = () => {
+      style.remove();
+    };
+
+    const onAfterPrint = () => {
+      removeStyle();
+      window.removeEventListener("afterprint", onAfterPrint);
+    };
+
+    window.addEventListener("afterprint", onAfterPrint);
+    window.print();
+    /* Safari / older browsers may not fire afterprint; avoid leaving styles behind */
+    window.setTimeout(() => {
+      if (document.getElementById("full-grade-report-print-styles")) {
+        removeStyle();
+        window.removeEventListener("afterprint", onAfterPrint);
+      }
+    }, 2000);
   }, []);
 
   const handlePdf = useCallback(() => {

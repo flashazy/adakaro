@@ -113,6 +113,106 @@ body {
     background-color: #dcfce7 !important;
     border: 1px solid #86efac !important;
   }
+
+  /*
+   * Teacher lesson plan view — align with lib/lesson-plan-pdf.ts
+   * (Times, black grid tables, white headers). @page margins come from
+   * LessonPlanPrintButton injected styles when printing.
+   */
+  #lesson-plan-print-root.lesson-plan-print-root {
+    font-family: "Times New Roman", Times, serif !important;
+    color: #000 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root,
+  #lesson-plan-print-root.lesson-plan-print-root * {
+    box-shadow: none !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root > header p:first-child {
+    font-size: 14pt !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root > header h2 {
+    font-size: 12pt !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root h3 {
+    font-size: 11pt !important;
+    font-weight: 700 !important;
+    color: #000 !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root p,
+  #lesson-plan-print-root.lesson-plan-print-root td,
+  #lesson-plan-print-root.lesson-plan-print-root th {
+    font-size: 10pt !important;
+    line-height: 1.35 !important;
+    color: #000 !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root .lesson-plan-print-tlp table,
+  #lesson-plan-print-root.lesson-plan-print-root .lesson-plan-print-tlp th,
+  #lesson-plan-print-root.lesson-plan-print-root .lesson-plan-print-tlp td {
+    font-size: 8pt !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root table,
+  #lesson-plan-print-root.lesson-plan-print-root th,
+  #lesson-plan-print-root.lesson-plan-print-root td {
+    border-color: #000 !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root thead th,
+  #lesson-plan-print-root.lesson-plan-print-root tbody th {
+    background: #fff !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root .text-emerald-700,
+  #lesson-plan-print-root.lesson-plan-print-root .dark\:text-emerald-400 {
+    color: #000 !important;
+  }
+
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:text-white,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:text-zinc-100,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:text-zinc-200,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:text-zinc-300,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:text-zinc-400,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:text-zinc-500 {
+    color: #000 !important;
+  }
+
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:border-zinc-600,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:border-zinc-700,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:border-zinc-800 {
+    border-color: #000 !important;
+  }
+
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:bg-zinc-800,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:bg-zinc-800\/80,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:bg-zinc-800\/40,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:bg-zinc-900 {
+    background-color: #fff !important;
+  }
+
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:bg-slate-50,
+  html.dark #lesson-plan-print-root.lesson-plan-print-root .dark\:bg-slate-50\/80 {
+    background-color: #fff !important;
+  }
+
+  #lesson-plan-print-root.lesson-plan-print-root .bg-slate-50,
+  #lesson-plan-print-root.lesson-plan-print-root .bg-slate-100,
+  #lesson-plan-print-root.lesson-plan-print-root .bg-slate-50\/80 {
+    background-color: #fff !important;
+  }
 }
 
 /* Dashboard modals: subtle open (respect reduced motion) */

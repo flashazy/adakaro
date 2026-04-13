@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { ensureTeacherHasAssignmentsOrRedirect } from "@/lib/teacher-assignment-status";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { LessonPlanPrintButton } from "../components/LessonPlanPrintButton";
 import { loadLessonPlanPdfInput } from "../lesson-plan-helpers";
 
 export const metadata = {
@@ -33,7 +34,7 @@ export default async function LessonPlanViewPage({
   return (
     <>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
           <div>
             <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
               Lesson plan
@@ -56,6 +57,7 @@ export default async function LessonPlanViewPage({
             >
               Export PDF
             </Link>
+            <LessonPlanPrintButton />
             <Link
               href={`/teacher-dashboard/lesson-plans/${id}/edit`}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
@@ -65,16 +67,35 @@ export default async function LessonPlanViewPage({
           </div>
         </div>
 
+        <div
+          id="lesson-plan-print-root"
+          className="lesson-plan-print-root space-y-6"
+        >
+          <header className="hidden text-center print:block">
+            <p className="text-base font-bold tracking-tight text-black">
+              {v.schoolName?.trim() || "_______________________________"}
+            </p>
+            <h2 className="mt-2 text-sm font-bold tracking-tight text-black">
+              TEACHER&apos;S LESSON PLAN
+            </h2>
+            <div
+              className="mx-auto mt-1 h-0.5 w-[min(100%,14rem)] bg-black"
+              aria-hidden
+            />
+          </header>
+
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-          <h2 className="text-center text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-            LESSON PLAN
-          </h2>
-          <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
-            <span className="font-medium text-slate-700 dark:text-zinc-300">
-              School:
-            </span>{" "}
-            {v.schoolName?.trim() || "_______________________________"}
-          </p>
+          <div className="print:hidden">
+            <h2 className="text-center text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+              LESSON PLAN
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
+              <span className="font-medium text-slate-700 dark:text-zinc-300">
+                School:
+              </span>{" "}
+              {v.schoolName?.trim() || "_______________________________"}
+            </p>
+          </div>
 
           <div className="mt-6 grid grid-cols-1 gap-0 overflow-hidden rounded-lg border border-slate-200 dark:border-zinc-700 lg:grid-cols-[minmax(0,47fr)_minmax(0,53fr)] lg:items-stretch">
           <div className="flex h-full min-h-0 flex-col border-b border-slate-200 p-3 dark:border-zinc-700 lg:border-b-0 lg:border-r">
@@ -120,7 +141,7 @@ export default async function LessonPlanViewPage({
               </tbody>
             </table>
             <div
-              className="grid min-h-0 flex-1 grid-cols-5"
+              className="grid min-h-0 flex-1 grid-cols-5 print:hidden"
               aria-hidden
             >
               <div className="border-r border-slate-200 dark:border-zinc-700" />
@@ -240,7 +261,7 @@ export default async function LessonPlanViewPage({
           </p>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+        <section className="lesson-plan-print-tlp rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
           <h3 className="mb-3 text-base font-semibold text-slate-900 dark:text-white">
             Teaching and Learning Process
           </h3>
@@ -321,9 +342,15 @@ export default async function LessonPlanViewPage({
           </p>
         </section>
 
-        <p className="text-sm text-slate-500 dark:text-zinc-500">
+        <p className="text-sm text-slate-500 dark:text-zinc-500 print:hidden">
           Teacher: {v.teacherName}
         </p>
+
+        <footer className="hidden text-sm text-black print:block">
+          <p>Date: {v.lessonDateDisplay}</p>
+          <p className="mt-2">Teacher&apos;s name: {v.teacherName}</p>
+        </footer>
+        </div>
       </div>
       <div className="print:hidden">
         <SmartFloatingScrollButton sectionIds={[]} />
