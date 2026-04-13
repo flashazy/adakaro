@@ -168,6 +168,7 @@ export async function createLessonPlan(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/teacher-dashboard/lesson-plans");
+  revalidatePath("/teacher-dashboard");
   redirect("/teacher-dashboard/lesson-plans");
 }
 
@@ -238,6 +239,7 @@ export async function updateLessonPlan(id: string, formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/teacher-dashboard/lesson-plans");
+  revalidatePath("/teacher-dashboard");
   redirect("/teacher-dashboard/lesson-plans");
 }
 
@@ -258,6 +260,7 @@ export async function deleteLessonPlan(id: string) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/teacher-dashboard/lesson-plans");
+  revalidatePath("/teacher-dashboard");
 }
 
 export async function getTeacherClasses() {

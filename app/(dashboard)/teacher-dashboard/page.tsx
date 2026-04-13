@@ -68,10 +68,12 @@ export default async function TeacherDashboardPage() {
   let pendingGrades = 0;
   for (const g of gradebookRows ?? []) {
     const row = g as { id: string; class_id: string };
-    const { count: scoreCount } = await admin
+    /** Rows with an actual score entered (numeric column; NULL = blank in gradebook). */
+    const { count: filledCount } = await admin
       .from("teacher_scores")
       .select("id", { count: "exact", head: true })
-      .eq("assignment_id", row.id);
+      .eq("assignment_id", row.id)
+      .not("score", "is", null);
 
     const { count: studentCount } = await admin
       .from("students")
@@ -81,18 +83,25 @@ export default async function TeacherDashboardPage() {
 
     const need = Math.max(
       0,
-      (studentCount ?? 0) - (scoreCount ?? 0)
+      (studentCount ?? 0) - (filledCount ?? 0)
     );
     pendingGrades += need;
   }
 
-  const { count: upcomingLessons } = await admin
-    .from("teacher_lessons")
-    .select("id", { count: "exact", head: true })
-    .eq("teacher_id", user.id)
-    .gte("lesson_date", today);
-
   const options = await getTeacherClassOptions(user.id);
+  const assignedClassIds = [...new Set(options.map((o) => o.classId))];
+
+  /** Official lesson plans (`lesson_plans`), not the legacy `teacher_lessons` calendar. */
+  let upcomingLessons = 0;
+  if (assignedClassIds.length > 0) {
+    const { count } = await admin
+      .from("lesson_plans")
+      .select("id", { count: "exact", head: true })
+      .eq("teacher_id", user.id)
+      .eq("lesson_date", today)
+      .in("class_id", assignedClassIds);
+    upcomingLessons = count ?? 0;
+  }
 
   const { data: teacherDocumentsRows } = await supabase
     .from("teacher_documents")
@@ -164,9 +173,9 @@ export default async function TeacherDashboardPage() {
       : "Student score slots still empty";
 
   const lessonsSubtext =
-    (upcomingLessons ?? 0) === 0
-      ? "No lessons scheduled for today."
-      : "From today onward";
+    upcomingLessons === 0
+      ? "No lesson plans scheduled for today."
+      : "Lesson plans scheduled for today.";
 
   let insightMessage: string;
   if ((todayAttendanceCount ?? 0) === 0) {

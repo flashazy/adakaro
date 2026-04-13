@@ -6,7 +6,6 @@ import { useFormStatus } from "react-dom";
 import {
   DURATION_PRESETS,
   PERIOD_CHECKBOX_RANGE,
-  isConsecutivePeriods,
   ordinalPeriod,
   parsePeriodsFromDb,
   periodsToStorageString,
@@ -221,18 +220,7 @@ export function LessonPlanForm({
       : createLessonPlan;
 
   return (
-    <form
-      action={formAction}
-      className="space-y-8"
-      onSubmit={(e) => {
-        if (!isConsecutivePeriods(periodSelection)) {
-          e.preventDefault();
-          alert(
-            "Choose consecutive periods only (for example 1st and 2nd, not 1st and 3rd)."
-          );
-        }
-      }}
-    >
+    <form action={formAction} className="space-y-8">
 
       <div className="grid grid-cols-1 gap-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 xl:grid-cols-[minmax(0,47fr)_minmax(0,53fr)] xl:items-stretch">
       {/* Section 1 — Basic info */}
