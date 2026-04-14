@@ -11,6 +11,10 @@ import type {
 } from "./report-card-types";
 import { isMissingColumnSchemaError } from "./report-card-schema-compat";
 import { termDateRange } from "./report-card-dates";
+import {
+  DEFAULT_REPORT_CARD_GRADEBOOK_EXAM_NAMES,
+  GRADEBOOK_EXAM_ASSIGNMENT_TITLES,
+} from "./constants";
 
 export type {
   PendingReportCardRow,
@@ -260,8 +264,10 @@ export async function loadStudentsReportData(
   const commentsByCard = new Map<string, ReportCardCommentRow[]>();
 
   if (cardIds.length) {
-    const selectFull =
+    const selectWithExams =
       "id, report_card_id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
+    const selectFull =
+      `${selectWithExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
     const selectLegacy =
       "id, report_card_id, subject, comment, score_percent, letter_grade";
 
@@ -270,6 +276,14 @@ export async function loadStudentsReportData(
       .select(selectFull)
       .eq("teacher_id", user.id)
       .in("report_card_id", cardIds);
+
+    if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
+      comsRes = await admin
+        .from("teacher_report_card_comments")
+        .select(selectWithExams)
+        .eq("teacher_id", user.id)
+        .in("report_card_id", cardIds);
+    }
 
     if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
       comsRes = await admin
@@ -305,6 +319,10 @@ export async function loadStudentsReportData(
       exam2_score: number | string | null;
       calculated_score: number | string | null;
       calculated_grade: string | null;
+      exam1_gradebook_original?: number | string | null;
+      exam2_gradebook_original?: number | string | null;
+      exam1_score_overridden?: boolean | null;
+      exam2_score_overridden?: boolean | null;
     }[]) {
       const scorePercent = parseNumeric(row.score_percent);
       const list = commentsByCard.get(row.report_card_id) ?? [];
@@ -318,6 +336,10 @@ export async function loadStudentsReportData(
         exam2Score: parseNumeric(row.exam2_score),
         calculatedScore: parseNumeric(row.calculated_score),
         calculatedGrade: row.calculated_grade,
+        exam1GradebookOriginal: parseNumeric(row.exam1_gradebook_original),
+        exam2GradebookOriginal: parseNumeric(row.exam2_gradebook_original),
+        exam1ScoreOverridden: row.exam1_score_overridden === true,
+        exam2ScoreOverridden: row.exam2_score_overridden === true,
       });
       commentsByCard.set(row.report_card_id, list);
     }
@@ -474,4 +496,187 @@ export async function loadPendingReportCardsForSchool(
     });
   }
   return rows;
+}
+
+export interface ReportCardGradebookExamPercentages {
+  aprilMidtermPct: number | null;
+  juneTerminalPct: number | null;
+  septemberMidtermPct: number | null;
+  decemberAnnualPct: number | null;
+}
+
+function normalizeGradebookAssignmentTitle(s: string): string {
+  return s.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function scoreCellToNumber(score: unknown): number | null {
+  if (score == null) return null;
+  if (typeof score === "number" && Number.isFinite(score)) return score;
+  const n = Number(score);
+  return Number.isFinite(n) ? n : null;
+}
+
+function percentFromScoreAndMax(
+  score: unknown,
+  maxScore: number
+): number | null {
+  const n = scoreCellToNumber(score);
+  if (n == null) return null;
+  const mx = Number(maxScore);
+  if (!Number.isFinite(mx) || mx <= 0) return null;
+  return Math.round((n / mx) * 1000) / 10;
+}
+
+const NORM_TITLE_TO_BUCKET: Record<
+  string,
+  keyof ReportCardGradebookExamPercentages
+> = {
+  [normalizeGradebookAssignmentTitle(
+    GRADEBOOK_EXAM_ASSIGNMENT_TITLES.aprilMidterm
+  )]: "aprilMidtermPct",
+  [normalizeGradebookAssignmentTitle(
+    GRADEBOOK_EXAM_ASSIGNMENT_TITLES.juneTerminal
+  )]: "juneTerminalPct",
+  [normalizeGradebookAssignmentTitle(
+    GRADEBOOK_EXAM_ASSIGNMENT_TITLES.septemberMidterm
+  )]: "septemberMidtermPct",
+  [normalizeGradebookAssignmentTitle(
+    GRADEBOOK_EXAM_ASSIGNMENT_TITLES.decemberAnnual
+  )]: "decemberAnnualPct",
+};
+
+function emptyExamPercents(): ReportCardGradebookExamPercentages {
+  return {
+    aprilMidtermPct: null,
+    juneTerminalPct: null,
+    septemberMidtermPct: null,
+    decemberAnnualPct: null,
+  };
+}
+
+/**
+ * Loads gradebook scores for preset exam assignments, converted to percentages
+ * (0–100) per subject for report-card autofill.
+ */
+export async function loadStudentGradebookExamScores(params: {
+  studentId: string;
+  classId: string;
+  subjects: string[];
+  examNames?: string[];
+}): Promise<
+  | { ok: true; scoresBySubject: Record<string, ReportCardGradebookExamPercentages> }
+  | { ok: false; error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const admin = createAdminClient() as Db;
+
+  const { data: ta } = await admin
+    .from("teacher_assignments")
+    .select("id")
+    .eq("teacher_id", user.id)
+    .eq("class_id", params.classId)
+    .limit(1)
+    .maybeSingle();
+  if (!ta) {
+    return { ok: false, error: "You are not assigned to this class." };
+  }
+
+  const { data: stu } = await admin
+    .from("students")
+    .select("id")
+    .eq("id", params.studentId)
+    .eq("class_id", params.classId)
+    .maybeSingle();
+  if (!stu) {
+    return { ok: false, error: "Student not found in this class." };
+  }
+
+  const subjects = [
+    ...new Set(params.subjects.map((s) => s.trim()).filter(Boolean)),
+  ];
+  if (subjects.length === 0) {
+    return { ok: true, scoresBySubject: {} };
+  }
+
+  const nameList =
+    params.examNames?.length && params.examNames.some((n) => n.trim())
+      ? params.examNames
+      : [...DEFAULT_REPORT_CARD_GRADEBOOK_EXAM_NAMES];
+  const allowedNorm = new Set(
+    nameList.map((n) => normalizeGradebookAssignmentTitle(n))
+  );
+
+  const { data: aRows, error: aErr } = await admin
+    .from("teacher_gradebook_assignments")
+    .select("id, title, max_score, subject")
+    .eq("teacher_id", user.id)
+    .eq("class_id", params.classId)
+    .in("subject", subjects);
+
+  if (aErr) {
+    return { ok: false, error: aErr.message };
+  }
+
+  const metaByAssignmentId = new Map<
+    string,
+    { subject: string; maxScore: number; bucket: keyof ReportCardGradebookExamPercentages }
+  >();
+
+  for (const row of aRows ?? []) {
+    const r = row as {
+      id: string;
+      title: string;
+      max_score: number;
+      subject: string;
+    };
+    const nt = normalizeGradebookAssignmentTitle(r.title);
+    if (!allowedNorm.has(nt)) continue;
+    const bucket = NORM_TITLE_TO_BUCKET[nt];
+    if (!bucket) continue;
+    metaByAssignmentId.set(r.id, {
+      subject: r.subject.trim(),
+      maxScore: Number(r.max_score),
+      bucket,
+    });
+  }
+
+  const assignmentIds = [...metaByAssignmentId.keys()];
+  const scoresBySubject: Record<string, ReportCardGradebookExamPercentages> =
+    {};
+  for (const sub of subjects) {
+    scoresBySubject[sub] = emptyExamPercents();
+  }
+
+  if (assignmentIds.length === 0) {
+    return { ok: true, scoresBySubject };
+  }
+
+  const { data: scRows, error: scErr } = await admin
+    .from("teacher_scores")
+    .select("assignment_id, score")
+    .eq("student_id", params.studentId)
+    .in("assignment_id", assignmentIds);
+
+  if (scErr) {
+    return { ok: false, error: scErr.message };
+  }
+
+  for (const srow of scRows ?? []) {
+    const sr = srow as { assignment_id: string; score: unknown };
+    const meta = metaByAssignmentId.get(sr.assignment_id);
+    if (!meta) continue;
+    const pct = percentFromScoreAndMax(sr.score, meta.maxScore);
+    const subj = meta.subject;
+    if (!scoresBySubject[subj]) {
+      scoresBySubject[subj] = emptyExamPercents();
+    }
+    scoresBySubject[subj][meta.bucket] = pct;
+  }
+
+  return { ok: true, scoresBySubject };
 }

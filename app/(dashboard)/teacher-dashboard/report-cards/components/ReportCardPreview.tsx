@@ -78,6 +78,16 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
         <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-800">
           Subject results
         </h2>
+        {(() => {
+          const anyOv = data.subjects.some(
+            (r) => r.exam1Overridden || r.exam2Overridden
+          );
+          return anyOv ? (
+            <p className="mb-2 text-xs text-slate-600">
+              * Exam score was changed after the gradebook value was used.
+            </p>
+          ) : null;
+        })()}
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             <thead>
@@ -110,9 +120,19 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                     </td>
                     <td className="border border-slate-200 px-2 py-2 tabular-nums">
                       {r.exam1Pct}
+                      {r.exam1Overridden ? (
+                        <span className="font-semibold text-slate-800" title="Overridden from gradebook">
+                          *
+                        </span>
+                      ) : null}
                     </td>
                     <td className="border border-slate-200 px-2 py-2 tabular-nums">
                       {r.exam2Pct}
+                      {r.exam2Overridden ? (
+                        <span className="font-semibold text-slate-800" title="Overridden from gradebook">
+                          *
+                        </span>
+                      ) : null}
                     </td>
                     <td className="border border-slate-200 px-2 py-2 font-semibold tabular-nums">
                       {r.averagePct}

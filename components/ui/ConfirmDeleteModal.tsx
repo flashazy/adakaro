@@ -12,6 +12,8 @@ export interface ConfirmDeleteModalProps {
   confirmLabel?: string;
   cancelLabel?: string;
   isDeleting?: boolean;
+  /** Default `danger` (red). Use `primary` for non-destructive confirmations. */
+  confirmVariant?: "danger" | "primary";
 }
 
 /**
@@ -26,6 +28,7 @@ export function ConfirmDeleteModal({
   confirmLabel = "Delete",
   cancelLabel = "Cancel",
   isDeleting = false,
+  confirmVariant = "danger",
 }: ConfirmDeleteModalProps) {
   const [rendered, setRendered] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -121,7 +124,11 @@ export function ConfirmDeleteModal({
               type="button"
               onClick={onConfirm}
               disabled={isDeleting}
-              className="inline-flex w-full items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-500 disabled:opacity-60 dark:bg-red-600 dark:hover:bg-red-500 sm:w-auto"
+              className={
+                confirmVariant === "primary"
+                  ? "inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500 sm:w-auto"
+                  : "inline-flex w-full items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-500 disabled:opacity-60 dark:bg-red-600 dark:hover:bg-red-500 sm:w-auto"
+              }
             >
               {isDeleting ? (
                 <>

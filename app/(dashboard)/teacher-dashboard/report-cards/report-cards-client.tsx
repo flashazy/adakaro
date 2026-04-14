@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import {
   adminApproveReportCard,
   adminRequestChangesReportCard,
+  fetchStudentExamScores,
   getSubjectsForClass,
   reloadStudentsReportData,
   shareReportCardWithParent,
@@ -20,12 +22,16 @@ import {
 } from "./constants";
 import type {
   PendingReportCardRow,
+  ReportCardCommentRow,
   StudentReportRow,
   TeacherClassOption,
 } from "./report-card-types";
 import { ReportCardPreview } from "./components/ReportCardPreview";
 import type { ReportCardPreviewData } from "./report-card-preview-types";
-import { buildSubjectPreviewRows } from "./report-card-preview-builder";
+import {
+  buildSubjectPreviewRows,
+  mergeStudentCommentsWithDraftsForPreview,
+} from "./report-card-preview-builder";
 import {
   downloadBulkReportCardsPdf,
   downloadReportCardPdf,
@@ -35,10 +41,61 @@ import {
   letterGradeFromPercent,
 } from "./report-card-grades";
 
-type DraftRow = { comment: string; exam1: string; exam2: string };
+type DraftRow = {
+  comment: string;
+  exam1: string;
+  exam2: string;
+  /** Gradebook % snapshot when this exam was autofilled (for override note / save). */
+  exam1GbOriginal: string | null;
+  exam2GbOriginal: string | null;
+  exam1Locked: boolean;
+  exam2Locked: boolean;
+  exam1Overridden: boolean;
+  exam2Overridden: boolean;
+};
 
 function emptyDraftRow(): DraftRow {
-  return { comment: "", exam1: "", exam2: "" };
+  return {
+    comment: "",
+    exam1: "",
+    exam2: "",
+    exam1GbOriginal: null,
+    exam2GbOriginal: null,
+    exam1Locked: false,
+    exam2Locked: false,
+    exam1Overridden: false,
+    exam2Overridden: false,
+  };
+}
+
+function draftFromComment(c: ReportCardCommentRow): DraftRow {
+  const legacySingle =
+    c.exam1Score == null &&
+    c.exam2Score == null &&
+    c.scorePercent != null &&
+    Number.isFinite(Number(c.scorePercent));
+  return {
+    comment: c.comment ?? "",
+    exam1:
+      c.exam1Score != null
+        ? String(c.exam1Score)
+        : legacySingle
+          ? String(c.scorePercent)
+          : "",
+    exam2: c.exam2Score != null ? String(c.exam2Score) : "",
+    exam1GbOriginal:
+      c.exam1GradebookOriginal != null
+        ? String(c.exam1GradebookOriginal)
+        : null,
+    exam2GbOriginal:
+      c.exam2GradebookOriginal != null
+        ? String(c.exam2GradebookOriginal)
+        : null,
+    exam1Locked: false,
+    exam2Locked: false,
+    exam1Overridden: c.exam1ScoreOverridden === true,
+    exam2Overridden: c.exam2ScoreOverridden === true,
+  };
 }
 
 function getDraftRow(
@@ -51,7 +108,15 @@ function getDraftRow(
 
 function draftRowsEqual(a: DraftRow, b: DraftRow): boolean {
   return (
-    a.comment === b.comment && a.exam1 === b.exam1 && a.exam2 === b.exam2
+    a.comment === b.comment &&
+    a.exam1 === b.exam1 &&
+    a.exam2 === b.exam2 &&
+    a.exam1GbOriginal === b.exam1GbOriginal &&
+    a.exam2GbOriginal === b.exam2GbOriginal &&
+    a.exam1Locked === b.exam1Locked &&
+    a.exam2Locked === b.exam2Locked &&
+    a.exam1Overridden === b.exam1Overridden &&
+    a.exam2Overridden === b.exam2Overridden
   );
 }
 
@@ -178,6 +243,8 @@ export function ReportCardsPageClient({
   const [loading, setLoading] = useState(false);
   const [studentId, setStudentId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUnsavedConfirmOpen, setPreviewUnsavedConfirmOpen] =
+    useState(false);
 
   const [drafts, setDrafts] = useState<Record<string, Record<string, DraftRow>>>(
     {}
@@ -292,22 +359,7 @@ export function ReportCardsPageClient({
       for (const s of res.students) {
         d[s.studentId] = {};
         for (const c of s.comments) {
-          const legacySingle =
-            c.exam1Score == null &&
-            c.exam2Score == null &&
-            c.scorePercent != null &&
-            Number.isFinite(Number(c.scorePercent));
-          d[s.studentId][c.subject] = {
-            comment: c.comment ?? "",
-            exam1:
-              c.exam1Score != null
-                ? String(c.exam1Score)
-                : legacySingle
-                  ? String(c.scorePercent)
-                  : "",
-            exam2:
-              c.exam2Score != null ? String(c.exam2Score) : "",
-          };
+          d[s.studentId][c.subject] = draftFromComment(c);
         }
       }
       setDrafts(d);
@@ -326,10 +378,112 @@ export function ReportCardsPageClient({
     void load();
   }, [load]);
 
+  const subjectsKey = useMemo(() => subjects.join("\0"), [subjects]);
+
+  useEffect(() => {
+    if (loading || !studentId || !classId) return;
+
+    const subjList = subjects.length > 0 ? subjects : ["General"];
+    let cancelled = false;
+
+    void (async () => {
+      const res = await fetchStudentExamScores({
+        studentId,
+        classId,
+        subjects: subjList,
+      });
+      if (cancelled || !res.ok) return;
+
+      const termVal =
+        term === "Term 1" || term === "Term 2" ? term : "Term 1";
+
+      setDrafts((prev) => {
+        const sid = studentId;
+        const studentDraft = { ...(prev[sid] ?? {}) };
+        let changed = false;
+
+        for (const subject of subjList) {
+          const g = res.scoresBySubject[subject];
+          if (!g) continue;
+          const cur = studentDraft[subject] ?? emptyDraftRow();
+          let exam1 = cur.exam1;
+          let exam2 = cur.exam2;
+          let exam1GbOriginal = cur.exam1GbOriginal;
+          let exam2GbOriginal = cur.exam2GbOriginal;
+          let exam1Locked = cur.exam1Locked;
+          let exam2Locked = cur.exam2Locked;
+          let exam1Overridden = cur.exam1Overridden;
+          let exam2Overridden = cur.exam2Overridden;
+
+          if (termVal === "Term 1") {
+            if (!exam1.trim() && g.aprilMidtermPct != null) {
+              exam1 = String(g.aprilMidtermPct);
+              exam1GbOriginal = exam1;
+              exam1Locked = true;
+              exam1Overridden = false;
+            }
+            if (!exam2.trim() && g.juneTerminalPct != null) {
+              exam2 = String(g.juneTerminalPct);
+              exam2GbOriginal = exam2;
+              exam2Locked = true;
+              exam2Overridden = false;
+            }
+          } else {
+            if (!exam1.trim() && g.septemberMidtermPct != null) {
+              exam1 = String(g.septemberMidtermPct);
+              exam1GbOriginal = exam1;
+              exam1Locked = true;
+              exam1Overridden = false;
+            }
+            if (!exam2.trim() && g.decemberAnnualPct != null) {
+              exam2 = String(g.decemberAnnualPct);
+              exam2GbOriginal = exam2;
+              exam2Locked = true;
+              exam2Overridden = false;
+            }
+          }
+
+          const next: DraftRow = {
+            ...cur,
+            exam1,
+            exam2,
+            exam1GbOriginal,
+            exam2GbOriginal,
+            exam1Locked,
+            exam2Locked,
+            exam1Overridden,
+            exam2Overridden,
+          };
+          if (!draftRowsEqual(next, cur)) {
+            studentDraft[subject] = next;
+            changed = true;
+          }
+        }
+
+        if (!changed) return prev;
+        return { ...prev, [sid]: studentDraft };
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, studentId, classId, term, subjectsKey]);
+
   const selectedStudent = students.find((s) => s.studentId === studentId);
+
+  const previewSubjectList = useMemo(
+    () => (subjects.length > 0 ? subjects : ["General"]),
+    [subjects]
+  );
 
   const previewData = useMemo(() => {
     if (!selectedStudent || !selectedClass) return null;
+    const mergedStudent = mergeStudentCommentsWithDraftsForPreview(
+      selectedStudent,
+      previewSubjectList,
+      drafts[selectedStudent.studentId]
+    );
     return toPreviewData(
       schoolName,
       logoUrl,
@@ -337,8 +491,8 @@ export function ReportCardsPageClient({
       teacherName,
       term,
       academicYear,
-      subjects,
-      selectedStudent,
+      previewSubjectList,
+      mergedStudent,
       attendanceByStudent[selectedStudent.studentId] ?? {
         present: 0,
         absent: 0,
@@ -353,7 +507,8 @@ export function ReportCardsPageClient({
     teacherName,
     term,
     academicYear,
-    subjects,
+    previewSubjectList,
+    drafts,
     attendanceByStudent,
   ]);
 
@@ -367,13 +522,11 @@ export function ReportCardsPageClient({
       }
       const sid = selectedStudent.studentId;
       const row = getDraftRow(draftsRef.current, sid, subject);
-      const snapshot: DraftRow = {
-        comment: row.comment,
-        exam1: row.exam1,
-        exam2: row.exam2,
-      };
+      const snapshot: DraftRow = { ...row };
       const e1 = parseDraftPercent(row.exam1);
       const e2 = parseDraftPercent(row.exam2);
+      const g1 = parseDraftPercent(row.exam1GbOriginal ?? "");
+      const g2 = parseDraftPercent(row.exam2GbOriginal ?? "");
       const res = await upsertReportCardComment({
         studentId: sid,
         classId: selectedClass.classId,
@@ -384,6 +537,10 @@ export function ReportCardsPageClient({
         comment: row.comment.trim() || null,
         exam1Score: e1,
         exam2Score: e2,
+        exam1ScoreOverridden: row.exam1Overridden,
+        exam2ScoreOverridden: row.exam2Overridden,
+        exam1GradebookOriginal: row.exam1Overridden ? g1 : null,
+        exam2GradebookOriginal: row.exam2Overridden ? g2 : null,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -474,9 +631,8 @@ export function ReportCardsPageClient({
       [selectedStudent.studentId]: {
         ...prev[selectedStudent.studentId],
         [sub]: {
+          ...(prev[selectedStudent.studentId]?.[sub] ?? emptyDraftRow()),
           comment: template,
-          exam1: prev[selectedStudent.studentId]?.[sub]?.exam1 ?? "",
-          exam2: prev[selectedStudent.studentId]?.[sub]?.exam2 ?? "",
         },
       },
     }));
@@ -609,11 +765,8 @@ export function ReportCardsPageClient({
                 type="button"
                 onClick={() => {
                   if (hasUnsavedForSelected) {
-                    const proceed = window.confirm(
-                      "You have unsaved changes. Save before previewing?\n\n" +
-                        "Click OK to preview with last saved data, or Cancel to stay and save."
-                    );
-                    if (!proceed) return;
+                    setPreviewUnsavedConfirmOpen(true);
+                    return;
                   }
                   setPreviewOpen(true);
                 }}
@@ -718,61 +871,169 @@ export function ReportCardsPageClient({
                     {saveError.message}
                   </p>
                 ) : null}
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <label className="text-sm">
-                    <span className="text-slate-600 dark:text-zinc-400">
-                      {examLabelsForEditor.exam1} (%)
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      value={row.exam1}
-                      onChange={(e) => {
-                        clearSaveErrorForSubject();
-                        setDrafts((prev) => ({
-                          ...prev,
-                          [selectedStudent.studentId]: {
-                            ...prev[selectedStudent.studentId],
-                            [subject]: {
-                              ...row,
-                              exam1: e.target.value,
-                            },
-                          },
-                        }));
-                        scheduleAutosave(subject);
-                      }}
-                      className="mt-1 w-full rounded border border-slate-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-900"
-                    />
-                  </label>
-                  <label className="text-sm">
-                    <span className="text-slate-600 dark:text-zinc-400">
-                      {examLabelsForEditor.exam2} (%)
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      value={row.exam2}
-                      onChange={(e) => {
-                        clearSaveErrorForSubject();
-                        setDrafts((prev) => ({
-                          ...prev,
-                          [selectedStudent.studentId]: {
-                            ...prev[selectedStudent.studentId],
-                            [subject]: {
-                              ...row,
-                              exam2: e.target.value,
-                            },
-                          },
-                        }));
-                        scheduleAutosave(subject);
-                      }}
-                      className="mt-1 w-full rounded border border-slate-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-900"
-                    />
-                  </label>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="min-w-0 flex-1 text-sm">
+                        <span className="text-slate-600 dark:text-zinc-400">
+                          {examLabelsForEditor.exam1} (%)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.1}
+                          disabled={row.exam1Locked}
+                          value={row.exam1}
+                          onChange={(e) => {
+                            clearSaveErrorForSubject();
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [selectedStudent.studentId]: {
+                                ...prev[selectedStudent.studentId],
+                                [subject]: {
+                                  ...row,
+                                  exam1: e.target.value,
+                                },
+                              },
+                            }));
+                            scheduleAutosave(subject);
+                          }}
+                          className={cn(
+                            "mt-1 w-full rounded border px-2 py-1 dark:border-zinc-600",
+                            row.exam1Locked
+                              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                              : "border-slate-300 bg-white dark:bg-zinc-900"
+                          )}
+                        />
+                      </label>
+                      {row.exam1Locked ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearSaveErrorForSubject();
+                            setDrafts((prev) => {
+                              const r = getDraftRow(
+                                prev,
+                                selectedStudent.studentId,
+                                subject
+                              );
+                              const gb =
+                                r.exam1GbOriginal?.trim() ||
+                                r.exam1.trim() ||
+                                null;
+                              return {
+                                ...prev,
+                                [selectedStudent.studentId]: {
+                                  ...prev[selectedStudent.studentId],
+                                  [subject]: {
+                                    ...r,
+                                    exam1Locked: false,
+                                    exam1Overridden: true,
+                                    exam1GbOriginal: gb ?? r.exam1GbOriginal,
+                                  },
+                                },
+                              };
+                            });
+                            scheduleAutosave(subject);
+                          }}
+                          className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          Override
+                        </button>
+                      ) : null}
+                    </div>
+                    {row.exam1Overridden ? (
+                      <p className="text-xs text-slate-500 dark:text-zinc-500">
+                        Overridden from gradebook score{" "}
+                        {row.exam1GbOriginal != null &&
+                        row.exam1GbOriginal.trim() !== ""
+                          ? `${row.exam1GbOriginal.trim()}%`
+                          : "—"}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="min-w-0 flex-1 text-sm">
+                        <span className="text-slate-600 dark:text-zinc-400">
+                          {examLabelsForEditor.exam2} (%)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.1}
+                          disabled={row.exam2Locked}
+                          value={row.exam2}
+                          onChange={(e) => {
+                            clearSaveErrorForSubject();
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [selectedStudent.studentId]: {
+                                ...prev[selectedStudent.studentId],
+                                [subject]: {
+                                  ...row,
+                                  exam2: e.target.value,
+                                },
+                              },
+                            }));
+                            scheduleAutosave(subject);
+                          }}
+                          className={cn(
+                            "mt-1 w-full rounded border px-2 py-1 dark:border-zinc-600",
+                            row.exam2Locked
+                              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                              : "border-slate-300 bg-white dark:bg-zinc-900"
+                          )}
+                        />
+                      </label>
+                      {row.exam2Locked ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearSaveErrorForSubject();
+                            setDrafts((prev) => {
+                              const r = getDraftRow(
+                                prev,
+                                selectedStudent.studentId,
+                                subject
+                              );
+                              const gb =
+                                r.exam2GbOriginal?.trim() ||
+                                r.exam2.trim() ||
+                                null;
+                              return {
+                                ...prev,
+                                [selectedStudent.studentId]: {
+                                  ...prev[selectedStudent.studentId],
+                                  [subject]: {
+                                    ...r,
+                                    exam2Locked: false,
+                                    exam2Overridden: true,
+                                    exam2GbOriginal: gb ?? r.exam2GbOriginal,
+                                  },
+                                },
+                              };
+                            });
+                            scheduleAutosave(subject);
+                          }}
+                          className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          Override
+                        </button>
+                      ) : null}
+                    </div>
+                    {row.exam2Overridden ? (
+                      <p className="text-xs text-slate-500 dark:text-zinc-500">
+                        Overridden from gradebook score{" "}
+                        {row.exam2GbOriginal != null &&
+                        row.exam2GbOriginal.trim() !== ""
+                          ? `${row.exam2GbOriginal.trim()}%`
+                          : "—"}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
                 <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
                   Term average:{" "}
@@ -985,6 +1246,20 @@ export function ReportCardsPageClient({
           </ul>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        open={previewUnsavedConfirmOpen}
+        onClose={() => setPreviewUnsavedConfirmOpen(false)}
+        onConfirm={() => {
+          setPreviewUnsavedConfirmOpen(false);
+          setPreviewOpen(true);
+        }}
+        title="Unsaved Changes"
+        message="You have unsaved changes. Save before previewing?"
+        cancelLabel="Cancel"
+        confirmLabel="Preview Anyway"
+        confirmVariant="primary"
+      />
 
       {previewOpen && previewData && (
         <div

@@ -20,6 +20,11 @@ export interface ReportCardCommentRow {
   exam2Score: number | null;
   calculatedScore: number | null;
   calculatedGrade: string | null;
+  /** Gradebook % stored when teacher overrides exam1 after autofill. */
+  exam1GradebookOriginal: number | null;
+  exam2GradebookOriginal: number | null;
+  exam1ScoreOverridden: boolean;
+  exam2ScoreOverridden: boolean;
 }
 
 export interface StudentReportRow {

@@ -21,6 +21,24 @@ export const REPORT_CARD_EXAM_LABELS: Record<
   "Term 2": { exam1: "September Midterm", exam2: "December Annual" },
 };
 
+/**
+ * Gradebook assignment titles (teacher presets) used to auto-fill report card
+ * exam % fields from `teacher_scores` + `teacher_gradebook_assignments`.
+ */
+export const GRADEBOOK_EXAM_ASSIGNMENT_TITLES = {
+  aprilMidterm: "April Midterm Examination",
+  juneTerminal: "June Terminal Examination",
+  septemberMidterm: "September Midterm Examination",
+  decemberAnnual: "December Annual Examination",
+} as const;
+
+export const DEFAULT_REPORT_CARD_GRADEBOOK_EXAM_NAMES: readonly string[] = [
+  GRADEBOOK_EXAM_ASSIGNMENT_TITLES.aprilMidterm,
+  GRADEBOOK_EXAM_ASSIGNMENT_TITLES.juneTerminal,
+  GRADEBOOK_EXAM_ASSIGNMENT_TITLES.septemberMidterm,
+  GRADEBOOK_EXAM_ASSIGNMENT_TITLES.decemberAnnual,
+];
+
 /** Quick-insert comment templates for teachers */
 export const COMMENT_TEMPLATES = [
   "Excellent performance, keep it up",

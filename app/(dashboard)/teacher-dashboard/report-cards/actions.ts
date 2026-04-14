@@ -10,6 +10,7 @@ import {
 } from "./report-card-grades";
 import {
   ensureReportCard,
+  loadStudentGradebookExamScores,
   loadStudentsReportData,
   loadSubjectsForClass,
 } from "./queries";
@@ -20,6 +21,7 @@ import type {
 import { isMissingColumnSchemaError } from "./report-card-schema-compat";
 
 export type { ReportCardStatus } from "./report-card-types";
+export type { ReportCardGradebookExamPercentages } from "./queries";
 
 interface TeacherReportCardCommentSelectRow {
   id: string;
@@ -31,6 +33,10 @@ interface TeacherReportCardCommentSelectRow {
   exam2_score?: number | string | null;
   calculated_score?: number | string | null;
   calculated_grade?: string | null;
+  exam1_gradebook_original?: number | string | null;
+  exam2_gradebook_original?: number | string | null;
+  exam1_score_overridden?: boolean | null;
+  exam2_score_overridden?: boolean | null;
 }
 
 function mapReportCardCommentRow(row: TeacherReportCardCommentSelectRow): ReportCardCommentRow {
@@ -51,6 +57,10 @@ function mapReportCardCommentRow(row: TeacherReportCardCommentSelectRow): Report
     exam2Score: parseNumeric(row.exam2_score),
     calculatedScore: parseNumeric(row.calculated_score),
     calculatedGrade: row.calculated_grade ?? null,
+    exam1GradebookOriginal: parseNumeric(row.exam1_gradebook_original),
+    exam2GradebookOriginal: parseNumeric(row.exam2_gradebook_original),
+    exam1ScoreOverridden: row.exam1_score_overridden === true,
+    exam2ScoreOverridden: row.exam2_score_overridden === true,
   };
 }
 
@@ -69,6 +79,16 @@ export async function reloadStudentsReportData(
   return loadStudentsReportData(classId, term, academicYear);
 }
 
+/** Gradebook → report card autofill (preset exam assignment titles only). */
+export async function fetchStudentExamScores(input: {
+  studentId: string;
+  classId: string;
+  subjects: string[];
+  examNames?: string[];
+}) {
+  return loadStudentGradebookExamScores(input);
+}
+
 export async function upsertReportCardComment(input: {
   studentId: string;
   classId: string;
@@ -79,6 +99,10 @@ export async function upsertReportCardComment(input: {
   comment: string | null;
   exam1Score: number | null;
   exam2Score: number | null;
+  exam1ScoreOverridden: boolean;
+  exam2ScoreOverridden: boolean;
+  exam1GradebookOriginal: number | null;
+  exam2GradebookOriginal: number | null;
 }): Promise<
   | { ok: true; reportCardId: string; comment: ReportCardCommentRow }
   | { ok: false; error: string }
@@ -135,10 +159,12 @@ export async function upsertReportCardComment(input: {
     return { ok: false, error: existingLookupErr.message };
   }
 
-  const selectColsFull =
-    "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
   const selectColsLegacy =
     "id, subject, comment, score_percent, letter_grade";
+  const selectColsExams =
+    "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
+  const selectColsAll =
+    `${selectColsExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
 
   const extendedWrite = {
     comment: input.comment,
@@ -149,10 +175,25 @@ export async function upsertReportCardComment(input: {
     score_percent,
     letter_grade,
     report_card_id: rc.id,
+    exam1_gradebook_original: input.exam1GradebookOriginal,
+    exam2_gradebook_original: input.exam2GradebookOriginal,
+    exam1_score_overridden: input.exam1ScoreOverridden,
+    exam2_score_overridden: input.exam2ScoreOverridden,
   };
 
   const legacyWrite = {
     comment: input.comment,
+    score_percent,
+    letter_grade,
+    report_card_id: rc.id,
+  };
+
+  const writeExamsNoOverrides = {
+    comment: input.comment,
+    exam1_score: input.exam1Score,
+    exam2_score: input.exam2Score,
+    calculated_score,
+    calculated_grade,
     score_percent,
     letter_grade,
     report_card_id: rc.id,
@@ -177,10 +218,24 @@ export async function upsertReportCardComment(input: {
     calculated_grade,
     score_percent,
     letter_grade,
+    exam1_gradebook_original: input.exam1GradebookOriginal,
+    exam2_gradebook_original: input.exam2GradebookOriginal,
+    exam1_score_overridden: input.exam1ScoreOverridden,
+    exam2_score_overridden: input.exam2ScoreOverridden,
   };
 
   const insertLegacy = {
     ...insertBase,
+    score_percent,
+    letter_grade,
+  };
+
+  const insertExamsNoOverrides = {
+    ...insertBase,
+    exam1_score: input.exam1Score,
+    exam2_score: input.exam2Score,
+    calculated_score,
+    calculated_grade,
     score_percent,
     letter_grade,
   };
@@ -191,8 +246,17 @@ export async function upsertReportCardComment(input: {
       .from("teacher_report_card_comments")
       .update(extendedWrite)
       .eq("id", commentId)
-      .select(selectColsFull)
+      .select(selectColsAll)
       .single();
+
+    if (res.error && isMissingColumnSchemaError(res.error)) {
+      res = await admin
+        .from("teacher_report_card_comments")
+        .update(writeExamsNoOverrides)
+        .eq("id", commentId)
+        .select(selectColsExams)
+        .single();
+    }
 
     if (res.error && isMissingColumnSchemaError(res.error)) {
       res = await admin
@@ -225,8 +289,18 @@ export async function upsertReportCardComment(input: {
     .insert(
       insertExtended as Database["public"]["Tables"]["teacher_report_card_comments"]["Insert"]
     )
-    .select(selectColsFull)
+    .select(selectColsAll)
     .single();
+
+  if (ins.error && isMissingColumnSchemaError(ins.error)) {
+    ins = await admin
+      .from("teacher_report_card_comments")
+      .insert(
+        insertExamsNoOverrides as Database["public"]["Tables"]["teacher_report_card_comments"]["Insert"]
+      )
+      .select(selectColsExams)
+      .single();
+  }
 
   if (ins.error && isMissingColumnSchemaError(ins.error)) {
     ins = await admin

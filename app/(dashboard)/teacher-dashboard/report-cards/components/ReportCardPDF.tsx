@@ -36,10 +36,17 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   doc.text(`Date issued: ${data.dateIssued}`, margin, y);
   y += 8;
 
+  const pctWithStar = (pct: string, overridden: boolean) =>
+    overridden ? `${pct}*` : pct;
+
+  const anyOverride = data.subjects.some(
+    (s) => s.exam1Overridden || s.exam2Overridden
+  );
+
   const subBody = data.subjects.map((s) => [
     s.subject,
-    s.exam1Pct,
-    s.exam2Pct,
+    pctWithStar(s.exam1Pct, s.exam1Overridden),
+    pctWithStar(s.exam2Pct, s.exam2Overridden),
     s.averagePct,
     s.grade,
     s.comment || "—",
@@ -68,6 +75,14 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   y = (lastY ?? y + 40) + 6;
   doc.setFontSize(8);
   doc.setTextColor(80, 80, 80);
+  if (anyOverride) {
+    doc.text(
+      "* Exam score was changed after the gradebook value was used.",
+      margin,
+      y
+    );
+    y += 4;
+  }
   doc.text(
     "Average = (Exam 1 + Exam 2) / 2 when both scores are entered. Grading: A = 75–100%, B = 65–74%, C = 45–64%, D = 30–44%, F = 0–29%.",
     margin,

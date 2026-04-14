@@ -1,7 +1,83 @@
 import { REPORT_CARD_EXAM_LABELS, type ReportTermValue } from "./constants";
 import { letterGradeFromPercent, computeReportCardTermAverage } from "./report-card-grades";
-import type { StudentReportRow } from "./report-card-types";
+import type {
+  ReportCardCommentRow,
+  StudentReportRow,
+} from "./report-card-types";
 import type { ReportCardPreviewData } from "./report-card-preview-types";
+
+/** Draft fields needed to align report card preview with the editor. */
+export interface ReportCardExamDraftOverlay {
+  comment: string;
+  exam1: string;
+  exam2: string;
+  exam1Overridden: boolean;
+  exam2Overridden: boolean;
+  exam1GbOriginal: string | null;
+  exam2GbOriginal: string | null;
+}
+
+function parseDraftPercentString(raw: string): number | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Merges in-memory draft exam scores and comments over server `student.comments`
+ * so preview/PDF match the teacher matrix (including unsaved edits).
+ */
+export function mergeStudentCommentsWithDraftsForPreview(
+  student: StudentReportRow,
+  subjects: string[],
+  draftBySubject: Record<string, ReportCardExamDraftOverlay> | undefined
+): StudentReportRow {
+  if (!draftBySubject) return student;
+
+  const bySub = new Map<string, ReportCardCommentRow>(
+    student.comments.map((c) => [c.subject, { ...c }])
+  );
+  const subjList = subjects.length > 0 ? subjects : ["General"];
+
+  for (const subject of subjList) {
+    const d = draftBySubject[subject];
+    if (!d) continue;
+    const prev = bySub.get(subject);
+    const e1 = parseDraftPercentString(d.exam1);
+    const e2 = parseDraftPercentString(d.exam2);
+    const avg = computeReportCardTermAverage(e1, e2);
+    const grade = avg != null ? letterGradeFromPercent(avg) : null;
+
+    const merged: ReportCardCommentRow = {
+      id: prev?.id ?? "",
+      subject,
+      comment:
+        d.comment.trim() !== "" ? d.comment : prev?.comment ?? null,
+      scorePercent: avg ?? prev?.scorePercent ?? null,
+      letterGrade: grade ?? prev?.letterGrade ?? null,
+      exam1Score: e1,
+      exam2Score: e2,
+      calculatedScore: avg,
+      calculatedGrade: grade,
+      exam1GradebookOriginal: d.exam1Overridden
+        ? parseDraftPercentString(d.exam1GbOriginal ?? "") ??
+          prev?.exam1GradebookOriginal ??
+          null
+        : (prev?.exam1GradebookOriginal ?? null),
+      exam2GradebookOriginal: d.exam2Overridden
+        ? parseDraftPercentString(d.exam2GbOriginal ?? "") ??
+          prev?.exam2GradebookOriginal ??
+          null
+        : (prev?.exam2GradebookOriginal ?? null),
+      exam1ScoreOverridden: d.exam1Overridden,
+      exam2ScoreOverridden: d.exam2Overridden,
+    };
+    bySub.set(subject, merged);
+  }
+
+  return { ...student, comments: Array.from(bySub.values()) };
+}
 
 function fmtPct(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(Number(n))) return "—";
@@ -54,6 +130,8 @@ export function buildSubjectPreviewRows(
       subject,
       exam1Pct: fmtPct(e1),
       exam2Pct: fmtPct(e2),
+      exam1Overridden: c?.exam1ScoreOverridden === true,
+      exam2Overridden: c?.exam2ScoreOverridden === true,
       averagePct: avgRaw != null && Number.isFinite(avgRaw) ? `${avgRaw}%` : "—",
       grade,
       comment: c?.comment?.trim() ?? "",

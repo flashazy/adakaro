@@ -112,7 +112,7 @@ export default async function ParentReportCardPage({
   const { data: comments } = await supabase
     .from("teacher_report_card_comments")
     .select(
-      "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade"
+      "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden"
     )
     .eq("report_card_id", row.id);
 
@@ -133,6 +133,10 @@ export default async function ParentReportCardPage({
       exam2_score: number | string | null;
       calculated_score: number | string | null;
       calculated_grade: string | null;
+      exam1_gradebook_original?: number | string | null;
+      exam2_gradebook_original?: number | string | null;
+      exam1_score_overridden?: boolean | null;
+      exam2_score_overridden?: boolean | null;
     };
     return {
       id: r.id,
@@ -144,6 +148,10 @@ export default async function ParentReportCardPage({
       exam2Score: parseNum(r.exam2_score),
       calculatedScore: parseNum(r.calculated_score),
       calculatedGrade: r.calculated_grade,
+      exam1GradebookOriginal: parseNum(r.exam1_gradebook_original),
+      exam2GradebookOriginal: parseNum(r.exam2_gradebook_original),
+      exam1ScoreOverridden: r.exam1_score_overridden === true,
+      exam2ScoreOverridden: r.exam2_score_overridden === true,
     };
   });
 

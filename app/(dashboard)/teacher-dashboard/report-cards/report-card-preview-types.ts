@@ -12,6 +12,9 @@ export interface ReportCardPreviewData {
     subject: string;
     exam1Pct: string;
     exam2Pct: string;
+    /** True when the saved score was edited after using the gradebook value. */
+    exam1Overridden: boolean;
+    exam2Overridden: boolean;
     averagePct: string;
     grade: string;
     comment: string;
