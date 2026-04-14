@@ -839,6 +839,8 @@ export interface Database {
           max_score: number;
           weight: number;
           due_date: string | null;
+          academic_year: string;
+          exam_type: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -851,6 +853,8 @@ export interface Database {
           max_score: number;
           weight?: number;
           due_date?: string | null;
+          academic_year?: string;
+          exam_type?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -862,6 +866,8 @@ export interface Database {
           max_score?: number;
           weight?: number;
           due_date?: string | null;
+          academic_year?: string;
+          exam_type?: string | null;
           updated_at?: string;
         };
       };

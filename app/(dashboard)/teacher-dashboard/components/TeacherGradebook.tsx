@@ -23,6 +23,10 @@ import {
   tanzaniaPercentFromScore,
 } from "./GradeReportPDF";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
+import {
+  duplicateMajorExamMessage,
+  resolvedMajorExamKindForDuplicateCheck,
+} from "@/lib/gradebook-major-exams";
 
 const WEIGHT_FIELD_TOOLTIP =
   "Weight determines how much this assignment counts toward the final grade. Example: Final exam = 50%, Quiz = 10%. Default is 100%.";
@@ -50,6 +54,8 @@ type GbAssignment = {
   weight: number;
   due_date: string | null;
   subject: string;
+  exam_type?: string | null;
+  academic_year?: string;
 };
 
 type ScoreRow = {
@@ -93,6 +99,11 @@ function displayRemarks(row: ScoreRow | undefined): string {
   const r = row.remarks?.trim();
   if (r) return r;
   return row.comments?.trim() ?? "";
+}
+
+function isDuplicateMajorExamFormError(message: string | null): boolean {
+  if (!message) return false;
+  return message.includes("already exists for this class and subject");
 }
 
 function tanzaniaGradeCellSurface(letter: string): string {
@@ -198,6 +209,9 @@ export function TeacherGradebook({
   const matrixCellInputRef = useRef<HTMLInputElement>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [assignmentCreateError, setAssignmentCreateError] = useState<
+    string | null
+  >(null);
   const [assignmentCreatedBanner, setAssignmentCreatedBanner] = useState<
     string | null
   >(null);
@@ -272,6 +286,21 @@ export function TeacherGradebook({
     }
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [options, classId]);
+
+  const academicYearForSelection = useMemo(() => {
+    const subDisplay = subject.trim() || "General";
+    const matches = options.filter(
+      (o) =>
+        o.classId === classId &&
+        (o.subject?.trim() || "General") === subDisplay
+    );
+    if (matches.length === 0) return "";
+    const years = matches
+      .map((m) => m.academicYear?.trim() || "")
+      .filter(Boolean)
+      .sort((a, b) => b.localeCompare(a));
+    return years[0] ?? "";
+  }, [options, classId, subject]);
 
   useEffect(() => {
     const subs = subjectsForClass;
@@ -394,20 +423,39 @@ export function TeacherGradebook({
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setAssignmentCreateError(null);
     setAssignmentCreatedBanner(null);
     const mx = Number(maxScore);
     const w = Number(weight);
     if (!title.trim() || !classId || !subject.trim()) {
-      setError("Title, class, and subject are required.");
+      setAssignmentCreateError("Title, class, and subject are required.");
       return;
     }
     if (!Number.isFinite(mx) || mx <= 0) {
-      setError("Max score must be a positive number.");
+      setAssignmentCreateError("Max score must be a positive number.");
       return;
     }
     if (!Number.isFinite(w) || w < 0) {
-      setError("Weight must be zero or positive.");
+      setAssignmentCreateError("Weight must be zero or positive.");
       return;
+    }
+    const newKind = resolvedMajorExamKindForDuplicateCheck(null, title.trim());
+    if (newKind) {
+      const ay = academicYearForSelection.trim();
+      const hasDup = assignments.some((a) => {
+        const existingKind = resolvedMajorExamKindForDuplicateCheck(
+          a.exam_type ?? null,
+          a.title
+        );
+        if (existingKind !== newKind) return false;
+        const aYear = (a.academic_year ?? "").trim();
+        if (ay && aYear) return ay === aYear;
+        return true;
+      });
+      if (hasDup) {
+        setAssignmentCreateError(duplicateMajorExamMessage(newKind));
+        return;
+      }
     }
     const res = await createGradebookAssignmentAction({
       classId,
@@ -416,11 +464,13 @@ export function TeacherGradebook({
       maxScore: mx,
       weight: w,
       dueDate: dueDate || null,
+      academicYear: academicYearForSelection || null,
     });
     if (!res.ok) {
-      setError(res.error);
+      setAssignmentCreateError(res.error);
       return;
     }
+    setAssignmentCreateError(null);
     setAssignmentCreatedBanner("Assignment created.");
     setTitle("");
     setTitlePresetValue("");
@@ -801,6 +851,7 @@ export function TeacherGradebook({
               onChange={(e) => {
                 setClassId(e.target.value);
                 setAssignmentId("");
+                setAssignmentCreateError(null);
               }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
@@ -822,6 +873,7 @@ export function TeacherGradebook({
               onChange={(e) => {
                 setSubject(e.target.value);
                 setAssignmentId("");
+                setAssignmentCreateError(null);
               }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
@@ -1018,7 +1070,13 @@ export function TeacherGradebook({
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Title
             </span>
-            <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <div
+              className={cn(
+                "mt-1 flex flex-col gap-2 rounded-lg sm:flex-row sm:items-stretch",
+                isDuplicateMajorExamFormError(assignmentCreateError) &&
+                  "ring-2 ring-red-600 ring-offset-2 ring-offset-slate-50 dark:ring-offset-zinc-900"
+              )}
+            >
               <select
                 value={titlePresetValue}
                 onChange={(e) => {
@@ -1026,6 +1084,7 @@ export function TeacherGradebook({
                   if (v) {
                     setTitle(v);
                     setTitlePresetValue("");
+                    setAssignmentCreateError(null);
                   }
                 }}
                 className="w-full shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white sm:max-w-xs"
@@ -1040,9 +1099,18 @@ export function TeacherGradebook({
               </select>
               <input
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  setAssignmentCreateError(null);
+                }}
                 className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                 placeholder="Or type a custom name"
+                aria-invalid={isDuplicateMajorExamFormError(
+                  assignmentCreateError
+                )}
+                aria-describedby={
+                  assignmentCreateError ? "assignment-create-error" : undefined
+                }
               />
             </div>
           </label>
@@ -1055,7 +1123,10 @@ export function TeacherGradebook({
               min={0.01}
               step={0.01}
               value={maxScore}
-              onChange={(e) => setMaxScore(e.target.value)}
+              onChange={(e) => {
+                setMaxScore(e.target.value);
+                setAssignmentCreateError(null);
+              }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             />
           </label>
@@ -1092,7 +1163,10 @@ export function TeacherGradebook({
               min={0}
               step={0.1}
               value={weight}
-              onChange={(e) => setWeight(e.target.value)}
+              onChange={(e) => {
+                setWeight(e.target.value);
+                setAssignmentCreateError(null);
+              }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             />
           </label>
@@ -1103,7 +1177,10 @@ export function TeacherGradebook({
             <input
               type="date"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(e) => {
+                setDueDate(e.target.value);
+                setAssignmentCreateError(null);
+              }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             />
           </label>
@@ -1114,6 +1191,16 @@ export function TeacherGradebook({
             >
               Create assignment
             </button>
+            {assignmentCreateError && (
+              <p
+                id="assignment-create-error"
+                role="alert"
+                aria-live="polite"
+                className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+              >
+                {assignmentCreateError}
+              </p>
+            )}
           </div>
         </form>
       </section>

@@ -8,6 +8,11 @@ import {
   orderStudentsByGenderThenName,
   sortStudentsByGenderThenName,
 } from "@/lib/student-list-order";
+import {
+  duplicateMajorExamMessage,
+  inferMajorExamTypeFromTitle,
+  parseGradebookExamType,
+} from "@/lib/gradebook-major-exams";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -66,6 +71,48 @@ async function assertTeacherTeachesSubjectInClass(
     .limit(1)
     .maybeSingle();
   return !!data;
+}
+
+async function resolveGradebookAcademicYearForInsert(
+  admin: Db,
+  teacherId: string,
+  classId: string,
+  subjectDisplay: string
+): Promise<string> {
+  const subLower = subjectDisplay.trim().toLowerCase();
+  const { data: rows } = await admin
+    .from("teacher_assignments")
+    .select(
+      `
+      academic_year,
+      subject,
+      subjects ( name )
+    `
+    )
+    .eq("teacher_id", teacherId)
+    .eq("class_id", classId);
+
+  const candidates = (rows ?? []) as {
+    academic_year: string;
+    subject: string;
+    subjects: { name: string } | null;
+  }[];
+
+  const match = candidates.find((r) => {
+    const display = (
+      r.subjects?.name?.trim() ||
+      r.subject?.trim() ||
+      "General"
+    ).toLowerCase();
+    return display === subLower;
+  });
+
+  const y =
+    (match?.academic_year ?? "").trim() ||
+    (candidates[0]?.academic_year ?? "").trim();
+  if (y) return y;
+
+  return new Date().getUTCFullYear().toString();
 }
 
 function normalizeAttendanceDateOnly(iso: string): string | null {
@@ -260,6 +307,8 @@ export async function createGradebookAssignmentAction(input: {
   maxScore: number;
   weight: number;
   dueDate: string | null;
+  academicYear?: string | null;
+  examType?: string | null;
 }) {
   const supabase = await createClient();
   const {
@@ -286,21 +335,45 @@ export async function createGradebookAssignmentAction(input: {
     };
   }
 
+  const subjectTrim = input.subject.trim();
+  const academicYearRaw = (input.academicYear ?? "").trim();
+  const academicYear = academicYearRaw
+    ? academicYearRaw
+    : await resolveGradebookAcademicYearForInsert(
+        admin,
+        user.id,
+        input.classId,
+        subjectTrim
+      );
+
+  const titleTrim = input.title.trim();
+  const examType =
+    parseGradebookExamType(input.examType) ??
+    inferMajorExamTypeFromTitle(titleTrim);
+
   const { data: created, error } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .insert({
       teacher_id: user.id,
       class_id: input.classId,
-      subject: input.subject.trim(),
-      title: input.title.trim(),
+      subject: subjectTrim,
+      title: titleTrim,
       max_score: input.maxScore,
       weight: input.weight,
       due_date: input.dueDate || null,
+      academic_year: academicYear,
+      exam_type: examType,
     })
     .select("id")
     .single();
 
   if (error || !created) {
+    if (error?.code === "23505" && examType) {
+      return {
+        ok: false,
+        error: duplicateMajorExamMessage(examType),
+      };
+    }
     return { ok: false, error: error?.message ?? "Could not create assignment." };
   }
 
@@ -379,7 +452,9 @@ export async function loadGradebookAssignmentsForClass(
 
   const { data, error } = await (admin as Db)
     .from("teacher_gradebook_assignments")
-    .select("id, title, max_score, weight, due_date, subject")
+    .select(
+      "id, title, max_score, weight, due_date, subject, exam_type, academic_year"
+    )
     .eq("teacher_id", user.id)
     .eq("class_id", classId)
     .eq("subject", subject);
@@ -397,6 +472,8 @@ export async function loadGradebookAssignmentsForClass(
       weight: number;
       due_date: string | null;
       subject: string;
+      exam_type: string | null;
+      academic_year: string;
     }[],
   };
 }
@@ -419,7 +496,9 @@ export async function loadGradebookClassMatrix(classId: string, subject: string)
 
   const { data: assignmentRows, error: aErr } = await (admin as Db)
     .from("teacher_gradebook_assignments")
-    .select("id, title, max_score, weight, due_date, subject, created_at")
+    .select(
+      "id, title, max_score, weight, due_date, subject, created_at, exam_type, academic_year"
+    )
     .eq("teacher_id", user.id)
     .eq("class_id", classId)
     .eq("subject", subject)
@@ -437,6 +516,8 @@ export async function loadGradebookClassMatrix(classId: string, subject: string)
     due_date: string | null;
     subject: string;
     created_at?: string;
+    exam_type: string | null;
+    academic_year: string;
   }[];
 
   const { data: students } = await orderStudentsByGenderThenName(
