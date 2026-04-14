@@ -163,6 +163,21 @@ function draftAverageLine(exam1: string, exam2: string): {
   };
 }
 
+const GRADE_AUTO_COMMENTS: Record<string, string> = {
+  A: "Excellent performance, keep it up",
+  B: "Very good, keep working hard",
+  C: "Good, but there is room for improvement",
+  D: "Average, needs to put more effort",
+  F: "Failure, requires serious improvement",
+};
+
+/** Suggested comment from term letter grade; null if grade not available. */
+function autoCommentFromGrades(exam1: string, exam2: string): string | null {
+  const { grade } = draftAverageLine(exam1, exam2);
+  if (!grade || grade === "—") return null;
+  return GRADE_AUTO_COMMENTS[grade] ?? null;
+}
+
 function statusLabel(
   s: string | null
 ): { short: string; banner: string } {
@@ -665,6 +680,59 @@ export function ReportCardsPageClient({
     },
     [selectedStudent, saveSubject, flashGreenBorder]
   );
+
+  const autoCommentDraftKey = useMemo(() => {
+    if (!studentId) return "";
+    const subjList = subjects.length > 0 ? subjects : ["General"];
+    const slice = drafts[studentId];
+    if (!slice) {
+      return subjList.map((s) => `${s}||||`).join("\n");
+    }
+    return subjList
+      .map((s) => {
+        const r = slice[s] ?? emptyDraftRow();
+        return `${s}|${r.exam1}|${r.exam2}|${r.comment}`;
+      })
+      .join("\n");
+  }, [studentId, subjects, drafts]);
+
+  useEffect(() => {
+    if (loading || !studentId) return;
+    const subjList = subjects.length > 0 ? subjects : ["General"];
+    const sid = studentId;
+    const toSchedule: string[] = [];
+
+    setDrafts((prev) => {
+      const slice = prev[sid];
+      if (!slice) return prev;
+      const studentDraft = { ...slice };
+      let changed = false;
+
+      for (const subject of subjList) {
+        const cur = studentDraft[subject] ?? emptyDraftRow();
+        if (cur.comment.trim() !== "") continue;
+        const auto = autoCommentFromGrades(cur.exam1, cur.exam2);
+        if (auto == null) continue;
+        if (cur.comment === auto) continue;
+        studentDraft[subject] = { ...cur, comment: auto };
+        changed = true;
+        toSchedule.push(subject);
+      }
+
+      if (!changed) return prev;
+      return { ...prev, [sid]: studentDraft };
+    });
+
+    for (const sub of toSchedule) {
+      scheduleAutosave(sub);
+    }
+  }, [
+    loading,
+    studentId,
+    subjects,
+    autoCommentDraftKey,
+    scheduleAutosave,
+  ]);
 
   const hasUnsavedForSelected = useMemo(() => {
     if (!selectedStudent) return false;
