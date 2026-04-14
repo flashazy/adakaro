@@ -4,15 +4,55 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/supabase";
-import { letterGradeFromPercent } from "./report-card-grades";
+import {
+  computeReportCardTermAverage,
+  letterGradeFromPercent,
+} from "./report-card-grades";
 import {
   ensureReportCard,
   loadStudentsReportData,
   loadSubjectsForClass,
 } from "./queries";
-import type { ReportCardStatus } from "./report-card-types";
+import type {
+  ReportCardCommentRow,
+  ReportCardStatus,
+} from "./report-card-types";
+import { isMissingColumnSchemaError } from "./report-card-schema-compat";
 
 export type { ReportCardStatus } from "./report-card-types";
+
+interface TeacherReportCardCommentSelectRow {
+  id: string;
+  subject: string;
+  comment: string | null;
+  score_percent?: number | string | null;
+  letter_grade?: string | null;
+  exam1_score?: number | string | null;
+  exam2_score?: number | string | null;
+  calculated_score?: number | string | null;
+  calculated_grade?: string | null;
+}
+
+function mapReportCardCommentRow(row: TeacherReportCardCommentSelectRow): ReportCardCommentRow {
+  const parseNumeric = (
+    v: number | string | null | undefined
+  ): number | null => {
+    if (v == null || String(v).trim() === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    id: row.id,
+    subject: row.subject,
+    comment: row.comment,
+    scorePercent: parseNumeric(row.score_percent),
+    letterGrade: row.letter_grade ?? null,
+    exam1Score: parseNumeric(row.exam1_score),
+    exam2Score: parseNumeric(row.exam2_score),
+    calculatedScore: parseNumeric(row.calculated_score),
+    calculatedGrade: row.calculated_grade ?? null,
+  };
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -37,8 +77,12 @@ export async function upsertReportCardComment(input: {
   academicYear: string;
   subject: string;
   comment: string | null;
-  scorePercent: number | null;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+  exam1Score: number | null;
+  exam2Score: number | null;
+}): Promise<
+  | { ok: true; reportCardId: string; comment: ReportCardCommentRow }
+  | { ok: false; error: string }
+> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -47,30 +91,40 @@ export async function upsertReportCardComment(input: {
 
   const admin = createAdminClient() as AdminDb;
 
+  const academicYear = input.academicYear.trim();
+  const term = input.term.trim();
+  const subject = input.subject.trim();
+
   const rc = await ensureReportCard(
     admin,
     user.id,
     input.studentId,
     input.classId,
-    input.schoolId,
-    input.term,
-    input.academicYear
+    input.schoolId.trim(),
+    term,
+    academicYear
   );
   if (!rc.ok) return rc;
 
-  const letter =
-    input.scorePercent != null && Number.isFinite(input.scorePercent)
-      ? letterGradeFromPercent(input.scorePercent)
+  const calculated_score = computeReportCardTermAverage(
+    input.exam1Score,
+    input.exam2Score
+  );
+  const calculated_grade =
+    calculated_score != null
+      ? letterGradeFromPercent(calculated_score)
       : null;
+  const score_percent = calculated_score;
+  const letter_grade = calculated_grade;
 
   const { data: existing, error: existingLookupErr } = await admin
     .from("teacher_report_card_comments")
     .select("id")
     .eq("teacher_id", user.id)
     .eq("student_id", input.studentId)
-    .eq("subject", input.subject)
-    .eq("academic_year", input.academicYear)
-    .eq("term", input.term)
+    .eq("subject", subject)
+    .eq("academic_year", academicYear)
+    .eq("term", term)
     .maybeSingle();
 
   if (existingLookupErr) {
@@ -81,40 +135,124 @@ export async function upsertReportCardComment(input: {
     return { ok: false, error: existingLookupErr.message };
   }
 
-  const payload = {
+  const selectColsFull =
+    "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
+  const selectColsLegacy =
+    "id, subject, comment, score_percent, letter_grade";
+
+  const extendedWrite = {
+    comment: input.comment,
+    exam1_score: input.exam1Score,
+    exam2_score: input.exam2Score,
+    calculated_score,
+    calculated_grade,
+    score_percent,
+    letter_grade,
+    report_card_id: rc.id,
+  };
+
+  const legacyWrite = {
+    comment: input.comment,
+    score_percent,
+    letter_grade,
+    report_card_id: rc.id,
+  };
+
+  const insertBase = {
     teacher_id: user.id,
     student_id: input.studentId,
-    subject: input.subject,
-    academic_year: input.academicYear,
-    term: input.term,
+    subject,
+    academic_year: academicYear,
+    term,
     report_card_id: rc.id,
     comment: input.comment,
-    score_percent: input.scorePercent,
-    letter_grade: letter,
     status: "draft" as const,
   };
 
-  const mutation = existing
-    ? await admin
-        .from("teacher_report_card_comments")
-        .update({
-          comment: payload.comment,
-          score_percent: payload.score_percent,
-          letter_grade: payload.letter_grade,
-          report_card_id: rc.id,
-        })
-        .eq("id", (existing as { id: string }).id)
-    : await admin.from("teacher_report_card_comments").insert(
-        payload as Database["public"]["Tables"]["teacher_report_card_comments"]["Insert"]
-      );
+  const insertExtended = {
+    ...insertBase,
+    exam1_score: input.exam1Score,
+    exam2_score: input.exam2Score,
+    calculated_score,
+    calculated_grade,
+    score_percent,
+    letter_grade,
+  };
 
-  const error = mutation.error;
-  if (error) {
-    console.error("[upsertReportCardComment] insert/update failed", error);
-    return { ok: false, error: error.message };
+  const insertLegacy = {
+    ...insertBase,
+    score_percent,
+    letter_grade,
+  };
+
+  if (existing) {
+    const commentId = (existing as { id: string }).id;
+    let res = await admin
+      .from("teacher_report_card_comments")
+      .update(extendedWrite)
+      .eq("id", commentId)
+      .select(selectColsFull)
+      .single();
+
+    if (res.error && isMissingColumnSchemaError(res.error)) {
+      res = await admin
+        .from("teacher_report_card_comments")
+        .update(legacyWrite)
+        .eq("id", commentId)
+        .select(selectColsLegacy)
+        .single();
+    }
+
+    if (res.error) {
+      console.error("[upsertReportCardComment] update failed", res.error);
+      return { ok: false, error: res.error.message };
+    }
+    if (!res.data) {
+      return { ok: false, error: "No row returned after update" };
+    }
+    revalidatePath("/teacher-dashboard/report-cards");
+    return {
+      ok: true,
+      reportCardId: rc.id,
+      comment: mapReportCardCommentRow(
+        res.data as TeacherReportCardCommentSelectRow
+      ),
+    };
+  }
+
+  let ins = await admin
+    .from("teacher_report_card_comments")
+    .insert(
+      insertExtended as Database["public"]["Tables"]["teacher_report_card_comments"]["Insert"]
+    )
+    .select(selectColsFull)
+    .single();
+
+  if (ins.error && isMissingColumnSchemaError(ins.error)) {
+    ins = await admin
+      .from("teacher_report_card_comments")
+      .insert(
+        insertLegacy as Database["public"]["Tables"]["teacher_report_card_comments"]["Insert"]
+      )
+      .select(selectColsLegacy)
+      .single();
+  }
+
+  if (ins.error) {
+    console.error("[upsertReportCardComment] insert failed", ins.error);
+    return { ok: false, error: ins.error.message };
+  }
+  if (!ins.data) {
+    return { ok: false, error: "No row returned after insert" };
   }
   revalidatePath("/teacher-dashboard/report-cards");
-  return { ok: true };
+  return {
+    ok: true,
+    reportCardId: rc.id,
+    comment: mapReportCardCommentRow(
+      ins.data as TeacherReportCardCommentSelectRow
+    ),
+  };
 }
 
 export async function submitReportCardForReview(

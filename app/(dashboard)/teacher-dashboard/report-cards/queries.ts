@@ -9,6 +9,7 @@ import type {
   StudentReportRow,
   TeacherClassOption,
 } from "./report-card-types";
+import { isMissingColumnSchemaError } from "./report-card-schema-compat";
 import { termDateRange } from "./report-card-dates";
 
 export type {
@@ -220,6 +221,9 @@ export async function loadStudentsReportData(
 
   const admin = createAdminClient() as Db;
 
+  const termNorm = term.trim();
+  const yearNorm = academicYear.trim();
+
   const { data: studs, error: se } = await admin
     .from("students")
     .select("id, full_name, parent_email")
@@ -236,8 +240,8 @@ export async function loadStudentsReportData(
     .from("report_cards")
     .select("id, student_id, status")
     .eq("class_id", classId)
-    .eq("term", term)
-    .eq("academic_year", academicYear)
+    .eq("term", termNorm)
+    .eq("academic_year", yearNorm)
     .in("student_id", studentIds);
 
   const cardByStudent = new Map<
@@ -256,13 +260,39 @@ export async function loadStudentsReportData(
   const commentsByCard = new Map<string, ReportCardCommentRow[]>();
 
   if (cardIds.length) {
-    const { data: coms } = await admin
+    const selectFull =
+      "id, report_card_id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
+    const selectLegacy =
+      "id, report_card_id, subject, comment, score_percent, letter_grade";
+
+    let comsRes = await admin
       .from("teacher_report_card_comments")
-      .select(
-        "id, report_card_id, subject, comment, score_percent, letter_grade"
-      )
+      .select(selectFull)
       .eq("teacher_id", user.id)
       .in("report_card_id", cardIds);
+
+    if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
+      comsRes = await admin
+        .from("teacher_report_card_comments")
+        .select(selectLegacy)
+        .eq("teacher_id", user.id)
+        .in("report_card_id", cardIds);
+    }
+
+    if (comsRes.error) {
+      console.error("[loadStudentsReportData] comments select", comsRes.error);
+      return { ok: false, error: comsRes.error.message };
+    }
+
+    const coms = comsRes.data;
+
+    const parseNumeric = (
+      v: number | string | null | undefined
+    ): number | null => {
+      if (v == null || String(v).trim() === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
 
     for (const row of (coms ?? []) as {
       id: string;
@@ -271,14 +301,12 @@ export async function loadStudentsReportData(
       comment: string | null;
       score_percent: number | string | null;
       letter_grade: string | null;
+      exam1_score: number | string | null;
+      exam2_score: number | string | null;
+      calculated_score: number | string | null;
+      calculated_grade: string | null;
     }[]) {
-      const rawPct = row.score_percent;
-      const parsed =
-        rawPct != null && String(rawPct).trim() !== ""
-          ? Number(rawPct)
-          : null;
-      const scorePercent =
-        parsed != null && Number.isFinite(parsed) ? parsed : null;
+      const scorePercent = parseNumeric(row.score_percent);
       const list = commentsByCard.get(row.report_card_id) ?? [];
       list.push({
         id: row.id,
@@ -286,12 +314,16 @@ export async function loadStudentsReportData(
         comment: row.comment,
         scorePercent,
         letterGrade: row.letter_grade,
+        exam1Score: parseNumeric(row.exam1_score),
+        exam2Score: parseNumeric(row.exam2_score),
+        calculatedScore: parseNumeric(row.calculated_score),
+        calculatedGrade: row.calculated_grade,
       });
       commentsByCard.set(row.report_card_id, list);
     }
   }
 
-  const { start, end } = termDateRange(term, academicYear);
+  const { start, end } = termDateRange(termNorm, yearNorm);
   const attendanceByStudent: Record<
     string,
     { present: number; absent: number; late: number }
@@ -348,12 +380,15 @@ export async function ensureReportCard(
   term: string,
   academicYear: string
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const termT = term.trim();
+  const yearT = academicYear.trim();
+
   const { data: existing, error: selectErr } = await admin
     .from("report_cards")
     .select("id, class_id")
     .eq("student_id", studentId)
-    .eq("term", term)
-    .eq("academic_year", academicYear)
+    .eq("term", termT)
+    .eq("academic_year", yearT)
     .maybeSingle();
 
   if (selectErr) {
@@ -385,8 +420,8 @@ export async function ensureReportCard(
       class_id: classId,
       school_id: schoolId,
       teacher_id: userId,
-      term,
-      academic_year: academicYear,
+      term: termT,
+      academic_year: yearT,
       status: "draft",
     })
     .select("id")

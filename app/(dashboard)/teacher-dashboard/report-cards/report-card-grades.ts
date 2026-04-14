@@ -7,3 +7,19 @@ export function letterGradeFromPercent(pct: number | null): string {
   if (pct >= 30) return "D";
   return "F";
 }
+
+/** Final term score when both exam percentages are entered (0–100 each). */
+export function computeReportCardTermAverage(
+  exam1: number | null,
+  exam2: number | null
+): number | null {
+  if (
+    exam1 == null ||
+    exam2 == null ||
+    !Number.isFinite(exam1) ||
+    !Number.isFinite(exam2)
+  ) {
+    return null;
+  }
+  return Math.round(((exam1 + exam2) / 2) * 10) / 10;
+}

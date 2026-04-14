@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import {
-  ReportCardPreview,
-  type ReportCardPreviewData,
-} from "@/app/(dashboard)/teacher-dashboard/report-cards/components/ReportCardPreview";
+import { ReportCardPreview } from "@/app/(dashboard)/teacher-dashboard/report-cards/components/ReportCardPreview";
+import { buildSubjectPreviewRows } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-builder";
+import type { ReportCardPreviewData } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-types";
+import type {
+  ReportCardCommentRow,
+  StudentReportRow,
+} from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-types";
 import { termDateRange } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-dates";
 
 export const metadata = {
@@ -108,27 +111,60 @@ export default async function ParentReportCardPage({
 
   const { data: comments } = await supabase
     .from("teacher_report_card_comments")
-    .select("subject, comment, score_percent, letter_grade")
+    .select(
+      "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade"
+    )
     .eq("report_card_id", row.id);
 
-  const subjects: ReportCardPreviewData["subjects"] =
-    (comments ?? []).map((c) => {
-      const r = c as {
-        subject: string;
-        comment: string | null;
-        score_percent: number | null;
-        letter_grade: string | null;
-      };
-      return {
-        subject: r.subject,
-        scorePct:
-          r.score_percent != null && Number.isFinite(r.score_percent)
-            ? `${Math.round(r.score_percent * 10) / 10}%`
-            : "—",
-        grade: r.letter_grade?.trim() || "—",
-        comment: r.comment?.trim() ?? "",
-      };
-    }) ?? [];
+  const parseNum = (v: unknown): number | null => {
+    if (v == null || String(v).trim() === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const commentRows: ReportCardCommentRow[] = (comments ?? []).map((raw) => {
+    const r = raw as {
+      id: string;
+      subject: string;
+      comment: string | null;
+      score_percent: number | string | null;
+      letter_grade: string | null;
+      exam1_score: number | string | null;
+      exam2_score: number | string | null;
+      calculated_score: number | string | null;
+      calculated_grade: string | null;
+    };
+    return {
+      id: r.id,
+      subject: r.subject,
+      comment: r.comment,
+      scorePercent: parseNum(r.score_percent),
+      letterGrade: r.letter_grade,
+      exam1Score: parseNum(r.exam1_score),
+      exam2Score: parseNum(r.exam2_score),
+      calculatedScore: parseNum(r.calculated_score),
+      calculatedGrade: r.calculated_grade,
+    };
+  });
+
+  const subjectOrder = [...new Set(commentRows.map((c) => c.subject))].sort(
+    (a, b) => a.localeCompare(b)
+  );
+
+  const syntheticStudent: StudentReportRow = {
+    studentId,
+    fullName: row.students?.full_name ?? "—",
+    parentEmail: null,
+    reportCardId: row.id,
+    status: "approved",
+    comments: commentRows,
+  };
+
+  const subjects: ReportCardPreviewData["subjects"] = buildSubjectPreviewRows(
+    row.term,
+    subjectOrder,
+    syntheticStudent
+  );
 
   const { start, end } = termDateRange(term, academicYear);
   const { data: attRows } = await supabase

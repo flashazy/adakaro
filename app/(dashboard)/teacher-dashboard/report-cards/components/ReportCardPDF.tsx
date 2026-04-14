@@ -2,11 +2,13 @@
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { ReportCardPreviewData } from "./ReportCardPreview";
+import { reportCardExamColumnTitles } from "../report-card-preview-builder";
+import type { ReportCardPreviewData } from "../report-card-preview-types";
 
 function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   let y = margin;
   const pageW = doc.internal.pageSize.getWidth();
+  const examHead = reportCardExamColumnTitles(data.term);
 
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
@@ -36,15 +38,26 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
 
   const subBody = data.subjects.map((s) => [
     s.subject,
-    s.scorePct,
+    s.exam1Pct,
+    s.exam2Pct,
+    s.averagePct,
     s.grade,
     s.comment || "—",
   ]);
   autoTable(doc, {
     startY: y,
-    head: [["Subject", "Score %", "Grade", "Teacher comment"]],
-    body: subBody.length ? subBody : [["—", "—", "—", "No entries"]],
-    styles: { fontSize: 9, cellPadding: 2 },
+    head: [
+      [
+        "Subject",
+        examHead.exam1,
+        examHead.exam2,
+        "Average %",
+        "Grade",
+        "Teacher comment",
+      ],
+    ],
+    body: subBody.length ? subBody : [["—", "—", "—", "—", "—", "No entries"]],
+    styles: { fontSize: 8, cellPadding: 1.5 },
     headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: "bold" },
     margin: { left: margin, right: margin },
   });
@@ -56,7 +69,7 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   doc.setFontSize(8);
   doc.setTextColor(80, 80, 80);
   doc.text(
-    "Grading: A = 75–100%, B = 65–74%, C = 45–64%, D = 30–44%, F = 0–29%.",
+    "Average = (Exam 1 + Exam 2) / 2 when both scores are entered. Grading: A = 75–100%, B = 65–74%, C = 45–64%, D = 30–44%, F = 0–29%.",
     margin,
     y
   );

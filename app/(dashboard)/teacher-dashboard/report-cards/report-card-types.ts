@@ -16,6 +16,10 @@ export interface ReportCardCommentRow {
   comment: string | null;
   scorePercent: number | null;
   letterGrade: string | null;
+  exam1Score: number | null;
+  exam2Score: number | null;
+  calculatedScore: number | null;
+  calculatedGrade: string | null;
 }
 
 export interface StudentReportRow {

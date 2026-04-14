@@ -1159,6 +1159,10 @@ export interface Database {
           report_card_id: string;
           score_percent: number | null;
           letter_grade: string | null;
+          exam1_score: number | null;
+          exam2_score: number | null;
+          calculated_score: number | null;
+          calculated_grade: string | null;
         };
         Insert: {
           id?: string;
@@ -1174,6 +1178,10 @@ export interface Database {
           report_card_id: string;
           score_percent?: number | null;
           letter_grade?: string | null;
+          exam1_score?: number | null;
+          exam2_score?: number | null;
+          calculated_score?: number | null;
+          calculated_grade?: string | null;
         };
         Update: {
           teacher_id?: string;
@@ -1187,6 +1195,10 @@ export interface Database {
           report_card_id?: string;
           score_percent?: number | null;
           letter_grade?: string | null;
+          exam1_score?: number | null;
+          exam2_score?: number | null;
+          calculated_score?: number | null;
+          calculated_grade?: string | null;
         };
         Relationships: [];
       };

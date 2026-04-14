@@ -1,24 +1,25 @@
-/** Term values stored in DB / report_cards.term */
+/** Term values stored in DB / report_cards.term (Tanzania calendar). */
 export const REPORT_TERM_OPTIONS = [
   {
     value: "Term 1",
-    label: "Term 1 (January – March)",
+    label: "Term 1 (June Terminal Report)",
   },
   {
     value: "Term 2",
-    label: "Term 2 (April – August)",
-  },
-  {
-    value: "Term 3",
-    label: "Term 3 (September – November)",
-  },
-  {
-    value: "Annual",
-    label: "Annual (full year)",
+    label: "Term 2 (December Annual Report)",
   },
 ] as const;
 
 export type ReportTermValue = (typeof REPORT_TERM_OPTIONS)[number]["value"];
+
+/** Exam names shown per term (two scores; final = average). */
+export const REPORT_CARD_EXAM_LABELS: Record<
+  ReportTermValue,
+  { exam1: string; exam2: string }
+> = {
+  "Term 1": { exam1: "April Midterm", exam2: "June Terminal" },
+  "Term 2": { exam1: "September Midterm", exam2: "December Annual" },
+};
 
 /** Quick-insert comment templates for teachers */
 export const COMMENT_TEMPLATES = [

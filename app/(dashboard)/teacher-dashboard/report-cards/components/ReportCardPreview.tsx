@@ -1,32 +1,27 @@
 "use client";
 
-export interface ReportCardPreviewData {
-  schoolName: string;
-  logoUrl: string | null;
-  studentName: string;
-  className: string;
-  term: string;
-  academicYear: string;
-  teacherName: string;
-  dateIssued: string;
-  statusLabel: string;
-  subjects: {
-    subject: string;
-    scorePct: string;
-    grade: string;
-    comment: string;
-  }[];
-  attendance: {
-    present: number;
-    absent: number;
-    late: number;
-    daysInTermLabel: string;
-  };
+import {
+  REPORT_CARD_EXAM_LABELS,
+  type ReportTermValue,
+} from "../constants";
+import type { ReportCardPreviewData } from "../report-card-preview-types";
+
+export type { ReportCardPreviewData } from "../report-card-preview-types";
+
+function examLabelsForTerm(term: string): { exam1: string; exam2: string } {
+  if (term === "Term 1" || term === "Term 2") {
+    return REPORT_CARD_EXAM_LABELS[term as ReportTermValue];
+  }
+  return REPORT_CARD_EXAM_LABELS["Term 1"];
 }
 
 export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
+  const { exam1, exam2 } = examLabelsForTerm(data.term);
+  const exam1Head = `${exam1} (%)`;
+  const exam2Head = `${exam2} (%)`;
+
   return (
-    <div className="mx-auto max-w-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm print:shadow-none print:border-slate-300">
+    <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm print:shadow-none print:border-slate-300">
       <header className="flex flex-col items-center gap-3 border-b border-slate-200 pb-4 text-center sm:flex-row sm:items-start sm:text-left">
         {data.logoUrl ? (
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-slate-100 bg-white">
@@ -84,13 +79,15 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
           Subject results
         </h2>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             <thead>
               <tr className="bg-slate-800 text-white">
                 <th className="border border-slate-600 px-2 py-2">Subject</th>
-                <th className="border border-slate-600 px-2 py-2">Score %</th>
+                <th className="border border-slate-600 px-2 py-2">{exam1Head}</th>
+                <th className="border border-slate-600 px-2 py-2">{exam2Head}</th>
+                <th className="border border-slate-600 px-2 py-2">Average %</th>
                 <th className="border border-slate-600 px-2 py-2">Grade</th>
-                <th className="min-w-[12rem] border border-slate-600 px-2 py-2">
+                <th className="min-w-[10rem] border border-slate-600 px-2 py-2">
                   Teacher comment
                 </th>
               </tr>
@@ -99,7 +96,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
               {data.subjects.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={6}
                     className="border border-slate-200 px-2 py-3 text-slate-500"
                   >
                     No subject entries yet.
@@ -112,7 +109,13 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                       {r.subject}
                     </td>
                     <td className="border border-slate-200 px-2 py-2 tabular-nums">
-                      {r.scorePct}
+                      {r.exam1Pct}
+                    </td>
+                    <td className="border border-slate-200 px-2 py-2 tabular-nums">
+                      {r.exam2Pct}
+                    </td>
+                    <td className="border border-slate-200 px-2 py-2 font-semibold tabular-nums">
+                      {r.averagePct}
                     </td>
                     <td className="border border-slate-200 px-2 py-2 font-semibold">
                       {r.grade}
@@ -127,6 +130,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
           </table>
         </div>
         <p className="mt-2 text-xs text-slate-500">
+          Final score per subject = (Exam 1 + Exam 2) ÷ 2 when both are entered.
           Grading: A = 75–100%, B = 65–74%, C = 45–64%, D = 30–44%, F = 0–29%.
         </p>
       </section>

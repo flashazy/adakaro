@@ -25,6 +25,14 @@ import {
 const WEIGHT_FIELD_TOOLTIP =
   "Weight determines how much this assignment counts toward the final grade. Example: Final exam = 50%, Quiz = 10%. Default is 100%.";
 
+/** Convenience only — same string is stored as the assignment title. */
+const ASSIGNMENT_TITLE_PRESETS = [
+  "April Midterm Examination",
+  "June Terminal Examination",
+  "September Midterm Examination",
+  "December Annual Examination",
+] as const;
+
 export type GradebookClassOption = {
   assignmentId: string;
   classId: string;
@@ -152,6 +160,8 @@ export function TeacherGradebook({
   const [matrixLoading, setMatrixLoading] = useState(false);
 
   const [title, setTitle] = useState("");
+  /** Controlled preset dropdown; resets to "" after applying so the same preset can be chosen again. */
+  const [titlePresetValue, setTitlePresetValue] = useState("");
   const [maxScore, setMaxScore] = useState("100");
   const [weight, setWeight] = useState("100");
   const [weightTooltipOpen, setWeightTooltipOpen] = useState(false);
@@ -404,6 +414,7 @@ export function TeacherGradebook({
     }
     setAssignmentCreatedBanner("Assignment created.");
     setTitle("");
+    setTitlePresetValue("");
     setDueDate("");
     await fetchAssignments();
     await fetchClassMatrix();
@@ -950,12 +961,33 @@ export function TeacherGradebook({
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Title
             </span>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-              placeholder="e.g. Mid-term test"
-            />
+            <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <select
+                value={titlePresetValue}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v) {
+                    setTitle(v);
+                    setTitlePresetValue("");
+                  }
+                }}
+                className="w-full shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white sm:max-w-xs"
+                aria-label="Preset exam title (optional)"
+              >
+                <option value="">Preset exam (optional)…</option>
+                {ASSIGNMENT_TITLE_PRESETS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                placeholder="Or type a custom name"
+              />
+            </div>
           </label>
           <label className="block text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
