@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ReportCardPreview } from "@/app/(dashboard)/teacher-dashboard/report-cards/components/ReportCardPreview";
 import { buildSubjectPreviewRows } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-builder";
+import { loadSubjectPositionsForParentReportCard } from "@/app/(dashboard)/teacher-dashboard/report-cards/queries";
 import type { ReportCardPreviewData } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-types";
 import type {
   ReportCardCommentRow,
@@ -168,10 +169,19 @@ export default async function ParentReportCardPage({
     comments: commentRows,
   };
 
+  const positionBySubject = await loadSubjectPositionsForParentReportCard({
+    parentUserId: user.id,
+    focusStudentId: studentId,
+    classId: row.class_id,
+    term: row.term,
+    academicYear: row.academic_year,
+  });
+
   const subjects: ReportCardPreviewData["subjects"] = buildSubjectPreviewRows(
     row.term,
     subjectOrder,
-    syntheticStudent
+    syntheticStudent,
+    positionBySubject
   );
 
   const { start, end } = termDateRange(term, academicYear);

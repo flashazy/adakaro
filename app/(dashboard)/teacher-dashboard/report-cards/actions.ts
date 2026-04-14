@@ -67,6 +67,44 @@ function mapReportCardCommentRow(row: TeacherReportCardCommentSelectRow): Report
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
 
+/**
+ * If the card was submitted for review, any further teacher save means the
+ * report changed — put it back to draft so the list/preview match "still editing"
+ * until they submit again.
+ */
+async function resolveReportCardStatusAfterCommentSave(
+  admin: AdminDb,
+  reportCardId: string,
+  teacherId: string
+): Promise<ReportCardStatus | undefined> {
+  const { data: row, error } = await admin
+    .from("report_cards")
+    .select("status")
+    .eq("id", reportCardId)
+    .eq("teacher_id", teacherId)
+    .maybeSingle();
+  if (error || !row) return undefined;
+  const st = (row as { status: ReportCardStatus }).status;
+  if (st !== "pending_review") return st;
+  const { error: upErr } = await admin
+    .from("report_cards")
+    .update({
+      status: "draft",
+      submitted_at: null,
+    })
+    .eq("id", reportCardId)
+    .eq("teacher_id", teacherId)
+    .eq("status", "pending_review");
+  if (upErr) {
+    console.error(
+      "[upsertReportCardComment] could not revert pending_review to draft",
+      upErr
+    );
+    return undefined;
+  }
+  return "draft";
+}
+
 export async function getSubjectsForClass(classId: string) {
   return loadSubjectsForClass(classId);
 }
@@ -104,7 +142,12 @@ export async function upsertReportCardComment(input: {
   exam1GradebookOriginal: number | null;
   exam2GradebookOriginal: number | null;
 }): Promise<
-  | { ok: true; reportCardId: string; comment: ReportCardCommentRow }
+  | {
+      ok: true;
+      reportCardId: string;
+      comment: ReportCardCommentRow;
+      reportCardStatus?: ReportCardStatus;
+    }
   | { ok: false; error: string }
 > {
   const supabase = await createClient();
@@ -275,12 +318,18 @@ export async function upsertReportCardComment(input: {
       return { ok: false, error: "No row returned after update" };
     }
     revalidatePath("/teacher-dashboard/report-cards");
+    const reportCardStatus = await resolveReportCardStatusAfterCommentSave(
+      admin,
+      rc.id,
+      user.id
+    );
     return {
       ok: true,
       reportCardId: rc.id,
       comment: mapReportCardCommentRow(
         res.data as TeacherReportCardCommentSelectRow
       ),
+      reportCardStatus,
     };
   }
 
@@ -320,12 +369,18 @@ export async function upsertReportCardComment(input: {
     return { ok: false, error: "No row returned after insert" };
   }
   revalidatePath("/teacher-dashboard/report-cards");
+  const reportCardStatus = await resolveReportCardStatusAfterCommentSave(
+    admin,
+    rc.id,
+    user.id
+  );
   return {
     ok: true,
     reportCardId: rc.id,
     comment: mapReportCardCommentRow(
       ins.data as TeacherReportCardCommentSelectRow
     ),
+    reportCardStatus,
   };
 }
 

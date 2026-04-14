@@ -17,6 +17,8 @@ export interface ReportCardPreviewData {
     exam2Overridden: boolean;
     averagePct: string;
     grade: string;
+    /** Class rank by term average for this subject (ties share rank; "—" if no average). */
+    position: string;
     comment: string;
   }[];
   attendance: {

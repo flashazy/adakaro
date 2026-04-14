@@ -89,7 +89,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
           ) : null;
         })()}
         <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[700px] border-collapse text-left text-sm">
             <thead>
               <tr className="bg-slate-800 text-white">
                 <th className="border border-slate-600 px-2 py-2">Subject</th>
@@ -97,6 +97,9 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                 <th className="border border-slate-600 px-2 py-2">{exam2Head}</th>
                 <th className="border border-slate-600 px-2 py-2">Average %</th>
                 <th className="border border-slate-600 px-2 py-2">Grade</th>
+                <th className="border border-slate-600 px-2 py-2 text-center tabular-nums">
+                  Position
+                </th>
                 <th className="min-w-[10rem] border border-slate-600 px-2 py-2">
                   Teacher comment
                 </th>
@@ -106,7 +109,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
               {data.subjects.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="border border-slate-200 px-2 py-3 text-slate-500"
                   >
                     No subject entries yet.
@@ -139,6 +142,9 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                     </td>
                     <td className="border border-slate-200 px-2 py-2 font-semibold">
                       {r.grade}
+                    </td>
+                    <td className="border border-slate-200 px-2 py-2 text-center font-semibold tabular-nums text-slate-800">
+                      {r.position}
                     </td>
                     <td className="border border-slate-200 px-2 py-2 text-slate-700">
                       {r.comment || "—"}

@@ -11,6 +11,7 @@ import type {
 } from "./report-card-types";
 import { isMissingColumnSchemaError } from "./report-card-schema-compat";
 import { termDateRange } from "./report-card-dates";
+import { computeClassSubjectPositions } from "./report-card-preview-builder";
 import {
   DEFAULT_REPORT_CARD_GRADEBOOK_EXAM_NAMES,
   GRADEBOOK_EXAM_ASSIGNMENT_TITLES,
@@ -571,7 +572,10 @@ export async function loadStudentGradebookExamScores(params: {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in" };
+  if (!user) {
+    console.error("[loadStudentGradebookExamScores] not signed in");
+    return { ok: false, error: "Not signed in" };
+  }
 
   const admin = createAdminClient() as Db;
 
@@ -583,6 +587,10 @@ export async function loadStudentGradebookExamScores(params: {
     .limit(1)
     .maybeSingle();
   if (!ta) {
+    console.error(
+      "[loadStudentGradebookExamScores] no teacher_assignments row for class",
+      { classId: params.classId, studentId: params.studentId }
+    );
     return { ok: false, error: "You are not assigned to this class." };
   }
 
@@ -593,6 +601,10 @@ export async function loadStudentGradebookExamScores(params: {
     .eq("class_id", params.classId)
     .maybeSingle();
   if (!stu) {
+    console.error(
+      "[loadStudentGradebookExamScores] student not in class",
+      { classId: params.classId, studentId: params.studentId }
+    );
     return { ok: false, error: "Student not found in this class." };
   }
 
@@ -615,12 +627,19 @@ export async function loadStudentGradebookExamScores(params: {
     .from("teacher_gradebook_assignments")
     .select("id, title, max_score, subject")
     .eq("teacher_id", user.id)
-    .eq("class_id", params.classId)
-    .in("subject", subjects);
+    .eq("class_id", params.classId);
 
   if (aErr) {
+    console.error(
+      "[loadStudentGradebookExamScores] teacher_gradebook_assignments query failed",
+      aErr
+    );
     return { ok: false, error: aErr.message };
   }
+
+  const subjectKeyByLower = new Map(
+    subjects.map((s) => [s.trim().toLowerCase(), s.trim()] as const)
+  );
 
   const metaByAssignmentId = new Map<
     string,
@@ -634,12 +653,14 @@ export async function loadStudentGradebookExamScores(params: {
       max_score: number;
       subject: string;
     };
+    const canonical = subjectKeyByLower.get(r.subject.trim().toLowerCase());
+    if (!canonical) continue;
     const nt = normalizeGradebookAssignmentTitle(r.title);
     if (!allowedNorm.has(nt)) continue;
     const bucket = NORM_TITLE_TO_BUCKET[nt];
     if (!bucket) continue;
     metaByAssignmentId.set(r.id, {
-      subject: r.subject.trim(),
+      subject: canonical,
       maxScore: Number(r.max_score),
       bucket,
     });
@@ -663,6 +684,10 @@ export async function loadStudentGradebookExamScores(params: {
     .in("assignment_id", assignmentIds);
 
   if (scErr) {
+    console.error(
+      "[loadStudentGradebookExamScores] teacher_scores query failed",
+      scErr
+    );
     return { ok: false, error: scErr.message };
   }
 
@@ -679,4 +704,136 @@ export async function loadStudentGradebookExamScores(params: {
   }
 
   return { ok: true, scoresBySubject };
+}
+
+/**
+ * Builds class subject ranks for the parent report card view (admin client;
+ * verifies parent_students link). Only approved report cards in the class
+ * for the term/year are included.
+ */
+export async function loadSubjectPositionsForParentReportCard(params: {
+  parentUserId: string;
+  focusStudentId: string;
+  classId: string;
+  term: string;
+  academicYear: string;
+}): Promise<Record<string, string>> {
+  const admin = createAdminClient() as Db;
+  const termNorm = params.term.trim();
+  const yearNorm = params.academicYear.trim();
+
+  const { data: psLink } = await admin
+    .from("parent_students")
+    .select("student_id")
+    .eq("parent_id", params.parentUserId)
+    .eq("student_id", params.focusStudentId)
+    .maybeSingle();
+
+  if (!psLink) return {};
+
+  const { data: cards } = await admin
+    .from("report_cards")
+    .select("id, student_id")
+    .eq("class_id", params.classId)
+    .eq("term", termNorm)
+    .eq("academic_year", yearNorm)
+    .eq("status", "approved");
+
+  if (!cards?.length) return {};
+
+  const cardIds = (cards as { id: string; student_id: string }[]).map(
+    (c) => c.id
+  );
+  const cardToStudent = new Map(
+    (cards as { id: string; student_id: string }[]).map((c) => [
+      c.id,
+      c.student_id,
+    ])
+  );
+
+  const selectWithExams =
+    "id, report_card_id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
+  const selectFull = `${selectWithExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
+
+  let comsRes = await admin
+    .from("teacher_report_card_comments")
+    .select(selectFull)
+    .in("report_card_id", cardIds);
+
+  if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
+    comsRes = await admin
+      .from("teacher_report_card_comments")
+      .select(selectWithExams)
+      .in("report_card_id", cardIds);
+  }
+
+  if (comsRes.error || !comsRes.data) return {};
+
+  const parseNumeric = (
+    v: number | string | null | undefined
+  ): number | null => {
+    if (v == null || String(v).trim() === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const commentsByStudent = new Map<string, ReportCardCommentRow[]>();
+
+  for (const row of comsRes.data as {
+    id: string;
+    report_card_id: string;
+    subject: string;
+    comment: string | null;
+    score_percent: number | string | null;
+    letter_grade: string | null;
+    exam1_score: number | string | null;
+    exam2_score: number | string | null;
+    calculated_score: number | string | null;
+    calculated_grade: string | null;
+    exam1_gradebook_original?: number | string | null;
+    exam2_gradebook_original?: number | string | null;
+    exam1_score_overridden?: boolean | null;
+    exam2_score_overridden?: boolean | null;
+  }[]) {
+    const sid = cardToStudent.get(row.report_card_id);
+    if (!sid) continue;
+    const list = commentsByStudent.get(sid) ?? [];
+    list.push({
+      id: row.id,
+      subject: row.subject,
+      comment: row.comment,
+      scorePercent: parseNumeric(row.score_percent),
+      letterGrade: row.letter_grade,
+      exam1Score: parseNumeric(row.exam1_score),
+      exam2Score: parseNumeric(row.exam2_score),
+      calculatedScore: parseNumeric(row.calculated_score),
+      calculatedGrade: row.calculated_grade,
+      exam1GradebookOriginal: parseNumeric(row.exam1_gradebook_original),
+      exam2GradebookOriginal: parseNumeric(row.exam2_gradebook_original),
+      exam1ScoreOverridden: row.exam1_score_overridden === true,
+      exam2ScoreOverridden: row.exam2_score_overridden === true,
+    });
+    commentsByStudent.set(sid, list);
+  }
+
+  const students: StudentReportRow[] = (
+    cards as { id: string; student_id: string }[]
+  ).map((c) => ({
+    studentId: c.student_id,
+    fullName: "",
+    parentEmail: null,
+    reportCardId: c.id,
+    status: "approved" as ReportCardStatus,
+    comments: commentsByStudent.get(c.student_id) ?? [],
+  }));
+
+  const subjects = [
+    ...new Set(students.flatMap((s) => s.comments.map((x) => x.subject))),
+  ].sort((a, b) => a.localeCompare(b));
+
+  return computeClassSubjectPositions(
+    students,
+    subjects,
+    params.focusStudentId
+  );
 }

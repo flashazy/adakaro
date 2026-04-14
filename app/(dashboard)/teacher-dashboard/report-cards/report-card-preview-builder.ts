@@ -97,10 +97,59 @@ function isReportTerm(t: string): t is ReportTermValue {
   return t === "Term 1" || t === "Term 2";
 }
 
+/** Term average (Exam1+Exam2)/2 when both present; matches preview row logic. */
+export function termAverageFromComment(
+  c: ReportCardCommentRow | null | undefined
+): number | null {
+  if (!c) return null;
+  let e1 = parseNum(c.exam1Score ?? null);
+  let e2 = parseNum(c.exam2Score ?? null);
+  if (e1 == null && e2 == null && c.scorePercent != null) {
+    e1 = parseNum(c.scorePercent);
+  }
+  const storedCalc = parseNum(c.calculatedScore ?? null);
+  const computed = computeReportCardTermAverage(e1, e2);
+  const avgRaw = storedCalc ?? computed;
+  return avgRaw != null && Number.isFinite(avgRaw) ? avgRaw : null;
+}
+
+/**
+ * Competition-style class rank per subject: 1 + count of classmates with a strictly higher term average.
+ * Only students with a computable term average participate; others get "—".
+ */
+export function computeClassSubjectPositions(
+  allStudents: StudentReportRow[],
+  subjects: string[],
+  focusStudentId: string
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const subjList = subjects.length > 0 ? subjects : ["General"];
+
+  for (const subject of subjList) {
+    const rows: { studentId: string; avg: number }[] = [];
+    for (const s of allStudents) {
+      const c = s.comments.find((x) => x.subject === subject);
+      const avg = termAverageFromComment(c);
+      if (avg != null) rows.push({ studentId: s.studentId, avg });
+    }
+    const focus = allStudents.find((x) => x.studentId === focusStudentId);
+    const fc = focus?.comments.find((x) => x.subject === subject);
+    const fAvg = termAverageFromComment(fc);
+    if (fAvg == null) {
+      out[subject] = "—";
+      continue;
+    }
+    const strictlyHigher = rows.filter((r) => r.avg > fAvg).length;
+    out[subject] = String(strictlyHigher + 1);
+  }
+  return out;
+}
+
 export function buildSubjectPreviewRows(
   term: string,
   subjects: string[],
-  student: StudentReportRow
+  student: StudentReportRow,
+  positionsBySubject?: Record<string, string>
 ): ReportCardPreviewData["subjects"] {
   const bySub = new Map(student.comments.map((c) => [c.subject, c]));
   const list = subjects.length
@@ -134,6 +183,7 @@ export function buildSubjectPreviewRows(
       exam2Overridden: c?.exam2ScoreOverridden === true,
       averagePct: avgRaw != null && Number.isFinite(avgRaw) ? `${avgRaw}%` : "—",
       grade,
+      position: positionsBySubject?.[subject] ?? "—",
       comment: c?.comment?.trim() ?? "",
     };
   });

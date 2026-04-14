@@ -30,6 +30,7 @@ import { ReportCardPreview } from "./components/ReportCardPreview";
 import type { ReportCardPreviewData } from "./report-card-preview-types";
 import {
   buildSubjectPreviewRows,
+  computeClassSubjectPositions,
   mergeStudentCommentsWithDraftsForPreview,
 } from "./report-card-preview-builder";
 import {
@@ -127,6 +128,27 @@ function parseDraftPercent(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Match gradebook payload to class subject label (case / spacing). */
+function gradebookScoresForSubject(
+  scoresBySubject: Record<
+    string,
+    {
+      aprilMidtermPct: number | null;
+      juneTerminalPct: number | null;
+      septemberMidtermPct: number | null;
+      decemberAnnualPct: number | null;
+    }
+  >,
+  subject: string
+) {
+  const t = subject.trim();
+  if (scoresBySubject[t]) return scoresBySubject[t];
+  const key = Object.keys(scoresBySubject).find(
+    (k) => k.trim().toLowerCase() === t.toLowerCase()
+  );
+  return key ? scoresBySubject[key] : undefined;
+}
+
 function draftAverageLine(exam1: string, exam2: string): {
   average: string;
   grade: string;
@@ -171,7 +193,8 @@ function toPreviewData(
   academicYear: string,
   subjects: string[],
   student: StudentReportRow,
-  attendance: { present: number; absent: number; late: number }
+  attendance: { present: number; absent: number; late: number },
+  positionBySubject?: Record<string, string>
 ): ReportCardPreviewData {
   const st = statusLabel(student.status);
   const issued = new Intl.DateTimeFormat("en-GB", {
@@ -187,7 +210,12 @@ function toPreviewData(
     teacherName,
     dateIssued: issued,
     statusLabel: st.banner,
-    subjects: buildSubjectPreviewRows(term, subjects, student),
+    subjects: buildSubjectPreviewRows(
+      term,
+      subjects,
+      student,
+      positionBySubject
+    ),
     attendance: {
       ...attendance,
       daysInTermLabel: "recorded sessions in this term window",
@@ -392,7 +420,11 @@ export function ReportCardsPageClient({
         classId,
         subjects: subjList,
       });
-      if (cancelled || !res.ok) return;
+      if (cancelled) return;
+      if (!res.ok) {
+        console.error("[report-cards] Gradebook exam fetch failed:", res.error);
+        return;
+      }
 
       const termVal =
         term === "Term 1" || term === "Term 2" ? term : "Term 1";
@@ -403,7 +435,7 @@ export function ReportCardsPageClient({
         let changed = false;
 
         for (const subject of subjList) {
-          const g = res.scoresBySubject[subject];
+          const g = gradebookScoresForSubject(res.scoresBySubject, subject);
           if (!g) continue;
           const cur = studentDraft[subject] ?? emptyDraftRow();
           let exam1 = cur.exam1;
@@ -416,26 +448,26 @@ export function ReportCardsPageClient({
           let exam2Overridden = cur.exam2Overridden;
 
           if (termVal === "Term 1") {
-            if (!exam1.trim() && g.aprilMidtermPct != null) {
+            if (!cur.exam1Overridden && g.aprilMidtermPct != null) {
               exam1 = String(g.aprilMidtermPct);
               exam1GbOriginal = exam1;
               exam1Locked = true;
               exam1Overridden = false;
             }
-            if (!exam2.trim() && g.juneTerminalPct != null) {
+            if (!cur.exam2Overridden && g.juneTerminalPct != null) {
               exam2 = String(g.juneTerminalPct);
               exam2GbOriginal = exam2;
               exam2Locked = true;
               exam2Overridden = false;
             }
           } else {
-            if (!exam1.trim() && g.septemberMidtermPct != null) {
+            if (!cur.exam1Overridden && g.septemberMidtermPct != null) {
               exam1 = String(g.septemberMidtermPct);
               exam1GbOriginal = exam1;
               exam1Locked = true;
               exam1Overridden = false;
             }
-            if (!exam2.trim() && g.decemberAnnualPct != null) {
+            if (!cur.exam2Overridden && g.decemberAnnualPct != null) {
               exam2 = String(g.decemberAnnualPct);
               exam2GbOriginal = exam2;
               exam2Locked = true;
@@ -477,13 +509,38 @@ export function ReportCardsPageClient({
     [subjects]
   );
 
+  const studentsMergedForPreview = useMemo(
+    () =>
+      students.map((s) =>
+        mergeStudentCommentsWithDraftsForPreview(
+          s,
+          previewSubjectList,
+          drafts[s.studentId]
+        )
+      ),
+    [students, previewSubjectList, drafts]
+  );
+
+  const positionBySubjectForPreview = useMemo(() => {
+    if (!selectedStudent) return undefined;
+    return computeClassSubjectPositions(
+      studentsMergedForPreview,
+      previewSubjectList,
+      selectedStudent.studentId
+    );
+  }, [studentsMergedForPreview, previewSubjectList, selectedStudent]);
+
   const previewData = useMemo(() => {
     if (!selectedStudent || !selectedClass) return null;
-    const mergedStudent = mergeStudentCommentsWithDraftsForPreview(
-      selectedStudent,
-      previewSubjectList,
-      drafts[selectedStudent.studentId]
-    );
+    const mergedStudent =
+      studentsMergedForPreview.find(
+        (s) => s.studentId === selectedStudent.studentId
+      ) ??
+      mergeStudentCommentsWithDraftsForPreview(
+        selectedStudent,
+        previewSubjectList,
+        drafts[selectedStudent.studentId]
+      );
     return toPreviewData(
       schoolName,
       logoUrl,
@@ -497,7 +554,8 @@ export function ReportCardsPageClient({
         present: 0,
         absent: 0,
         late: 0,
-      }
+      },
+      positionBySubjectForPreview
     );
   }, [
     selectedStudent,
@@ -508,8 +566,10 @@ export function ReportCardsPageClient({
     term,
     academicYear,
     previewSubjectList,
+    studentsMergedForPreview,
     drafts,
     attendanceByStudent,
+    positionBySubjectForPreview,
   ]);
 
   const saveSubject = useCallback(
@@ -564,6 +624,7 @@ export function ReportCardsPageClient({
             ...s,
             reportCardId: res.reportCardId,
             comments,
+            status: res.reportCardStatus ?? s.status,
           };
         })
       );
@@ -1166,24 +1227,45 @@ export function ReportCardsPageClient({
             !students.some((s) => s.status === "approved") || !selectedClass
           }
           onClick={() => {
+            const subjectList = subjects.length > 0 ? subjects : ["General"];
+            const allMerged = students.map((st) =>
+              mergeStudentCommentsWithDraftsForPreview(
+                st,
+                subjectList,
+                drafts[st.studentId]
+              )
+            );
             const approved = students.filter((s) => s.status === "approved");
-            const items: ReportCardPreviewData[] = approved.map((s) =>
-              toPreviewData(
+            const items: ReportCardPreviewData[] = approved.map((s) => {
+              const merged =
+                allMerged.find((x) => x.studentId === s.studentId) ??
+                mergeStudentCommentsWithDraftsForPreview(
+                  s,
+                  subjectList,
+                  drafts[s.studentId]
+                );
+              const positions = computeClassSubjectPositions(
+                allMerged,
+                subjectList,
+                s.studentId
+              );
+              return toPreviewData(
                 schoolName,
                 logoUrl,
                 selectedClass!.className,
                 teacherName,
                 term,
                 academicYear,
-                subjects,
-                s,
+                subjectList,
+                merged,
                 attendanceByStudent[s.studentId] ?? {
                   present: 0,
                   absent: 0,
                   late: 0,
-                }
-              )
-            );
+                },
+                positions
+              );
+            });
             const safe = selectedClass!.className
               .replace(/[^\w\s-]/g, "")
               .replace(/\s+/g, "-")

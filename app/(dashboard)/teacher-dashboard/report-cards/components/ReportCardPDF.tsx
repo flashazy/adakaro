@@ -49,6 +49,7 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
     pctWithStar(s.exam2Pct, s.exam2Overridden),
     s.averagePct,
     s.grade,
+    s.position,
     s.comment || "—",
   ]);
   autoTable(doc, {
@@ -60,10 +61,13 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
         examHead.exam2,
         "Average %",
         "Grade",
+        "Position",
         "Teacher comment",
       ],
     ],
-    body: subBody.length ? subBody : [["—", "—", "—", "—", "—", "No entries"]],
+    body: subBody.length
+      ? subBody
+      : [["—", "—", "—", "—", "—", "—", "No entries"]],
     styles: { fontSize: 8, cellPadding: 1.5 },
     headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: "bold" },
     margin: { left: margin, right: margin },
