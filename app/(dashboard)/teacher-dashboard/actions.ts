@@ -309,6 +309,57 @@ export async function createGradebookAssignmentAction(input: {
   return { ok: true as const, assignmentId: (created as { id: string }).id };
 }
 
+export async function deleteGradebookAssignmentAction(assignmentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !(await checkIsTeacher(supabase, user.id))) {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  const admin = createAdminClient();
+  const { data: g, error: fetchErr } = await (admin as Db)
+    .from("teacher_gradebook_assignments")
+    .select("id, teacher_id, class_id")
+    .eq("id", assignmentId)
+    .maybeSingle();
+
+  if (fetchErr) {
+    return { ok: false, error: fetchErr.message };
+  }
+  const row = g as { id: string; teacher_id: string; class_id: string } | null;
+  if (!row || row.teacher_id !== user.id) {
+    return { ok: false, error: "Assignment not found." };
+  }
+
+  const gate = await assertTeacherForClass(user.id, row.class_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  const { error: scoresDelErr } = await (admin as Db)
+    .from("teacher_scores")
+    .delete()
+    .eq("assignment_id", assignmentId);
+
+  if (scoresDelErr) {
+    return { ok: false, error: scoresDelErr.message };
+  }
+
+  const { error: assignDelErr } = await (admin as Db)
+    .from("teacher_gradebook_assignments")
+    .delete()
+    .eq("id", assignmentId)
+    .eq("teacher_id", user.id);
+
+  if (assignDelErr) {
+    return { ok: false, error: assignDelErr.message };
+  }
+
+  revalidatePath("/teacher-dashboard");
+  revalidatePath("/teacher-dashboard/grades");
+  return { ok: true as const };
+}
+
 export async function loadGradebookAssignmentsForClass(
   classId: string,
   subject: string

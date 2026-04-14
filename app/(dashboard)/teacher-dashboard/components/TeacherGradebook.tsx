@@ -2,10 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, FileText, Plus } from "lucide-react";
+import { Check, FileText, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   createGradebookAssignmentAction,
+  deleteGradebookAssignmentAction,
   loadFullGradeReportMeta,
   loadGradeReportContext,
   loadGradebookAssignmentsForClass,
@@ -21,6 +22,7 @@ import {
   tanzaniaLetterGrade,
   tanzaniaPercentFromScore,
 } from "./GradeReportPDF";
+import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 
 const WEIGHT_FIELD_TOOLTIP =
   "Weight determines how much this assignment counts toward the final grade. Example: Final exam = 50%, Quiz = 10%. Default is 100%.";
@@ -181,6 +183,13 @@ export function TeacherGradebook({
   >({});
   const [classMatrixLoading, setClassMatrixLoading] = useState(false);
   const [classMatrixSaving, setClassMatrixSaving] = useState(false);
+  const [deletingAssignmentId, setDeletingAssignmentId] = useState<string | null>(
+    null
+  );
+  const [assignmentPendingDelete, setAssignmentPendingDelete] =
+    useState<GbAssignment | null>(null);
+  const [assignmentDeleteSubmitting, setAssignmentDeleteSubmitting] =
+    useState(false);
 
   const [editingMatrixCell, setEditingMatrixCell] = useState<{
     assignmentId: string;
@@ -689,6 +698,38 @@ export function TeacherGradebook({
     }
   };
 
+  const assignmentDeleteMessage = useMemo(() => {
+    if (!assignmentPendingDelete) return "";
+    const name = (
+      assignmentPendingDelete.title?.trim() || "Assignment"
+    ).replace(/'/g, "’");
+    return `Delete assignment '${name}'? All scores for this assignment will be permanently deleted.`;
+  }, [assignmentPendingDelete]);
+
+  const confirmAssignmentDelete = async () => {
+    const a = assignmentPendingDelete;
+    if (!a) return;
+    setError(null);
+    setAssignmentDeleteSubmitting(true);
+    setDeletingAssignmentId(a.id);
+    const res = await deleteGradebookAssignmentAction(a.id);
+    setDeletingAssignmentId(null);
+    setAssignmentDeleteSubmitting(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setAssignmentPendingDelete(null);
+    setEditingMatrixCell((cur) =>
+      cur?.assignmentId === a.id ? null : cur
+    );
+    setAssignmentId((prev) => (prev === a.id ? "" : prev));
+    setToastMessage("Assignment deleted successfully");
+    await fetchClassMatrix();
+    await fetchAssignments();
+    router.refresh();
+  };
+
   const handleOpenFullReport = async () => {
     if (!classMatrixData?.assignments.length || !classMatrixData.students.length) {
       return;
@@ -823,10 +864,26 @@ export function TeacherGradebook({
                       {classMatrixData.assignments.map((a) => (
                         <th
                           key={a.id}
-                          className="min-w-[7.5rem] max-w-[10rem] px-2 py-2 text-center align-bottom font-semibold leading-tight text-slate-800 dark:text-zinc-100"
+                          className="relative min-w-[8rem] max-w-[11rem] px-2 py-2 text-center align-top font-semibold leading-tight text-slate-800 dark:text-zinc-100"
                           title={`${a.title} (max ${a.max_score})`}
                         >
-                          <span className="line-clamp-2 block">
+                          <button
+                            type="button"
+                            disabled={
+                              deletingAssignmentId === a.id ||
+                              assignmentDeleteSubmitting
+                            }
+                            onClick={() => {
+                              setError(null);
+                              setAssignmentPendingDelete(a);
+                            }}
+                            className="absolute right-1 top-1 rounded p-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/50 dark:hover:text-red-400"
+                            title={`Delete ${a.title?.trim() || "assignment"}`}
+                            aria-label={`Delete assignment ${a.title?.trim() || "assignment"}`}
+                          >
+                            <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
+                          </button>
+                          <span className="line-clamp-2 block pr-6 pt-0.5">
                             {a.title?.trim() || "Assignment"}{" "}
                             <span className="whitespace-nowrap font-normal text-slate-500 dark:text-zinc-400">
                               (max {a.max_score})
@@ -1398,6 +1455,21 @@ export function TeacherGradebook({
         assignments={classMatrixData?.assignments ?? []}
         students={classMatrixData?.students ?? []}
         classDraft={classDraft}
+      />
+
+      <ConfirmDeleteModal
+        open={assignmentPendingDelete !== null}
+        onClose={() => {
+          if (!assignmentDeleteSubmitting) {
+            setAssignmentPendingDelete(null);
+          }
+        }}
+        onConfirm={() => void confirmAssignmentDelete()}
+        title="Delete assignment"
+        message={assignmentDeleteMessage}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        isDeleting={assignmentDeleteSubmitting}
       />
     </div>
   );
