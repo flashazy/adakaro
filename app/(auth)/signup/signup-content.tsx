@@ -2,41 +2,31 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signup, type AuthState } from "../actions";
 import { PasswordInput } from "@/components/auth/password-input";
 
-function SubmitButton() {
+function SubmitButton({ isLoading }: { isLoading: boolean }) {
   const { pending } = useFormStatus();
+  const busy = isLoading || pending;
 
   return (
     <button
       type="submit"
-      disabled={pending}
-      className="flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={busy}
+      aria-busy={busy}
+      className="inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {pending ? (
-        <svg
-          className="h-5 w-5 animate-spin text-white"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
+      {busy ? (
+        <>
+          <Loader2
+            className="mr-2 h-4 w-4 shrink-0 animate-spin"
+            aria-hidden
           />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-          />
-        </svg>
+          Creating account...
+        </>
       ) : (
         "Create account"
       )}
@@ -47,7 +37,7 @@ function SubmitButton() {
 const initialState: AuthState = {};
 
 export default function SignupContent() {
-  const [state, formAction] = useActionState(signup, initialState);
+  const [state, formAction, isLoading] = useActionState(signup, initialState);
   const searchParams = useSearchParams();
   const roleParam = searchParams.get("role")?.toLowerCase().trim();
   const defaultAdmin = roleParam === "admin";
@@ -214,7 +204,7 @@ export default function SignupContent() {
           </div>
         </fieldset>
 
-        <SubmitButton />
+        <SubmitButton isLoading={isLoading} />
       </form>
 
       <p className="mt-6 text-center text-sm text-slate-500 dark:text-zinc-400">

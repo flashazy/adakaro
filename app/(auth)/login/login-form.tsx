@@ -8,6 +8,7 @@ import {
   useTransition,
 } from "react";
 import { useFormStatus } from "react-dom";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { login, type AuthState } from "../actions";
@@ -24,36 +25,31 @@ type SessionEmailResponse = {
   hasSession: boolean;
 };
 
-function SubmitButton() {
+function SubmitButton({
+  isLoading,
+  disabled,
+}: {
+  isLoading: boolean;
+  disabled?: boolean;
+}) {
   const { pending } = useFormStatus();
+  const busy = isLoading || pending;
 
   return (
     <button
       type="submit"
-      disabled={pending}
-      className="flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={busy || disabled}
+      aria-busy={busy}
+      className="inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {pending ? (
-        <svg
-          className="h-5 w-5 animate-spin text-white"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
+      {busy ? (
+        <>
+          <Loader2
+            className="mr-2 h-4 w-4 shrink-0 animate-spin"
+            aria-hidden
           />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-          />
-        </svg>
+          Signing in...
+        </>
       ) : (
         "Sign in"
       )}
@@ -71,6 +67,8 @@ export function LoginForm() {
     initialState
   );
   const [isPending, startTransition] = useTransition();
+  const [isLoading, setIsLoading] = useState(false);
+  const awaitingLoginActionRef = useRef(false);
   const [showSessionReplaceWarning, setShowSessionReplaceWarning] =
     useState(false);
   const [cancelHrefForBanner, setCancelHrefForBanner] = useState("/dashboard");
@@ -101,7 +99,16 @@ export function LoginForm() {
     }
   }, [state.error]);
 
+  useEffect(() => {
+    if (!awaitingLoginActionRef.current) return;
+    if (!isLoginPending && !isPending) {
+      setIsLoading(false);
+      awaitingLoginActionRef.current = false;
+    }
+  }, [isLoginPending, isPending]);
+
   const runLogin = (fd: FormData) => {
+    awaitingLoginActionRef.current = true;
     startTransition(() => {
       formAction(fd);
     });
@@ -112,44 +119,52 @@ export function LoginForm() {
     const form = e.currentTarget;
     const fd = new FormData(form);
     void (async () => {
-      const raw = (fd.get("email") as string) ?? "";
-      const attempt = raw.trim().toLowerCase();
-      const password = fd.get("password");
-      if (!attempt || !password) return;
-
-      let ack = false;
       try {
-        ack = sessionStorage.getItem(SESSION_REPLACE_ACK_KEY) === "1";
-      } catch {
-        ack = false;
-      }
+        const raw = (fd.get("email") as string) ?? "";
+        const attempt = raw.trim().toLowerCase();
+        const password = fd.get("password");
+        if (!attempt || !password) return;
 
-      if (ack) {
+        setIsLoading(true);
+
+        let ack = false;
+        try {
+          ack = sessionStorage.getItem(SESSION_REPLACE_ACK_KEY) === "1";
+        } catch {
+          ack = false;
+        }
+
+        if (ack) {
+          runLogin(fd);
+          return;
+        }
+
+        let res: SessionEmailResponse;
+        try {
+          const r = await fetch("/api/auth/session-email", {
+            credentials: "include",
+          });
+          res = (await r.json()) as SessionEmailResponse;
+        } catch {
+          runLogin(fd);
+          return;
+        }
+
+        if (
+          res.email &&
+          res.email.trim().toLowerCase() !== attempt
+        ) {
+          setCancelHrefForBanner(res.cancelHref || "/dashboard");
+          setShowSessionReplaceWarning(true);
+          setIsLoading(false);
+          return;
+        }
+
         runLogin(fd);
-        return;
-      }
-
-      let res: SessionEmailResponse;
-      try {
-        const r = await fetch("/api/auth/session-email", {
-          credentials: "include",
-        });
-        res = (await r.json()) as SessionEmailResponse;
       } catch {
-        runLogin(fd);
-        return;
+        setIsLoading(false);
+        awaitingLoginActionRef.current = false;
       }
-
-      if (
-        res.email &&
-        res.email.trim().toLowerCase() !== attempt
-      ) {
-        setCancelHrefForBanner(res.cancelHref || "/dashboard");
-        setShowSessionReplaceWarning(true);
-        return;
-      }
-
-      runLogin(fd);
     })();
   };
 
@@ -162,6 +177,7 @@ export function LoginForm() {
     setShowSessionReplaceWarning(false);
     const form = formRef.current;
     if (!form) return;
+    setIsLoading(true);
     runLogin(new FormData(form));
   };
 
@@ -175,7 +191,7 @@ export function LoginForm() {
     router.push(cancelHrefForBanner);
   };
 
-  const busy = isLoginPending || isPending;
+  const busy = isLoading || isLoginPending || isPending;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -293,7 +309,10 @@ export function LoginForm() {
           />
         </div>
 
-        <SubmitButton />
+        <SubmitButton
+          isLoading={isLoading}
+          disabled={showSessionReplaceWarning}
+        />
       </form>
 
       <p className="mt-6 text-center text-sm text-slate-500 dark:text-zinc-400">
