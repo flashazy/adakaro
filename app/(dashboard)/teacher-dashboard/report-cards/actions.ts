@@ -22,6 +22,7 @@ import { isMissingColumnSchemaError } from "./report-card-schema-compat";
 
 export type { ReportCardStatus } from "./report-card-types";
 export type { ReportCardGradebookExamPercentages } from "./queries";
+export { getReportCardSubjectsForStudent } from "./queries";
 
 interface TeacherReportCardCommentSelectRow {
   id: string;
@@ -123,6 +124,8 @@ export async function fetchStudentExamScores(input: {
   classId: string;
   subjects: string[];
   examNames?: string[];
+  term?: string;
+  academicYear?: string;
 }) {
   return loadStudentGradebookExamScores(input);
 }

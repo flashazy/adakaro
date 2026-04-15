@@ -16,6 +16,11 @@ import {
   DEFAULT_REPORT_CARD_GRADEBOOK_EXAM_NAMES,
   GRADEBOOK_EXAM_ASSIGNMENT_TITLES,
 } from "./constants";
+import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
+import {
+  getStudentEnrolledSubjects,
+  reportAcademicYearToEnrollmentYear,
+} from "@/lib/student-subject-enrollment-queries";
 
 export type {
   PendingReportCardRow,
@@ -166,6 +171,39 @@ export async function loadTeacherReportCardOptions(): Promise<
     teacherName,
     classes,
   };
+}
+
+export async function getReportCardSubjectsForStudent(params: {
+  classId: string;
+  studentId: string;
+  term: string;
+  academicYear: string;
+  allSubjects: string[];
+}): Promise<{ ok: true; subjects: string[] } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const admin = createAdminClient() as Db;
+  const termNorm = params.term.trim();
+  const termParsed: SubjectEnrollmentTerm =
+    termNorm === "Term 2" ? "Term 2" : "Term 1";
+  const yearInt = reportAcademicYearToEnrollmentYear(params.academicYear);
+
+  try {
+    const subjects = await getStudentEnrolledSubjects(admin, {
+      studentId: params.studentId,
+      classId: params.classId,
+      academicYear: yearInt,
+      term: termParsed,
+      teacherSubjectLabels: params.allSubjects,
+    });
+    return { ok: true, subjects };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 export async function loadSubjectsForClass(classId: string): Promise<string[]> {
@@ -564,6 +602,9 @@ export async function loadStudentGradebookExamScores(params: {
   classId: string;
   subjects: string[];
   examNames?: string[];
+  /** When set, restricts to subjects the student is enrolled in for that period. */
+  term?: string;
+  academicYear?: string;
 }): Promise<
   | { ok: true; scoresBySubject: Record<string, ReportCardGradebookExamPercentages> }
   | { ok: false; error: string }
@@ -608,9 +649,32 @@ export async function loadStudentGradebookExamScores(params: {
     return { ok: false, error: "Student not found in this class." };
   }
 
-  const subjects = [
+  let subjects = [
     ...new Set(params.subjects.map((s) => s.trim()).filter(Boolean)),
   ];
+  if (subjects.length === 0) {
+    return { ok: true, scoresBySubject: {} };
+  }
+
+  const hasTermYear =
+    params.term != null &&
+    String(params.term).trim() !== "" &&
+    params.academicYear != null &&
+    String(params.academicYear).trim() !== "";
+
+  if (hasTermYear) {
+    const termNorm = params.term!.trim();
+    const termParsed: SubjectEnrollmentTerm =
+      termNorm === "Term 2" ? "Term 2" : "Term 1";
+    const yearInt = reportAcademicYearToEnrollmentYear(params.academicYear!);
+    subjects = await getStudentEnrolledSubjects(admin, {
+      studentId: params.studentId,
+      classId: params.classId,
+      academicYear: yearInt,
+      term: termParsed,
+      teacherSubjectLabels: subjects,
+    });
+  }
   if (subjects.length === 0) {
     return { ok: true, scoresBySubject: {} };
   }
@@ -623,9 +687,9 @@ export async function loadStudentGradebookExamScores(params: {
     nameList.map((n) => normalizeGradebookAssignmentTitle(n))
   );
 
-  const { data: aRows, error: aErr } = await admin
+  const { data: aRowsRaw, error: aErr } = await admin
     .from("teacher_gradebook_assignments")
-    .select("id, title, max_score, subject")
+    .select("id, title, max_score, subject, term")
     .eq("teacher_id", user.id)
     .eq("class_id", params.classId);
 
@@ -637,6 +701,16 @@ export async function loadStudentGradebookExamScores(params: {
     return { ok: false, error: aErr.message };
   }
 
+  const termForAssignFilter = (params.term ?? "").trim();
+  const aRows = (aRowsRaw ?? []).filter((row: { term: string | null }) => {
+    if (termForAssignFilter !== "Term 1" && termForAssignFilter !== "Term 2") {
+      return true;
+    }
+    const t = row.term;
+    if (t == null || String(t).trim() === "") return true;
+    return t === termForAssignFilter;
+  });
+
   const subjectKeyByLower = new Map(
     subjects.map((s) => [s.trim().toLowerCase(), s.trim()] as const)
   );
@@ -646,7 +720,7 @@ export async function loadStudentGradebookExamScores(params: {
     { subject: string; maxScore: number; bucket: keyof ReportCardGradebookExamPercentages }
   >();
 
-  for (const row of aRows ?? []) {
+  for (const row of aRows) {
     const r = row as {
       id: string;
       title: string;

@@ -9,6 +9,7 @@ import {
   adminApproveReportCard,
   adminRequestChangesReportCard,
   fetchStudentExamScores,
+  getReportCardSubjectsForStudent,
   getSubjectsForClass,
   reloadStudentsReportData,
   shareReportCardWithParent,
@@ -279,6 +280,8 @@ export function ReportCardsPageClient({
   }, [classId, classes]);
 
   const [subjects, setSubjects] = useState<string[]>([]);
+  /** Subjects shown for the selected student (enrolment-filtered when data exists). */
+  const [displaySubjects, setDisplaySubjects] = useState<string[]>([]);
   const [students, setStudents] = useState<StudentReportRow[]>([]);
   const [attendanceByStudent, setAttendanceByStudent] = useState<
     Record<string, { present: number; absent: number; late: number }>
@@ -421,12 +424,48 @@ export function ReportCardsPageClient({
     void load();
   }, [load]);
 
-  const subjectsKey = useMemo(() => subjects.join("\0"), [subjects]);
+  useEffect(() => {
+    setDisplaySubjects(subjects);
+  }, [subjects]);
+
+  useEffect(() => {
+    if (!studentId) {
+      setDisplaySubjects(subjects);
+      return;
+    }
+    if (!classId || subjects.length === 0) return;
+    let cancelled = false;
+    void getReportCardSubjectsForStudent({
+      classId,
+      studentId,
+      term,
+      academicYear,
+      allSubjects: subjects,
+    }).then((r) => {
+      if (cancelled) return;
+      if (r.ok && r.subjects.length > 0) setDisplaySubjects(r.subjects);
+      else setDisplaySubjects(subjects);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, studentId, term, academicYear, subjects]);
+
+  const previewSubjectList = useMemo(() => {
+    const list =
+      displaySubjects.length > 0 ? displaySubjects : subjects;
+    return list.length > 0 ? list : ["General"];
+  }, [displaySubjects, subjects]);
+
+  const enrolledSubjectsKey = useMemo(
+    () => previewSubjectList.join("\0"),
+    [previewSubjectList]
+  );
 
   useEffect(() => {
     if (loading || !studentId || !classId) return;
 
-    const subjList = subjects.length > 0 ? subjects : ["General"];
+    const subjList = previewSubjectList;
     let cancelled = false;
 
     void (async () => {
@@ -434,6 +473,8 @@ export function ReportCardsPageClient({
         studentId,
         classId,
         subjects: subjList,
+        term,
+        academicYear,
       });
       if (cancelled) return;
       if (!res.ok) {
@@ -515,25 +556,20 @@ export function ReportCardsPageClient({
     return () => {
       cancelled = true;
     };
-  }, [loading, studentId, classId, term, subjectsKey]);
+  }, [loading, studentId, classId, term, academicYear, enrolledSubjectsKey]);
 
   const selectedStudent = students.find((s) => s.studentId === studentId);
-
-  const previewSubjectList = useMemo(
-    () => (subjects.length > 0 ? subjects : ["General"]),
-    [subjects]
-  );
 
   const studentsMergedForPreview = useMemo(
     () =>
       students.map((s) =>
         mergeStudentCommentsWithDraftsForPreview(
           s,
-          previewSubjectList,
+          subjects,
           drafts[s.studentId]
         )
       ),
-    [students, previewSubjectList, drafts]
+    [students, subjects, drafts]
   );
 
   const positionBySubjectForPreview = useMemo(() => {
@@ -547,15 +583,12 @@ export function ReportCardsPageClient({
 
   const previewData = useMemo(() => {
     if (!selectedStudent || !selectedClass) return null;
-    const mergedStudent =
-      studentsMergedForPreview.find(
-        (s) => s.studentId === selectedStudent.studentId
-      ) ??
-      mergeStudentCommentsWithDraftsForPreview(
-        selectedStudent,
-        previewSubjectList,
-        drafts[selectedStudent.studentId]
-      );
+    const mergedStudent = mergeStudentCommentsWithDraftsForPreview(
+      selectedStudent,
+      previewSubjectList,
+      drafts[selectedStudent.studentId],
+      { restrictOutputToSubjects: true }
+    );
     return toPreviewData(
       schoolName,
       logoUrl,
@@ -683,7 +716,7 @@ export function ReportCardsPageClient({
 
   const autoCommentDraftKey = useMemo(() => {
     if (!studentId) return "";
-    const subjList = subjects.length > 0 ? subjects : ["General"];
+    const subjList = previewSubjectList;
     const slice = drafts[studentId];
     if (!slice) {
       return subjList.map((s) => `${s}||||`).join("\n");
@@ -694,11 +727,11 @@ export function ReportCardsPageClient({
         return `${s}|${r.exam1}|${r.exam2}|${r.comment}`;
       })
       .join("\n");
-  }, [studentId, subjects, drafts]);
+  }, [studentId, previewSubjectList, drafts]);
 
   useEffect(() => {
     if (loading || !studentId) return;
-    const subjList = subjects.length > 0 ? subjects : ["General"];
+    const subjList = previewSubjectList;
     const sid = studentId;
     const toSchedule: string[] = [];
 
@@ -729,14 +762,14 @@ export function ReportCardsPageClient({
   }, [
     loading,
     studentId,
-    subjects,
+    previewSubjectList,
     autoCommentDraftKey,
     scheduleAutosave,
   ]);
 
   const hasUnsavedForSelected = useMemo(() => {
     if (!selectedStudent) return false;
-    const subs = subjects.length > 0 ? subjects : ["General"];
+    const subs = previewSubjectList;
     return subs.some(
       (subject) =>
         !draftRowsEqual(
@@ -744,7 +777,7 @@ export function ReportCardsPageClient({
           getDraftRow(baselineDrafts, selectedStudent.studentId, subject)
         )
     );
-  }, [drafts, baselineDrafts, selectedStudent, subjects]);
+  }, [drafts, baselineDrafts, selectedStudent, previewSubjectList]);
 
   const examLabelsForEditor = useMemo(() => {
     return term === "Term 1" || term === "Term 2"
@@ -753,8 +786,8 @@ export function ReportCardsPageClient({
   }, [term]);
 
   const applyTemplate = (template: string) => {
-    if (!selectedStudent || !subjects[0]) return;
-    const sub = subjects[0];
+    if (!selectedStudent || !previewSubjectList[0]) return;
+    const sub = previewSubjectList[0];
     setDrafts((prev) => ({
       ...prev,
       [selectedStudent.studentId]: {
@@ -866,9 +899,9 @@ export function ReportCardsPageClient({
                 key={t}
                 type="button"
                 onClick={() => {
-                  if (!selectedStudent || !subjects[0]) return;
+                  if (!selectedStudent || !previewSubjectList[0]) return;
                   applyTemplate(t);
-                  scheduleAutosave(subjects[0]);
+                  scheduleAutosave(previewSubjectList[0]);
                   toast.message("Template inserted for first subject — edit as needed.");
                 }}
                 className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
@@ -936,7 +969,7 @@ export function ReportCardsPageClient({
             </div>
           </div>
 
-          {(subjects.length > 0 ? subjects : ["General"]).map((subject) => {
+          {previewSubjectList.map((subject) => {
             const row = getDraftRow(
               drafts,
               selectedStudent.studentId,
@@ -1295,50 +1328,68 @@ export function ReportCardsPageClient({
             !students.some((s) => s.status === "approved") || !selectedClass
           }
           onClick={() => {
-            const subjectList = subjects.length > 0 ? subjects : ["General"];
-            const allMerged = students.map((st) =>
-              mergeStudentCommentsWithDraftsForPreview(
-                st,
-                subjectList,
-                drafts[st.studentId]
-              )
-            );
-            const approved = students.filter((s) => s.status === "approved");
-            const items: ReportCardPreviewData[] = approved.map((s) => {
-              const merged =
-                allMerged.find((x) => x.studentId === s.studentId) ??
+            void (async () => {
+              const baseSubjects =
+                subjects.length > 0 ? subjects : ["General"];
+              const approved = students.filter((s) => s.status === "approved");
+              const subjectListById: Record<string, string[]> = {};
+              await Promise.all(
+                approved.map(async (s) => {
+                  const r = await getReportCardSubjectsForStudent({
+                    classId: selectedClass!.classId,
+                    studentId: s.studentId,
+                    term,
+                    academicYear,
+                    allSubjects: baseSubjects,
+                  });
+                  subjectListById[s.studentId] =
+                    r.ok && r.subjects.length > 0 ? r.subjects : baseSubjects;
+                })
+              );
+              const allMerged = students.map((st) =>
                 mergeStudentCommentsWithDraftsForPreview(
+                  st,
+                  subjects,
+                  drafts[st.studentId]
+                )
+              );
+              const items: ReportCardPreviewData[] = approved.map((s) => {
+                const subjectList =
+                  subjectListById[s.studentId] ?? baseSubjects;
+                const merged = mergeStudentCommentsWithDraftsForPreview(
                   s,
                   subjectList,
-                  drafts[s.studentId]
+                  drafts[s.studentId],
+                  { restrictOutputToSubjects: true }
                 );
-              const positions = computeClassSubjectPositions(
-                allMerged,
-                subjectList,
-                s.studentId
-              );
-              return toPreviewData(
-                schoolName,
-                logoUrl,
-                selectedClass!.className,
-                teacherName,
-                term,
-                academicYear,
-                subjectList,
-                merged,
-                attendanceByStudent[s.studentId] ?? {
-                  present: 0,
-                  absent: 0,
-                  late: 0,
-                },
-                positions
-              );
-            });
-            const safe = selectedClass!.className
-              .replace(/[^\w\s-]/g, "")
-              .replace(/\s+/g, "-")
-              .slice(0, 30);
-            downloadBulkReportCardsPdf(items, safe);
+                const positions = computeClassSubjectPositions(
+                  allMerged,
+                  subjectList,
+                  s.studentId
+                );
+                return toPreviewData(
+                  schoolName,
+                  logoUrl,
+                  selectedClass!.className,
+                  teacherName,
+                  term,
+                  academicYear,
+                  subjectList,
+                  merged,
+                  attendanceByStudent[s.studentId] ?? {
+                    present: 0,
+                    absent: 0,
+                    late: 0,
+                  },
+                  positions
+                );
+              });
+              const safe = selectedClass!.className
+                .replace(/[^\w\s-]/g, "")
+                .replace(/\s+/g, "-")
+                .slice(0, 30);
+              downloadBulkReportCardsPdf(items, safe);
+            })();
           }}
           className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900"
         >

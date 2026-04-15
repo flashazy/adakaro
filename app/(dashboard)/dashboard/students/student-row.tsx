@@ -1,8 +1,13 @@
 "use client";
 
 import { Fragment, useState, useTransition } from "react";
-import { deleteStudent, type StudentActionState } from "./actions";
+import { Pencil, Trash2 } from "lucide-react";
+import { deleteStudent } from "./actions";
 import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
+import {
+  SUBJECT_ENROLLMENT_TERMS,
+  type SubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
 
 interface ClassOption {
   id: string;
@@ -20,6 +25,18 @@ interface StudentData {
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
+  subject_enrollment_count?: number;
+}
+
+export interface SubjectEnrollmentEditProps {
+  academicYear: number;
+  term: SubjectEnrollmentTerm;
+  classSubjects: { id: string; name: string }[];
+  selectedIds: string[];
+  loading: boolean;
+  onYearChange: (year: number) => void;
+  onTermChange: (term: SubjectEnrollmentTerm) => void;
+  onToggleSubject: (subjectId: string, checked: boolean) => void;
 }
 
 function genderAbbrev(g: string | null | undefined): string {
@@ -38,6 +55,9 @@ interface StudentRowProps {
   onInlineSave: () => void | Promise<void>;
   onInlineCancel: () => void;
   isSaving?: boolean;
+  subjectEnrollmentEdit?: SubjectEnrollmentEditProps;
+  /** Called after a successful delete (parent should refresh data). */
+  onDeleted?: () => void;
 }
 
 const inlineCls =
@@ -53,6 +73,8 @@ export function StudentRow({
   onInlineSave,
   onInlineCancel,
   isSaving = false,
+  subjectEnrollmentEdit,
+  onDeleted,
 }: StudentRowProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +88,11 @@ export function StudentRow({
       if (result.error) {
         setError(result.error);
         setShowDeleteConfirm(false);
+        return;
       }
+      setError(null);
+      setShowDeleteConfirm(false);
+      onDeleted?.();
     });
   }
 
@@ -74,9 +100,96 @@ export function StudentRow({
   const parentEmail = student.parent_email || "";
   const parentPhone = student.parent_phone || "";
 
+  function SubjectEnrollmentFields({
+    se,
+  }: {
+    se: SubjectEnrollmentEditProps;
+  }) {
+    return (
+      <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+        <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">
+          Subjects this student will study
+        </p>
+        <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400">
+          Only subjects linked to the selected class appear here. Changing year
+          or term loads enrolment for that period.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-700 dark:text-zinc-300">
+            Academic year
+            <input
+              type="number"
+              min={2000}
+              max={2100}
+              value={se.academicYear}
+              onChange={(e) => {
+                const y = Number(e.target.value);
+                if (Number.isInteger(y) && y >= 2000 && y <= 2100) {
+                  se.onYearChange(y);
+                }
+              }}
+              className="h-9 w-28 rounded-md border border-gray-200 px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
+          <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-700 dark:text-zinc-300">
+            Term
+            <select
+              value={se.term}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "Term 1" || v === "Term 2") {
+                  se.onTermChange(v);
+                }
+              }}
+              className="h-9 min-w-[8rem] rounded-md border border-gray-200 px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            >
+              {SUBJECT_ENROLLMENT_TERMS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {se.loading ? (
+          <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
+            Loading subjects…
+          </p>
+        ) : se.classSubjects.length === 0 ? (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300/90">
+            No subjects linked to this class yet. Configure subjects under Manage
+            Subjects first.
+          </p>
+        ) : (
+          <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+            {se.classSubjects.map((sub) => (
+              <li key={sub.id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id={`subj-${student.id}-${sub.id}`}
+                  checked={se.selectedIds.includes(sub.id)}
+                  onChange={(e) =>
+                    se.onToggleSubject(sub.id, e.target.checked)
+                  }
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                />
+                <label
+                  htmlFor={`subj-${student.id}-${sub.id}`}
+                  className="text-sm text-slate-800 dark:text-zinc-200"
+                >
+                  {sub.name}
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Fragment>
-      <tr className="hidden lg:table-row">
+      <tr className="hidden md:table-row">
         <td className="w-[120px] px-4 py-3 align-middle">
           {isInline ? (
             <input
@@ -130,6 +243,11 @@ export function StudentRow({
               {student.class?.name || "—"}
             </span>
           )}
+        </td>
+        <td className="w-[72px] px-4 py-3 align-middle">
+          <span className="text-sm tabular-nums text-gray-700 dark:text-zinc-300">
+            {student.subject_enrollment_count ?? 0}
+          </span>
         </td>
         <td className="w-[118px] px-4 py-3 align-middle">
           {isInline ? (
@@ -203,15 +321,21 @@ export function StudentRow({
             </div>
           )}
         </td>
-        <td className="w-[120px] px-4 py-3 align-middle">
-          <div className="flex flex-wrap gap-2">
+        <td className="sticky right-0 z-20 w-[88px] min-w-[88px] border-l border-slate-200 bg-white px-2 py-3 align-middle shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
+          <div
+            className={
+              isInline
+                ? "flex flex-col gap-1"
+                : "flex flex-nowrap items-center gap-1"
+            }
+          >
             {isInline ? (
               <>
                 <button
                   type="button"
                   onClick={onInlineCancel}
                   disabled={isSaving}
-                  className="rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  className="w-full rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
                   Cancel
                 </button>
@@ -219,7 +343,7 @@ export function StudentRow({
                   type="button"
                   onClick={() => void onInlineSave()}
                   disabled={isSaving}
-                  className="rounded-md bg-blue-600 px-2 py-1 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+                  className="w-full rounded-md bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
                 >
                   {isSaving ? "Saving…" : "Save"}
                 </button>
@@ -229,16 +353,20 @@ export function StudentRow({
                 <button
                   type="button"
                   onClick={() => onInlineEdit(student)}
-                  className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  title="Edit student"
+                  aria-label="Edit student"
+                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-blue-400"
                 >
-                  Edit
+                  <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="h-9 rounded-lg border border-red-200 px-3 text-sm text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+                  title="Delete student"
+                  aria-label="Delete student"
+                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-red-400"
                 >
-                  Delete
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                 </button>
               </>
             )}
@@ -246,9 +374,20 @@ export function StudentRow({
         </td>
       </tr>
 
-      <tr className="lg:hidden">
+      {isInline && subjectEnrollmentEdit ? (
+        <tr className="hidden md:table-row">
+          <td
+            colSpan={8}
+            className="border-b border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/50"
+          >
+            <SubjectEnrollmentFields se={subjectEnrollmentEdit} />
+          </td>
+        </tr>
+      ) : null}
+
+      <tr className="md:hidden">
         <td
-          colSpan={7}
+          colSpan={8}
           className="border-b border-slate-200 px-4 py-3 align-middle dark:border-zinc-800"
         >
           {isInline ? (
@@ -280,6 +419,9 @@ export function StudentRow({
                   </option>
                 ))}
               </select>
+              {subjectEnrollmentEdit ? (
+                <SubjectEnrollmentFields se={subjectEnrollmentEdit} />
+              ) : null}
               <select
                 value={editValues.gender ?? ""}
                 onChange={(e) => onInlineChange("gender", e.target.value)}
@@ -361,6 +503,12 @@ export function StudentRow({
                 </div>
               </div>
               <p className="text-xs text-gray-500 dark:text-zinc-400">
+                Subjects (this year):{" "}
+                <span className="font-medium text-gray-800 dark:text-zinc-200">
+                  {student.subject_enrollment_count ?? 0}
+                </span>
+              </p>
+              <p className="text-xs text-gray-500 dark:text-zinc-400">
                 Enrolled:{" "}
                 {formatEnrollmentDateDisplay(student.enrollment_date)}
               </p>
@@ -375,20 +523,24 @@ export function StudentRow({
                   {parentPhone || "—"}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2 pt-1">
+              <div className="flex items-center gap-1 pt-1">
                 <button
                   type="button"
                   onClick={() => onInlineEdit(student)}
-                  className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-800 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  title="Edit student"
+                  aria-label="Edit student"
+                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-blue-400"
                 >
-                  Edit
+                  <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="h-9 rounded-lg border border-red-200 px-3 text-sm text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+                  title="Delete student"
+                  aria-label="Delete student"
+                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-red-400"
                 >
-                  Delete
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                 </button>
               </div>
             </div>
@@ -399,7 +551,7 @@ export function StudentRow({
       {error && (
         <tr>
           <td
-            colSpan={7}
+            colSpan={8}
             className="border-b border-slate-200 bg-red-50/50 px-4 py-2 dark:border-zinc-800 dark:bg-red-950/20"
           >
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
@@ -409,7 +561,7 @@ export function StudentRow({
 
       {showDeleteConfirm && (
         <tr>
-          <td colSpan={7} className="p-0">
+          <td colSpan={8} className="p-0">
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
               <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white">

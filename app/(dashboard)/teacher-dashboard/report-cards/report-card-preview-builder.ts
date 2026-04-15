@@ -31,7 +31,8 @@ function parseDraftPercentString(raw: string): number | null {
 export function mergeStudentCommentsWithDraftsForPreview(
   student: StudentReportRow,
   subjects: string[],
-  draftBySubject: Record<string, ReportCardExamDraftOverlay> | undefined
+  draftBySubject: Record<string, ReportCardExamDraftOverlay> | undefined,
+  options?: { restrictOutputToSubjects?: boolean }
 ): StudentReportRow {
   if (!draftBySubject) return student;
 
@@ -76,7 +77,17 @@ export function mergeStudentCommentsWithDraftsForPreview(
     bySub.set(subject, merged);
   }
 
-  return { ...student, comments: Array.from(bySub.values()) };
+  const allComments = Array.from(bySub.values());
+  const comments =
+    options?.restrictOutputToSubjects === true
+      ? allComments.filter((c) =>
+          subjList.some(
+            (s) => s.trim().toLowerCase() === c.subject.trim().toLowerCase()
+          )
+        )
+      : allComments;
+
+  return { ...student, comments };
 }
 
 function fmtPct(n: number | null | undefined): string {

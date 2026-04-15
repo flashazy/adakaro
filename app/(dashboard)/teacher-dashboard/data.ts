@@ -12,6 +12,8 @@ export type TeacherClassOption = {
   className: string;
   subject: string;
   academicYear: string;
+  /** When set, enrolment-aware filters use this subject. */
+  subjectId: string | null;
 };
 
 export async function getTeacherClassOptions(
@@ -64,5 +66,6 @@ export async function getTeacherClassOptions(
       a.subject?.trim() ||
       "General",
     academicYear: a.academic_year?.trim() || "",
+    subjectId: a.subject_id,
   }));
 }

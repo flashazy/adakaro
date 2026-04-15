@@ -17,6 +17,18 @@ import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
+/** DB migration not applied yet — do not block the whole page. */
+function isMissingStudentSubjectEnrollmentTable(err: unknown): boolean {
+  const o = err as { code?: string; message?: string } | null;
+  if (!o) return false;
+  if (o.code === "PGRST205") return true;
+  const m = o.message ?? "";
+  return (
+    m.includes("student_subject_enrollment") &&
+    (m.includes("schema cache") || m.includes("Could not find the table"))
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function StudentsPage() {
@@ -43,24 +55,57 @@ export default async function StudentsPage() {
       .eq("school_id", schoolId)
   );
 
-  const listError = combineSupabaseErrors([classesError, studentsError]);
+  const enrollmentYear = new Date().getFullYear();
+  const { data: enrollmentRows, error: enrollmentError } = await supabase
+    .from("student_subject_enrollment")
+    .select("student_id, subject_id")
+    .eq("academic_year", enrollmentYear);
+
+  const enrollmentMissingTable =
+    enrollmentError != null &&
+    isMissingStudentSubjectEnrollmentTable(enrollmentError);
+
+  const listError = combineSupabaseErrors([
+    classesError,
+    studentsError,
+    enrollmentMissingTable ? null : enrollmentError,
+  ]);
+
+  const enrollmentRowsForCounts =
+    enrollmentMissingTable ? [] : (enrollmentRows ?? []);
   if (listError) {
     console.error("[students] query error:", listError);
   }
 
   const typedClasses = (classes ?? []) as { id: string; name: string }[];
-  const typedStudents = (students ?? []) as {
-    id: string;
-    full_name: string;
-    admission_number: string | null;
-    class_id: string;
-    class: { id: string; name: string } | null;
-    gender: string | null;
-    enrollment_date: string;
-    parent_name: string | null;
-    parent_email: string | null;
-    parent_phone: string | null;
-  }[];
+  const subjectCountByStudent = new Map<string, Set<string>>();
+  for (const row of enrollmentRowsForCounts) {
+    const r = row as { student_id: string; subject_id: string };
+    if (!subjectCountByStudent.has(r.student_id)) {
+      subjectCountByStudent.set(r.student_id, new Set());
+    }
+    subjectCountByStudent.get(r.student_id)!.add(r.subject_id);
+  }
+
+  const typedStudents = (students ?? []).map((s) => {
+    const row = s as {
+      id: string;
+      full_name: string;
+      admission_number: string | null;
+      class_id: string;
+      class: { id: string; name: string } | null;
+      gender: string | null;
+      enrollment_date: string;
+      parent_name: string | null;
+      parent_email: string | null;
+      parent_phone: string | null;
+    };
+    return {
+      ...row,
+      subject_enrollment_count:
+        subjectCountByStudent.get(row.id)?.size ?? 0,
+    };
+  });
   const classOptions = typedClasses.map((c) => ({ id: c.id, name: c.name }));
 
   const planRow = await getSchoolPlanRow(supabase, schoolId);

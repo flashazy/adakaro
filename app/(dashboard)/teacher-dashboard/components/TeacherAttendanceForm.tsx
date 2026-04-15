@@ -9,14 +9,7 @@ import {
   loadAttendanceHistory,
   saveAttendanceAction,
 } from "../actions";
-
-export type AttendanceClassOption = {
-  assignmentId: string;
-  classId: string;
-  className: string;
-  subject: string;
-  academicYear: string;
-};
+import type { TeacherClassOption } from "../data";
 
 type Status = "present" | "absent" | "late";
 
@@ -105,19 +98,25 @@ function isFrequentAbsentee(
   return absentCount >= 3;
 }
 
+function subjectChoiceKeyForOption(o: TeacherClassOption): string {
+  return o.subjectId ? `id:${o.subjectId}` : `legacy:${o.subject}`;
+}
+
 export function TeacherAttendanceForm({
   options,
   initialClassId,
 }: {
-  options: AttendanceClassOption[];
+  options: TeacherClassOption[];
   initialClassId: string | null;
 }) {
-  const defaultClass =
-    options.find((o) => o.classId === initialClassId)?.classId ??
-    options[0]?.classId ??
-    "";
+  const initialRow =
+    options.find((o) => o.classId === initialClassId) ?? options[0];
+  const defaultClass = initialRow?.classId ?? "";
 
   const [classId, setClassId] = useState(defaultClass);
+  const [subjectChoiceKey, setSubjectChoiceKey] = useState(() =>
+    initialRow ? subjectChoiceKeyForOption(initialRow) : ""
+  );
   const [date, setDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
@@ -153,6 +152,52 @@ export function TeacherAttendanceForm({
   );
   const [hasChanges, setHasChanges] = useState(false);
 
+  const uniqueClasses = useMemo(
+    () => [...new Map(options.map((o) => [o.classId, o])).values()],
+    [options]
+  );
+
+  const subjectChoices = useMemo(() => {
+    const out: {
+      key: string;
+      label: string;
+      subjectId: string | null;
+      academicYear: string;
+    }[] = [];
+    const seen = new Set<string>();
+    for (const o of options) {
+      if (o.classId !== classId) continue;
+      const key = subjectChoiceKeyForOption(o);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        key,
+        label: o.subject?.trim() || "General",
+        subjectId: o.subjectId,
+        academicYear: o.academicYear?.trim() || "",
+      });
+    }
+    out.sort((a, b) => a.label.localeCompare(b.label));
+    return out;
+  }, [options, classId]);
+
+  useEffect(() => {
+    if (subjectChoices.length === 0) {
+      setSubjectChoiceKey("");
+      return;
+    }
+    setSubjectChoiceKey((prev) =>
+      subjectChoices.some((c) => c.key === prev)
+        ? prev
+        : subjectChoices[0]!.key
+    );
+  }, [classId, subjectChoices]);
+
+  const selectedSubjectMeta = useMemo(
+    () => subjectChoices.find((c) => c.key === subjectChoiceKey),
+    [subjectChoices, subjectChoiceKey]
+  );
+
   useEffect(() => {
     const saved =
       typeof window !== "undefined"
@@ -183,7 +228,9 @@ export function TeacherAttendanceForm({
     if (!classId) return;
     setLoadError(null);
     setSaveOk(false);
-    const res = await loadAttendanceData(classId, date);
+    const res = await loadAttendanceData(classId, date, {
+      subjectId: selectedSubjectMeta?.subjectId ?? null,
+    });
     if (!res.ok) {
       setLoadError(res.error);
       setStudents([]);
@@ -204,7 +251,7 @@ export function TeacherAttendanceForm({
       setHistoryDates(hist.dates);
       setHistoryByDate(hist.byDate);
     }
-  }, [classId, date]);
+  }, [classId, date, selectedSubjectMeta?.subjectId]);
 
   useEffect(() => {
     startTransition(() => {
@@ -270,16 +317,16 @@ export function TeacherAttendanceForm({
   };
 
   const selectedLabel = useMemo(() => {
-    const o = options.find((x) => x.classId === classId);
-    if (!o) return "";
-    return `${o.className} — ${o.subject || "General"} (${o.academicYear || "—"})`;
-  }, [options, classId]);
+    const c = uniqueClasses.find((x) => x.classId === classId);
+    if (!c || !selectedSubjectMeta) return "";
+    return `${c.className} — ${selectedSubjectMeta.label} (${selectedSubjectMeta.academicYear || "—"})`;
+  }, [uniqueClasses, classId, selectedSubjectMeta]);
 
   const selectedClassName = useMemo(() => {
-    const o = options.find((x) => x.classId === classId);
-    if (!o) return "";
-    return `${o.className} — ${o.subject || "General"}`;
-  }, [options, classId]);
+    const c = uniqueClasses.find((x) => x.classId === classId);
+    if (!c || !selectedSubjectMeta) return "";
+    return `${c.className} — ${selectedSubjectMeta.label}`;
+  }, [uniqueClasses, classId, selectedSubjectMeta]);
 
   const filteredStudents = useMemo(() => {
     let list = students;
@@ -455,7 +502,7 @@ export function TeacherAttendanceForm({
           </p>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-slate-700 dark:text-zinc-300">
               Class
@@ -465,10 +512,26 @@ export function TeacherAttendanceForm({
               onChange={(e) => setClassId(e.target.value)}
               className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
-              {options.map((o) => (
-                <option key={o.assignmentId} value={o.classId}>
-                  {o.className} — {o.subject || "General"} ·{" "}
-                  {o.academicYear || "—"}
+              {uniqueClasses.map((o) => (
+                <option key={o.classId} value={o.classId}>
+                  {o.className}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700 dark:text-zinc-300">
+              Subject
+            </label>
+            <select
+              value={subjectChoiceKey}
+              onChange={(e) => setSubjectChoiceKey(e.target.value)}
+              disabled={subjectChoices.length === 0}
+              className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-slate-900 shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+            >
+              {subjectChoices.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
                 </option>
               ))}
             </select>

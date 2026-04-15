@@ -13,6 +13,12 @@ import {
   inferMajorExamTypeFromTitle,
   parseGradebookExamType,
 } from "@/lib/gradebook-major-exams";
+import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
+import { parseSubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
+import {
+  getCurrentAcademicYearAndTerm,
+  getStudentsForSubject,
+} from "@/lib/student-subject-enrollment-queries";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -73,6 +79,23 @@ async function assertTeacherTeachesSubjectInClass(
   return !!data;
 }
 
+async function assertTeacherTeachesSubjectIdInClass(
+  userId: string,
+  classId: string,
+  subjectId: string
+): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("teacher_assignments")
+    .select("id")
+    .eq("teacher_id", userId)
+    .eq("class_id", classId)
+    .eq("subject_id", subjectId)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
+}
+
 async function resolveGradebookAcademicYearForInsert(
   admin: Db,
   teacherId: string,
@@ -121,7 +144,15 @@ function normalizeAttendanceDateOnly(iso: string): string | null {
   return d;
 }
 
-export async function loadAttendanceData(classId: string, date: string) {
+export async function loadAttendanceData(
+  classId: string,
+  date: string,
+  filters?: {
+    subjectId: string | null;
+    academicYear?: number;
+    term?: SubjectEnrollmentTerm;
+  }
+) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -139,17 +170,35 @@ export async function loadAttendanceData(classId: string, date: string) {
     return { ok: false as const, error: "Invalid date. Use YYYY-MM-DD." };
   }
 
-  const { data: studentRows } = await orderStudentsByGenderThenName(
-    admin
-      .from("students")
-      .select("id, full_name, gender")
-      .eq("class_id", classId)
-      .eq("status", "active")
-      .lte("enrollment_date", dateOnly)
-  );
+  const period = getCurrentAcademicYearAndTerm();
+  const academicYear = filters?.academicYear ?? period.academicYear;
+  const term = filters?.term ?? period.term;
+  const subjectId = filters?.subjectId ?? null;
+
+  if (subjectId) {
+    const allowed = await assertTeacherTeachesSubjectIdInClass(
+      user.id,
+      classId,
+      subjectId
+    );
+    if (!allowed) {
+      return {
+        ok: false as const,
+        error: "You are not assigned to teach this subject for this class.",
+      };
+    }
+  }
+
+  const roster = await getStudentsForSubject(admin, {
+    classId,
+    subjectId,
+    academicYear,
+    term,
+    enrollmentDateOnOrBefore: dateOnly,
+  });
 
   type StudentRow = { id: string; full_name: string; gender: string | null };
-  let mergedRows = (studentRows ?? []) as StudentRow[];
+  let mergedRows = roster as StudentRow[];
   const baseIds = new Set(mergedRows.map((s) => s.id));
 
   const { data: rows } = await admin
@@ -309,6 +358,8 @@ export async function createGradebookAssignmentAction(input: {
   dueDate: string | null;
   academicYear?: string | null;
   examType?: string | null;
+  /** When set, stored on the assignment for matrix filtering. */
+  term?: SubjectEnrollmentTerm | null;
 }) {
   const supabase = await createClient();
   const {
@@ -351,6 +402,9 @@ export async function createGradebookAssignmentAction(input: {
     parseGradebookExamType(input.examType) ??
     inferMajorExamTypeFromTitle(titleTrim);
 
+  const termVal =
+    input.term === "Term 1" || input.term === "Term 2" ? input.term : null;
+
   const { data: created, error } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .insert({
@@ -363,6 +417,7 @@ export async function createGradebookAssignmentAction(input: {
       due_date: input.dueDate || null,
       academic_year: academicYear,
       exam_type: examType,
+      term: termVal,
     })
     .select("id")
     .single();
@@ -435,7 +490,8 @@ export async function deleteGradebookAssignmentAction(assignmentId: string) {
 
 export async function loadGradebookAssignmentsForClass(
   classId: string,
-  subject: string
+  subject: string,
+  gradebookTerm?: SubjectEnrollmentTerm
 ) {
   const supabase = await createClient();
   const {
@@ -450,10 +506,10 @@ export async function loadGradebookAssignmentsForClass(
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
-  const { data, error } = await (admin as Db)
+  const { data: rawData, error } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .select(
-      "id, title, max_score, weight, due_date, subject, exam_type, academic_year"
+      "id, title, max_score, weight, due_date, subject, exam_type, academic_year, term"
     )
     .eq("teacher_id", user.id)
     .eq("class_id", classId)
@@ -463,9 +519,16 @@ export async function loadGradebookAssignmentsForClass(
     return { ok: false as const, error: error.message };
   }
 
+  const data = (rawData ?? []).filter((row: { term: string | null }) => {
+    if (!gradebookTerm) return true;
+    const t = row.term;
+    if (t == null || String(t).trim() === "") return true;
+    return t === gradebookTerm;
+  });
+
   return {
     ok: true as const,
-    assignments: (data ?? []) as {
+    assignments: data as {
       id: string;
       title: string;
       max_score: number;
@@ -474,14 +537,28 @@ export async function loadGradebookAssignmentsForClass(
       subject: string;
       exam_type: string | null;
       academic_year: string;
+      term: string | null;
     }[],
   };
+}
+
+function enrollmentYearFromString(y: string | undefined | null): number {
+  const t = (y ?? "").trim();
+  const m = t.match(/\d{4}/);
+  if (m) return parseInt(m[0], 10);
+  return getCurrentAcademicYearAndTerm().academicYear;
 }
 
 /**
  * All assignments for a class/subject with every student's scores — for the overview matrix.
  */
-export async function loadGradebookClassMatrix(classId: string, subject: string) {
+export async function loadGradebookClassMatrix(
+  classId: string,
+  subject: string,
+  gradebookTerm: SubjectEnrollmentTerm,
+  subjectId: string | null,
+  enrollmentYear?: number
+) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -494,10 +571,10 @@ export async function loadGradebookClassMatrix(classId: string, subject: string)
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
-  const { data: assignmentRows, error: aErr } = await (admin as Db)
+  const { data: assignmentRowsRaw, error: aErr } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .select(
-      "id, title, max_score, weight, due_date, subject, created_at, exam_type, academic_year"
+      "id, title, max_score, weight, due_date, subject, created_at, exam_type, academic_year, term"
     )
     .eq("teacher_id", user.id)
     .eq("class_id", classId)
@@ -508,7 +585,15 @@ export async function loadGradebookClassMatrix(classId: string, subject: string)
     return { ok: false as const, error: aErr.message };
   }
 
-  const assignments = (assignmentRows ?? []) as {
+  const assignmentRows = (assignmentRowsRaw ?? []).filter(
+    (row: { term: string | null }) => {
+      const t = row.term;
+      if (t == null || String(t).trim() === "") return true;
+      return t === gradebookTerm;
+    }
+  );
+
+  const assignments = assignmentRows as {
     id: string;
     title: string;
     max_score: number;
@@ -518,17 +603,22 @@ export async function loadGradebookClassMatrix(classId: string, subject: string)
     created_at?: string;
     exam_type: string | null;
     academic_year: string;
+    term: string | null;
   }[];
 
-  const { data: students } = await orderStudentsByGenderThenName(
-    admin
-      .from("students")
-      .select("id, full_name, gender")
-      .eq("class_id", classId)
-      .eq("status", "active")
-  );
+  const yearForEnrollment =
+    enrollmentYear ??
+    enrollmentYearFromString(assignments[0]?.academic_year);
 
-  const rawStudents = (students ?? []) as {
+  const roster = await getStudentsForSubject(admin, {
+    classId,
+    subjectId,
+    academicYear: yearForEnrollment,
+    term: gradebookTerm,
+    enrollmentDateOnOrBefore: null,
+  });
+
+  const rawStudents = roster as {
     id: string;
     full_name: string;
     gender: string | null;
@@ -788,7 +878,7 @@ export async function loadGradebookMatrix(assignmentId: string) {
   const { data: g } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .select(
-      "id, class_id, subject, title, max_score, weight, due_date, teacher_id"
+      "id, class_id, subject, title, max_score, weight, due_date, teacher_id, academic_year, term"
     )
     .eq("id", assignmentId)
     .single();
@@ -802,19 +892,52 @@ export async function loadGradebookMatrix(assignmentId: string) {
     weight: number;
     due_date: string | null;
     teacher_id: string;
+    academic_year: string | null;
+    term: string | null;
   } | null;
 
   if (!ga || ga.teacher_id !== user.id) {
     return { ok: false as const, error: "Assignment not found." };
   }
 
-  const { data: students } = await orderStudentsByGenderThenName(
-    admin
-      .from("students")
-      .select("id, full_name, gender")
-      .eq("class_id", ga.class_id)
-      .eq("status", "active")
-  );
+  const subLower = ga.subject.trim().toLowerCase();
+  const { data: taRows } = await (admin as Db)
+    .from("teacher_assignments")
+    .select("subject_id, subject, subjects(name)")
+    .eq("teacher_id", user.id)
+    .eq("class_id", ga.class_id);
+
+  let subjectIdForEnrollment: string | null = null;
+  for (const r of taRows ?? []) {
+    const row = r as {
+      subject_id: string | null;
+      subject: string;
+      subjects: { name: string } | null;
+    };
+    const disp = (
+      row.subjects?.name?.trim() ||
+      row.subject?.trim() ||
+      ""
+    ).toLowerCase();
+    if (disp === subLower) {
+      subjectIdForEnrollment = row.subject_id;
+      break;
+    }
+  }
+
+  const termParsed =
+    parseSubjectEnrollmentTerm(ga.term) ??
+    getCurrentAcademicYearAndTerm().term;
+
+  const enrollYear = enrollmentYearFromString(ga.academic_year ?? undefined);
+
+  const studentsList = await getStudentsForSubject(admin, {
+    classId: ga.class_id,
+    subjectId: subjectIdForEnrollment,
+    academicYear: enrollYear,
+    term: termParsed,
+    enrollmentDateOnOrBefore: null,
+  });
 
   const { data: scoreRows, error: scoresError } = await (admin as Db)
     .from("teacher_scores")
@@ -850,7 +973,7 @@ export async function loadGradebookMatrix(assignmentId: string) {
   return {
     ok: true as const,
     assignment: ga,
-    students: (students ?? []) as {
+    students: studentsList as {
       id: string;
       full_name: string;
       gender: string | null;

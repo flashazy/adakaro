@@ -3,7 +3,16 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { StudentRow } from "./student-row";
-import { updateStudent } from "./actions";
+import {
+  getStudentSubjects,
+  getSubjectsForClass,
+  updateStudent,
+  updateStudentSubjects,
+} from "./actions";
+import {
+  currentAcademicYear,
+  type SubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
 
 interface ClassOption {
   id: string;
@@ -21,6 +30,8 @@ interface StudentData {
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
+  /** Distinct subjects enrolled for the current calendar year (any term). */
+  subject_enrollment_count?: number;
 }
 
 interface StudentListProps {
@@ -74,6 +85,14 @@ export function StudentList({ students, classes }: StudentListProps) {
     null
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [editClassSubjects, setEditClassSubjects] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [editSubjectsLoading, setEditSubjectsLoading] = useState(false);
+  const [editSubjectIds, setEditSubjectIds] = useState<string[]>([]);
+  const [editSubjectYear, setEditSubjectYear] = useState(currentAcademicYear());
+  const [editSubjectTerm, setEditSubjectTerm] =
+    useState<SubjectEnrollmentTerm>("Term 1");
 
   const classNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -143,6 +162,8 @@ export function StudentList({ students, classes }: StudentListProps) {
   const handleEdit = useCallback((student: StudentData) => {
     setInlineSaveError(null);
     setInlineSaveSuccess(null);
+    setEditClassSubjects([]);
+    setEditSubjectIds([]);
     setEditingId(student.id);
     setEditValues({
       full_name: student.full_name,
@@ -154,10 +175,43 @@ export function StudentList({ students, classes }: StudentListProps) {
       parent_email: student.parent_email,
       parent_phone: student.parent_phone,
     });
+    setEditSubjectYear(currentAcademicYear());
+    setEditSubjectTerm("Term 1");
   }, []);
+
+  useEffect(() => {
+    if (!editingId) return;
+    const cid = (editValues.class_id ?? "").trim();
+    if (!cid) return;
+    let cancelled = false;
+    setEditSubjectsLoading(true);
+    void (async () => {
+      const [opts, enrolled] = await Promise.all([
+        getSubjectsForClass(cid),
+        getStudentSubjects(editingId, editSubjectYear, editSubjectTerm),
+      ]);
+      if (cancelled) return;
+      setEditClassSubjects(opts);
+      const allow = new Set(opts.map((o) => o.id));
+      setEditSubjectIds(
+        enrolled.map((e) => e.subject_id).filter((id) => allow.has(id))
+      );
+      setEditSubjectsLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId, editValues.class_id, editSubjectYear, editSubjectTerm]);
 
   function handleChange(field: string, value: string) {
     setEditValues((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function toggleEditSubject(subjectId: string, checked: boolean) {
+    setEditSubjectIds((prev) => {
+      if (checked) return prev.includes(subjectId) ? prev : [...prev, subjectId];
+      return prev.filter((id) => id !== subjectId);
+    });
   }
 
   const handleInlineSave = useCallback(async () => {
@@ -210,18 +264,45 @@ export function StudentList({ students, classes }: StudentListProps) {
         setInlineSaveError(result.error);
         return;
       }
-      setInlineSaveSuccess(result.success ?? "Student updated.");
+      const subResult = await updateStudentSubjects(
+        editingId,
+        editSubjectIds,
+        editSubjectYear,
+        editSubjectTerm
+      );
+      if (subResult.error) {
+        setInlineSaveError(
+          `${result.success ?? "Student updated."} Subject enrolment: ${subResult.error}`
+        );
+        router.refresh();
+        return;
+      }
+      setInlineSaveSuccess(
+        [result.success, subResult.success].filter(Boolean).join(" ") ||
+          "Student updated."
+      );
       setEditingId(null);
       setEditValues({});
+      setEditClassSubjects([]);
+      setEditSubjectIds([]);
       router.refresh();
     } finally {
       setIsSaving(false);
     }
-  }, [editingId, editValues, router]);
+  }, [
+    editingId,
+    editValues,
+    editSubjectIds,
+    editSubjectYear,
+    editSubjectTerm,
+    router,
+  ]);
 
   function handleInlineCancel() {
     setEditingId(null);
     setEditValues({});
+    setEditClassSubjects([]);
+    setEditSubjectIds([]);
     setInlineSaveError(null);
     setInlineSaveSuccess(null);
   }
@@ -341,7 +422,7 @@ export function StudentList({ students, classes }: StudentListProps) {
           <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="max-h-[min(70vh,720px)] overflow-x-auto overflow-y-auto">
               <table className="w-full table-fixed border-collapse">
-                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 [&_th]:bg-white dark:[&_th]:bg-zinc-900">
                   <tr>
                     <th className="w-[120px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
                       ADM #
@@ -352,6 +433,9 @@ export function StudentList({ students, classes }: StudentListProps) {
                     <th className="w-[120px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
                       Class
                     </th>
+                    <th className="w-[72px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                      Subjects
+                    </th>
                     <th className="w-[118px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
                       Enrolled
                     </th>
@@ -361,7 +445,7 @@ export function StudentList({ students, classes }: StudentListProps) {
                     <th className="w-[280px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
                       Parent
                     </th>
-                    <th className="w-[120px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                    <th className="sticky right-0 z-30 w-[88px] min-w-[88px] border-l border-slate-200 bg-white px-2 py-3 text-left text-sm font-medium text-gray-500 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
                       Actions
                     </th>
                   </tr>
@@ -379,6 +463,26 @@ export function StudentList({ students, classes }: StudentListProps) {
                       onInlineSave={handleInlineSave}
                       onInlineCancel={handleInlineCancel}
                       isSaving={isSaving}
+                      onDeleted={() => {
+                        if (editingId === student.id) {
+                          handleInlineCancel();
+                        }
+                        router.refresh();
+                      }}
+                      subjectEnrollmentEdit={
+                        editingId === student.id
+                          ? {
+                              academicYear: editSubjectYear,
+                              term: editSubjectTerm,
+                              classSubjects: editClassSubjects,
+                              selectedIds: editSubjectIds,
+                              loading: editSubjectsLoading,
+                              onYearChange: setEditSubjectYear,
+                              onTermChange: setEditSubjectTerm,
+                              onToggleSubject: toggleEditSubject,
+                            }
+                          : undefined
+                      }
                     />
                   ))}
                 </tbody>

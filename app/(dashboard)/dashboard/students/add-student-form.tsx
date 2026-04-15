@@ -5,8 +5,12 @@ import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
-import { addStudent, type StudentActionState } from "./actions";
+import { addStudent, getSubjectsForClass, type StudentActionState } from "./actions";
 import { todayIsoLocal } from "@/lib/enrollment-date";
+import {
+  SUBJECT_ENROLLMENT_TERMS,
+  currentAcademicYear,
+} from "@/lib/student-subject-enrollment";
 
 /** Title-case one segment (handles O'Connor-style apostrophes). */
 function capitalizeNameSegment(segment: string): string {
@@ -101,6 +105,28 @@ export function AddStudentForm({
   const admissionInputRef = useRef<HTMLInputElement>(null);
   const [admissionValue, setAdmissionValue] = useState("");
   const [admissionSnapshot, setAdmissionSnapshot] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [classSubjectOptions, setClassSubjectOptions] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedClassId) {
+      setClassSubjectOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setSubjectsLoading(true);
+    void getSubjectsForClass(selectedClassId).then((opts) => {
+      if (cancelled) return;
+      setClassSubjectOptions(opts);
+      setSubjectsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClassId]);
 
   useEffect(() => {
     if (open && hasAdmissionPrefix) {
@@ -115,6 +141,8 @@ export function AddStudentForm({
   useEffect(() => {
     if (state.success) {
       formRef.current?.reset();
+      setSelectedClassId("");
+      setClassSubjectOptions([]);
       setOpen(false);
       router.refresh();
     }
@@ -266,6 +294,8 @@ export function AddStudentForm({
                 id="class_id"
                 name="class_id"
                 required
+                value={selectedClassId}
+                onChange={(e) => setSelectedClassId(e.target.value)}
                 className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 <option value="">Select a class</option>
@@ -298,6 +328,78 @@ export function AddStudentForm({
                 <option value="female">Female</option>
               </select>
             </div>
+
+            {selectedClassId ? (
+              <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-3">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-zinc-300">
+                  Subjects this student will study
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  Optional. Choose the term and year, then tick the subjects this
+                  learner takes. You can change these later when editing the
+                  student.
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                    Academic year
+                    <input
+                      type="number"
+                      id="subject_academic_year"
+                      name="subject_academic_year"
+                      min={2000}
+                      max={2100}
+                      defaultValue={currentAcademicYear()}
+                      className="h-10 w-36 rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                    Term
+                    <select
+                      id="subject_term"
+                      name="subject_term"
+                      defaultValue="Term 1"
+                      className="h-10 min-w-[10rem] rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                    >
+                      {SUBJECT_ENROLLMENT_TERMS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {subjectsLoading ? (
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Loading subjects…
+                  </p>
+                ) : classSubjectOptions.length === 0 ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-300/90">
+                    No subjects linked to this class yet. Configure subjects under
+                    Manage Subjects first.
+                  </p>
+                ) : (
+                  <ul className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto rounded-lg border border-slate-100 p-3 sm:grid-cols-2 dark:border-zinc-800">
+                    {classSubjectOptions.map((sub) => (
+                      <li key={sub.id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`add-subj-${sub.id}`}
+                          name="subject_ids"
+                          value={sub.id}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                        />
+                        <label
+                          htmlFor={`add-subj-${sub.id}`}
+                          className="text-sm text-slate-800 dark:text-zinc-200"
+                        >
+                          {sub.name}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
 
             <div className="flex flex-col gap-1">
               <label

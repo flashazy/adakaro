@@ -27,6 +27,7 @@ import {
   duplicateMajorExamMessage,
   resolvedMajorExamKindForDuplicateCheck,
 } from "@/lib/gradebook-major-exams";
+import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
 
 const WEIGHT_FIELD_TOOLTIP =
   "Weight determines how much this assignment counts toward the final grade. Example: Final exam = 50%, Quiz = 10%. Default is 100%.";
@@ -45,6 +46,7 @@ export type GradebookClassOption = {
   className: string;
   subject: string;
   academicYear: string;
+  subjectId: string | null;
 };
 
 type GbAssignment = {
@@ -56,6 +58,7 @@ type GbAssignment = {
   subject: string;
   exam_type?: string | null;
   academic_year?: string;
+  term?: string | null;
 };
 
 type ScoreRow = {
@@ -153,6 +156,8 @@ export function TeacherGradebook({
     options.find((o) => o.classId === initialClassId)?.classId ?? first?.classId ?? ""
   );
   const [subject, setSubject] = useState(first?.subject ?? "");
+  const [gradebookTerm, setGradebookTerm] =
+    useState<SubjectEnrollmentTerm>("Term 1");
   const [assignments, setAssignments] = useState<GbAssignment[]>([]);
   const [assignmentId, setAssignmentId] = useState<string>("");
   const [matrix, setMatrix] = useState<{
@@ -303,6 +308,22 @@ export function TeacherGradebook({
     return years[0] ?? "";
   }, [options, classId, subject]);
 
+  const subjectIdForSelection = useMemo(() => {
+    const subDisplay = subject.trim() || "General";
+    const match = options.find(
+      (o) =>
+        o.classId === classId &&
+        (o.subject?.trim() || "General") === subDisplay
+    );
+    return match?.subjectId ?? null;
+  }, [options, classId, subject]);
+
+  const enrollmentYearForMatrix = useMemo(() => {
+    const y = academicYearForSelection.trim();
+    const m = y.match(/\d{4}/);
+    return m ? parseInt(m[0], 10) : undefined;
+  }, [academicYearForSelection]);
+
   useEffect(() => {
     const subs = subjectsForClass;
     if (subs.length === 0) {
@@ -318,14 +339,18 @@ export function TeacherGradebook({
       setAssignments([]);
       return;
     }
-    const res = await loadGradebookAssignmentsForClass(classId, subject);
+    const res = await loadGradebookAssignmentsForClass(
+      classId,
+      subject,
+      gradebookTerm
+    );
     if (!res.ok) {
       setError(res.error);
       setAssignments([]);
       return;
     }
     setAssignments(res.assignments as GbAssignment[]);
-  }, [classId, subject]);
+  }, [classId, subject, gradebookTerm]);
 
   useEffect(() => {
     void fetchAssignments();
@@ -338,7 +363,13 @@ export function TeacherGradebook({
       return;
     }
     setClassMatrixLoading(true);
-    const res = await loadGradebookClassMatrix(classId, subject);
+    const res = await loadGradebookClassMatrix(
+      classId,
+      subject,
+      gradebookTerm,
+      subjectIdForSelection,
+      enrollmentYearForMatrix
+    );
     setClassMatrixLoading(false);
     if (!res.ok) {
       setClassMatrixData(null);
@@ -350,7 +381,7 @@ export function TeacherGradebook({
       students: res.students,
       scoreMatrix: res.scoreMatrix as Record<string, Record<string, ScoreRow>>,
     });
-  }, [classId, subject]);
+  }, [classId, subject, gradebookTerm, subjectIdForSelection, enrollmentYearForMatrix]);
 
   useEffect(() => {
     void fetchClassMatrix();
@@ -468,6 +499,7 @@ export function TeacherGradebook({
         weight: w,
         dueDate: dueDate || null,
         academicYear: academicYearForSelection || null,
+        term: gradebookTerm,
       });
       if (!res.ok) {
         setAssignmentCreateError(res.error);
@@ -847,7 +879,7 @@ export function TeacherGradebook({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
           Filter
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <label className="block text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Class
@@ -888,6 +920,23 @@ export function TeacherGradebook({
                   {s}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700 dark:text-zinc-300">
+              Term
+            </span>
+            <select
+              value={gradebookTerm}
+              onChange={(e) => {
+                setGradebookTerm(e.target.value as SubjectEnrollmentTerm);
+                setAssignmentId("");
+                setAssignmentCreateError(null);
+              }}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+            >
+              <option value="Term 1">Term 1</option>
+              <option value="Term 2">Term 2</option>
             </select>
           </label>
         </div>

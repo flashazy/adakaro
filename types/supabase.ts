@@ -459,6 +459,42 @@ export interface Database {
           updated_at?: string;
         };
       };
+      student_subject_enrollment: {
+        Row: {
+          id: string;
+          student_id: string;
+          subject_id: string;
+          class_id: string;
+          academic_year: number;
+          term: "Term 1" | "Term 2";
+          enrolled_from: string;
+          enrolled_to: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          subject_id: string;
+          class_id: string;
+          academic_year?: number;
+          term: "Term 1" | "Term 2";
+          enrolled_from?: string;
+          enrolled_to?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          student_id?: string;
+          subject_id?: string;
+          class_id?: string;
+          academic_year?: number;
+          term?: "Term 1" | "Term 2";
+          enrolled_from?: string;
+          enrolled_to?: string | null;
+          updated_at?: string;
+        };
+      };
       fee_types: {
         Row: {
           id: string;
@@ -841,6 +877,7 @@ export interface Database {
           due_date: string | null;
           academic_year: string;
           exam_type: string | null;
+          term: "Term 1" | "Term 2" | null;
           created_at: string;
           updated_at: string;
         };
@@ -855,6 +892,7 @@ export interface Database {
           due_date?: string | null;
           academic_year?: string;
           exam_type?: string | null;
+          term?: "Term 1" | "Term 2" | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -868,6 +906,7 @@ export interface Database {
           due_date?: string | null;
           academic_year?: string;
           exam_type?: string | null;
+          term?: "Term 1" | "Term 2" | null;
           updated_at?: string;
         };
       };

@@ -62,6 +62,7 @@ async function loadTeacherClassOptionsWithAdmin(
       a.subject?.trim() ||
       "General",
     academicYear: a.academic_year?.trim() || "",
+    subjectId: a.subject_id,
   }));
 }
 

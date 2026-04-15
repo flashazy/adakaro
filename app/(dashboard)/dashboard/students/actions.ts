@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { escapeRegExp } from "@/lib/admission-number";
@@ -10,6 +11,14 @@ import {
   parseOptionalEnrollmentDate,
   todayIsoLocal,
 } from "@/lib/enrollment-date";
+import {
+  currentAcademicYear,
+  parseSubjectEnrollmentTerm,
+  type SubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Db = any;
 
 async function getSchoolId() {
   const supabase = await createClient();
@@ -23,6 +32,256 @@ async function getSchoolId() {
   if (!schoolId) throw new Error("No school found");
 
   return { supabase, schoolId, userId: user.id };
+}
+
+async function assertSubjectsAllowedForClass(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  classId: string,
+  subjectIds: string[]
+) {
+  if (subjectIds.length === 0) return;
+  const { data, error } = await supabase
+    .from("subject_classes")
+    .select("subject_id")
+    .eq("class_id", classId)
+    .in("subject_id", subjectIds);
+  if (error) throw new Error(error.message);
+  const allowed = new Set((data ?? []).map((r) => (r as { subject_id: string }).subject_id));
+  for (const id of subjectIds) {
+    if (!allowed.has(id)) {
+      throw new Error("One or more selected subjects are not offered for this class.");
+    }
+  }
+}
+
+async function replaceStudentSubjectEnrollments(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  params: {
+    studentId: string;
+    classId: string;
+    subjectIds: string[];
+    academicYear: number;
+    term: SubjectEnrollmentTerm;
+    enrolledFrom?: string | null;
+  }
+) {
+  const { studentId, classId, subjectIds, academicYear, term, enrolledFrom } =
+    params;
+  const uniqueIds = [...new Set(subjectIds.filter(Boolean))];
+  await assertSubjectsAllowedForClass(supabase, classId, uniqueIds);
+
+  const { error: delErr } = await supabase
+    .from("student_subject_enrollment")
+    .delete()
+    .eq("student_id", studentId)
+    .eq("academic_year", academicYear)
+    .eq("term", term);
+
+  if (delErr) throw new Error(delErr.message);
+
+  if (uniqueIds.length === 0) return;
+
+  const from =
+    enrolledFrom && enrolledFrom.trim() !== ""
+      ? enrolledFrom.trim()
+      : todayIsoLocal();
+
+  const rows = uniqueIds.map((subject_id) => ({
+    student_id: studentId,
+    subject_id,
+    class_id: classId,
+    academic_year: academicYear,
+    term,
+    enrolled_from: from,
+  }));
+
+  const { error: insErr } = await supabase
+    .from("student_subject_enrollment")
+    .insert(rows as never);
+
+  if (insErr) throw new Error(insErr.message);
+}
+
+/**
+ * Subjects linked to the class via `subject_classes` (same source as Manage Subjects).
+ * Uses the service-role admin client after verifying the class belongs to the caller's
+ * school so RLS cannot hide rows that admins can configure on the Subjects page.
+ */
+export async function getSubjectsForClass(classId: string): Promise<
+  { id: string; name: string }[]
+> {
+  try {
+    const { schoolId } = await getSchoolId();
+    const admin = createAdminClient() as Db;
+
+    const { data: klass } = await admin
+      .from("classes")
+      .select("id, school_id")
+      .eq("id", classId)
+      .maybeSingle();
+
+    const c = klass as { id: string; school_id: string } | null;
+    if (!c || c.school_id !== schoolId) return [];
+
+    const { data: linkRows, error: linkErr } = await admin
+      .from("subject_classes")
+      .select("subject_id")
+      .eq("class_id", classId);
+
+    if (linkErr) return [];
+
+    const subjectIds = [
+      ...new Set(
+        (linkRows ?? []).map((r: { subject_id: string }) => r.subject_id)
+      ),
+    ].filter(Boolean);
+
+    if (subjectIds.length === 0) return [];
+
+    const { data: subjectRows, error: subErr } = await admin
+      .from("subjects")
+      .select("id, name")
+      .eq("school_id", schoolId)
+      .in("id", subjectIds);
+
+    if (subErr) return [];
+
+    const out = (subjectRows ?? [])
+      .map((s: { id: string; name: string }) => s)
+      .filter((s: { id: string; name: string }) =>
+        Boolean(s.id && (s.name ?? "").trim() !== "")
+      );
+    out.sort((a: { name: string }, b: { name: string }) =>
+      a.name.localeCompare(b.name)
+    );
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export interface StudentSubjectRow {
+  subject_id: string;
+  name: string;
+}
+
+export async function getStudentSubjects(
+  studentId: string,
+  academicYear: number,
+  term: SubjectEnrollmentTerm
+): Promise<StudentSubjectRow[]> {
+  try {
+    const { supabase, schoolId } = await getSchoolId();
+    const { data: st, error: stErr } = await supabase
+      .from("students")
+      .select("id")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (stErr || !st) return [];
+
+    const { data, error } = await supabase
+      .from("student_subject_enrollment")
+      .select("subject_id, subject:subjects(name)")
+      .eq("student_id", studentId)
+      .eq("academic_year", academicYear)
+      .eq("term", term);
+
+    if (error) return [];
+
+    return (data ?? []).map((row) => {
+      const r = row as {
+        subject_id: string;
+        subject: { name: string } | null;
+      };
+      return {
+        subject_id: r.subject_id,
+        name: r.subject?.name ?? "Subject",
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function enrollStudentInSubjects(
+  studentId: string,
+  classId: string,
+  subjectIds: string[],
+  academicYear: number,
+  term: SubjectEnrollmentTerm,
+  enrolledFrom?: string | null
+): Promise<{ error?: string }> {
+  try {
+    const { supabase, schoolId } = await getSchoolId();
+
+    const { data: st, error: stErr } = await supabase
+      .from("students")
+      .select("id, class_id")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (stErr || !st) {
+      return { error: "Student not found." };
+    }
+    if ((st as { class_id: string }).class_id !== classId) {
+      return { error: "Class does not match the student record." };
+    }
+
+    await replaceStudentSubjectEnrollments(supabase, {
+      studentId,
+      classId,
+      subjectIds,
+      academicYear,
+      term,
+      enrolledFrom,
+    });
+
+    revalidatePath("/dashboard/students");
+    return {};
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+export async function updateStudentSubjects(
+  studentId: string,
+  subjectIds: string[],
+  academicYear: number,
+  term: SubjectEnrollmentTerm
+): Promise<{ error?: string; success?: string }> {
+  try {
+    const { supabase, schoolId } = await getSchoolId();
+
+    const { data: st, error: stErr } = await supabase
+      .from("students")
+      .select("class_id")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (stErr || !st) {
+      return { error: "Student not found." };
+    }
+
+    const classId = (st as { class_id: string }).class_id;
+
+    await replaceStudentSubjectEnrollments(supabase, {
+      studentId,
+      classId,
+      subjectIds,
+      academicYear,
+      term,
+      enrolledFrom: null,
+    });
+
+    revalidatePath("/dashboard/students");
+    return { success: "Subject enrolment saved." };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
 }
 
 export interface StudentActionState {
@@ -53,12 +312,35 @@ export async function addStudent(
   }
   const enrollmentDate = enrollmentParsed.iso ?? todayIsoLocal();
 
+  const subjectIds = formData
+    .getAll("subject_ids")
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  const subjectYearRaw = (formData.get("subject_academic_year") as string)?.trim();
+  const subjectYearParsed =
+    subjectYearRaw !== "" ? Number(subjectYearRaw) : currentAcademicYear();
+  const subjectTerm = parseSubjectEnrollmentTerm(
+    formData.get("subject_term") as string
+  );
+
   if (!fullName) return { error: "Student name is required." };
   if (!classId) return { error: "Please select a class." };
   if (genderRaw !== "male" && genderRaw !== "female") {
     return { error: "Please select a gender." };
   }
   const gender = genderRaw;
+
+  if (subjectIds.length > 0) {
+    if (
+      !Number.isInteger(subjectYearParsed) ||
+      subjectYearParsed < 2000 ||
+      subjectYearParsed > 2100
+    ) {
+      return { error: "Enter a valid academic year for subject enrolment." };
+    }
+    if (!subjectTerm) {
+      return { error: "Select Term 1 or Term 2 for subject enrolment." };
+    }
+  }
 
   try {
     const { supabase, schoolId, userId } = await getSchoolId();
@@ -131,17 +413,21 @@ export async function addStudent(
       };
     }
 
-    const { error } = await supabase.from("students").insert({
-      school_id: schoolId,
-      class_id: classId,
-      full_name: fullName,
-      admission_number: admissionNumber,
-      gender,
-      enrollment_date: enrollmentDate,
-      parent_name: parentName,
-      parent_email: parentEmail,
-      parent_phone: parentPhone,
-    } as never);
+    const { data: inserted, error } = await supabase
+      .from("students")
+      .insert({
+        school_id: schoolId,
+        class_id: classId,
+        full_name: fullName,
+        admission_number: admissionNumber,
+        gender,
+        enrollment_date: enrollmentDate,
+        parent_name: parentName,
+        parent_email: parentEmail,
+        parent_phone: parentPhone,
+      } as never)
+      .select("id")
+      .single();
 
     if (error) {
       if (error.code === "23505") {
@@ -150,6 +436,23 @@ export async function addStudent(
         };
       }
       return { error: error.message };
+    }
+
+    const newId = (inserted as { id: string } | null)?.id;
+    if (newId && subjectIds.length > 0 && subjectTerm) {
+      const enr = await enrollStudentInSubjects(
+        newId,
+        classId,
+        subjectIds,
+        subjectYearParsed,
+        subjectTerm,
+        enrollmentDate
+      );
+      if (enr.error) {
+        return {
+          error: `Student was added, but subject enrolment failed: ${enr.error}`,
+        };
+      }
     }
 
     revalidatePath("/dashboard/students");
