@@ -149,6 +149,8 @@ export async function loadAttendanceData(
   date: string,
   filters?: {
     subjectId: string | null;
+    /** From `TeacherClassOption.academic_year` — aligns enrolment rows with this assignment. */
+    assignmentAcademicYear?: string | null;
     academicYear?: number;
     term?: SubjectEnrollmentTerm;
   }
@@ -171,7 +173,12 @@ export async function loadAttendanceData(
   }
 
   const period = getCurrentAcademicYearAndTerm();
-  const academicYear = filters?.academicYear ?? period.academicYear;
+  const assignmentYearStr = filters?.assignmentAcademicYear?.trim() ?? "";
+  const academicYear =
+    filters?.academicYear ??
+    (assignmentYearStr
+      ? enrollmentYearFromString(assignmentYearStr)
+      : period.academicYear);
   const term = filters?.term ?? period.term;
   const subjectId = filters?.subjectId ?? null;
 
@@ -201,12 +208,18 @@ export async function loadAttendanceData(
   let mergedRows = roster as StudentRow[];
   const baseIds = new Set(mergedRows.map((s) => s.id));
 
-  const { data: rows } = await admin
+  let attQuery = admin
     .from("teacher_attendance")
     .select("student_id, status")
     .eq("teacher_id", user.id)
     .eq("class_id", classId)
     .eq("attendance_date", dateOnly);
+  if (subjectId) {
+    attQuery = attQuery.eq("subject_id", subjectId);
+  } else {
+    attQuery = attQuery.is("subject_id", null);
+  }
+  const { data: rows } = await attQuery;
 
   const byStudent: Record<string, AttendanceStatus> = {};
   const idsWithAttendanceOnDate = new Set<string>();
@@ -217,7 +230,23 @@ export async function loadAttendanceData(
   }
 
   const missingIds = [...idsWithAttendanceOnDate].filter((id) => !baseIds.has(id));
-  if (missingIds.length > 0) {
+  if (subjectId) {
+    if (missingIds.length > 0) {
+      console.log(
+        "[loadAttendanceData] ignoring attendance rows for students not enrolled in subject",
+        JSON.stringify({
+          classId,
+          subjectId,
+          academicYear,
+          term,
+          date: dateOnly,
+          rosterCount: mergedRows.length,
+          attendanceStudentIdsOnDate: idsWithAttendanceOnDate.size,
+          skippedNotOnSubjectRoster: missingIds.length,
+        })
+      );
+    }
+  } else if (missingIds.length > 0) {
     const { data: extraRows } = await orderStudentsByGenderThenName(
       admin
         .from("students")
@@ -228,6 +257,19 @@ export async function loadAttendanceData(
     );
     mergedRows = [...mergedRows, ...((extraRows ?? []) as StudentRow[])];
   }
+
+  console.log(
+    "[loadAttendanceData] final student list",
+    JSON.stringify({
+      classId,
+      subjectId,
+      academicYear,
+      term,
+      date: dateOnly,
+      studentsShown: mergedRows.length,
+      attendanceRowsOnDate: idsWithAttendanceOnDate.size,
+    })
+  );
 
   const students = sortStudentsByGenderThenName(mergedRows).map(
     ({ id, full_name }) => ({ id, full_name })
@@ -243,6 +285,10 @@ export async function loadAttendanceData(
 export async function saveAttendanceAction(input: {
   classId: string;
   date: string;
+  subjectId?: string | null;
+  assignmentAcademicYear?: string | null;
+  academicYear?: number;
+  term?: SubjectEnrollmentTerm;
   records: { studentId: string; status: AttendanceStatus }[];
 }) {
   const supabase = await createClient();
@@ -250,40 +296,210 @@ export async function saveAttendanceAction(input: {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user || !(await checkIsTeacher(supabase, user.id))) {
+    console.error("[saveAttendanceAction] unauthorized");
     return { ok: false, error: "Unauthorized." };
   }
 
   const gate = await assertTeacherForClass(user.id, input.classId);
-  if (!gate.ok) return { ok: false, error: gate.error };
+  if (!gate.ok) {
+    console.error("[saveAttendanceAction] class gate failed", gate.error);
+    return { ok: false, error: gate.error };
+  }
+
+  const dateOnly = normalizeAttendanceDateOnly(input.date);
+  if (!dateOnly) {
+    console.error("[saveAttendanceAction] invalid date", input.date);
+    return { ok: false, error: "Invalid date. Use YYYY-MM-DD." };
+  }
 
   const schoolId = gate.schoolId;
   const admin = createAdminClient();
+  const period = getCurrentAcademicYearAndTerm();
+  const assignmentYearStr = input.assignmentAcademicYear?.trim() ?? "";
+  const academicYear =
+    input.academicYear ??
+    (assignmentYearStr
+      ? enrollmentYearFromString(assignmentYearStr)
+      : period.academicYear);
+  const term = input.term ?? period.term;
+  const subjectId = input.subjectId ?? null;
 
+  const mergedByStudent = new Map<string, AttendanceStatus>();
   for (const r of input.records) {
-    // Must match unique index column order: teacher_attendance_class_student_attendance_date_key
-    // is (class_id, student_id, attendance_date). Use attendance_date in the row, never "date".
-    const { error } = await (admin as Db).from("teacher_attendance").upsert(
-      {
-        teacher_id: user.id,
-        school_id: schoolId,
-        class_id: input.classId,
-        student_id: r.studentId,
-        attendance_date: input.date,
-        status: r.status,
-      },
-      { onConflict: "class_id,student_id,attendance_date" }
+    mergedByStudent.set(r.studentId, r.status);
+  }
+  const uniqueRecords = [...mergedByStudent.entries()].map(
+    ([studentId, status]) => ({ studentId, status })
+  );
+
+  if (subjectId) {
+    const allowed = await assertTeacherTeachesSubjectIdInClass(
+      user.id,
+      input.classId,
+      subjectId
     );
-    if (error) {
-      return { ok: false, error: error.message };
+    if (!allowed) {
+      console.error("[saveAttendanceAction] teacher does not teach subject in class", {
+        classId: input.classId,
+        subjectId,
+      });
+      return {
+        ok: false,
+        error: "You are not assigned to teach this subject for this class.",
+      };
     }
+    const roster = await getStudentsForSubject(admin, {
+      classId: input.classId,
+      subjectId,
+      academicYear,
+      term,
+      enrollmentDateOnOrBefore: dateOnly,
+    });
+    const allowedIds = new Set(roster.map((s) => s.id));
+    const invalid = uniqueRecords.filter((r) => !allowedIds.has(r.studentId));
+    if (invalid.length > 0) {
+      console.error("[saveAttendanceAction] student ids not on subject roster", {
+        classId: input.classId,
+        subjectId,
+        academicYear,
+        term,
+        invalidStudentIds: invalid.map((r) => r.studentId),
+        rosterSize: roster.length,
+        recordCount: uniqueRecords.length,
+      });
+      return {
+        ok: false,
+        error:
+          "One or more students are not enrolled in this subject for the current term.",
+      };
+    }
+  }
+
+  const scopeKey = subjectId ? subjectId : "";
+
+  const studentIds = uniqueRecords.map((r) => r.studentId);
+  const { data: existingRows, error: existingErr } = await admin
+    .from("teacher_attendance")
+    .select("student_id, status")
+    .eq("teacher_id", user.id)
+    .eq("class_id", input.classId)
+    .eq("attendance_date", dateOnly)
+    .eq("attendance_scope_key", scopeKey)
+    .in("student_id", studentIds);
+
+  if (existingErr) {
+    console.error("[saveAttendanceAction] failed to load existing rows", {
+      message: existingErr.message,
+      code: existingErr.code,
+    });
+    return {
+      ok: false,
+      error:
+        "Could not verify existing attendance. Check your connection and try again.",
+    };
+  }
+
+  const statusByStudent = new Map(
+    ((existingRows ?? []) as { student_id: string; status: string }[]).map(
+      (row) => [row.student_id, String(row.status).trim().toLowerCase()] as const
+    )
+  );
+
+  const normStatus = (s: string) => s.trim().toLowerCase();
+  const changedRecords = uniqueRecords.filter((r) => {
+    const prev = statusByStudent.get(r.studentId);
+    if (prev === undefined) return true;
+    return normStatus(prev) !== normStatus(r.status);
+  });
+
+  if (changedRecords.length === 0) {
+    console.log("[saveAttendanceAction] no status changes, skipping write", {
+      classId: input.classId,
+      date: dateOnly,
+      subjectId,
+      recordCount: uniqueRecords.length,
+    });
+    revalidatePath("/teacher-dashboard");
+    revalidatePath("/teacher-dashboard/attendance");
+    return { ok: true as const };
+  }
+
+  const attendanceRecords = changedRecords.map((r) => ({
+    teacher_id: user.id,
+    school_id: schoolId,
+    class_id: input.classId,
+    student_id: r.studentId,
+    attendance_date: dateOnly,
+    status: r.status,
+    subject_id: subjectId,
+    attendance_scope_key: scopeKey,
+  }));
+
+  console.log("[saveAttendanceAction] batch upsert", {
+    classId: input.classId,
+    date: dateOnly,
+    subjectId,
+    scopeKey,
+    recordCount: uniqueRecords.length,
+    upsertCount: attendanceRecords.length,
+  });
+
+  const { error } = await (admin as Db).from("teacher_attendance").upsert(
+    attendanceRecords,
+    {
+      onConflict:
+        "teacher_id,class_id,student_id,attendance_date,attendance_scope_key",
+      ignoreDuplicates: false,
+    }
+  );
+
+  if (error) {
+    console.error("[saveAttendanceAction] batch upsert failed", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    const code = error.code ?? "";
+    const raw = `${error.message} ${(error as { details?: string }).details ?? ""}`;
+    let userMessage = error.message;
+    if (
+      code === "23505" &&
+      raw.includes("teacher_attendance_unique_record")
+    ) {
+      userMessage =
+        "This student already has attendance saved today under another subject. Your school database needs a one-time update so each subject can keep its own attendance. Please ask your administrator to apply the latest Supabase migrations, then try again.";
+    } else if (code === "23505") {
+      userMessage =
+        "Could not save this attendance because it conflicts with existing data. Refresh the page and try again. If it keeps happening, contact your administrator.";
+    } else if (code === "42501" || /permission denied/i.test(error.message)) {
+      userMessage =
+        "You do not have permission to save attendance for this class. Contact your school administrator if this persists.";
+    } else if (/violates foreign key/i.test(error.message)) {
+      userMessage =
+        "A student or class reference is no longer valid. Refresh the page and try again.";
+    }
+    return { ok: false, error: userMessage };
   }
 
   revalidatePath("/teacher-dashboard");
   revalidatePath("/teacher-dashboard/attendance");
+  console.log("[saveAttendanceAction] success", {
+    classId: input.classId,
+    date: dateOnly,
+    subjectId,
+    savedCount: attendanceRecords.length,
+  });
   return { ok: true as const };
 }
 
-export async function loadAttendanceHistory(classId: string, limit = 14) {
+export async function loadAttendanceHistory(
+  classId: string,
+  opts?: { limit?: number; subjectId?: string | null }
+) {
+  const limit = opts?.limit ?? 14;
+  const subjectId = opts?.subjectId;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -296,13 +512,25 @@ export async function loadAttendanceHistory(classId: string, limit = 14) {
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
-  const { data: rows } = await admin
+  let histQuery = admin
     .from("teacher_attendance")
     .select("attendance_date, status, student_id")
     .eq("teacher_id", user.id)
     .eq("class_id", classId)
     .order("attendance_date", { ascending: false })
     .limit(800);
+
+  if (subjectId) {
+    histQuery = histQuery.eq("subject_id", subjectId);
+  } else if (subjectId === null) {
+    histQuery = histQuery.is("subject_id", null);
+  }
+
+  const { data: rows, error: histError } = await histQuery;
+  if (histError) {
+    console.error("[loadAttendanceHistory] query failed", histError.message);
+    return { ok: false as const, error: histError.message };
+  }
 
   type Row = {
     attendance_date: string;
@@ -338,6 +566,19 @@ export async function loadAttendanceHistory(classId: string, limit = 14) {
   const dates = [...byDate.keys()]
     .sort((a, b) => b.localeCompare(a))
     .slice(0, limit);
+
+  console.log("[loadAttendanceHistory]", {
+    classId,
+    limit,
+    subjectFilter:
+      subjectId === undefined
+        ? "unfiltered"
+        : subjectId === null
+          ? "class_wide_only"
+          : subjectId,
+    datesReturned: dates.length,
+    rowCount: list.length,
+  });
 
   return {
     ok: true as const,

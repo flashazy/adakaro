@@ -230,6 +230,7 @@ export function TeacherAttendanceForm({
     setSaveOk(false);
     const res = await loadAttendanceData(classId, date, {
       subjectId: selectedSubjectMeta?.subjectId ?? null,
+      assignmentAcademicYear: selectedSubjectMeta?.academicYear ?? null,
     });
     if (!res.ok) {
       setLoadError(res.error);
@@ -246,12 +247,28 @@ export function TeacherAttendanceForm({
     setStatusByStudent(next);
     setHasChanges(false);
 
-    const hist = await loadAttendanceHistory(classId, 14);
+    const hist = await loadAttendanceHistory(classId, {
+      limit: 14,
+      subjectId: selectedSubjectMeta?.subjectId ?? null,
+    });
     if (hist.ok) {
       setHistoryDates(hist.dates);
       setHistoryByDate(hist.byDate);
+    } else {
+      console.error(
+        "[TeacherAttendanceForm] loadAttendanceHistory failed",
+        hist.error
+      );
+      setHistoryDates([]);
+      setHistoryByDate({});
     }
-  }, [classId, date, selectedSubjectMeta?.subjectId]);
+  }, [
+    classId,
+    date,
+    selectedSubjectMeta?.subjectId,
+    selectedSubjectMeta?.academicYear,
+    selectedSubjectMeta?.label,
+  ]);
 
   useEffect(() => {
     startTransition(() => {
@@ -303,14 +320,35 @@ export function TeacherAttendanceForm({
         studentId: s.id,
         status: statusByStudent[s.id] ?? "present",
       }));
-      const res = await saveAttendanceAction({ classId, date, records });
+      console.log("[TeacherAttendanceForm] saving", {
+        classId,
+        date,
+        subjectId: selectedSubjectMeta?.subjectId ?? null,
+        studentCount: students.length,
+        recordCount: records.length,
+      });
+      const res = await saveAttendanceAction({
+        classId,
+        date,
+        subjectId: selectedSubjectMeta?.subjectId ?? null,
+        assignmentAcademicYear: selectedSubjectMeta?.academicYear ?? null,
+        records,
+      });
       if (!res.ok) {
+        console.error("[TeacherAttendanceForm] save failed", res.error);
         setSaveError(res.error);
         return;
       }
+      console.log("[TeacherAttendanceForm] save ok", {
+        recordCount: records.length,
+      });
       setSaveOk(true);
       setHasChanges(false);
       void syncAttendance();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error("[TeacherAttendanceForm] save threw", e);
+      setSaveError(message);
     } finally {
       setIsSaving(false);
     }
@@ -802,12 +840,16 @@ export function TeacherAttendanceForm({
           Recent history
         </h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-          Latest saved days for this class (most recent first).
+          {selectedSubjectMeta?.subjectId
+            ? `Latest saved days for ${selectedSubjectMeta.label} in this class (most recent first).`
+            : "Latest saved days for this class (class-wide attendance, most recent first)."}
         </p>
         <div className="mt-4 space-y-3">
           {historyDates.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-zinc-400">
-              No attendance recorded yet for this class.
+              {selectedSubjectMeta?.subjectId
+                ? "No attendance recorded yet for this subject."
+                : "No attendance recorded yet for this class."}
             </p>
           ) : (
             historyMonthGroups.map(({ monthKey, dates }) => {

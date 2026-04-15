@@ -114,8 +114,10 @@ export async function loadLessonPlanPdfInput(
   }
 
   const [roster, presentByGender] = await Promise.all([
-    getClassDemographics(plan.class_id),
-    getAttendancePresentByGender(plan.class_id, plan.lesson_date),
+    getClassDemographics(plan.class_id, { subjectId: plan.subject_id }),
+    getAttendancePresentByGender(plan.class_id, plan.lesson_date, {
+      subjectId: plan.subject_id,
+    }),
   ]);
 
   const input: LessonPlanPdfInput = {

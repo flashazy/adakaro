@@ -42,9 +42,10 @@ async function studentHasAnyEnrollmentForClassTerm(
 }
 
 /**
- * Students in a class for attendance/marks, filtered by subject enrolment when
- * `subjectId` is set. If a student has **no** rows in `student_subject_enrollment`
- * for this class/year/term, they are treated as taking **all** subjects (backward compatible).
+ * Students in a class for attendance/marks. When `subjectId` is set, only students
+ * with a `student_subject_enrollment` row for that class, subject, academic year, and
+ * term are returned. Students with no subject enrolments for the period are never
+ * included for a specific subject.
  */
 export async function getStudentsForSubject(
   client: EnrollmentDb,
@@ -73,7 +74,24 @@ export async function getStudentsForSubject(
     q = q.lte("enrollment_date", enrollmentDateOnOrBefore);
   }
   const { data: studentRows, error } = await orderStudentsByGenderThenName(q);
-  if (error || !studentRows?.length) return [];
+  if (error || !studentRows?.length) {
+    if (subjectId) {
+      console.log(
+        "[getStudentsForSubject] class roster empty or error",
+        JSON.stringify({
+          classId,
+          subjectId,
+          academicYear,
+          term,
+          classStudentsExpected: 0,
+          enrolledForSubjectCount: 0,
+          rosterReturned: 0,
+          studentQueryError: error?.message ?? null,
+        })
+      );
+    }
+    return [];
+  }
 
   let list = studentRows as {
     id: string;
@@ -89,26 +107,48 @@ export async function getStudentsForSubject(
     }));
   }
 
-  const { data: enrollRows } = await client
+  const { data: enrollRows, error: enrollError } = await client
     .from("student_subject_enrollment")
-    .select("student_id, subject_id")
+    .select("student_id")
     .eq("class_id", classId)
     .eq("academic_year", academicYear)
-    .eq("term", term);
+    .eq("term", term)
+    .eq("subject_id", subjectId);
 
-  const rows = (enrollRows ?? []) as {
-    student_id: string;
-    subject_id: string;
-  }[];
-  const studentsWithAny = new Set(rows.map((r) => r.student_id));
+  if (enrollError) {
+    console.log(
+      "[getStudentsForSubject] enrollment query failed — returning no students for subject",
+      JSON.stringify({
+        classId,
+        subjectId,
+        academicYear,
+        term,
+        classStudentsBeforeFilter: list.length,
+        enrollError: enrollError.message,
+      })
+    );
+    return [];
+  }
+
   const inSubject = new Set(
-    rows.filter((r) => r.subject_id === subjectId).map((r) => r.student_id)
+    ((enrollRows ?? []) as { student_id: string }[]).map((r) => r.student_id)
   );
 
-  list = list.filter((s) => {
-    if (!studentsWithAny.has(s.id)) return true;
-    return inSubject.has(s.id);
-  });
+  const before = list.length;
+  list = list.filter((s) => inSubject.has(s.id));
+
+  console.log(
+    "[getStudentsForSubject] roster vs subject enrollment",
+    JSON.stringify({
+      classId,
+      subjectId,
+      academicYear,
+      term,
+      classStudentsBeforeFilter: before,
+      enrolledForSubjectRowCount: inSubject.size,
+      rosterAfterIntersection: list.length,
+    })
+  );
 
   return sortStudentsByGenderThenName(list).map(({ id, full_name, gender }) => ({
     id,

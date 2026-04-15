@@ -10,6 +10,7 @@ import {
 } from "@/lib/teacher-assignment-status";
 import { getDisplayName } from "@/lib/display-name";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
 import { getTeacherClassOptions } from "./data";
 import { TeacherDashboardLocked } from "./components/TeacherDashboardLocked";
 import { TeacherDocuments } from "./components/TeacherDocuments";
@@ -54,11 +55,19 @@ export default async function TeacherDashboardPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const { count: todayAttendanceCount } = await admin
+  const { data: attTodayRows } = await admin
     .from("teacher_attendance")
-    .select("id", { count: "exact", head: true })
+    .select("student_id, attendance_date, subject_id")
     .eq("teacher_id", user.id)
     .eq("attendance_date", today);
+
+  const todayAttendanceCount = dedupeTeacherAttendanceByStudentAndDate(
+    (attTodayRows ?? []) as {
+      student_id: string;
+      attendance_date: string;
+      subject_id: string | null;
+    }[]
+  ).length;
 
   const { data: gradebookRows } = await admin
     .from("teacher_gradebook_assignments")

@@ -9,6 +9,7 @@ import type {
   StudentReportRow,
 } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-types";
 import { termDateRange } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-dates";
+import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
 
 export const metadata = {
   title: "Report card — Parent",
@@ -185,19 +186,28 @@ export default async function ParentReportCardPage({
   );
 
   const { start, end } = termDateRange(term, academicYear);
-  const { data: attRows } = await supabase
+  const { data: attRowsRaw } = await supabase
     .from("teacher_attendance")
-    .select("status")
+    .select("status, attendance_date, subject_id")
     .eq("student_id", studentId)
     .eq("class_id", row.class_id)
     .gte("attendance_date", start)
     .lte("attendance_date", end);
 
+  const attRows = dedupeTeacherAttendanceByStudentAndDate(
+    (attRowsRaw ?? []).map((a) => ({
+      student_id: studentId,
+      attendance_date: (a as { attendance_date: string }).attendance_date,
+      subject_id: (a as { subject_id: string | null }).subject_id ?? null,
+      status: (a as { status: string }).status,
+    }))
+  );
+
   let present = 0;
   let absent = 0;
   let late = 0;
-  for (const a of attRows ?? []) {
-    const st = (a as { status: string }).status;
+  for (const a of attRows) {
+    const st = a.status;
     if (st === "present") present += 1;
     else if (st === "absent") absent += 1;
     else if (st === "late") late += 1;

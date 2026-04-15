@@ -21,6 +21,7 @@ import {
   getStudentEnrolledSubjects,
   reportAcademicYearToEnrollmentYear,
 } from "@/lib/student-subject-enrollment-queries";
+import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
 
 export type {
   PendingReportCardRow,
@@ -398,18 +399,24 @@ export async function loadStudentsReportData(
     attendanceByStudent[sid] = { present: 0, absent: 0, late: 0 };
   }
 
-  const { data: attRows } = await admin
+  const { data: attRowsRaw } = await admin
     .from("teacher_attendance")
-    .select("student_id, status")
+    .select("student_id, status, attendance_date, subject_id")
     .eq("class_id", classId)
     .in("student_id", studentIds)
     .gte("attendance_date", start)
     .lte("attendance_date", end);
 
-  for (const a of (attRows ?? []) as {
-    student_id: string;
-    status: "present" | "absent" | "late";
-  }[]) {
+  const attRows = dedupeTeacherAttendanceByStudentAndDate(
+    (attRowsRaw ?? []) as {
+      student_id: string;
+      attendance_date: string;
+      subject_id: string | null;
+      status: "present" | "absent" | "late";
+    }[]
+  );
+
+  for (const a of attRows) {
     const b = attendanceByStudent[a.student_id];
     if (!b) continue;
     if (a.status === "present") b.present += 1;

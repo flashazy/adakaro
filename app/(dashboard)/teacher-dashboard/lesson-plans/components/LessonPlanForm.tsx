@@ -184,7 +184,9 @@ export function LessonPlanForm({
     );
   }, [classId, subjectOptionsForClass]);
 
-  /** Load pupil counts + present count together when class or date changes. */
+  const stableSubjectId = subjectId || "";
+
+  /** Load pupil counts + present count when class, subject, or date changes. */
   useEffect(() => {
     const run = async () => {
       if (!classId) {
@@ -195,7 +197,10 @@ export function LessonPlanForm({
       }
       setLoadingStats(true);
       try {
-        const d = await getClassDemographics(classId);
+        const subjectFilter = stableSubjectId.trim() || null;
+        const d = await getClassDemographics(classId, {
+          subjectId: subjectFilter,
+        });
         setDemographics({
           total: d.total,
           boys: d.boys,
@@ -203,7 +208,9 @@ export function LessonPlanForm({
         });
         const p =
           lessonDate.trim() !== ""
-            ? await getAttendancePresentByGender(classId, lessonDate)
+            ? await getAttendancePresentByGender(classId, lessonDate, {
+                subjectId: subjectFilter,
+              })
             : { boys: 0, girls: 0, total: 0 };
         setPresentByGender(p);
         setPresentCount(p.total);
@@ -212,7 +219,7 @@ export function LessonPlanForm({
       }
     };
     void run();
-  }, [classId, lessonDate]);
+  }, [classId, stableSubjectId, lessonDate]);
 
   const formAction =
     mode === "edit" && planId

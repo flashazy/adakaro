@@ -3,6 +3,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { parseTeachingLearningProcess } from "@/lib/teaching-learning-process";
+import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
+import { getCurrentAcademicYearAndTerm } from "@/lib/student-subject-enrollment";
 import type { Json } from "@/types/supabase";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -328,67 +330,168 @@ export async function getTeacherSubjectsByClass(): Promise<
   return map;
 }
 
-/** Counts only (boys / girls / total). No student rows — ordering does not apply. */
-export async function getClassDemographics(classId: string) {
+async function enrolledStudentIdsForSubjectScope(
+  admin: ReturnType<typeof createAdminClient>,
+  params: {
+    classId: string;
+    subjectId: string;
+    academicYear: number;
+    term: SubjectEnrollmentTerm;
+  }
+): Promise<string[]> {
+  const { data } = await admin
+    .from("student_subject_enrollment")
+    .select("student_id")
+    .eq("class_id", params.classId)
+    .eq("subject_id", params.subjectId)
+    .eq("academic_year", params.academicYear)
+    .eq("term", params.term);
+  return [
+    ...new Set(
+      ((data ?? []) as { student_id: string }[]).map((r) => r.student_id)
+    ),
+  ];
+}
+
+/** Counts only (boys / girls / total). With `subjectId`, only students enrolled in that subject for the term. */
+export async function getClassDemographics(
+  classId: string,
+  filters?: {
+    subjectId?: string | null;
+    academicYear?: number;
+    term?: SubjectEnrollmentTerm;
+  }
+) {
   const admin = createAdminClient();
+  const subjectId = filters?.subjectId?.trim() || null;
 
-  const { count: boys, error: boysError } = await admin
+  if (!subjectId) {
+    const { count: boys } = await admin
+      .from("students")
+      .select("id", { count: "exact", head: true })
+      .eq("class_id", classId)
+      .eq("gender", "male");
+
+    const { count: girls } = await admin
+      .from("students")
+      .select("id", { count: "exact", head: true })
+      .eq("class_id", classId)
+      .eq("gender", "female");
+
+    const { count: total } = await admin
+      .from("students")
+      .select("id", { count: "exact", head: true })
+      .eq("class_id", classId);
+
+    return {
+      boys: boys || 0,
+      girls: girls || 0,
+      total: total || 0,
+    };
+  }
+
+  const period = getCurrentAcademicYearAndTerm();
+  const academicYear = filters?.academicYear ?? period.academicYear;
+  const term = filters?.term ?? period.term;
+
+  const ids = await enrolledStudentIdsForSubjectScope(admin, {
+    classId,
+    subjectId,
+    academicYear,
+    term,
+  });
+
+  if (ids.length === 0) {
+    return { boys: 0, girls: 0, total: 0 };
+  }
+
+  const { data: studs } = await admin
     .from("students")
-    .select("id", { count: "exact", head: true })
+    .select("gender")
     .eq("class_id", classId)
-    .eq("gender", "male");
+    .eq("status", "active")
+    .in("id", ids);
 
-  const { count: girls, error: girlsError } = await admin
-    .from("students")
-    .select("id", { count: "exact", head: true })
-    .eq("class_id", classId)
-    .eq("gender", "female");
-
-  const { count: total, error: totalError } = await admin
-    .from("students")
-    .select("id", { count: "exact", head: true })
-    .eq("class_id", classId);
+  let boys = 0;
+  let girls = 0;
+  for (const s of studs ?? []) {
+    const g = (s as { gender: string | null }).gender;
+    if (g === "male") boys++;
+    else if (g === "female") girls++;
+  }
 
   return {
-    boys: boys || 0,
-    girls: girls || 0,
-    total: total || 0,
+    boys,
+    girls,
+    total: ids.length,
   };
 }
 
 export async function getAttendanceCount(classId: string, date: string) {
   const admin = createAdminClient();
 
-  const { count } = await admin
-    .from("teacher_attendance")
-    .select("id", { count: "exact", head: true })
-    .eq("class_id", classId)
-    .eq("attendance_date", date)
-    .in("status", ["present", "late"]);
-
-  return count ?? 0;
-}
-
-/** Present + late on the date, split by student gender (for lesson plan PDF / preview). */
-export async function getAttendancePresentByGender(
-  classId: string,
-  date: string
-): Promise<{ boys: number; girls: number; total: number }> {
-  const admin = createAdminClient();
-
-  const { data: rows, error } = await admin
+  const { data: rows } = await admin
     .from("teacher_attendance")
     .select("student_id")
     .eq("class_id", classId)
     .eq("attendance_date", date)
     .in("status", ["present", "late"]);
 
+  const distinct = new Set(
+    (rows ?? []).map((r) => (r as { student_id: string }).student_id)
+  );
+  return distinct.size;
+}
+
+/** Present + late on the date, split by student gender (for lesson plan PDF / preview). */
+export async function getAttendancePresentByGender(
+  classId: string,
+  date: string,
+  filters?: {
+    subjectId?: string | null;
+    academicYear?: number;
+    term?: SubjectEnrollmentTerm;
+  }
+): Promise<{ boys: number; girls: number; total: number }> {
+  const admin = createAdminClient();
+  const subjectId = filters?.subjectId?.trim() || null;
+
+  let attendanceQuery = admin
+    .from("teacher_attendance")
+    .select("student_id")
+    .eq("class_id", classId)
+    .eq("attendance_date", date)
+    .in("status", ["present", "late"]);
+
+  if (subjectId) {
+    const period = getCurrentAcademicYearAndTerm();
+    const academicYear = filters?.academicYear ?? period.academicYear;
+    const term = filters?.term ?? period.term;
+
+    const enrolledIds = await enrolledStudentIdsForSubjectScope(admin, {
+      classId,
+      subjectId,
+      academicYear,
+      term,
+    });
+
+    if (enrolledIds.length === 0) {
+      return { boys: 0, girls: 0, total: 0 };
+    }
+
+    attendanceQuery = attendanceQuery
+      .eq("subject_id", subjectId)
+      .in("student_id", enrolledIds);
+  }
+
+  const { data: rows, error } = await attendanceQuery;
+
   if (error || !rows?.length) {
     return { boys: 0, girls: 0, total: 0 };
   }
 
   const attendanceRows = rows as { student_id: string }[];
-  const studentIds = attendanceRows.map((r) => r.student_id);
+  const studentIds = [...new Set(attendanceRows.map((r) => r.student_id))];
 
   const { data: studs } = await admin
     .from("students")

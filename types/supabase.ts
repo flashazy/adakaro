@@ -808,6 +808,8 @@ export interface Database {
           student_id: string;
           attendance_date: string;
           status: "present" | "absent" | "late";
+          subject_id: string | null;
+          attendance_scope_key: string;
           created_at: string;
           updated_at: string;
         };
@@ -819,6 +821,8 @@ export interface Database {
           student_id: string;
           attendance_date: string;
           status: "present" | "absent" | "late";
+          subject_id?: string | null;
+          attendance_scope_key?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -829,6 +833,8 @@ export interface Database {
           student_id?: string;
           attendance_date?: string;
           status?: "present" | "absent" | "late";
+          subject_id?: string | null;
+          attendance_scope_key?: string;
           updated_at?: string;
         };
       };
