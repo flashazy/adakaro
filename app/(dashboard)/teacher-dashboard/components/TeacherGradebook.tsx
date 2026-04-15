@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, FileText, Plus, Trash2 } from "lucide-react";
+import { Check, FileText, Loader2, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   createGradebookAssignmentAction,
@@ -201,6 +201,7 @@ export function TeacherGradebook({
     useState<GbAssignment | null>(null);
   const [assignmentDeleteSubmitting, setAssignmentDeleteSubmitting] =
     useState(false);
+  const [isCreatingAssignment, setIsCreatingAssignment] = useState(false);
 
   const [editingMatrixCell, setEditingMatrixCell] = useState<{
     assignmentId: string;
@@ -457,28 +458,33 @@ export function TeacherGradebook({
         return;
       }
     }
-    const res = await createGradebookAssignmentAction({
-      classId,
-      subject: subject.trim(),
-      title: title.trim(),
-      maxScore: mx,
-      weight: w,
-      dueDate: dueDate || null,
-      academicYear: academicYearForSelection || null,
-    });
-    if (!res.ok) {
-      setAssignmentCreateError(res.error);
-      return;
+    setIsCreatingAssignment(true);
+    try {
+      const res = await createGradebookAssignmentAction({
+        classId,
+        subject: subject.trim(),
+        title: title.trim(),
+        maxScore: mx,
+        weight: w,
+        dueDate: dueDate || null,
+        academicYear: academicYearForSelection || null,
+      });
+      if (!res.ok) {
+        setAssignmentCreateError(res.error);
+        return;
+      }
+      setAssignmentCreateError(null);
+      setAssignmentCreatedBanner("Assignment created.");
+      setTitle("");
+      setTitlePresetValue("");
+      setDueDate("");
+      await fetchAssignments();
+      await fetchClassMatrix();
+      if (res.assignmentId) setAssignmentId(res.assignmentId);
+      router.refresh();
+    } finally {
+      setIsCreatingAssignment(false);
     }
-    setAssignmentCreateError(null);
-    setAssignmentCreatedBanner("Assignment created.");
-    setTitle("");
-    setTitlePresetValue("");
-    setDueDate("");
-    await fetchAssignments();
-    await fetchClassMatrix();
-    if (res.assignmentId) setAssignmentId(res.assignmentId);
-    router.refresh();
   };
 
   const handleSaveScores = async (e: React.FormEvent) => {
@@ -1187,9 +1193,21 @@ export function TeacherGradebook({
           <div className="sm:col-span-2">
             <button
               type="submit"
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+              disabled={isCreatingAssignment}
+              aria-busy={isCreatingAssignment}
+              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
             >
-              Create assignment
+              {isCreatingAssignment ? (
+                <>
+                  <Loader2
+                    className="mr-2 h-4 w-4 shrink-0 animate-spin"
+                    aria-hidden
+                  />
+                  Creating…
+                </>
+              ) : (
+                "Create assignment"
+              )}
             </button>
             {assignmentCreateError && (
               <p
