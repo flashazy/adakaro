@@ -169,7 +169,7 @@ export default async function TeacherDashboardPage() {
 
   const gradesSubtext =
     pendingGrades === 0
-      ? "No grades recorded yet."
+      ? "No marks recorded yet."
       : "Student score slots still empty";
 
   const lessonsSubtext =
@@ -182,10 +182,10 @@ export default async function TeacherDashboardPage() {
     insightMessage =
       "You have no attendance recorded today — open a class below to take attendance.";
   } else if (pendingGrades > 0) {
-    insightMessage = `You have ${pendingGrades} pending grade slot${pendingGrades === 1 ? "" : "s"} to enter across your classes.`;
+    insightMessage = `You have ${pendingGrades} pending mark slot${pendingGrades === 1 ? "" : "s"} to enter across your classes.`;
   } else {
     insightMessage =
-      "You're up to date on attendance and grades for now. Check upcoming lessons in Today Overview.";
+      "You're up to date on attendance and marks for now. Check upcoming lessons in Today Overview.";
   }
 
   return (
@@ -196,7 +196,7 @@ export default async function TeacherDashboardPage() {
             Welcome, {welcomeName}
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-            Your classes, attendance, grades, and lesson plans in one place.
+            Your classes, attendance, marks, and lesson plans in one place.
           </p>
         </div>
 
@@ -231,7 +231,7 @@ export default async function TeacherDashboardPage() {
                 </p>
               </div>
               <p className="text-sm text-gray-500 dark:text-zinc-400">
-                Pending grades
+                Pending marks
               </p>
               <p className="text-sm text-gray-400 dark:text-zinc-500">
                 {gradesSubtext}
@@ -313,7 +313,7 @@ export default async function TeacherDashboardPage() {
                       href={`/teacher-dashboard/grades?classId=${g.classId}`}
                       className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:flex-none"
                     >
-                      Enter grades
+                      Enter marks
                     </Link>
                     <Link
                       href="/teacher-dashboard/lesson-plans"

@@ -1074,7 +1074,7 @@ export function ReportCardsPageClient({
                     </div>
                     {row.exam1Overridden ? (
                       <p className="text-xs text-slate-500 dark:text-zinc-500">
-                        Overridden from gradebook score{" "}
+                        Overridden from markbook score{" "}
                         {row.exam1GbOriginal != null &&
                         row.exam1GbOriginal.trim() !== ""
                           ? `${row.exam1GbOriginal.trim()}%`
@@ -1155,7 +1155,7 @@ export function ReportCardsPageClient({
                     </div>
                     {row.exam2Overridden ? (
                       <p className="text-xs text-slate-500 dark:text-zinc-500">
-                        Overridden from gradebook score{" "}
+                        Overridden from markbook score{" "}
                         {row.exam2GbOriginal != null &&
                         row.exam2GbOriginal.trim() !== ""
                           ? `${row.exam2GbOriginal.trim()}%`

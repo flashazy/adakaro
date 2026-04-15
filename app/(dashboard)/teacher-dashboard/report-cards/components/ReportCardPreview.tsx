@@ -84,7 +84,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
           );
           return anyOv ? (
             <p className="mb-2 text-xs text-slate-600">
-              * Exam score was changed after the gradebook value was used.
+              * Exam score was changed after the markbook value was used.
             </p>
           ) : null;
         })()}
@@ -124,7 +124,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                     <td className="border border-slate-200 px-2 py-2 tabular-nums">
                       {r.exam1Pct}
                       {r.exam1Overridden ? (
-                        <span className="font-semibold text-slate-800" title="Overridden from gradebook">
+                        <span className="font-semibold text-slate-800" title="Overridden from markbook">
                           *
                         </span>
                       ) : null}
@@ -132,7 +132,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                     <td className="border border-slate-200 px-2 py-2 tabular-nums">
                       {r.exam2Pct}
                       {r.exam2Overridden ? (
-                        <span className="font-semibold text-slate-800" title="Overridden from gradebook">
+                        <span className="font-semibold text-slate-800" title="Overridden from markbook">
                           *
                         </span>
                       ) : null}

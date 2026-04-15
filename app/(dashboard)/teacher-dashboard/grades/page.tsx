@@ -66,7 +66,7 @@ async function loadTeacherClassOptionsWithAdmin(
 }
 
 export const metadata = {
-  title: "Grades — Teacher",
+  title: "Marks — Teacher",
 };
 
 /** Always fresh session-backed gradebook data (avoid stale cached shell). */
@@ -100,10 +100,10 @@ export default async function TeacherGradesPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Grades
+              Marks
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
-              Assignments and gradebook for your classes.
+              Assignments and markbook for your classes.
             </p>
           </div>
           <Link

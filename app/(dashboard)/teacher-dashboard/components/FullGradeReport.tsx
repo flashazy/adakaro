@@ -562,7 +562,7 @@ export function FullGradeReport({
             id="full-grade-report-title"
             className="text-lg font-semibold text-slate-900"
           >
-            Full grade report
+            Full marks report
           </h2>
           <button
             type="button"

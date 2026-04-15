@@ -81,7 +81,7 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   doc.setTextColor(80, 80, 80);
   if (anyOverride) {
     doc.text(
-      "* Exam score was changed after the gradebook value was used.",
+      "* Exam score was changed after the markbook value was used.",
       margin,
       y
     );

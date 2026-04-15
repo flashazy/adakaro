@@ -572,7 +572,7 @@ export function TeacherGradebook({
           return;
         }
       }
-      setToastMessage("Matrix grades saved");
+      setToastMessage("Matrix marks saved");
       setMatrixSaveButtonState("saved");
       window.setTimeout(() => setMatrixSaveButtonState("idle"), 2000);
 
@@ -896,7 +896,7 @@ export function TeacherGradebook({
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/60">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-            Grade matrix (all assignments)
+            Marks matrix (all assignments)
           </h2>
           {classMatrixLoading && (
             <span className="text-xs text-slate-500 dark:text-zinc-400">
@@ -1043,7 +1043,7 @@ export function TeacherGradebook({
                     ? "Saving…"
                     : matrixSaveButtonState === "saved"
                       ? "Saved! ✓"
-                      : "Save matrix grades"}
+                      : "Save matrix marks"}
                 </button>
                 <button
                   type="button"
@@ -1223,23 +1223,25 @@ export function TeacherGradebook({
         </form>
       </section>
 
-      <section>
-        <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-          Enter scores
-        </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-          Choose an assignment. Grades use the Tanzania scale (A–F) from
-          percentage of max score. Add remarks as needed.
-        </p>
-        <div className="mt-3">
-          <label className="block text-sm">
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+            Enter scores
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-zinc-400">
+            Choose an assignment. Marks use the A–F grading scale based on
+            percentage of max score. Add remarks as needed.
+          </p>
+        </div>
+        <div>
+          <label className="flex flex-col gap-2 text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Assignment
             </span>
             <select
               value={assignmentId}
               onChange={(e) => setAssignmentId(e.target.value)}
-              className="mt-1 w-full max-w-xl rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+              className="w-full max-w-xl rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
               <option value="">Select assignment…</option>
               {assignments.map((a) => (
@@ -1252,13 +1254,13 @@ export function TeacherGradebook({
         </div>
 
         {matrixLoading && assignmentId && (
-          <p className="mt-4 text-sm text-slate-500 dark:text-zinc-400">
+          <p className="text-sm text-slate-500 dark:text-zinc-400">
             Loading scores…
           </p>
         )}
 
         {matrix && !matrixLoading && (
-          <form onSubmit={handleSaveScores} className="mt-6 space-y-4">
+          <form onSubmit={handleSaveScores} className="space-y-4">
             <div className="flex flex-wrap gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-600 dark:border-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-300">
               <span>
                 Max score:{" "}
