@@ -9,13 +9,15 @@ import {
   adminApproveReportCard,
   adminRequestChangesReportCard,
   fetchStudentExamScores,
-  getReportCardSubjectsForStudent,
-  getSubjectsForClass,
   reloadStudentsReportData,
   shareReportCardWithParent,
   submitReportCardForReview,
   upsertReportCardComment,
 } from "./actions";
+import {
+  getReportCardSubjectsForStudent,
+  getSubjectsForClass,
+} from "./queries-actions";
 import {
   COMMENT_TEMPLATES,
   REPORT_CARD_EXAM_LABELS,

@@ -241,6 +241,10 @@ export async function loadSubjectsForClass(classId: string): Promise<string[]> {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+export async function getSubjectsForClass(classId: string): Promise<string[]> {
+  return loadSubjectsForClass(classId);
+}
+
 export async function loadStudentsReportData(
   classId: string,
   term: string,

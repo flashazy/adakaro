@@ -12,17 +12,12 @@ import {
   ensureReportCard,
   loadStudentGradebookExamScores,
   loadStudentsReportData,
-  loadSubjectsForClass,
 } from "./queries";
 import type {
   ReportCardCommentRow,
   ReportCardStatus,
 } from "./report-card-types";
 import { isMissingColumnSchemaError } from "./report-card-schema-compat";
-
-export type { ReportCardStatus } from "./report-card-types";
-export type { ReportCardGradebookExamPercentages } from "./queries";
-export { getReportCardSubjectsForStudent } from "./queries";
 
 interface TeacherReportCardCommentSelectRow {
   id: string;
@@ -104,10 +99,6 @@ async function resolveReportCardStatusAfterCommentSave(
     return undefined;
   }
   return "draft";
-}
-
-export async function getSubjectsForClass(classId: string) {
-  return loadSubjectsForClass(classId);
 }
 
 export async function reloadStudentsReportData(
