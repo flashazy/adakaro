@@ -2,6 +2,14 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { normalizeSchoolCurrency } from "@/lib/currency";
+import {
+  loadProfileAttendanceSummary,
+  loadProfileFeeBalances,
+  loadProfileGradebookScores,
+  loadProfilePayments,
+  loadProfileReportCards,
+} from "@/lib/student-profile-auto-data";
 import { StudentProfileClient } from "./student-profile-client";
 import type { Database } from "@/types/supabase";
 
@@ -39,7 +47,9 @@ export default async function StudentProfilePage({
 
   const { data: student, error: studentError } = await supabase
     .from("students")
-    .select("id, full_name, school_id, avatar_url, class:classes(name)")
+    .select(
+      "id, full_name, admission_number, school_id, avatar_url, class_id, class:classes(name)"
+    )
     .eq("id", studentId)
     .eq("school_id", schoolId)
     .maybeSingle();
@@ -51,8 +61,10 @@ export default async function StudentProfilePage({
   const typedStudent = student as {
     id: string;
     full_name: string;
+    admission_number: string | null;
     school_id: string;
     avatar_url: string | null;
+    class_id: string;
     class: { name: string } | null;
   };
 
@@ -61,6 +73,12 @@ export default async function StudentProfilePage({
     { data: disciplineRows, error: disciplineErr },
     { data: healthRows, error: healthErr },
     { data: financeRows, error: financeErr },
+    { data: schoolRow, error: schoolErr },
+    profileGradebookScores,
+    profileAttendanceSummary,
+    profileReportCards,
+    profilePayments,
+    profileFeeBalances,
   ] = await Promise.all([
     supabase
       .from("student_academic_records")
@@ -83,16 +101,43 @@ export default async function StudentProfilePage({
       .select("*")
       .eq("student_id", studentId)
       .order("updated_at", { ascending: false }),
+    supabase.from("schools").select("currency").eq("id", schoolId).maybeSingle(),
+    loadProfileGradebookScores(supabase, studentId),
+    loadProfileAttendanceSummary(supabase, studentId, typedStudent.class_id),
+    loadProfileReportCards(supabase, studentId),
+    loadProfilePayments(supabase, studentId),
+    loadProfileFeeBalances(supabase, studentId),
   ]);
+
+  const currencyCode = normalizeSchoolCurrency(
+    (schoolRow as { currency: string | null } | null)?.currency
+  );
+
+  const financeRowsTyped = (financeRows ?? []) as FinanceRow[];
+  const profileScholarshipLines = financeRowsTyped
+    .filter((r) => Number(r.scholarship_amount) > 0)
+    .map((r) => ({
+      id: r.id,
+      academic_year: r.academic_year,
+      term: r.term,
+      amount: Number(r.scholarship_amount),
+      scholarship_type: r.scholarship_type,
+    }));
 
   const loadError = [
     academicErr && `Academic: ${academicErr.message}`,
     disciplineErr && `Discipline: ${disciplineErr.message}`,
     healthErr && `Health: ${healthErr.message}`,
     financeErr && `Finance: ${financeErr.message}`,
+    schoolErr && `School: ${schoolErr.message}`,
   ]
     .filter(Boolean)
     .join(" ");
+
+  const headerAdmission = typedStudent.admission_number?.trim() ?? "";
+  const headerSubtitleName = headerAdmission
+    ? `${typedStudent.full_name} (ADM: ${headerAdmission})`
+    : typedStudent.full_name;
 
   return (
     <>
@@ -103,7 +148,7 @@ export default async function StudentProfilePage({
               Student profile
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
-              {typedStudent.full_name}
+              {headerSubtitleName}
               {typedStudent.class?.name ? ` · ${typedStudent.class.name}` : ""}
             </p>
           </div>
@@ -129,12 +174,20 @@ export default async function StudentProfilePage({
         <StudentProfileClient
           studentId={typedStudent.id}
           studentName={typedStudent.full_name}
+          admissionNumber={typedStudent.admission_number}
           className={typedStudent.class?.name ?? null}
           avatarUrl={typedStudent.avatar_url}
           academicRecords={(academicRows ?? []) as AcademicRow[]}
           disciplineRecords={(disciplineRows ?? []) as DisciplineRow[]}
           healthRecords={(healthRows ?? []) as HealthRow[]}
-          financeRecords={(financeRows ?? []) as FinanceRow[]}
+          financeRecords={financeRowsTyped}
+          currencyCode={currencyCode}
+          profileGradebookScores={profileGradebookScores}
+          profileAttendanceSummary={profileAttendanceSummary}
+          profileReportCards={profileReportCards}
+          profilePayments={profilePayments}
+          profileFeeBalances={profileFeeBalances}
+          profileScholarshipLines={profileScholarshipLines}
         />
       </main>
     </>
