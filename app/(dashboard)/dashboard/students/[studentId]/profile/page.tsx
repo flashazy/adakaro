@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { normalizeSchoolCurrency } from "@/lib/currency";
 import {
@@ -68,6 +69,8 @@ export default async function StudentProfilePage({
     class: { name: string } | null;
   };
 
+  const adminClient = createAdminClient();
+
   const [
     { data: academicRows, error: academicErr },
     { data: disciplineRows, error: disciplineErr },
@@ -102,7 +105,11 @@ export default async function StudentProfilePage({
       .eq("student_id", studentId)
       .order("updated_at", { ascending: false }),
     supabase.from("schools").select("currency").eq("id", schoolId).maybeSingle(),
-    loadProfileGradebookScores(supabase, studentId),
+    loadProfileGradebookScores(
+      adminClient,
+      studentId,
+      typedStudent.school_id
+    ),
     loadProfileAttendanceSummary(supabase, studentId, typedStudent.class_id),
     loadProfileReportCards(supabase, studentId),
     loadProfilePayments(supabase, studentId),

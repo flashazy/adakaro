@@ -8,7 +8,7 @@ type TeacherScorePick = Pick<
 >;
 type GradebookAssignmentPick = Pick<
   Database["public"]["Tables"]["teacher_gradebook_assignments"]["Row"],
-  "id" | "title" | "max_score" | "subject" | "term" | "academic_year"
+  "id" | "title" | "max_score" | "subject" | "term" | "academic_year" | "class_id"
 >;
 type ReportCardPick = Pick<
   Database["public"]["Tables"]["report_cards"]["Row"],
@@ -124,11 +124,19 @@ function summarizeAttendanceDays(
   return { presentDays, absentDays, lateDays };
 }
 
+/**
+ * Loads gradebook scores for a student (all subjects / terms on record).
+ * Uses a service-role Supabase client so reads match the teacher Marks UI
+ * (which bypasses RLS via the admin client). Caller must enforce auth.
+ *
+ * Rows are limited to assignments whose class belongs to `studentSchoolId`.
+ */
 export async function loadProfileGradebookScores(
-  supabase: SupabaseClient<Database>,
-  studentId: string
+  admin: SupabaseClient<Database>,
+  studentId: string,
+  studentSchoolId: string
 ): Promise<ProfileGradebookScoreRow[]> {
-  const { data: scoresRaw, error } = await supabase
+  const { data: scoresRaw, error } = await admin
     .from("teacher_scores")
     .select("id, assignment_id, score")
     .eq("student_id", studentId);
@@ -136,14 +144,33 @@ export async function loadProfileGradebookScores(
   if (error || !scores?.length) return [];
 
   const assignmentIds = [...new Set(scores.map((s) => s.assignment_id))];
-  const { data: assignsRaw, error: aErr } = await supabase
+  const { data: assignsRaw, error: aErr } = await admin
     .from("teacher_gradebook_assignments")
-    .select("id, title, max_score, subject, term, academic_year")
+    .select("id, title, max_score, subject, term, academic_year, class_id")
     .in("id", assignmentIds);
   const assigns = assignsRaw as GradebookAssignmentPick[] | null;
   if (aErr || !assigns?.length) return [];
 
-  const byId = new Map(assigns.map((a) => [a.id, a]));
+  const classIds = [...new Set(assigns.map((a) => a.class_id))];
+  const { data: classRowsRaw } = await admin
+    .from("classes")
+    .select("id, school_id")
+    .in("id", classIds);
+  const allowedClassIds = new Set(
+    (classRowsRaw ?? [])
+      .filter(
+        (c) =>
+          (c as { id: string; school_id: string }).school_id ===
+          studentSchoolId
+      )
+      .map((c) => (c as { id: string }).id)
+  );
+
+  const byId = new Map(
+    assigns
+      .filter((a) => allowedClassIds.has(a.class_id))
+      .map((a) => [a.id, a])
+  );
   const rows: ProfileGradebookScoreRow[] = [];
 
   for (const s of scores) {
@@ -179,6 +206,9 @@ export async function loadProfileGradebookScores(
   });
   return rows;
 }
+
+/** @alias loadProfileGradebookScores — same implementation. */
+export const loadStudentScores = loadProfileGradebookScores;
 
 export async function loadProfileAttendanceSummary(
   supabase: SupabaseClient<Database>,
