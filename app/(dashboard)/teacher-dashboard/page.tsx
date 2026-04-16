@@ -11,12 +11,37 @@ import {
 import { getDisplayName } from "@/lib/display-name";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
-import { getCurrentAcademicYearAndTerm } from "@/lib/student-subject-enrollment";
+import {
+  getCurrentAcademicYearAndTerm,
+  parseSubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
+import { getStudentsForSubject } from "@/lib/student-subject-enrollment-queries";
 import { getTeacherClassOptions } from "./data";
 import { TeacherDashboardLocked } from "./components/TeacherDashboardLocked";
 import { TeacherDocuments } from "./components/TeacherDocuments";
 
 export const dynamic = "force-dynamic";
+
+/** First calendar year in assignment string; falls back to current enrolment year. */
+function enrollmentYearFromAssignmentString(
+  y: string | null | undefined
+): number {
+  const m = (y ?? "").trim().match(/\d{4}/);
+  if (m) return parseInt(m[0], 10);
+  return getCurrentAcademicYearAndTerm().academicYear;
+}
+
+/** True when a markbook cell has a real entered score (including 0). */
+function scoreIsEntered(score: unknown): boolean {
+  if (score == null) return false;
+  if (typeof score === "number" && Number.isFinite(score)) return true;
+  if (typeof score === "string" && score.trim() !== "") {
+    const n = Number(score.trim());
+    return Number.isFinite(n);
+  }
+  const n = Number(score);
+  return Number.isFinite(n);
+}
 
 export default async function TeacherDashboardPage() {
   const supabase = await createClient();
@@ -70,32 +95,108 @@ export default async function TeacherDashboardPage() {
     }[]
   ).length;
 
-  const { data: gradebookRows } = await admin
+  const { data: gradebookRowsRaw } = await admin
     .from("teacher_gradebook_assignments")
-    .select("id, class_id")
+    .select("id, class_id, subject, academic_year, term")
     .eq("teacher_id", user.id);
 
-  let pendingGrades = 0;
-  for (const g of gradebookRows ?? []) {
-    const row = g as { id: string; class_id: string };
-    /** Rows with an actual score entered (numeric column; NULL = blank in gradebook). */
-    const { count: filledCount } = await admin
+  const gradebookRows = (gradebookRowsRaw ?? []) as {
+    id: string;
+    class_id: string;
+    subject: string;
+    academic_year: string | null;
+    term: string | null;
+  }[];
+
+  const { data: taForGradebook } = await admin
+    .from("teacher_assignments")
+    .select("class_id, subject_id, subject, subjects(name)")
+    .eq("teacher_id", user.id);
+
+  const taList = (taForGradebook ?? []) as {
+    class_id: string;
+    subject_id: string | null;
+    subject: string | null;
+    subjects: { name: string } | null;
+  }[];
+
+  function resolveSubjectIdForGradebook(
+    classId: string,
+    gbSubject: string
+  ): string | null {
+    const subLower = gbSubject.trim().toLowerCase();
+    for (const r of taList) {
+      if (r.class_id !== classId) continue;
+      const disp = (
+        r.subjects?.name?.trim() ||
+        r.subject?.trim() ||
+        ""
+      ).toLowerCase();
+      if (disp === subLower && r.subject_id) return r.subject_id;
+    }
+    return null;
+  }
+
+  const defaultPeriod = getCurrentAcademicYearAndTerm();
+  const rosterCache = new Map<string, string[]>();
+
+  async function rosterStudentIdsForGradebookAssignment(row: {
+    class_id: string;
+    subject: string;
+    academic_year: string | null;
+    term: string | null;
+  }): Promise<string[]> {
+    const termParsed =
+      parseSubjectEnrollmentTerm(row.term) ?? defaultPeriod.term;
+    const yearInt = enrollmentYearFromAssignmentString(row.academic_year);
+    const subjectId = resolveSubjectIdForGradebook(row.class_id, row.subject);
+    const cacheKey = `${row.class_id}\t${subjectId ?? ""}\t${yearInt}\t${termParsed}`;
+    const cached = rosterCache.get(cacheKey);
+    if (cached) return cached;
+
+    const roster = await getStudentsForSubject(admin, {
+      classId: row.class_id,
+      subjectId,
+      academicYear: yearInt,
+      term: termParsed,
+      enrollmentDateOnOrBefore: null,
+    });
+    const ids = roster.map((s) => s.id);
+    rosterCache.set(cacheKey, ids);
+    return ids;
+  }
+
+  const assignmentIds = gradebookRows.map((r) => r.id);
+  const scoresByAssignment = new Map<string, Map<string, unknown>>();
+  if (assignmentIds.length > 0) {
+    const { data: scoreRows } = await admin
       .from("teacher_scores")
-      .select("id", { count: "exact", head: true })
-      .eq("assignment_id", row.id)
-      .not("score", "is", null);
+      .select("assignment_id, student_id, score")
+      .in("assignment_id", assignmentIds);
+    for (const r of scoreRows ?? []) {
+      const sr = r as {
+        assignment_id: string;
+        student_id: string;
+        score: unknown;
+      };
+      let m = scoresByAssignment.get(sr.assignment_id);
+      if (!m) {
+        m = new Map();
+        scoresByAssignment.set(sr.assignment_id, m);
+      }
+      m.set(sr.student_id, sr.score);
+    }
+  }
 
-    const { count: studentCount } = await admin
-      .from("students")
-      .select("id", { count: "exact", head: true })
-      .eq("class_id", row.class_id)
-      .eq("status", "active");
-
-    const need = Math.max(
-      0,
-      (studentCount ?? 0) - (filledCount ?? 0)
-    );
-    pendingGrades += need;
+  let pendingGrades = 0;
+  for (const row of gradebookRows) {
+    const rosterIds = await rosterStudentIdsForGradebookAssignment(row);
+    const scores = scoresByAssignment.get(row.id) ?? new Map();
+    for (const sid of rosterIds) {
+      if (!scoreIsEntered(scores.get(sid))) {
+        pendingGrades += 1;
+      }
+    }
   }
 
   const options = await getTeacherClassOptions(user.id);
