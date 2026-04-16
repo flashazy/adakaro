@@ -139,25 +139,27 @@ export function LoginForm() {
           return;
         }
 
-        let res: SessionEmailResponse;
-        try {
-          const r = await fetch("/api/auth/session-email", {
-            credentials: "include",
-          });
-          res = (await r.json()) as SessionEmailResponse;
-        } catch {
-          runLogin(fd);
-          return;
-        }
+        if (attempt.includes("@")) {
+          let res: SessionEmailResponse;
+          try {
+            const r = await fetch("/api/auth/session-email", {
+              credentials: "include",
+            });
+            res = (await r.json()) as SessionEmailResponse;
+          } catch {
+            runLogin(fd);
+            return;
+          }
 
-        if (
-          res.email &&
-          res.email.trim().toLowerCase() !== attempt
-        ) {
-          setCancelHrefForBanner(res.cancelHref || "/dashboard");
-          setShowSessionReplaceWarning(true);
-          setIsLoading(false);
-          return;
+          if (
+            res.email &&
+            res.email.trim().toLowerCase() !== attempt
+          ) {
+            setCancelHrefForBanner(res.cancelHref || "/dashboard");
+            setShowSessionReplaceWarning(true);
+            setIsLoading(false);
+            return;
+          }
         }
 
         runLogin(fd);
@@ -277,17 +279,17 @@ export function LoginForm() {
             htmlFor="email"
             className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
           >
-            Email
+            Email or full name
           </label>
           <input
             id="email"
             name="email"
-            type="email"
-            autoComplete="email"
+            type="text"
+            autoComplete="username"
             required
             disabled={showSessionReplaceWarning}
             className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
-            placeholder="you@example.com"
+            placeholder="you@example.com or your full name"
           />
         </div>
 

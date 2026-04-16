@@ -73,20 +73,6 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If already on teacher dashboard, allow immediately - no redirects
-  if (
-    pathname === "/teacher-dashboard" ||
-    pathname.startsWith("/teacher-dashboard/")
-  ) {
-    const { data: asTeacher, error: teacherRpcErr } = await supabase.rpc(
-      "is_teacher",
-      {} as never
-    );
-    if (!teacherRpcErr && asTeacher === true) {
-      return supabaseResponse;
-    }
-  }
-
   if (user) {
     // JWT metadata first (always available); override from DB when present.
     // Using only metadata while the parent page requires profiles.role caused a
@@ -193,6 +179,38 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/parent-dashboard";
       }
       return NextResponse.redirect(url);
+    }
+
+    if (role === "teacher") {
+      const { data: profPw } = await supabase
+        .from("profiles")
+        .select("password_changed")
+        .eq("id", user.id)
+        .maybeSingle();
+      const mustChange =
+        (profPw as { password_changed?: boolean } | null)?.password_changed ===
+        false;
+      if (mustChange) {
+        const isChangePasswordPage = pathname.startsWith("/change-password");
+        const isAuthApi = pathname.startsWith("/api/auth");
+        if (!isChangePasswordPage && !isAuthApi) {
+          if (pathname.startsWith("/api/")) {
+            return NextResponse.json(
+              {
+                error: "You must change your password before continuing.",
+              },
+              { status: 403 }
+            );
+          }
+          const url = request.nextUrl.clone();
+          url.pathname = "/change-password";
+          url.searchParams.set(
+            "next",
+            `${pathname}${request.nextUrl.search || ""}`
+          );
+          return NextResponse.redirect(url);
+        }
+      }
     }
 
     // Redirect authenticated users away from auth pages.

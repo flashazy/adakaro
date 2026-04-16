@@ -29,6 +29,7 @@ export interface Database {
           phone: string | null;
           role: UserRole;
           avatar_url: string | null;
+          password_changed: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -39,6 +40,7 @@ export interface Database {
           phone?: string | null;
           role?: UserRole;
           avatar_url?: string | null;
+          password_changed?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -49,6 +51,7 @@ export interface Database {
           phone?: string | null;
           role?: UserRole;
           avatar_url?: string | null;
+          password_changed?: boolean;
           updated_at?: string;
         };
       };

@@ -3,6 +3,8 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveLoginEmailForSignIn } from "@/lib/resolve-teacher-login-email";
 import type { UserRole } from "@/types/supabase";
 
 export interface AuthState {
@@ -28,12 +30,19 @@ export async function login(
   _prevState: AuthState,
   formData: FormData
 ): Promise<AuthState> {
-  const email = formData.get("email") as string;
+  const loginRaw = formData.get("email") as string;
   const password = formData.get("password") as string;
 
-  if (!email || !password) {
-    return { error: "Email and password are required." };
+  if (!loginRaw || !password) {
+    return { error: "Email or name and password are required." };
   }
+
+  const admin = createAdminClient();
+  const resolved = await resolveLoginEmailForSignIn(admin, loginRaw);
+  if (!resolved.ok) {
+    return { error: resolved.error };
+  }
+  const email = resolved.email;
 
   const supabase = await createClient();
 
@@ -49,11 +58,13 @@ export async function login(
   const user = authData.user;
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, password_changed")
     .eq("id", user.id)
     .maybeSingle();
 
   const profileRole = (profileRow as { role: UserRole } | null)?.role;
+  const passwordChanged = (profileRow as { password_changed?: boolean } | null)
+    ?.password_changed;
 
   const role: UserRole =
     profileRole === "admin" ||
@@ -84,6 +95,14 @@ export async function login(
       redirect(next);
     }
     redirect("/super-admin");
+  }
+
+  if (role === "teacher" && passwordChanged === false) {
+    const q =
+      next && next.startsWith("/") && !next.startsWith("//")
+        ? `?next=${encodeURIComponent(next)}`
+        : "";
+    redirect(`/change-password${q}`);
   }
 
   if (next) {

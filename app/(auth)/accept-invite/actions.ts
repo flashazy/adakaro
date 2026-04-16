@@ -167,6 +167,7 @@ export async function acceptTeacherInviteAction(
       .update({
         full_name: fullName,
         role: "teacher",
+        password_changed: true,
       })
       .eq("id", newUserId);
 

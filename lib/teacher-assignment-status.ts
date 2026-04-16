@@ -37,6 +37,7 @@ export interface TeacherLockedContactInfo {
   schoolName: string;
   adminName: string;
   adminEmail: string | null;
+  adminPhone: string | null;
 }
 
 /**
@@ -83,20 +84,27 @@ export async function getTeacherLockedContactInfo(
       schoolName,
       adminName: "School administrator",
       adminEmail: null,
+      adminPhone: null,
     };
   }
 
   const { data: prof } = await admin
     .from("profiles")
-    .select("full_name, email")
+    .select("full_name, email, phone")
     .eq("id", adminIds[0])
     .maybeSingle();
 
-  const p = prof as { full_name: string; email: string | null } | null;
+  const p = prof as {
+    full_name: string;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  const phoneRaw = p?.phone?.trim() ?? "";
   return {
     schoolName,
     adminName: p?.full_name?.trim() || "School administrator",
     adminEmail: p?.email ?? null,
+    adminPhone: phoneRaw.length > 0 ? phoneRaw : null,
   };
 }
 

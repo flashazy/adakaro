@@ -1,21 +1,18 @@
 "use server";
 
-import { randomBytes } from "crypto";
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendTeacherInvitationEmail } from "@/lib/teacher-invite-email";
+import { normalizeTeacherDisplayName } from "@/lib/teacher-display-name";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import type { Database } from "@/types/supabase";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
 /** Manual Database types omit `Relationships` required by Supabase v2 generics; use for typed payloads only. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- narrow client insert/update resolves to `never` without generated Relationships
 type Db = any;
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
@@ -103,39 +100,6 @@ async function getSchoolIdForUserWithAdmin(userId: string): Promise<string | nul
   }
 }
 
-async function findProfileIdByEmail(
-  emailNorm: string,
-  admin: SupabaseClient<Database>
-): Promise<string | null> {
-  try {
-    const { data: exact } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("email", emailNorm)
-      .maybeSingle();
-    if (exact) return (exact as { id: string }).id;
-
-    const { data: ci } = await admin
-      .from("profiles")
-      .select("id")
-      .ilike("email", emailNorm)
-      .limit(1)
-      .maybeSingle();
-    if (ci) return (ci as { id: string }).id;
-  } catch {
-    /* */
-  }
-  return null;
-}
-
-function getPublicAppBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
-    process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "") ||
-    "http://localhost:3000"
-  );
-}
-
 export type TeacherActionState =
   | { ok: true; message?: string }
   | { ok: false; error: string };
@@ -148,6 +112,8 @@ export interface SchoolTeacherMemberRow {
   profileFullName: string | null;
   /** profiles.email */
   profileEmail: string | null;
+  /** profiles.password_changed — false until first password change */
+  profilePasswordChanged: boolean;
 }
 
 async function fetchSchoolTeacherMembersFallback(
@@ -175,13 +141,14 @@ async function fetchSchoolTeacherMembersFallback(
 
     const { data: profs } = await (admin as Db)
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, password_changed")
       .in("id", ids);
 
     const profList = (profs ?? []) as {
       id: string;
       full_name: string;
       email: string | null;
+      password_changed: boolean | null;
     }[];
 
     const byId = new Map(profList.map((p) => [p.id, p]));
@@ -194,6 +161,7 @@ async function fetchSchoolTeacherMembersFallback(
         created_at: m.created_at,
         profileFullName: p?.full_name ?? null,
         profileEmail: p?.email ?? null,
+        profilePasswordChanged: p?.password_changed !== false,
       };
     });
   } catch {
@@ -220,7 +188,8 @@ export async function fetchSchoolTeacherMembersForTeachersPage(
         role,
         profiles!inner (
           full_name,
-          email
+          email,
+          password_changed
         )
       `
       )
@@ -238,8 +207,16 @@ export async function fetchSchoolTeacherMembersForTeachersPage(
       created_at: string;
       role: string;
       profiles:
-        | { full_name: string | null; email: string | null }
-        | { full_name: string | null; email: string | null }[]
+        | {
+            full_name: string | null;
+            email: string | null;
+            password_changed: boolean | null;
+          }
+        | {
+            full_name: string | null;
+            email: string | null;
+            password_changed: boolean | null;
+          }[]
         | null;
     }[];
 
@@ -253,6 +230,7 @@ export async function fetchSchoolTeacherMembersForTeachersPage(
           created_at: r.created_at,
           profileFullName: p?.full_name ?? null,
           profileEmail: p?.email ?? null,
+          profilePasswordChanged: p?.password_changed !== false,
         };
       });
   } catch {
@@ -264,11 +242,20 @@ export async function addTeacherAction(
   _prev: TeacherActionState | null,
   formData: FormData
 ): Promise<TeacherActionState> {
-  const rawEmail = String(formData.get("email") ?? "").trim();
-  const email = normalizeEmail(rawEmail);
+  const fullName = String(formData.get("full_name") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
 
-  if (!email || !EMAIL_RE.test(email)) {
-    return { ok: false, error: "Please enter a valid email address." };
+  if (!fullName || fullName.length < 2) {
+    return {
+      ok: false,
+      error: "Please enter the teacher's full name (at least 2 characters).",
+    };
+  }
+  if (password.length < 8) {
+    return {
+      ok: false,
+      error: "Password must be at least 8 characters.",
+    };
   }
 
   const supabase = await createClient();
@@ -291,152 +278,93 @@ export async function addTeacherAction(
     return { ok: false, error: "Only school administrators can manage teachers." };
   }
 
-  const callerEmail = normalizeEmail(user.email ?? "");
-  if (callerEmail && email === callerEmail) {
-    return { ok: false, error: "You cannot add yourself as a teacher here." };
+  const normalized = normalizeTeacherDisplayName(fullName);
+  if (!normalized) {
+    return { ok: false, error: "Please enter a valid full name." };
   }
 
-  const profileId = await findProfileIdByEmail(email, admin);
-
-  if (profileId) {
-    const { data: existing } = await admin
-      .from("school_members")
-      .select("id, role")
-      .eq("school_id", schoolId)
-      .eq("user_id", profileId)
-      .maybeSingle();
-
-    if (existing) {
-      const role = (existing as { role: string }).role;
-      if (role === "admin") {
-        return {
-          ok: false,
-          error:
-            "This user is already a school administrator for your school.",
-        };
-      }
-      if (role === "teacher") {
-        return { ok: false, error: "This user is already a teacher at your school." };
-      }
-      if (role === "parent") {
-        const { error: upErr } = await (admin as Db)
-          .from("school_members")
-          .update({ role: "teacher" })
-          .eq("id", (existing as { id: string }).id);
-        if (upErr) {
-          return { ok: false, error: upErr.message || "Could not update membership." };
-        }
-        const { error: pErr } = await (admin as Db)
-          .from("profiles")
-          .update({ role: "teacher" } satisfies ProfileUpdate)
-          .eq("id", profileId);
-        if (pErr) {
-          return {
-            ok: false,
-            error:
-              pErr.message ||
-              "Membership updated but profile role could not be set. Check SUPABASE_SERVICE_ROLE_KEY.",
-          };
-        }
-        revalidatePath("/dashboard/teachers");
-        return { ok: true, message: "Teacher role applied to existing member." };
-      }
-    }
-
-    const { error: insErr } = await (admin as Db)
-      .from("school_members")
-      .insert({
-        school_id: schoolId,
-        user_id: profileId,
-        role: "teacher",
-      });
-
-    if (insErr) {
-      if (insErr.code === "23505") {
-        return {
-          ok: false,
-          error: "This user is already linked to your school.",
-        };
-      }
-      return { ok: false, error: insErr.message || "Could not add teacher." };
-    }
-
-    const { error: pErr } = await (admin as Db)
-      .from("profiles")
-      .update({ role: "teacher" } satisfies ProfileUpdate)
-      .eq("id", profileId);
-    if (pErr) {
-      return {
-        ok: false,
-        error:
-          pErr.message ||
-          "Teacher was added but profile role could not be updated.",
-      };
-    }
-
-    revalidatePath("/dashboard/teachers");
-    return { ok: true, message: "Teacher added. They can sign in and open the teacher dashboard." };
+  const existingMembers =
+    await fetchSchoolTeacherMembersForTeachersPage(schoolId);
+  const nameDup = existingMembers.some(
+    (m) => normalizeTeacherDisplayName(m.profileFullName ?? "") === normalized
+  );
+  if (nameDup) {
+    return {
+      ok: false,
+      error:
+        "A teacher with this name already exists at your school. Use a different spelling or remove the existing teacher first.",
+    };
   }
 
+  const userId = randomUUID();
+  const syntheticEmail = `t.${userId.replace(/-/g, "")}@teachers.adakaro.app`;
+
+  let createdUserId: string | null = null;
   try {
-    const base = getPublicAppBaseUrl();
-    const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(
-      Date.now() + 7 * 24 * 60 * 60 * 1000
-    ).toISOString();
-
-    const { error: insErr } = await (admin as Db)
-      .from("teacher_invitations")
-      .insert({
-        email,
-        school_id: schoolId,
-        class_id: null,
-        subject: "",
-        academic_year: "",
-        token,
-        expires_at: expiresAt,
+    const { data: created, error: createErr } =
+      await admin.auth.admin.createUser({
+        id: userId,
+        email: syntheticEmail,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: fullName,
+          role: "teacher",
+          password_changed: false,
+        },
       });
 
-    if (insErr) {
+    if (createErr || !created.user) {
       return {
         ok: false,
-        error: insErr.message || "Could not create invitation.",
+        error: createErr?.message || "Could not create the teacher account.",
       };
     }
+    createdUserId = created.user.id;
 
-    const { data: school } = await admin
-      .from("schools")
-      .select("name")
-      .eq("id", schoolId)
-      .maybeSingle();
-    const schoolName =
-      (school as { name: string } | null)?.name?.trim() || "Your school";
+    const { error: profErr } = await (admin as Db)
+      .from("profiles")
+      .update({
+        full_name: fullName,
+        role: "teacher",
+        password_changed: false,
+      } satisfies ProfileUpdate)
+      .eq("id", createdUserId);
 
-    const inviteUrl = `${base}/accept-invite?token=${encodeURIComponent(token)}`;
-    const emailResult = await sendTeacherInvitationEmail({
-      to: email,
-      inviteUrl,
-      schoolName,
+    if (profErr) {
+      throw new Error(profErr.message || "Could not finalize profile.");
+    }
+
+    const { error: mErr } = await (admin as Db).from("school_members").insert({
+      school_id: schoolId,
+      user_id: createdUserId,
+      role: "teacher",
     });
 
-    if (!emailResult.ok) {
-      await (admin as Db).from("teacher_invitations").delete().eq("token", token);
-      return { ok: false, error: emailResult.error };
+    if (mErr) {
+      throw new Error(mErr.message || "Could not add teacher to your school.");
     }
 
     revalidatePath("/dashboard/teachers");
     return {
       ok: true,
       message:
-        "Invitation sent. They can open the link in their email to create a password and sign in as a teacher.",
+        "Teacher account created. They should sign in using their full name (exactly as you entered) and this password, then choose a new password when prompted.",
     };
   } catch (e) {
+    if (createdUserId) {
+      try {
+        await admin.auth.admin.deleteUser(createdUserId);
+      } catch {
+        /* */
+      }
+    }
     return {
       ok: false,
       error:
         e instanceof Error
           ? e.message
-          : "Invitation failed. Ensure SUPABASE_SERVICE_ROLE_KEY is set.",
+          : "Could not create teacher. Ensure SUPABASE_SERVICE_ROLE_KEY is set.",
     };
   }
 }

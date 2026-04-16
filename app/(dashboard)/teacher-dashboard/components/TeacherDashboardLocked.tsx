@@ -34,16 +34,38 @@ export function TeacherDashboardLocked({ contact }: TeacherDashboardLockedProps)
             <span className="text-slate-500 dark:text-zinc-500">Admin:</span>{" "}
             {contact.adminName}
           </p>
-          {contact.adminEmail ? (
-            <p className="mt-2 text-slate-700 dark:text-zinc-300">
-              <span className="text-slate-500 dark:text-zinc-500">Email:</span>{" "}
-              <a
-                href={`mailto:${contact.adminEmail}`}
-                className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-              >
-                {contact.adminEmail}
-              </a>
-            </p>
+          {contact.adminEmail || contact.adminPhone ? (
+            <div className="mt-3 space-y-2">
+              <p className="font-medium text-slate-800 dark:text-zinc-200">
+                Contact your school administrator:
+              </p>
+              {contact.adminEmail ? (
+                <p className="text-slate-700 dark:text-zinc-300">
+                  <span className="text-slate-500 dark:text-zinc-500">
+                    Email:
+                  </span>{" "}
+                  <a
+                    href={`mailto:${contact.adminEmail}`}
+                    className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                  >
+                    {contact.adminEmail}
+                  </a>
+                </p>
+              ) : null}
+              {contact.adminPhone ? (
+                <p className="text-slate-700 dark:text-zinc-300">
+                  <span className="text-slate-500 dark:text-zinc-500">
+                    Phone:
+                  </span>{" "}
+                  <a
+                    href={`tel:${contact.adminPhone.replace(/\s/g, "")}`}
+                    className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                  >
+                    {contact.adminPhone}
+                  </a>
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

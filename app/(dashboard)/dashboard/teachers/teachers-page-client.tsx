@@ -38,6 +38,8 @@ export interface TeacherRow {
   fullName: string;
   email: string | null;
   joinedAtLabel: string;
+  /** True after the teacher has completed the first-time password change. */
+  passwordChanged: boolean;
 }
 
 export interface AssignmentRow {
@@ -93,6 +95,9 @@ export function TeachersPageClient({
   const [sortKey, setSortKey] = useState<SortKey>("teacher");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [assignmentPage, setAssignmentPage] = useState(1);
+  const [teacherListTab, setTeacherListTab] = useState<"all" | "registered">(
+    "all"
+  );
 
   const assignSubjects = useMemo(() => {
     if (!assignClassId) return [];
@@ -191,6 +196,11 @@ export function TeachersPageClient({
     modal?.mode === "edit" ? updatePending : assignPending;
   const modalFlash = modal?.mode === "edit" ? updateState : assignState;
 
+  const teachersForList =
+    teacherListTab === "registered"
+      ? teachers.filter((t) => t.passwordChanged)
+      : teachers;
+
   return (
     <div className="space-y-10">
       <div>
@@ -204,36 +214,41 @@ export function TeachersPageClient({
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-          Invite or add teacher
+          Add teachers
         </h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-          If they already have an Adakaro account, they are linked immediately.
-          Otherwise we email them a secure link to create a password and join as a
-          teacher.
+          Create an account with the teacher&apos;s full name and a temporary
+          password. They sign in with that name and password, then choose a new
+          password. No email is sent.
         </p>
         <form action={addAction} className="mt-4 space-y-3">
           {flash(addState)}
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="text-slate-700 dark:text-zinc-300">Email</span>
-              <input
-                name="email"
-                type="email"
-                required
-                autoComplete="email"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                placeholder="teacher@school.edu"
-              />
-            </label>
-            <label className="block text-sm">
+            <label className="block text-sm sm:col-span-2">
               <span className="text-slate-700 dark:text-zinc-300">
-                Display name (optional)
+                Full name <span className="text-red-600">*</span>
               </span>
               <input
                 name="full_name"
                 type="text"
+                required
+                autoComplete="name"
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                placeholder="Jane Okello"
+                placeholder="e.g. Jane Okello (used to sign in)"
+              />
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="text-slate-700 dark:text-zinc-300">
+                Temporary password <span className="text-red-600">*</span>
+              </span>
+              <input
+                name="password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                placeholder="At least 8 characters"
               />
             </label>
           </div>
@@ -242,7 +257,7 @@ export function TeachersPageClient({
             disabled={addPending}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
           >
-            {addPending ? "Saving…" : "Add / invite teacher"}
+            {addPending ? "Saving…" : "Create teacher account"}
           </button>
         </form>
       </section>
@@ -574,21 +589,59 @@ export function TeachersPageClient({
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-          All school teachers
-        </h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-          Remove someone from the school entirely (also removes their class
-          assignments).
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              Teacher accounts
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+              Remove someone from the school entirely (also removes their class
+              assignments).
+            </p>
+          </div>
+          <div className="flex shrink-0 rounded-lg border border-slate-200 p-0.5 dark:border-zinc-600">
+            <button
+              type="button"
+              onClick={() => setTeacherListTab("all")}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                teacherListTab === "all"
+                  ? "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "text-slate-600 hover:bg-slate-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              }`}
+            >
+              All teachers
+              <span className="ml-1 font-normal text-slate-500 dark:text-zinc-500">
+                ({teachers.length})
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTeacherListTab("registered")}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                teacherListTab === "registered"
+                  ? "bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "text-slate-600 hover:bg-slate-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              }`}
+            >
+              Registered teachers
+              <span className="ml-1 font-normal text-slate-500 dark:text-zinc-500">
+                ({teachers.filter((x) => x.passwordChanged).length})
+              </span>
+            </button>
+          </div>
+        </div>
         {flash(removeTeacherState)}
         {teachers.length === 0 ? (
           <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
-            No teachers yet. Invite someone above.
+            No teachers yet. Add someone above.
+          </p>
+        ) : teachersForList.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
+            No teachers in this view yet.
           </p>
         ) : (
           <ul className="mt-4 divide-y divide-slate-200 dark:divide-zinc-800">
-            {teachers.map((t) => (
+            {teachersForList.map((t) => (
               <li
                 key={t.userId}
                 className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"
@@ -596,6 +649,11 @@ export function TeachersPageClient({
                 <div>
                   <p className="font-medium text-slate-900 dark:text-white">
                     {t.fullName}
+                    {!t.passwordChanged ? (
+                      <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
+                        Pending first login
+                      </span>
+                    ) : null}
                   </p>
                   <p className="text-sm text-slate-500 dark:text-zinc-400">
                     {t.email ?? "No email"}

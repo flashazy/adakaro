@@ -66,6 +66,7 @@ export default async function TeachersPage() {
     fullName: teacherDisplayName(m.profileFullName, m.profileEmail),
     email: m.profileEmail,
     joinedAtLabel: formatShortLocaleDate(m.created_at),
+    passwordChanged: m.profilePasswordChanged,
   }));
 
   const { data: classRows } = await supabase
@@ -182,8 +183,9 @@ export default async function TeachersPage() {
             Teachers
           </h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-            Invite teachers, assign them to classes, and manage access. Teachers
-            use the teacher dashboard — they never see fees or payments.
+            Create teacher accounts with a name and password, assign classes,
+            and manage access. Teachers use the teacher dashboard — they never
+            see fees or payments.
           </p>
         </div>
         <TeachersPageClient
