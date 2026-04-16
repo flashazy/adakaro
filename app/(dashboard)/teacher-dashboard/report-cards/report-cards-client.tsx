@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
@@ -26,6 +26,7 @@ import {
 import type {
   PendingReportCardRow,
   ReportCardCommentRow,
+  ReportCardSubjectFilterOption,
   StudentReportRow,
   TeacherClassOption,
 } from "./report-card-types";
@@ -166,6 +167,9 @@ function draftAverageLine(exam1: string, exam2: string): {
   };
 }
 
+/** Paginated student sidebar. */
+const REPORT_CARDS_STUDENTS_PAGE_SIZE = 5;
+
 const GRADE_AUTO_COMMENTS: Record<string, string> = {
   A: "Excellent performance, keep it up",
   B: "Very good, keep working hard",
@@ -290,6 +294,12 @@ export function ReportCardsPageClient({
   >({});
   const [loading, setLoading] = useState(false);
   const [studentId, setStudentId] = useState<string | null>(null);
+  const [studentListSearch, setStudentListSearch] = useState("");
+  const [studentListPage, setStudentListPage] = useState(1);
+  const [subjectFilterOptions, setSubjectFilterOptions] = useState<
+    ReportCardSubjectFilterOption[]
+  >([]);
+  const [reportSubjectFilterId, setReportSubjectFilterId] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUnsavedConfirmOpen, setPreviewUnsavedConfirmOpen] =
     useState(false);
@@ -395,12 +405,20 @@ export function ReportCardsPageClient({
     try {
       const subs = await getSubjectsForClass(classId);
       setSubjects(subs);
-      const res = await reloadStudentsReportData(classId, term, academicYear);
+      const res = await reloadStudentsReportData(
+        classId,
+        term,
+        academicYear,
+        reportSubjectFilterId.trim() || undefined
+      );
       if (!res.ok) {
         toast.error(res.error);
         setStudents([]);
+        setSubjectFilterOptions([]);
+        setReportSubjectFilterId("");
         return;
       }
+      setSubjectFilterOptions(res.subjectFilterOptions);
       setStudents(res.students);
       setAttendanceByStudent(res.attendanceByStudent);
       const d: Record<string, Record<string, DraftRow>> = {};
@@ -420,7 +438,7 @@ export function ReportCardsPageClient({
     } finally {
       setLoading(false);
     }
-  }, [classId, term, academicYear, clearAutosaveTimers]);
+  }, [classId, term, academicYear, reportSubjectFilterId, clearAutosaveTimers]);
 
   useEffect(() => {
     void load();
@@ -559,6 +577,54 @@ export function ReportCardsPageClient({
       cancelled = true;
     };
   }, [loading, studentId, classId, term, academicYear, enrolledSubjectsKey]);
+
+  const studentsFilteredBySearch = useMemo(() => {
+    const q = studentListSearch.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter((s) => s.fullName.toLowerCase().includes(q));
+  }, [students, studentListSearch]);
+
+  const studentListTotalPages = Math.max(
+    1,
+    Math.ceil(
+      studentsFilteredBySearch.length / REPORT_CARDS_STUDENTS_PAGE_SIZE
+    )
+  );
+  const studentListSafePage = Math.min(studentListPage, studentListTotalPages);
+  const studentListStart =
+    (studentListSafePage - 1) * REPORT_CARDS_STUDENTS_PAGE_SIZE;
+  const studentsPageRows = studentsFilteredBySearch.slice(
+    studentListStart,
+    studentListStart + REPORT_CARDS_STUDENTS_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setStudentListPage(1);
+  }, [studentListSearch, classId, term, academicYear, reportSubjectFilterId]);
+
+  useEffect(() => {
+    setStudentListSearch("");
+  }, [classId, term, academicYear]);
+
+  useEffect(() => {
+    setReportSubjectFilterId("");
+  }, [classId, academicYear]);
+
+  useEffect(() => {
+    if (
+      !reportSubjectFilterId ||
+      subjectFilterOptions.length === 0
+    ) {
+      return;
+    }
+    if (!subjectFilterOptions.some((o) => o.id === reportSubjectFilterId)) {
+      setReportSubjectFilterId("");
+    }
+  }, [subjectFilterOptions, reportSubjectFilterId]);
+
+  useEffect(() => {
+    setStudentListPage((p) => Math.min(p, studentListTotalPages));
+  }, [studentListTotalPages]);
 
   const selectedStudent = students.find((s) => s.studentId === studentId);
 
@@ -804,18 +870,25 @@ export function ReportCardsPageClient({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap gap-3">
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700 dark:text-zinc-300">
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-4",
+          subjectFilterOptions.length > 1
+            ? "sm:grid-cols-2 lg:grid-cols-4"
+            : "sm:grid-cols-3"
+        )}
+      >
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700 dark:text-zinc-300">
             Class
-          </span>
+          </label>
           <select
             value={classId}
             onChange={(e) => {
               setClassId(e.target.value);
               setStudentId(null);
             }}
-            className="mt-1 w-full min-w-[12rem] rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
           >
             {classes.map((c) => (
               <option key={c.classId} value={c.classId}>
@@ -823,15 +896,15 @@ export function ReportCardsPageClient({
               </option>
             ))}
           </select>
-        </label>
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700 dark:text-zinc-300">
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700 dark:text-zinc-300">
             Academic year
-          </span>
+          </label>
           <select
             value={academicYear}
             onChange={(e) => setAcademicYear(e.target.value)}
-            className="mt-1 w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
           >
             {(selectedClass?.academicYears ?? []).map((y) => (
               <option key={y} value={y}>
@@ -839,17 +912,17 @@ export function ReportCardsPageClient({
               </option>
             ))}
           </select>
-        </label>
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700 dark:text-zinc-300">
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700 dark:text-zinc-300">
             Term
-          </span>
+          </label>
           <select
             value={term}
             onChange={(e) =>
               setTerm(e.target.value as (typeof REPORT_TERM_OPTIONS)[number]["value"])
             }
-            className="mt-1 w-full min-w-[14rem] rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
           >
             {REPORT_TERM_OPTIONS.map((t) => (
               <option key={t.value} value={t.value}>
@@ -857,7 +930,26 @@ export function ReportCardsPageClient({
               </option>
             ))}
           </select>
-        </label>
+        </div>
+        {subjectFilterOptions.length > 1 ? (
+          <div className="flex min-w-0 flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700 dark:text-zinc-300">
+              Subject
+            </label>
+            <select
+              value={reportSubjectFilterId}
+              onChange={(e) => setReportSubjectFilterId(e.target.value)}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+            >
+              <option value="">All subjects</option>
+              {subjectFilterOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
 
       {loading && (
@@ -869,26 +961,92 @@ export function ReportCardsPageClient({
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">
             Students
           </h2>
-          <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto text-sm">
-            {students.map((s) => (
-              <li key={s.studentId}>
-                <button
-                  type="button"
-                  onClick={() => setStudentId(s.studentId)}
-                  className={`w-full rounded-lg px-2 py-1.5 text-left ${
-                    studentId === s.studentId
-                      ? "bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100"
-                      : "hover:bg-slate-50 dark:hover:bg-zinc-800"
+          <div className="relative mt-3">
+            <label htmlFor="report-cards-student-search" className="sr-only">
+              Search students by name
+            </label>
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              aria-hidden
+            />
+            <input
+              id="report-cards-student-search"
+              type="search"
+              value={studentListSearch}
+              onChange={(e) => setStudentListSearch(e.target.value)}
+              placeholder="Search students by name…"
+              disabled={students.length === 0}
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+            />
+          </div>
+          {students.length === 0 && !loading ? (
+            <p className="mt-3 text-sm text-slate-500 dark:text-zinc-400">
+              No students for this class and term.
+            </p>
+          ) : studentsFilteredBySearch.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500 dark:text-zinc-400">
+              No students match your search.
+            </p>
+          ) : (
+            <>
+              <ul className="mt-3 space-y-1 text-sm">
+                {studentsPageRows.map((s) => (
+                  <li key={s.studentId}>
+                    <button
+                      type="button"
+                      onClick={() => setStudentId(s.studentId)}
+                      className={`w-full rounded-lg px-2 py-1.5 text-left ${
+                        studentId === s.studentId
+                          ? "bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100"
+                          : "hover:bg-slate-50 dark:hover:bg-zinc-800"
+                      }`}
+                    >
+                      {s.fullName}
+                      <span className="ml-2 text-xs text-slate-500">
+                        {statusLabel(s.status).short}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-zinc-400">
+                <span>
+                  {`${studentListStart + 1}–${Math.min(
+                    studentListStart + REPORT_CARDS_STUDENTS_PAGE_SIZE,
+                    studentsFilteredBySearch.length
+                  )} of ${studentsFilteredBySearch.length} student${
+                    studentsFilteredBySearch.length === 1 ? "" : "s"
                   }`}
-                >
-                  {s.fullName}
-                  <span className="ml-2 text-xs text-slate-500">
-                    {statusLabel(s.status).short}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={studentListSafePage <= 1}
+                    onClick={() =>
+                      setStudentListPage((p) => Math.max(1, p - 1))
+                    }
+                    className="rounded border border-slate-200 bg-white px-3 py-1.5 text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      studentListSafePage >= studentListTotalPages
+                    }
+                    onClick={() =>
+                      setStudentListPage((p) =>
+                        Math.min(studentListTotalPages, p + 1)
+                      )
+                    }
+                    className="rounded border border-slate-200 bg-white px-3 py-1.5 text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900/40">

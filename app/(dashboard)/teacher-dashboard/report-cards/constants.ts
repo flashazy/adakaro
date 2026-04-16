@@ -49,4 +49,12 @@ export const COMMENT_TEMPLATES = [
   "Shows great effort",
   "Late submission of assignments",
   "Participates well in class",
+  "Shows improvement in understanding the subject",
+  "Needs to work on completing assignments on time",
+  "Active participant in class discussions",
+  "Requires extra support in this subject",
+  "Good understanding of core concepts",
+  "Needs to improve on exam technique",
+  "Demonstrates consistent effort and dedication",
+  "Would benefit from extra practice at home",
 ] as const;

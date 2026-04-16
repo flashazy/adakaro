@@ -10,6 +10,12 @@ export interface TeacherClassOption {
   academicYears: string[];
 }
 
+/** Teacher-assigned subjects for report-card filters (class + academic year). */
+export interface ReportCardSubjectFilterOption {
+  id: string;
+  name: string;
+}
+
 export interface ReportCardCommentRow {
   id: string;
   subject: string;

@@ -104,9 +104,15 @@ async function resolveReportCardStatusAfterCommentSave(
 export async function reloadStudentsReportData(
   classId: string,
   term: string,
-  academicYear: string
+  academicYear: string,
+  subjectFilterSubjectId?: string | null
 ) {
-  return loadStudentsReportData(classId, term, academicYear);
+  return loadStudentsReportData(
+    classId,
+    term,
+    academicYear,
+    subjectFilterSubjectId
+  );
 }
 
 /** Gradebook → report card autofill (preset exam assignment titles only). */

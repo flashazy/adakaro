@@ -6,6 +6,7 @@ import type {
   PendingReportCardRow,
   ReportCardCommentRow,
   ReportCardStatus,
+  ReportCardSubjectFilterOption,
   StudentReportRow,
   TeacherClassOption,
 } from "./report-card-types";
@@ -16,7 +17,10 @@ import {
   DEFAULT_REPORT_CARD_GRADEBOOK_EXAM_NAMES,
   GRADEBOOK_EXAM_ASSIGNMENT_TITLES,
 } from "./constants";
-import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
+import {
+  currentAcademicYear,
+  type SubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
 import {
   getStudentEnrolledSubjects,
   reportAcademicYearToEnrollmentYear,
@@ -27,6 +31,7 @@ export type {
   PendingReportCardRow,
   ReportCardCommentRow,
   ReportCardStatus,
+  ReportCardSubjectFilterOption,
   StudentReportRow,
   TeacherClassOption,
 } from "./report-card-types";
@@ -246,10 +251,18 @@ export async function getSubjectsForClass(classId: string): Promise<string[]> {
   return loadSubjectsForClass(classId);
 }
 
+function firstFourDigitYearFromString(y: string | null | undefined): number {
+  const m = (y ?? "").trim().match(/\d{4}/);
+  if (m) return parseInt(m[0], 10);
+  return currentAcademicYear();
+}
+
 export async function loadStudentsReportData(
   classId: string,
   term: string,
-  academicYear: string
+  academicYear: string,
+  /** When set, roster is limited to this subject’s enrolments; otherwise all teacher subjects for the year. */
+  subjectFilterSubjectId?: string | null
 ): Promise<
   | {
       ok: true;
@@ -258,6 +271,7 @@ export async function loadStudentsReportData(
         string,
         { present: number; absent: number; late: number }
       >;
+      subjectFilterOptions: ReportCardSubjectFilterOption[];
     }
   | { ok: false; error: string }
 > {
@@ -271,18 +285,104 @@ export async function loadStudentsReportData(
 
   const termNorm = term.trim();
   const yearNorm = academicYear.trim();
+  const termParsed: SubjectEnrollmentTerm =
+    termNorm === "Term 2" ? "Term 2" : "Term 1";
+  const yearInt = reportAcademicYearToEnrollmentYear(yearNorm);
 
-  const { data: studs, error: se } = await admin
+  const { data: taRows } = await admin
+    .from("teacher_assignments")
+    .select(
+      `
+      subject_id,
+      academic_year,
+      subject,
+      subjects ( name )
+    `
+    )
+    .eq("teacher_id", user.id)
+    .eq("class_id", classId);
+
+  const teacherSubjectIdsForYear = new Set<string>();
+  const subjectNameById = new Map<string, string>();
+  for (const r of (taRows ?? []) as {
+    subject_id: string | null;
+    academic_year: string | null;
+    subject: string | null;
+    subjects: { name: string } | null;
+  }[]) {
+    if (!r.subject_id) continue;
+    if (firstFourDigitYearFromString(r.academic_year) !== yearInt) continue;
+    teacherSubjectIdsForYear.add(r.subject_id);
+    if (!subjectNameById.has(r.subject_id)) {
+      const label =
+        r.subjects?.name?.trim() || r.subject?.trim() || "Subject";
+      subjectNameById.set(r.subject_id, label);
+    }
+  }
+
+  const subjectFilterOptions: ReportCardSubjectFilterOption[] = [
+    ...subjectNameById.entries(),
+  ]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const filterSid = subjectFilterSubjectId?.trim() ?? "";
+  if (filterSid && !teacherSubjectIdsForYear.has(filterSid)) {
+    return { ok: false, error: "Invalid subject filter." };
+  }
+
+  const enrollmentSubjectIds = filterSid
+    ? [filterSid]
+    : [...teacherSubjectIdsForYear];
+
+  const { data: studsRaw, error: se } = await admin
     .from("students")
     .select("id, full_name, parent_email")
     .eq("class_id", classId)
     .order("full_name");
 
-  if (se || !studs?.length) {
+  if (se || !studsRaw?.length) {
     return { ok: false, error: "No students in this class." };
   }
 
-  const studentIds = (studs as { id: string }[]).map((s) => s.id);
+  let studs = studsRaw as {
+    id: string;
+    full_name: string;
+    parent_email: string | null;
+  }[];
+
+  if (enrollmentSubjectIds.length > 0) {
+    const { data: enrollRows, error: enrollErr } = await admin
+      .from("student_subject_enrollment")
+      .select("student_id")
+      .eq("class_id", classId)
+      .eq("academic_year", yearInt)
+      .eq("term", termParsed)
+      .in("subject_id", enrollmentSubjectIds);
+
+    if (enrollErr) {
+      return { ok: false, error: enrollErr.message };
+    }
+
+    const enrolledStudentIds = new Set(
+      ((enrollRows ?? []) as { student_id: string }[]).map((r) => r.student_id)
+    );
+    studs = studs.filter((s) => enrolledStudentIds.has(s.id));
+  }
+
+  if (!studs.length) {
+    return {
+      ok: false,
+      error:
+        enrollmentSubjectIds.length > 0
+          ? filterSid
+            ? "No students are enrolled in this subject for this class, year, and term."
+            : "No students are enrolled in your subjects for this class, year, and term."
+          : "No students in this class.",
+    };
+  }
+
+  const studentIds = studs.map((s) => s.id);
 
   const { data: cards } = await admin
     .from("report_cards")
@@ -440,7 +540,12 @@ export async function loadStudentsReportData(
     };
   });
 
-  return { ok: true, students, attendanceByStudent };
+  return {
+    ok: true,
+    students,
+    attendanceByStudent,
+    subjectFilterOptions,
+  };
 }
 
 export async function ensureReportCard(
