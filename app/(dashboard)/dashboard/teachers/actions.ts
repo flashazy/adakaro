@@ -291,8 +291,7 @@ export async function addTeacherAction(
   if (nameDup) {
     return {
       ok: false,
-      error:
-        "A teacher with this name already exists at your school. Use a different spelling or remove the existing teacher first.",
+      error: "A teacher with this name already exists in your school.",
     };
   }
 

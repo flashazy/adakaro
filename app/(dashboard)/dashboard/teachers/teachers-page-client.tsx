@@ -77,6 +77,11 @@ function displaySingleCalendarYear(raw: string): string {
   return m ? m[1] : raw.trim() || "—";
 }
 
+function isSyntheticTeacherListEmail(email: string | null): boolean {
+  if (!email) return false;
+  return email.toLowerCase().includes("@teachers.adakaro.app");
+}
+
 /** Title-case each space-delimited segment while preserving spacing. */
 function formatTeacherFullNameInput(raw: string): string {
   return raw
@@ -697,8 +702,14 @@ export function TeachersPageClient({
                     ) : null}
                   </p>
                   <p className="text-sm text-slate-500 dark:text-zinc-400">
-                    {t.email ?? "No email"}
-                    {t.joinedAtLabel ? ` · joined ${t.joinedAtLabel}` : ""}
+                    {isSyntheticTeacherListEmail(t.email) ? (
+                      t.joinedAtLabel ? `joined ${t.joinedAtLabel}` : null
+                    ) : (
+                      <>
+                        {t.email ?? "No email"}
+                        {t.joinedAtLabel ? ` · joined ${t.joinedAtLabel}` : ""}
+                      </>
+                    )}
                   </p>
                 </div>
                 <form action={removeTeacherAction}>
