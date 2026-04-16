@@ -11,6 +11,7 @@ import {
 import { getDisplayName } from "@/lib/display-name";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
+import { getCurrentAcademicYearAndTerm } from "@/lib/student-subject-enrollment";
 import { getTeacherClassOptions } from "./data";
 import { TeacherDashboardLocked } from "./components/TeacherDashboardLocked";
 import { TeacherDocuments } from "./components/TeacherDocuments";
@@ -132,44 +133,77 @@ export default async function TeacherDashboardPage() {
     }[];
 
   const rows = options;
-  const groupedByClass = (() => {
-    const map = new Map<
-      string,
-      {
-        classId: string;
-        className: string;
-        items: typeof rows;
-      }
-    >();
-    for (const o of rows) {
-      const g = map.get(o.classId);
-      if (g) {
-        g.items.push(o);
-      } else {
-        map.set(o.classId, {
-          classId: o.classId,
-          className: o.className,
-          items: [o],
-        });
-      }
-    }
-    return [...map.values()].sort((a, b) =>
-      a.className.localeCompare(b.className)
-    );
-  })();
+  const { academicYear: enrollmentYear, term: enrollmentTerm } =
+    getCurrentAcademicYearAndTerm();
 
-  const classIds = [...new Set(rows.map((r) => r.classId))];
-  const counts = new Map<string, number>();
-  if (classIds.length > 0) {
-    const { data: countRows } = await admin
-      .from("students")
-      .select("class_id")
-      .in("class_id", classIds);
-    for (const r of countRows ?? []) {
-      const cid = (r as { class_id: string }).class_id;
-      counts.set(cid, (counts.get(cid) ?? 0) + 1);
+  const enrollmentKey = (classId: string, subjectId: string) =>
+    `${classId}\0${subjectId}`;
+  const enrolledStudentsByClassSubject = new Map<string, Set<string>>();
+  const distinctClassIds = [...new Set(rows.map((r) => r.classId))];
+  const distinctSubjectIds = [
+    ...new Set(
+      rows.map((r) => r.subjectId).filter((id): id is string => Boolean(id))
+    ),
+  ];
+  if (distinctClassIds.length > 0 && distinctSubjectIds.length > 0) {
+    const { data: enrRows } = await admin
+      .from("student_subject_enrollment")
+      .select("class_id, subject_id, student_id")
+      .eq("academic_year", enrollmentYear)
+      .eq("term", enrollmentTerm)
+      .in("class_id", distinctClassIds)
+      .in("subject_id", distinctSubjectIds);
+    for (const r of enrRows ?? []) {
+      const row = r as {
+        class_id: string;
+        subject_id: string;
+        student_id: string;
+      };
+      const k = enrollmentKey(row.class_id, row.subject_id);
+      let set = enrolledStudentsByClassSubject.get(k);
+      if (!set) {
+        set = new Set();
+        enrolledStudentsByClassSubject.set(k, set);
+      }
+      set.add(row.student_id);
     }
   }
+
+  const legacyClassIds = [
+    ...new Set(rows.filter((o) => !o.subjectId).map((o) => o.classId)),
+  ];
+  const fullClassStudentCounts = new Map<string, number>();
+  if (legacyClassIds.length > 0) {
+    const { data: legacyRows } = await admin
+      .from("students")
+      .select("class_id")
+      .in("class_id", legacyClassIds)
+      .eq("status", "active");
+    for (const r of legacyRows ?? []) {
+      const cid = (r as { class_id: string }).class_id;
+      fullClassStudentCounts.set(cid, (fullClassStudentCounts.get(cid) ?? 0) + 1);
+    }
+  }
+
+  function studentCountForAssignment(
+    classId: string,
+    subjectId: string | null
+  ): number {
+    if (subjectId) {
+      return (
+        enrolledStudentsByClassSubject.get(
+          enrollmentKey(classId, subjectId)
+        )?.size ?? 0
+      );
+    }
+    return fullClassStudentCounts.get(classId) ?? 0;
+  }
+
+  const sortedClassCards = [...rows].sort((a, b) => {
+    const byClass = a.className.localeCompare(b.className);
+    if (byClass !== 0) return byClass;
+    return a.subject.localeCompare(b.subject);
+  });
 
   const attendanceSubtext =
     (todayAttendanceCount ?? 0) === 0
@@ -280,46 +314,32 @@ export default async function TeacherDashboardPage() {
             My classes
           </h2>
           <div className="mt-4 grid gap-6 lg:grid-cols-2">
-            {groupedByClass.map((g) => {
-              const n = counts.get(g.classId) ?? 0;
-              const subjectLabels = [
-                ...new Set(
-                  g.items.map((a) => a.subject?.trim() || "General")
-                ),
-              ].sort((a, b) => a.localeCompare(b));
-              const years = [
-                ...new Set(
-                  g.items
-                    .map((a) => a.academicYear?.trim())
-                    .filter((y): y is string => Boolean(y))
-                ),
-              ];
-              const yearLabel = years.length === 0 ? "—" : years.join(", ");
+            {sortedClassCards.map((item) => {
+              const n = studentCountForAssignment(item.classId, item.subjectId);
+              const yearLabel = item.academicYear?.trim() || "—";
               return (
                 <div
-                  key={g.classId}
+                  key={item.assignmentId}
                   className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-shadow duration-200 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
                 >
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {g.className}
+                    {item.className}
                   </h3>
                   <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-slate-700 dark:text-zinc-300">
-                    {subjectLabels.map((s) => (
-                      <li key={s}>{s}</li>
-                    ))}
+                    <li>{item.subject}</li>
                   </ul>
                   <p className="mt-2 text-sm text-gray-500 dark:text-zinc-500">
                     {n} student{n === 1 ? "" : "s"} • Year {yearLabel}
                   </p>
                   <div className="mt-5 flex flex-wrap gap-2 sm:gap-3">
                     <Link
-                      href={`/teacher-dashboard/attendance?classId=${g.classId}`}
+                      href={`/teacher-dashboard/attendance?classId=${item.classId}`}
                       className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white transition-colors duration-150 hover:bg-indigo-500 sm:flex-none"
                     >
                       Take attendance
                     </Link>
                     <Link
-                      href={`/teacher-dashboard/grades?classId=${g.classId}`}
+                      href={`/teacher-dashboard/grades?classId=${item.classId}`}
                       className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:flex-none"
                     >
                       Enter marks
