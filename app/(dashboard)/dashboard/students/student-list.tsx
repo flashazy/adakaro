@@ -445,7 +445,7 @@ export function StudentList({ students, classes }: StudentListProps) {
                     <th className="w-[280px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
                       Parent
                     </th>
-                    <th className="sticky right-0 z-30 w-[88px] min-w-[88px] border-l border-slate-200 bg-white px-2 py-3 text-left text-sm font-medium text-gray-500 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
+                    <th className="sticky right-0 z-30 w-[112px] min-w-[112px] border-l border-slate-200 bg-white px-2 py-3 text-left text-sm font-medium text-gray-500 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
                       Actions
                     </th>
                   </tr>

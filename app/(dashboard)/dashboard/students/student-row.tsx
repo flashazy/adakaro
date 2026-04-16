@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useState, useTransition } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Pencil, Trash2, UserCircle } from "lucide-react";
 import { deleteStudent } from "./actions";
 import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
 import {
@@ -321,7 +322,7 @@ export function StudentRow({
             </div>
           )}
         </td>
-        <td className="sticky right-0 z-20 w-[88px] min-w-[88px] border-l border-slate-200 bg-white px-2 py-3 align-middle shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
+        <td className="sticky right-0 z-20 w-[112px] min-w-[112px] border-l border-slate-200 bg-white px-2 py-3 align-middle shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
           <div
             className={
               isInline
@@ -350,6 +351,14 @@ export function StudentRow({
               </>
             ) : (
               <>
+                <Link
+                  href={`/dashboard/students/${student.id}/profile`}
+                  title="View profile"
+                  aria-label="View profile"
+                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-indigo-400"
+                >
+                  <UserCircle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                </Link>
                 <button
                   type="button"
                   onClick={() => onInlineEdit(student)}
@@ -523,7 +532,13 @@ export function StudentRow({
                   {parentPhone || "—"}
                 </span>
               </div>
-              <div className="flex items-center gap-1 pt-1">
+              <div className="flex flex-wrap items-center gap-1 pt-1">
+                <Link
+                  href={`/dashboard/students/${student.id}/profile`}
+                  className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:border-zinc-600 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+                >
+                  View profile
+                </Link>
                 <button
                   type="button"
                   onClick={() => onInlineEdit(student)}

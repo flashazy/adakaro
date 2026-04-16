@@ -415,6 +415,220 @@ export interface Database {
           class_id?: string;
         };
       };
+      student_academic_records: {
+        Row: {
+          id: string;
+          student_id: string;
+          academic_year: number;
+          term: "Term 1" | "Term 2";
+          notes: string | null;
+          special_needs: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          academic_year: number;
+          term: "Term 1" | "Term 2";
+          notes?: string | null;
+          special_needs?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          academic_year?: number;
+          term?: "Term 1" | "Term 2";
+          notes?: string | null;
+          special_needs?: string | null;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "student_academic_records_created_by_fkey";
+            columns: ["created_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "student_academic_records_student_id_fkey";
+            columns: ["student_id"];
+            referencedRelation: "students";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      student_discipline_records: {
+        Row: {
+          id: string;
+          student_id: string;
+          incident_date: string;
+          incident_type:
+            | "warning"
+            | "detention"
+            | "suspension"
+            | "expulsion"
+            | "other";
+          description: string;
+          action_taken: string | null;
+          status: "pending" | "resolved" | "appealed";
+          resolved_date: string | null;
+          recorded_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          incident_date: string;
+          incident_type:
+            | "warning"
+            | "detention"
+            | "suspension"
+            | "expulsion"
+            | "other";
+          description: string;
+          action_taken?: string | null;
+          status?: "pending" | "resolved" | "appealed";
+          resolved_date?: string | null;
+          recorded_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          incident_date?: string;
+          incident_type?:
+            | "warning"
+            | "detention"
+            | "suspension"
+            | "expulsion"
+            | "other";
+          description?: string;
+          action_taken?: string | null;
+          status?: "pending" | "resolved" | "appealed";
+          resolved_date?: string | null;
+          recorded_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "student_discipline_records_recorded_by_fkey";
+            columns: ["recorded_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "student_discipline_records_student_id_fkey";
+            columns: ["student_id"];
+            referencedRelation: "students";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      student_finance_records: {
+        Row: {
+          id: string;
+          student_id: string;
+          academic_year: number;
+          term: "Term 1" | "Term 2";
+          fee_balance: number;
+          scholarship_amount: number;
+          scholarship_type: string | null;
+          payment_notes: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          academic_year: number;
+          term: "Term 1" | "Term 2";
+          fee_balance?: number;
+          scholarship_amount?: number;
+          scholarship_type?: string | null;
+          payment_notes?: string | null;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          academic_year?: number;
+          term?: "Term 1" | "Term 2";
+          fee_balance?: number;
+          scholarship_amount?: number;
+          scholarship_type?: string | null;
+          payment_notes?: string | null;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "student_finance_records_student_id_fkey";
+            columns: ["student_id"];
+            referencedRelation: "students";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "student_finance_records_updated_by_fkey";
+            columns: ["updated_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      student_health_records: {
+        Row: {
+          id: string;
+          student_id: string;
+          condition: string;
+          severity: "mild" | "moderate" | "severe" | null;
+          medication: string | null;
+          special_care_notes: string | null;
+          emergency_contact_phone: string | null;
+          recorded_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          condition: string;
+          severity?: "mild" | "moderate" | "severe" | null;
+          medication?: string | null;
+          special_care_notes?: string | null;
+          emergency_contact_phone?: string | null;
+          recorded_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          condition?: string;
+          severity?: "mild" | "moderate" | "severe" | null;
+          medication?: string | null;
+          special_care_notes?: string | null;
+          emergency_contact_phone?: string | null;
+          recorded_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "student_health_records_recorded_by_fkey";
+            columns: ["recorded_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "student_health_records_student_id_fkey";
+            columns: ["student_id"];
+            referencedRelation: "students";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       students: {
         Row: {
           id: string;
@@ -429,6 +643,7 @@ export interface Database {
           gender: "male" | "female" | null;
           enrollment_date: string;
           status: StudentStatus;
+          avatar_url: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -445,6 +660,7 @@ export interface Database {
           gender?: "male" | "female" | null;
           enrollment_date?: string;
           status?: StudentStatus;
+          avatar_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -459,6 +675,7 @@ export interface Database {
           gender?: "male" | "female" | null;
           enrollment_date?: string;
           status?: StudentStatus;
+          avatar_url?: string | null;
           updated_at?: string;
         };
       };
