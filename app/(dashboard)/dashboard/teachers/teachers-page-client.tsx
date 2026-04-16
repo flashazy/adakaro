@@ -1,8 +1,14 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import {
+  useActionState,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import Link from "next/link";
-import { Eye, EyeOff, Search } from "lucide-react";
+import { Eye, EyeOff, Search, X } from "lucide-react";
 import {
   addTeacherAction,
   assignTeacherToClassAction,
@@ -111,6 +117,10 @@ export function TeachersPageClient({
   const [assignYear, setAssignYear] = useState(() =>
     String(new Date().getFullYear())
   );
+  const [assignTeacherId, setAssignTeacherId] = useState("");
+  const [assignTeacherQuery, setAssignTeacherQuery] = useState("");
+  const [assignTeacherListOpen, setAssignTeacherListOpen] = useState(false);
+  const assignTeacherListboxId = useId();
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("teacher");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -118,6 +128,8 @@ export function TeachersPageClient({
   const [teacherListTab, setTeacherListTab] = useState<"all" | "registered">(
     "all"
   );
+  const [teacherAccountsSearch, setTeacherAccountsSearch] = useState("");
+  const [teacherAccountsPage, setTeacherAccountsPage] = useState(1);
   const [addTeacherFullName, setAddTeacherFullName] = useState("");
   const [showAddTeacherPassword, setShowAddTeacherPassword] = useState(false);
 
@@ -125,6 +137,20 @@ export function TeachersPageClient({
     if (!assignClassId) return [];
     return subjectOptionsByClassId[assignClassId] ?? [];
   }, [assignClassId, subjectOptionsByClassId]);
+
+  /** Assignment UI only — teachers who have activated (changed password). */
+  const assignableTeachers = useMemo(
+    () => teachers.filter((t) => t.passwordChanged),
+    [teachers]
+  );
+
+  const filteredAssignTeachers = useMemo(() => {
+    const q = assignTeacherQuery.trim().toLowerCase();
+    if (!q) return assignableTeachers;
+    return assignableTeachers.filter((t) =>
+      t.fullName.toLowerCase().includes(q)
+    );
+  }, [assignableTeachers, assignTeacherQuery]);
 
   const [addState, addAction, addPending] = useActionState(
     addTeacherAction,
@@ -189,6 +215,37 @@ export function TeachersPageClient({
     assignmentStart + ASSIGNMENTS_PAGE_SIZE
   );
 
+  const teachersTabList = useMemo(
+    () =>
+      teacherListTab === "registered"
+        ? teachers.filter((t) => t.passwordChanged)
+        : teachers,
+    [teachers, teacherListTab]
+  );
+
+  const teacherAccountsFiltered = useMemo(() => {
+    const q = teacherAccountsSearch.trim().toLowerCase();
+    if (!q) return teachersTabList;
+    return teachersTabList.filter((t) =>
+      t.fullName.toLowerCase().includes(q)
+    );
+  }, [teachersTabList, teacherAccountsSearch]);
+
+  const teacherAccountsTotalPages = Math.max(
+    1,
+    Math.ceil(teacherAccountsFiltered.length / ASSIGNMENTS_PAGE_SIZE)
+  );
+  const teacherAccountsSafePage = Math.min(
+    teacherAccountsPage,
+    teacherAccountsTotalPages
+  );
+  const teacherAccountsStart =
+    (teacherAccountsSafePage - 1) * ASSIGNMENTS_PAGE_SIZE;
+  const teacherAccountsPageRows = teacherAccountsFiltered.slice(
+    teacherAccountsStart,
+    teacherAccountsStart + ASSIGNMENTS_PAGE_SIZE
+  );
+
   useEffect(() => {
     setAssignmentPage(1);
   }, [assignmentSearch]);
@@ -198,10 +255,28 @@ export function TeachersPageClient({
   }, [assignmentTotalPages]);
 
   useEffect(() => {
+    setTeacherAccountsPage(1);
+  }, [teacherAccountsSearch, teacherListTab]);
+
+  useEffect(() => {
+    setTeacherAccountsPage((p) => Math.min(p, teacherAccountsTotalPages));
+  }, [teacherAccountsTotalPages]);
+
+  useEffect(() => {
     if (assignState?.ok) {
       setAssignYear(String(new Date().getFullYear()));
     }
   }, [assignState]);
+
+  useEffect(() => {
+    if (
+      assignTeacherId &&
+      !assignableTeachers.some((t) => t.userId === assignTeacherId)
+    ) {
+      setAssignTeacherId("");
+      setAssignTeacherQuery("");
+    }
+  }, [assignTeacherId, assignableTeachers]);
 
   function handleSortHeader(key: SortKey) {
     if (sortKey === key) {
@@ -217,11 +292,6 @@ export function TeachersPageClient({
   const modalPending =
     modal?.mode === "edit" ? updatePending : assignPending;
   const modalFlash = modal?.mode === "edit" ? updateState : assignState;
-
-  const teachersForList =
-    teacherListTab === "registered"
-      ? teachers.filter((t) => t.passwordChanged)
-      : teachers;
 
   return (
     <div className="space-y-10">
@@ -320,19 +390,110 @@ export function TeachersPageClient({
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="block text-sm sm:col-span-2">
               <span className="text-slate-700 dark:text-zinc-300">Teacher</span>
-              <select
-                name="teacher_id"
-                required
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-              >
-                <option value="">Select…</option>
-                {teachers.map((t) => (
-                  <option key={t.userId} value={t.userId}>
-                    {t.fullName}
-                    {t.email ? ` (${t.email})` : ""}
-                  </option>
-                ))}
-              </select>
+              <input type="hidden" name="teacher_id" value={assignTeacherId} />
+              <div className="relative mt-1 flex gap-1.5">
+                <div className="relative min-w-0 flex-1">
+                  <Search
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
+                    aria-hidden
+                  />
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    value={assignTeacherQuery}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setAssignTeacherQuery(v);
+                      setAssignTeacherId((id) => {
+                        if (!id) return "";
+                        const sel = assignableTeachers.find(
+                          (t) => t.userId === id
+                        );
+                        if (!sel || sel.fullName !== v) return "";
+                        return id;
+                      });
+                    }}
+                    onFocus={() => setAssignTeacherListOpen(true)}
+                    onBlur={() => {
+                      window.setTimeout(
+                        () => setAssignTeacherListOpen(false),
+                        180
+                      );
+                    }}
+                    role="combobox"
+                    aria-expanded={assignTeacherListOpen}
+                    aria-controls={assignTeacherListboxId}
+                    aria-autocomplete="list"
+                    placeholder="Search or select a teacher…"
+                    disabled={assignableTeachers.length === 0}
+                    className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+                  />
+                  {assignTeacherListOpen && teachers.length > 0 ? (
+                    <ul
+                      id={assignTeacherListboxId}
+                      role="listbox"
+                      className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
+                    >
+                      {assignableTeachers.length === 0 ? (
+                        <li
+                          className="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400"
+                          role="presentation"
+                        >
+                          No teachers have activated their account yet. They
+                          must sign in and change their password before you can
+                          assign classes.
+                        </li>
+                      ) : filteredAssignTeachers.length === 0 ? (
+                        <li
+                          className="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400"
+                          role="presentation"
+                        >
+                          No teachers match your search.
+                        </li>
+                      ) : (
+                        filteredAssignTeachers.map((t) => (
+                          <li key={t.userId} role="presentation">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={assignTeacherId === t.userId}
+                              className={`flex w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-zinc-800 ${
+                                assignTeacherId === t.userId
+                                  ? "bg-slate-100 font-medium dark:bg-zinc-800"
+                                  : ""
+                              }`}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setAssignTeacherId(t.userId);
+                                setAssignTeacherQuery(t.fullName);
+                                setAssignTeacherListOpen(false);
+                              }}
+                            >
+                              {t.fullName}
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssignTeacherId("");
+                    setAssignTeacherQuery("");
+                    setAssignTeacherListOpen(false);
+                  }}
+                  disabled={
+                    assignableTeachers.length === 0 ||
+                    (assignTeacherId === "" && assignTeacherQuery === "")
+                  }
+                  className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  aria-label="Clear teacher selection"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
             </label>
             <label className="block text-sm">
               <span className="text-slate-700 dark:text-zinc-300">Class</span>
@@ -411,7 +572,8 @@ export function TeachersPageClient({
             type="submit"
             disabled={
               assignPending ||
-              teachers.length === 0 ||
+              assignableTeachers.length === 0 ||
+              !assignTeacherId ||
               !assignClassId ||
               !assignSubjectId ||
               assignSubjects.length === 0
@@ -681,51 +843,124 @@ export function TeachersPageClient({
           <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
             No teachers yet. Add someone above.
           </p>
-        ) : teachersForList.length === 0 ? (
+        ) : teachersTabList.length === 0 ? (
           <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
             No teachers in this view yet.
           </p>
         ) : (
-          <ul className="mt-4 divide-y divide-slate-200 dark:divide-zinc-800">
-            {teachersForList.map((t) => (
-              <li
-                key={t.userId}
-                className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"
-              >
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-white">
-                    {t.fullName}
-                    {!t.passwordChanged ? (
-                      <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
-                        Pending first login
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="text-sm text-slate-500 dark:text-zinc-400">
-                    {isSyntheticTeacherListEmail(t.email) ? (
-                      t.joinedAtLabel ? `joined ${t.joinedAtLabel}` : null
-                    ) : (
-                      <>
-                        {t.email ?? "No email"}
-                        {t.joinedAtLabel ? ` · joined ${t.joinedAtLabel}` : ""}
-                      </>
-                    )}
-                  </p>
+          <>
+            <div className="relative mt-4 max-w-md">
+              <label htmlFor="teacher-accounts-search" className="sr-only">
+                Search by teacher name
+              </label>
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                aria-hidden
+              />
+              <input
+                id="teacher-accounts-search"
+                type="search"
+                value={teacherAccountsSearch}
+                onChange={(e) => setTeacherAccountsSearch(e.target.value)}
+                placeholder="Search teacher by name…"
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-300 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+              />
+            </div>
+            {teacherAccountsFiltered.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-600 dark:text-zinc-400">
+                No teachers match your search.
+              </p>
+            ) : (
+              <>
+                <ul className="mt-4 divide-y divide-slate-200 dark:divide-zinc-800">
+                  {teacherAccountsPageRows.map((t) => (
+                    <li
+                      key={t.userId}
+                      className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"
+                    >
+                      <div>
+                        <p className="font-medium text-slate-900 dark:text-white">
+                          {t.fullName}
+                          {!t.passwordChanged ? (
+                            <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
+                              Pending first login
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="text-sm text-slate-500 dark:text-zinc-400">
+                          {isSyntheticTeacherListEmail(t.email) ? (
+                            t.joinedAtLabel ? `joined ${t.joinedAtLabel}` : null
+                          ) : (
+                            <>
+                              {t.email ?? "No email"}
+                              {t.joinedAtLabel
+                                ? ` · joined ${t.joinedAtLabel}`
+                                : ""}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <form action={removeTeacherAction}>
+                        <input
+                          type="hidden"
+                          name="membership_id"
+                          value={t.membershipId}
+                        />
+                        <input
+                          type="hidden"
+                          name="teacher_user_id"
+                          value={t.userId}
+                        />
+                        <button
+                          type="submit"
+                          disabled={removeTeacherPending}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
+                        >
+                          {removeTeacherPending
+                            ? "Removing…"
+                            : "Remove from school"}
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-zinc-400">
+                  <span>
+                    {`${teacherAccountsStart + 1}–${Math.min(
+                      teacherAccountsStart + ASSIGNMENTS_PAGE_SIZE,
+                      teacherAccountsFiltered.length
+                    )} of ${teacherAccountsFiltered.length}`}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={teacherAccountsSafePage <= 1}
+                      onClick={() =>
+                        setTeacherAccountsPage((p) => Math.max(1, p - 1))
+                      }
+                      className="rounded border border-slate-200 bg-white px-3 py-1.5 text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        teacherAccountsSafePage >= teacherAccountsTotalPages
+                      }
+                      onClick={() =>
+                        setTeacherAccountsPage((p) =>
+                          Math.min(teacherAccountsTotalPages, p + 1)
+                        )
+                      }
+                      className="rounded border border-slate-200 bg-white px-3 py-1.5 text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
-                <form action={removeTeacherAction}>
-                  <input type="hidden" name="membership_id" value={t.membershipId} />
-                  <input type="hidden" name="teacher_user_id" value={t.userId} />
-                  <button
-                    type="submit"
-                    disabled={removeTeacherPending}
-                    className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
-                  >
-                    {removeTeacherPending ? "Removing…" : "Remove from school"}
-                  </button>
-                </form>
-              </li>
-            ))}
-          </ul>
+              </>
+            )}
+          </>
         )}
       </section>
 

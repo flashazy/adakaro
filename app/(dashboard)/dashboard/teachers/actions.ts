@@ -442,13 +442,24 @@ export async function assignTeacherToClassAction(
 
   const { data: prof } = await admin
     .from("profiles")
-    .select("email")
+    .select("email, password_changed")
     .eq("id", teacherId)
     .maybeSingle();
 
-  const teacherEmailRaw = (prof as { email: string | null } | null)?.email?.trim();
+  const profRow = prof as {
+    email: string | null;
+    password_changed?: boolean;
+  } | null;
+  const teacherEmailRaw = profRow?.email?.trim();
   if (!teacherEmailRaw) {
     return { ok: false, error: "Teacher not found." };
+  }
+  if (profRow?.password_changed === false) {
+    return {
+      ok: false,
+      error:
+        "That teacher has not activated their account yet. They must sign in and change their password before you can assign classes.",
+    };
   }
 
   const emailNorm = normalizeEmail(teacherEmailRaw);
