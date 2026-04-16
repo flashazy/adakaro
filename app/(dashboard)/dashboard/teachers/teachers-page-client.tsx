@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Eye, EyeOff, Search } from "lucide-react";
 import {
   addTeacherAction,
   assignTeacherToClassAction,
@@ -77,6 +77,21 @@ function displaySingleCalendarYear(raw: string): string {
   return m ? m[1] : raw.trim() || "—";
 }
 
+/** Title-case each space-delimited segment while preserving spacing. */
+function formatTeacherFullNameInput(raw: string): string {
+  return raw
+    .split(/( +)/)
+    .map((segment) => {
+      if (/^\s+$/.test(segment)) return segment;
+      if (segment.length === 0) return segment;
+      return (
+        segment.charAt(0).toLocaleUpperCase() +
+        segment.slice(1).toLocaleLowerCase()
+      );
+    })
+    .join("");
+}
+
 type SortKey = "teacher" | "class" | "subject";
 
 export function TeachersPageClient({
@@ -98,6 +113,8 @@ export function TeachersPageClient({
   const [teacherListTab, setTeacherListTab] = useState<"all" | "registered">(
     "all"
   );
+  const [addTeacherFullName, setAddTeacherFullName] = useState("");
+  const [showAddTeacherPassword, setShowAddTeacherPassword] = useState(false);
 
   const assignSubjects = useMemo(() => {
     if (!assignClassId) return [];
@@ -233,6 +250,10 @@ export function TeachersPageClient({
                 type="text"
                 required
                 autoComplete="name"
+                value={addTeacherFullName}
+                onChange={(e) =>
+                  setAddTeacherFullName(formatTeacherFullNameInput(e.target.value))
+                }
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                 placeholder="e.g. Jane Okello (used to sign in)"
               />
@@ -241,15 +262,35 @@ export function TeachersPageClient({
               <span className="text-slate-700 dark:text-zinc-300">
                 Temporary password <span className="text-red-600">*</span>
               </span>
-              <input
-                name="password"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                placeholder="At least 8 characters"
-              />
+              <div className="relative mt-1">
+                <input
+                  name="password"
+                  type={showAddTeacherPassword ? "text" : "password"}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-11 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  placeholder="At least 8 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowAddTeacherPassword((prev) => !prev)
+                  }
+                  className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                  aria-label={
+                    showAddTeacherPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                >
+                  {showAddTeacherPassword ? (
+                    <EyeOff className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden />
+                  )}
+                </button>
+              </div>
             </label>
           </div>
           <button
