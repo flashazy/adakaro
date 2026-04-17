@@ -60,15 +60,19 @@ export async function generateMetadata({
       const allowed = (financeSchoolRows ?? []).some(
         (r) => (r as { school_id: string }).school_id === sid
       );
-      if (sid && allowed) {
+      if (sid && allowed && p2 != null) {
         paymentMeta = p2;
       }
     }
   }
 
-  const schoolId = (
-    paymentMeta as { student: { school_id: string } | null } | null
-  )?.student?.school_id;
+  if (!paymentMeta) {
+    return { title: "Payment Receipt" };
+  }
+
+  const schoolId =
+    (paymentMeta as { student: { school_id: string } | null }).student
+      ?.school_id ?? null;
   if (!schoolId) {
     return { title: "Payment Receipt" };
   }
@@ -215,6 +219,10 @@ export default async function ReceiptPage({ params }: PageProps) {
 
     payment = paymentFromAdmin;
     usedFinanceTeacherBypass = true;
+  }
+
+  if (!payment) {
+    notFound();
   }
 
   const paymentTyped = payment as {
