@@ -3,7 +3,7 @@
 import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { formatCurrency } from "@/lib/currency";
 import { tanzaniaGradeBadgeClass } from "@/lib/tanzania-grades";
 import type {
@@ -20,6 +20,8 @@ import {
   upsertStudentHealthRecord,
 } from "./profile-actions";
 import { StudentProfileAvatar } from "./student-profile-avatar";
+import { StudentRecordAttachmentsPanel } from "./student-record-attachments-panel";
+import type { StudentProfileViewerFlags } from "./student-profile-viewer";
 
 type AcademicRow =
   Database["public"]["Tables"]["student_academic_records"]["Row"];
@@ -28,6 +30,8 @@ type DisciplineRow =
 type HealthRow = Database["public"]["Tables"]["student_health_records"]["Row"];
 type FinanceRow =
   Database["public"]["Tables"]["student_finance_records"]["Row"];
+type AttachmentRow =
+  Database["public"]["Tables"]["student_record_attachments"]["Row"];
 
 type TabId = "academic" | "discipline" | "health" | "finance";
 
@@ -85,6 +89,8 @@ interface StudentProfileClientProps {
   admissionNumber: string | null;
   className: string | null;
   avatarUrl: string | null;
+  viewer: StudentProfileViewerFlags;
+  recordAttachments: AttachmentRow[];
   academicRecords: AcademicRow[];
   disciplineRecords: DisciplineRow[];
   healthRecords: HealthRow[];
@@ -104,6 +110,8 @@ export function StudentProfileClient({
   admissionNumber,
   className,
   avatarUrl,
+  viewer,
+  recordAttachments,
   academicRecords,
   disciplineRecords,
   healthRecords,
@@ -117,8 +125,29 @@ export function StudentProfileClient({
   profileScholarshipLines,
 }: StudentProfileClientProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>("academic");
+  const visible = viewer.visibleTabs;
+  const [tab, setTab] = useState<TabId>(() => {
+    if (visible.includes("academic")) return "academic";
+    return visible[0] ?? "academic";
+  });
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!visible.includes(tab)) {
+      setTab(visible[0] ?? "academic");
+    }
+  }, [visible, tab]);
+
+  const attachmentsByRecord = useMemo(() => {
+    const m = new Map<string, AttachmentRow[]>();
+    for (const a of recordAttachments) {
+      const key = `${a.record_type}:${a.record_id}`;
+      const list = m.get(key) ?? [];
+      list.push(a);
+      m.set(key, list);
+    }
+    return m;
+  }, [recordAttachments]);
   const [formError, setFormError] = useState<string | null>(null);
 
   const money = (n: number) => formatCurrency(n, currencyCode);
@@ -176,27 +205,30 @@ export function StudentProfileClient({
           admissionNumber={admissionNumber}
           classLabel={className}
           avatarUrl={avatarUrl}
+          canChangePhoto={viewer.canChangeAvatar}
         />
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2 dark:border-zinc-800">
-        {tabLabels.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+        {tabLabels
+          .filter((t) => visible.includes(t.id))
+          .map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
       </div>
 
-      {tab === "academic" && (
+      {tab === "academic" && visible.includes("academic") && (
         <section className="space-y-8" aria-labelledby="academic-heading">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2
@@ -205,16 +237,18 @@ export function StudentProfileClient({
             >
               Academic
             </h2>
-            <button
-              type="button"
-              onClick={() => {
-                setFormError(null);
-                setAcademicModal("new");
-              }}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-            >
-              Add record
-            </button>
+            {viewer.canManageStaffRecords ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFormError(null);
+                  setAcademicModal("new");
+                }}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+              >
+                Add record
+              </button>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -428,16 +462,18 @@ export function StudentProfileClient({
                           Updated {formatTs(r.updated_at)}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormError(null);
-                          setAcademicModal(r);
-                        }}
-                        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-                      >
-                        Edit
-                      </button>
+                      {viewer.canManageStaffRecords ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormError(null);
+                            setAcademicModal(r);
+                          }}
+                          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                     </div>
                     {r.notes ? (
                       <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
@@ -463,7 +499,7 @@ export function StudentProfileClient({
         </section>
       )}
 
-      {tab === "discipline" && (
+      {tab === "discipline" && visible.includes("discipline") && (
         <section className="space-y-4" aria-labelledby="discipline-heading">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2
@@ -472,16 +508,18 @@ export function StudentProfileClient({
             >
               Discipline
             </h2>
-            <button
-              type="button"
-              onClick={() => {
-                setFormError(null);
-                setDisciplineModal("new");
-              }}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-            >
-              Add record
-            </button>
+            {viewer.canManageStaffRecords ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFormError(null);
+                  setDisciplineModal("new");
+                }}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+              >
+                Add record
+              </button>
+            ) : null}
           </div>
           {disciplineRecords.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-zinc-400">
@@ -504,16 +542,18 @@ export function StudentProfileClient({
                         Status: {r.status} · Logged {formatTs(r.created_at)}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormError(null);
-                        setDisciplineModal(r);
-                      }}
-                      className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-                    >
-                      Edit
-                    </button>
+                    {viewer.canManageStaffRecords ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormError(null);
+                          setDisciplineModal(r);
+                        }}
+                        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                   </div>
                   <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
                     {r.description}
@@ -529,6 +569,16 @@ export function StudentProfileClient({
                       Resolved {formatDateOnly(r.resolved_date)}
                     </p>
                   ) : null}
+                  <StudentRecordAttachmentsPanel
+                    studentId={studentId}
+                    recordType="discipline"
+                    recordId={r.id}
+                    attachments={
+                      attachmentsByRecord.get(`discipline:${r.id}`) ?? []
+                    }
+                    canUpload={viewer.canUploadAttachments}
+                    canDelete={viewer.canDeleteAttachments}
+                  />
                 </li>
               ))}
             </ul>
@@ -536,7 +586,7 @@ export function StudentProfileClient({
         </section>
       )}
 
-      {tab === "health" && (
+      {tab === "health" && visible.includes("health") && (
         <section className="space-y-4" aria-labelledby="health-heading">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2
@@ -545,16 +595,18 @@ export function StudentProfileClient({
             >
               Health
             </h2>
-            <button
-              type="button"
-              onClick={() => {
-                setFormError(null);
-                setHealthModal("new");
-              }}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-            >
-              Add record
-            </button>
+            {viewer.canManageStaffRecords ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFormError(null);
+                  setHealthModal("new");
+                }}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+              >
+                Add record
+              </button>
+            ) : null}
           </div>
           {healthRecords.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-zinc-400">
@@ -577,16 +629,18 @@ export function StudentProfileClient({
                         Updated {formatTs(r.updated_at)}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormError(null);
-                        setHealthModal(r);
-                      }}
-                      className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-                    >
-                      Edit
-                    </button>
+                    {viewer.canManageStaffRecords ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormError(null);
+                          setHealthModal(r);
+                        }}
+                        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                   </div>
                   {r.medication ? (
                     <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
@@ -606,6 +660,14 @@ export function StudentProfileClient({
                       {r.emergency_contact_phone}
                     </p>
                   ) : null}
+                  <StudentRecordAttachmentsPanel
+                    studentId={studentId}
+                    recordType="health"
+                    recordId={r.id}
+                    attachments={attachmentsByRecord.get(`health:${r.id}`) ?? []}
+                    canUpload={viewer.canUploadAttachments}
+                    canDelete={viewer.canDeleteAttachments}
+                  />
                 </li>
               ))}
             </ul>
@@ -613,7 +675,7 @@ export function StudentProfileClient({
         </section>
       )}
 
-      {tab === "finance" && (
+      {tab === "finance" && visible.includes("finance") && (
         <section className="space-y-8" aria-labelledby="finance-heading">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2
@@ -622,16 +684,18 @@ export function StudentProfileClient({
             >
               Finance
             </h2>
-            <button
-              type="button"
-              onClick={() => {
-                setFormError(null);
-                setFinanceModal("new");
-              }}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-            >
-              Add record
-            </button>
+            {viewer.canManageStaffRecords ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setFormError(null);
+                  setFinanceModal("new");
+                }}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+              >
+                Add record
+              </button>
+            ) : null}
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -802,16 +866,18 @@ export function StudentProfileClient({
                           Updated {formatTs(r.updated_at)}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormError(null);
-                          setFinanceModal(r);
-                        }}
-                        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-                      >
-                        Edit
-                      </button>
+                      {viewer.canManageStaffRecords ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormError(null);
+                            setFinanceModal(r);
+                          }}
+                          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                     </div>
                     <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
                       Fee balance:{" "}

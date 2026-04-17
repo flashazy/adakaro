@@ -423,6 +423,390 @@ export async function uploadStudentAvatar(
   return { ok: true as const };
 }
 
+const STUDENT_RECORD_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+
+const STUDENT_RECORD_ATTACHMENT_MIMES: Record<string, string> = {
+  "application/pdf": ".pdf",
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    ".docx",
+};
+
+const EXT_TO_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  doc: "application/msword",
+  docx:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+function resolveAttachmentMime(file: Blob, fileName: string): string | null {
+  if (file.type && STUDENT_RECORD_ATTACHMENT_MIMES[file.type]) {
+    return file.type;
+  }
+  const ext = fileName.toLowerCase().split(".").pop() ?? "";
+  return EXT_TO_MIME[ext] ?? null;
+}
+
+async function requireStudentAttachmentUploader(studentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false as const, error: "You must be signed in." };
+  }
+
+  const { data: studentRow, error: stErr } = await supabase
+    .from("students")
+    .select("id, school_id, class_id")
+    .eq("id", studentId)
+    .maybeSingle();
+
+  const student = studentRow as
+    | { id: string; school_id: string; class_id: string }
+    | null;
+
+  if (stErr || !student) {
+    return { ok: false as const, error: "Student not found." };
+  }
+
+  const { data: isAdmin, error: adminErr } = await supabase.rpc(
+    "is_school_admin",
+    { p_school_id: student.school_id } as never
+  );
+  if (!adminErr && isAdmin) {
+    return {
+      ok: true as const,
+      supabase,
+      userId: user.id,
+      schoolId: student.school_id,
+      classId: student.class_id,
+    };
+  }
+
+  const { data: isSuper, error: superErr } = await supabase.rpc(
+    "is_super_admin"
+  );
+  if (!superErr && isSuper) {
+    return {
+      ok: true as const,
+      supabase,
+      userId: user.id,
+      schoolId: student.school_id,
+      classId: student.class_id,
+    };
+  }
+
+  const { data: forClass, error: classErr } = await supabase.rpc(
+    "is_teacher_for_class",
+    { p_class_id: student.class_id } as never
+  );
+  if (classErr || !forClass) {
+    return {
+      ok: false as const,
+      error: "Only school admins or assigned teachers can upload attachments.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    supabase,
+    userId: user.id,
+    schoolId: student.school_id,
+    classId: student.class_id,
+  };
+}
+
+function sanitizeAttachmentFileStem(name: string): string {
+  const base = name.replace(/[/\\]/g, "_").replace(/[^\w.\-]+/g, "_");
+  return base.slice(0, 120) || "file";
+}
+
+function attachmentStoragePath(
+  schoolId: string,
+  studentId: string,
+  recordType: "discipline" | "health",
+  originalName: string
+): string {
+  const stem = sanitizeAttachmentFileStem(originalName);
+  const unique = crypto.randomUUID();
+  return `${schoolId}/${studentId}/${recordType}/${unique}_${stem}`;
+}
+
+async function assertAttachmentBelongsToStudent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  attachmentId: string,
+  studentId: string
+): Promise<
+  | { ok: true; file_url: string; file_name: string }
+  | { ok: false; error: string }
+> {
+  const { data: row, error } = await supabase
+    .from("student_record_attachments")
+    .select("id, record_id, record_type, file_url, file_name")
+    .eq("id", attachmentId)
+    .maybeSingle();
+
+  const att = row as
+    | {
+        id: string;
+        record_id: string;
+        record_type: string;
+        file_url: string;
+        file_name: string;
+      }
+    | null;
+
+  if (error || !att) {
+    return { ok: false, error: "Attachment not found." };
+  }
+
+  if (att.record_type === "discipline") {
+    const { data: dr } = await supabase
+      .from("student_discipline_records")
+      .select("student_id")
+      .eq("id", att.record_id)
+      .maybeSingle();
+    const sid = (dr as { student_id: string } | null)?.student_id;
+    if (sid !== studentId) {
+      return { ok: false, error: "Attachment not found." };
+    }
+  } else if (att.record_type === "health") {
+    const { data: hr } = await supabase
+      .from("student_health_records")
+      .select("student_id")
+      .eq("id", att.record_id)
+      .maybeSingle();
+    const sid = (hr as { student_id: string } | null)?.student_id;
+    if (sid !== studentId) {
+      return { ok: false, error: "Attachment not found." };
+    }
+  } else {
+    return { ok: false, error: "Invalid attachment." };
+  }
+
+  return { ok: true, file_url: att.file_url, file_name: att.file_name };
+}
+
+export async function uploadStudentRecordAttachment(
+  formData: FormData
+): Promise<{ error?: string; success?: true }> {
+  const studentId = String(formData.get("student_id") ?? "").trim();
+  const recordId = String(formData.get("record_id") ?? "").trim();
+  const recordType = String(formData.get("record_type") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
+
+  if (!studentId) return { error: "Missing student." };
+  if (!recordId) return { error: "Missing record." };
+  if (recordType !== "discipline" && recordType !== "health") {
+    return { error: "Invalid record type." };
+  }
+
+  const gate = await requireStudentAttachmentUploader(studentId);
+  if (!gate.ok) return { error: gate.error };
+
+  if (recordType === "discipline") {
+    const { data: dr } = await gate.supabase
+      .from("student_discipline_records")
+      .select("student_id")
+      .eq("id", recordId)
+      .maybeSingle();
+    if ((dr as { student_id: string } | null)?.student_id !== studentId) {
+      return { error: "Record not found for this student." };
+    }
+  } else {
+    const { data: hr } = await gate.supabase
+      .from("student_health_records")
+      .select("student_id")
+      .eq("id", recordId)
+      .maybeSingle();
+    if ((hr as { student_id: string } | null)?.student_id !== studentId) {
+      return { error: "Record not found for this student." };
+    }
+  }
+
+  const raw = formData.get("file");
+  if (!(raw instanceof Blob) || raw.size === 0) {
+    return { error: "Choose a file to upload." };
+  }
+  if (raw.size > STUDENT_RECORD_ATTACHMENT_MAX_BYTES) {
+    return { error: "File must be 5MB or smaller." };
+  }
+
+  const origName =
+    raw instanceof File && raw.name.trim()
+      ? raw.name.trim()
+      : "upload.bin";
+
+  const mime = resolveAttachmentMime(raw, origName);
+  if (!mime || !STUDENT_RECORD_ATTACHMENT_MIMES[mime]) {
+    return {
+      error: "Unsupported file type (use PDF, JPG, PNG, DOC, or DOCX).",
+    };
+  }
+
+  const displayName =
+    origName === "upload.bin"
+      ? `upload${STUDENT_RECORD_ATTACHMENT_MIMES[mime]}`
+      : origName;
+
+  const storagePath = attachmentStoragePath(
+    gate.schoolId,
+    studentId,
+    recordType,
+    displayName
+  );
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error
+          ? e.message
+          : "Server storage is not configured. Add SUPABASE_SERVICE_ROLE_KEY to the app environment.",
+    };
+  }
+
+  const buf = await raw.arrayBuffer();
+  const { error: upErr } = await admin.storage
+    .from("student-record-attachments")
+    .upload(storagePath, buf, {
+      upsert: false,
+      contentType: mime,
+      cacheControl: "3600",
+    });
+
+  if (upErr) {
+    return {
+      error:
+        upErr.message.includes("Bucket not found") || upErr.message.includes("not found")
+          ? `${upErr.message} Apply migration 00081_student_record_attachments in Supabase.`
+          : upErr.message,
+    };
+  }
+
+  const { error: insErr } = await gate.supabase
+    .from("student_record_attachments")
+    .insert({
+      record_id: recordId,
+      record_type: recordType,
+      file_name: displayName,
+      file_url: storagePath,
+      file_size: raw.size,
+      mime_type: mime,
+      description,
+      uploaded_by: gate.userId,
+    } as never);
+
+  if (insErr) {
+    await admin.storage.from("student-record-attachments").remove([storagePath]);
+    return { error: insErr.message };
+  }
+
+  revalidateStudentProfile(studentId);
+  return { success: true as const };
+}
+
+export async function deleteStudentRecordAttachment(
+  formData: FormData
+): Promise<{ error?: string; success?: true }> {
+  const studentId = String(formData.get("student_id") ?? "").trim();
+  const attachmentId = String(formData.get("attachment_id") ?? "").trim();
+
+  if (!studentId || !attachmentId) {
+    return { error: "Missing fields." };
+  }
+
+  const gate = await requireSchoolAdminForStudent(studentId);
+  if (!gate.ok) return { error: gate.error };
+
+  const check = await assertAttachmentBelongsToStudent(
+    gate.supabase,
+    attachmentId,
+    studentId
+  );
+  if (!check.ok) return { error: check.error };
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error
+          ? e.message
+          : "Server storage is not configured. Add SUPABASE_SERVICE_ROLE_KEY to the app environment.",
+    };
+  }
+
+  await admin.storage
+    .from("student-record-attachments")
+    .remove([check.file_url]);
+
+  const { error: delErr } = await gate.supabase
+    .from("student_record_attachments")
+    .delete()
+    .eq("id", attachmentId);
+
+  if (delErr) return { error: delErr.message };
+
+  revalidateStudentProfile(studentId);
+  return { success: true as const };
+}
+
+export async function signStudentRecordAttachmentUrl(
+  attachmentId: string,
+  studentId: string
+): Promise<{ error?: string; url?: string }> {
+  if (!attachmentId || !studentId) {
+    return { error: "Missing fields." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be signed in." };
+  }
+
+  const check = await assertAttachmentBelongsToStudent(
+    supabase,
+    attachmentId,
+    studentId
+  );
+  if (!check.ok) return { error: check.error };
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error
+          ? e.message
+          : "Server storage is not configured. Add SUPABASE_SERVICE_ROLE_KEY to the app environment.",
+    };
+  }
+
+  const { data: signed, error: signErr } = await admin.storage
+    .from("student-record-attachments")
+    .createSignedUrl(check.file_url, 120);
+
+  if (signErr || !signed?.signedUrl) {
+    return { error: signErr?.message ?? "Could not create link." };
+  }
+
+  return { url: signed.signedUrl };
+}
+
 export async function clearStudentAvatar(
   studentId: string
 ): Promise<{ error?: string; ok?: true }> {

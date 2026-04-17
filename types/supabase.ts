@@ -629,6 +629,84 @@ export interface Database {
           },
         ];
       };
+      school_member_record_attachment_scopes: {
+        Row: {
+          school_id: string;
+          user_id: string;
+          scope: "health" | "discipline";
+          created_at: string;
+        };
+        Insert: {
+          school_id: string;
+          user_id: string;
+          scope: "health" | "discipline";
+          created_at?: string;
+        };
+        Update: {
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "school_member_record_attachment_scopes_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "school_member_record_attachment_scopes_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      student_record_attachments: {
+        Row: {
+          id: string;
+          record_id: string;
+          record_type: "discipline" | "health";
+          file_name: string;
+          file_url: string;
+          file_size: number | null;
+          mime_type: string | null;
+          description: string | null;
+          uploaded_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          record_id: string;
+          record_type: "discipline" | "health";
+          file_name: string;
+          file_url: string;
+          file_size?: number | null;
+          mime_type?: string | null;
+          description?: string | null;
+          uploaded_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          record_id?: string;
+          record_type?: "discipline" | "health";
+          file_name?: string;
+          file_url?: string;
+          file_size?: number | null;
+          mime_type?: string | null;
+          description?: string | null;
+          uploaded_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "student_record_attachments_uploaded_by_fkey";
+            columns: ["uploaded_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       students: {
         Row: {
           id: string;
@@ -1601,6 +1679,14 @@ export interface Database {
       };
       is_teacher_for_school: {
         Args: { p_school_id: string };
+        Returns: boolean;
+      };
+      is_teacher_for_student_by_id: {
+        Args: { p_student_id: string };
+        Returns: boolean;
+      };
+      has_record_attachment_scope: {
+        Args: { p_school_id: string; p_scope: string };
         Returns: boolean;
       };
       is_user_blocked_by_school_suspension: {

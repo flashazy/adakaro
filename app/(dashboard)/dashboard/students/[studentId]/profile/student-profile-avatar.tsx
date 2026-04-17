@@ -21,6 +21,8 @@ interface StudentProfileAvatarProps {
   admissionNumber: string | null;
   classLabel: string | null;
   avatarUrl: string | null;
+  /** When false, photo upload UI is hidden (e.g. teachers / dept viewers). */
+  canChangePhoto?: boolean;
 }
 
 async function blobFromOutputCanvas(
@@ -51,6 +53,7 @@ export function StudentProfileAvatar({
   admissionNumber,
   classLabel,
   avatarUrl,
+  canChangePhoto = true,
 }: StudentProfileAvatarProps) {
   const router = useRouter();
   const inputId = useId();
@@ -177,52 +180,76 @@ export function StudentProfileAvatar({
       avatarUrl.startsWith("http://localhost") ||
       avatarUrl.startsWith("http://127.0.0.1"));
 
+  const photoFrameClass = `group relative flex h-[200px] w-[200px] shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 dark:border-zinc-600 dark:bg-zinc-800/80 ${
+    canChangePhoto
+      ? "transition hover:border-indigo-400 hover:bg-slate-100 disabled:opacity-60 dark:hover:border-indigo-500 dark:hover:bg-zinc-800"
+      : ""
+  }`;
+
+  const photoFrameInner = (
+    <>
+      {showAvatar ? (
+        // eslint-disable-next-line @next/next/no-img-element -- storage host varies by project env
+        <img
+          src={avatarUrl}
+          alt=""
+          width={STUDENT_AVATAR_OUTPUT_SIZE}
+          height={STUDENT_AVATAR_OUTPUT_SIZE}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-2 text-slate-400 dark:text-zinc-500">
+          <UserRound className="h-16 w-16" strokeWidth={1.25} aria-hidden />
+          <span className="flex items-center gap-1 text-xs font-medium">
+            <Camera className="h-3.5 w-3.5" aria-hidden />
+            Photo
+          </span>
+        </div>
+      )}
+      {canChangePhoto ? (
+        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent py-2 text-center text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
+          Click to upload
+        </span>
+      ) : null}
+    </>
+  );
+
   return (
     <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
       <div className="flex shrink-0 flex-col items-center gap-2 sm:items-start">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={pending}
-          className="group relative flex h-[200px] w-[200px] shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:border-indigo-400 hover:bg-slate-100 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800/80 dark:hover:border-indigo-500 dark:hover:bg-zinc-800"
-          aria-label="Upload or change student photo"
-        >
-          {showAvatar ? (
-            // eslint-disable-next-line @next/next/no-img-element -- storage host varies by project env
-            <img
-              src={avatarUrl}
-              alt=""
-              width={STUDENT_AVATAR_OUTPUT_SIZE}
-              height={STUDENT_AVATAR_OUTPUT_SIZE}
-              className="h-full w-full object-cover"
+        {canChangePhoto ? (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={pending}
+            className={photoFrameClass}
+            aria-label="Upload or change student photo"
+          >
+            {photoFrameInner}
+          </button>
+        ) : (
+          <div className={photoFrameClass} aria-hidden>
+            {photoFrameInner}
+          </div>
+        )}
+        {canChangePhoto ? (
+          <>
+            <label htmlFor={inputId} className="sr-only">
+              Upload student photo
+            </label>
+            <input
+              ref={fileInputRef}
+              id={inputId}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                onFileChosen(f);
+              }}
             />
-          ) : (
-            <div className="flex flex-col items-center gap-2 text-slate-400 dark:text-zinc-500">
-              <UserRound className="h-16 w-16" strokeWidth={1.25} aria-hidden />
-              <span className="flex items-center gap-1 text-xs font-medium">
-                <Camera className="h-3.5 w-3.5" aria-hidden />
-                Photo
-              </span>
-            </div>
-          )}
-          <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent py-2 text-center text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
-            Click to upload
-          </span>
-        </button>
-        <label htmlFor={inputId} className="sr-only">
-          Upload student photo
-        </label>
-        <input
-          ref={fileInputRef}
-          id={inputId}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="sr-only"
-          onChange={(e) => {
-            const f = e.target.files?.[0] ?? null;
-            onFileChosen(f);
-          }}
-        />
+          </>
+        ) : null}
       </div>
 
       <div className="min-w-0 flex-1 space-y-3">
@@ -231,24 +258,26 @@ export function StudentProfileAvatar({
             {headline}
           </h2>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={pending}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
-          >
-            Change photo
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-            title={photoRequirementsDescription}
-            aria-label={`Photo requirements: ${photoRequirementsDescription}`}
-          >
-            <Info className="h-4 w-4" strokeWidth={2} aria-hidden />
-          </button>
-        </div>
+        {canChangePhoto ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={pending}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+            >
+              Change photo
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+              title={photoRequirementsDescription}
+              aria-label={`Photo requirements: ${photoRequirementsDescription}`}
+            >
+              <Info className="h-4 w-4" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+        ) : null}
         {banner ? (
           <p
             className={
