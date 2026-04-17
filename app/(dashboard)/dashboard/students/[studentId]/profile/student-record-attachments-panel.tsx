@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
+import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import type { Database } from "@/types/supabase";
 import {
   deleteStudentRecordAttachment,
@@ -42,6 +43,9 @@ export function StudentRecordAttachmentsPanel({
   const [pending, startTransition] = useTransition();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
 
   async function openSigned(
     attachmentId: string,
@@ -71,24 +75,40 @@ export function StudentRecordAttachmentsPanel({
     });
   }
 
-  function onDelete(attachmentId: string) {
+  function openDeleteConfirm(attachmentId: string) {
     if (!canDelete) return;
-    if (!window.confirm("Delete this attachment? This cannot be undone.")) {
-      return;
-    }
     setError(null);
+    setDeleteTargetId(attachmentId);
+    setDeleteConfirmOpen(true);
+  }
+
+  function closeDeleteConfirm() {
+    if (deletePending) return;
+    setDeleteConfirmOpen(false);
+    setDeleteTargetId(null);
+  }
+
+  async function confirmDeleteAttachment() {
+    if (!deleteTargetId) return;
+    setError(null);
+    setDeletePending(true);
     const fd = new FormData();
     fd.set("student_id", studentId);
-    fd.set("attachment_id", attachmentId);
-    startTransition(async () => {
+    fd.set("attachment_id", deleteTargetId);
+    try {
       const res = await deleteStudentRecordAttachment(fd);
       if (res.error) {
         setError(res.error);
+        setDeletePending(false);
         return;
       }
+      setDeleteConfirmOpen(false);
+      setDeleteTargetId(null);
       setUploadOpen(false);
       router.refresh();
-    });
+    } finally {
+      setDeletePending(false);
+    }
   }
 
   function onUploadSubmit(e: FormEvent<HTMLFormElement>) {
@@ -156,8 +176,8 @@ export function StudentRecordAttachmentsPanel({
                 {canDelete ? (
                   <button
                     type="button"
-                    disabled={pending}
-                    onClick={() => onDelete(a.id)}
+                    disabled={pending || deletePending}
+                    onClick={() => openDeleteConfirm(a.id)}
                     className="text-sm font-medium text-red-600 hover:text-red-500 disabled:opacity-50 dark:text-red-400"
                   >
                     Delete
@@ -190,6 +210,17 @@ export function StudentRecordAttachmentsPanel({
           {error}
         </p>
       ) : null}
+
+      <ConfirmDeleteModal
+        open={deleteConfirmOpen}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => void confirmDeleteAttachment()}
+        title="Delete attachment"
+        message="Are you sure you want to delete this attachment? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        isDeleting={deletePending}
+      />
 
       {uploadOpen ? (
         <div
