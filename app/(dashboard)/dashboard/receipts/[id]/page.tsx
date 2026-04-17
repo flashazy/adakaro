@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   getSchoolCurrencyById,
   resolveSchoolDisplay,
@@ -34,14 +35,39 @@ export async function generateMetadata({
     return { title: "Payment Receipt" };
   }
 
-  const { data: payment } = await supabase
+  let { data: paymentMeta } = await supabase
     .from("payments")
     .select("student:students(school_id)")
     .eq("id", paymentId)
     .maybeSingle();
 
+  if (!paymentMeta) {
+    const { data: financeSchoolRows } = await supabase
+      .from("teacher_department_roles")
+      .select("school_id")
+      .eq("user_id", user.id)
+      .eq("department", "finance");
+    if ((financeSchoolRows ?? []).length > 0) {
+      const admin = createAdminClient();
+      const { data: p2 } = await admin
+        .from("payments")
+        .select("student:students(school_id)")
+        .eq("id", paymentId)
+        .maybeSingle();
+      const sid = (
+        p2 as { student: { school_id: string } | null } | null
+      )?.student?.school_id;
+      const allowed = (financeSchoolRows ?? []).some(
+        (r) => (r as { school_id: string }).school_id === sid
+      );
+      if (sid && allowed) {
+        paymentMeta = p2;
+      }
+    }
+  }
+
   const schoolId = (
-    payment as { student: { school_id: string } | null } | null
+    paymentMeta as { student: { school_id: string } | null } | null
   )?.student?.school_id;
   if (!schoolId) {
     return { title: "Payment Receipt" };
@@ -130,6 +156,9 @@ function paymentStatusBadgeLabel(status: string): string {
   return status.replace(/_/g, " ");
 }
 
+const PAYMENT_SELECT =
+  "*, student:students(full_name, admission_number, school_id, class:classes(name)), fee_structure:fee_structures(name)";
+
 export default async function ReceiptPage({ params }: PageProps) {
   const { id: paymentId } = await params;
   const supabase = await createClient();
@@ -139,15 +168,54 @@ export default async function ReceiptPage({ params }: PageProps) {
 
   if (!user) redirect("/login");
 
-  const { data: payment } = await supabase
+  let { data: payment } = await supabase
     .from("payments")
-    .select(
-      "*, student:students(full_name, admission_number, school_id, class:classes(name)), fee_structure:fee_structures(name)"
-    )
+    .select(PAYMENT_SELECT)
     .eq("id", paymentId)
-    .single();
+    .maybeSingle();
 
-  if (!payment) notFound();
+  let usedFinanceTeacherBypass = false;
+
+  if (!payment) {
+    const { data: financeSchoolRows } = await supabase
+      .from("teacher_department_roles")
+      .select("school_id")
+      .eq("user_id", user.id)
+      .eq("department", "finance");
+
+    const financeSchoolIds = new Set(
+      (financeSchoolRows ?? []).map(
+        (r) => (r as { school_id: string }).school_id
+      )
+    );
+
+    if (financeSchoolIds.size === 0) {
+      notFound();
+    }
+
+    const admin = createAdminClient();
+    const { data: paymentFromAdmin } = await admin
+      .from("payments")
+      .select(PAYMENT_SELECT)
+      .eq("id", paymentId)
+      .maybeSingle();
+
+    if (!paymentFromAdmin) {
+      notFound();
+    }
+
+    const paySchoolId = (
+      paymentFromAdmin as {
+        student: { school_id: string } | null;
+      }
+    ).student?.school_id;
+    if (!paySchoolId || !financeSchoolIds.has(paySchoolId)) {
+      notFound();
+    }
+
+    payment = paymentFromAdmin;
+    usedFinanceTeacherBypass = true;
+  }
 
   const paymentTyped = payment as {
     amount: number;
@@ -165,7 +233,11 @@ export default async function ReceiptPage({ params }: PageProps) {
     fee_structure: { name: string } | null;
   };
 
-  const { data: receipt } = await supabase
+  const receiptClient = usedFinanceTeacherBypass
+    ? createAdminClient()
+    : supabase;
+
+  const { data: receipt } = await receiptClient
     .from("receipts")
     .select("*")
     .eq("payment_id", paymentId)
@@ -242,9 +314,18 @@ export default async function ReceiptPage({ params }: PageProps) {
     .maybeSingle();
   const profileRole = (profileForWatchdog as { role: string } | null)?.role;
   const watchdogRole: "admin" | "parent" =
-    profileRole === "admin" || profileRole === "super_admin"
+    profileRole === "admin" ||
+    profileRole === "super_admin" ||
+    usedFinanceTeacherBypass
       ? "admin"
       : "parent";
+
+  const backHref =
+    usedFinanceTeacherBypass &&
+    profileRole !== "admin" &&
+    profileRole !== "super_admin"
+      ? "/teacher-dashboard"
+      : "/dashboard/payments";
 
   return (
     <>
@@ -259,7 +340,7 @@ export default async function ReceiptPage({ params }: PageProps) {
             Payment Receipt
           </h1>
           <Link
-            href="/dashboard/payments"
+            href={backHref}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Back

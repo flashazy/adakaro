@@ -256,9 +256,29 @@ export async function updateSession(request: NextRequest) {
     // Teachers with department roles may open student profile pages under
     // /dashboard/students/[studentId]/profile. The page itself enforces
     // authorization (teacher-for-class or teacher_department_roles).
-    const isTeacherAllowedAdminRoute =
+    const isTeacherStudentProfileRoute =
       role === "teacher" &&
       /^\/dashboard\/students\/[^/]+\/profile(?:\/|$)/.test(pathname);
+
+    // Finance department teachers may open payment receipts (read-only).
+    let isTeacherFinanceReceiptRoute = false;
+    if (
+      role === "teacher" &&
+      /^\/dashboard\/receipts\/[^/]+(?:\/|$)/.test(pathname)
+    ) {
+      const { data: financeDeptRow, error: financeDeptErr } = await supabase
+        .from("teacher_department_roles")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("department", "finance")
+        .limit(1)
+        .maybeSingle();
+      isTeacherFinanceReceiptRoute =
+        !financeDeptErr && financeDeptRow != null;
+    }
+
+    const isTeacherAllowedAdminRoute =
+      isTeacherStudentProfileRoute || isTeacherFinanceReceiptRoute;
 
     // Enforce role-based access on protected routes.
     if (
