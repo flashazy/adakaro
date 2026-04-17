@@ -629,6 +629,44 @@ export interface Database {
           },
         ];
       };
+      teacher_department_roles: {
+        Row: {
+          id: string;
+          school_id: string;
+          user_id: string;
+          department: "academic" | "discipline" | "health" | "finance";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          user_id: string;
+          department: "academic" | "discipline" | "health" | "finance";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          school_id?: string;
+          user_id?: string;
+          department?: "academic" | "discipline" | "health" | "finance";
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "teacher_department_roles_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "teacher_department_roles_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       school_member_record_attachment_scopes: {
         Row: {
           school_id: string;

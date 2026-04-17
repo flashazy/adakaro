@@ -14,10 +14,12 @@ import {
   assignTeacherToClassAction,
   removeTeacherAssignmentAction,
   removeTeacherFromSchoolAction,
+  setTeacherDepartmentRolesAction,
   updateTeacherAssignmentAction,
-  type TeacherActionState,
 } from "./actions";
+import type { TeacherActionState, TeacherDepartment } from "./types";
 import { AssignTeacherModal, type AssignModalState } from "./components/AssignTeacherModal";
+import { ManageDepartmentRolesModal } from "./components/ManageDepartmentRolesModal";
 
 function flash(state: TeacherActionState | null) {
   if (!state) return null;
@@ -46,7 +48,16 @@ export interface TeacherRow {
   joinedAtLabel: string;
   /** True after the teacher has completed the first-time password change. */
   passwordChanged: boolean;
+  /** Department roles assigned to this teacher for the active school. */
+  departmentRoles: TeacherDepartment[];
 }
+
+const DEPARTMENT_LABELS: Record<TeacherDepartment, string> = {
+  academic: "Academic",
+  discipline: "Discipline",
+  health: "Health",
+  finance: "Finance",
+};
 
 export interface AssignmentRow {
   id: string;
@@ -132,6 +143,11 @@ export function TeachersPageClient({
   const [teacherAccountsPage, setTeacherAccountsPage] = useState(1);
   const [addTeacherFullName, setAddTeacherFullName] = useState("");
   const [showAddTeacherPassword, setShowAddTeacherPassword] = useState(false);
+  const [rolesModal, setRolesModal] = useState<{
+    userId: string;
+    name: string;
+    initial: TeacherDepartment[];
+  } | null>(null);
 
   const assignSubjects = useMemo(() => {
     if (!assignClassId) return [];
@@ -168,6 +184,16 @@ export function TeachersPageClient({
     useActionState(removeTeacherAssignmentAction, null as TeacherActionState | null);
   const [removeTeacherState, removeTeacherAction, removeTeacherPending] =
     useActionState(removeTeacherFromSchoolAction, null as TeacherActionState | null);
+  const [rolesState, rolesAction, rolesPending] = useActionState(
+    setTeacherDepartmentRolesAction,
+    null as TeacherActionState | null
+  );
+
+  useEffect(() => {
+    if (rolesState?.ok) {
+      setRolesModal(null);
+    }
+  }, [rolesState]);
 
   const filteredSortedAssignments = useMemo(() => {
     let rows = [...assignments];
@@ -876,9 +902,9 @@ export function TeachersPageClient({
                   {teacherAccountsPageRows.map((t) => (
                     <li
                       key={t.userId}
-                      className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0"
+                      className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0"
                     >
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium text-slate-900 dark:text-white">
                           {t.fullName}
                           {!t.passwordChanged ? (
@@ -899,28 +925,66 @@ export function TeachersPageClient({
                             </>
                           )}
                         </p>
+                        <div className="mt-2">
+                          <span className="text-xs font-medium text-slate-500 dark:text-zinc-500">
+                            Department roles:
+                          </span>{" "}
+                          {t.departmentRoles.length === 0 ? (
+                            <span className="text-xs text-slate-400 dark:text-zinc-500">
+                              None
+                            </span>
+                          ) : (
+                            <span className="inline-flex flex-wrap gap-1 align-middle">
+                              {t.departmentRoles.map((d) => (
+                                <span
+                                  key={d}
+                                  className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200"
+                                >
+                                  {DEPARTMENT_LABELS[d]}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRolesModal({
+                                userId: t.userId,
+                                name: t.fullName,
+                                initial: t.departmentRoles,
+                              })
+                            }
+                            className="rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                          >
+                            Manage Roles
+                          </button>
+                        </div>
                       </div>
-                      <form action={removeTeacherAction}>
-                        <input
-                          type="hidden"
-                          name="membership_id"
-                          value={t.membershipId}
-                        />
-                        <input
-                          type="hidden"
-                          name="teacher_user_id"
-                          value={t.userId}
-                        />
-                        <button
-                          type="submit"
-                          disabled={removeTeacherPending}
-                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
-                        >
-                          {removeTeacherPending
-                            ? "Removing…"
-                            : "Remove from school"}
-                        </button>
-                      </form>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <form action={removeTeacherAction}>
+                          <input
+                            type="hidden"
+                            name="membership_id"
+                            value={t.membershipId}
+                          />
+                          <input
+                            type="hidden"
+                            name="teacher_user_id"
+                            value={t.userId}
+                          />
+                          <button
+                            type="submit"
+                            disabled={removeTeacherPending}
+                            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
+                          >
+                            {removeTeacherPending
+                              ? "Removing…"
+                              : "Remove from school"}
+                          </button>
+                        </form>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -973,6 +1037,18 @@ export function TeachersPageClient({
           modalFormAction={modalFormAction}
           modalPending={modalPending}
           modalFlash={modalFlash}
+        />
+      ) : null}
+
+      {rolesModal ? (
+        <ManageDepartmentRolesModal
+          teacherUserId={rolesModal.userId}
+          teacherName={rolesModal.name}
+          initialDepartments={rolesModal.initial}
+          onClose={() => setRolesModal(null)}
+          formAction={rolesAction}
+          pending={rolesPending}
+          flash={rolesState}
         />
       ) : null}
     </div>

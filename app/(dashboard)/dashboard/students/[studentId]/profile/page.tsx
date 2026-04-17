@@ -75,6 +75,7 @@ export default async function StudentProfilePage({
     { data: isSuper },
     { data: teacherForClass },
     { data: scopeRows, error: scopeErr },
+    { data: deptRoleRows, error: deptRoleErr },
   ] = await Promise.all([
     supabase.rpc("is_school_admin", { p_school_id: schoolId } as never),
     supabase.rpc("is_super_admin" as never),
@@ -86,6 +87,11 @@ export default async function StudentProfilePage({
       .select("scope")
       .eq("school_id", schoolId)
       .eq("user_id", user.id),
+    supabase
+      .from("teacher_department_roles")
+      .select("department")
+      .eq("school_id", schoolId)
+      .eq("user_id", user.id),
   ]);
 
   const hasHealthScope =
@@ -95,10 +101,29 @@ export default async function StudentProfilePage({
     !scopeErr &&
     (scopeRows ?? []).some((r) => (r as { scope: string }).scope === "discipline");
 
+  const departmentRoles = new Set<StudentProfileTabId>();
+  if (!deptRoleErr) {
+    for (const row of deptRoleRows ?? []) {
+      const dep = (row as { department: string }).department;
+      if (
+        dep === "academic" ||
+        dep === "discipline" ||
+        dep === "health" ||
+        dep === "finance"
+      ) {
+        departmentRoles.add(dep);
+      }
+    }
+  }
+
   const adminOk = Boolean(isAdmin) || Boolean(isSuper);
   const teacherOk = Boolean(teacherForClass);
   const canAccessProfile =
-    adminOk || teacherOk || hasHealthScope || hasDisciplineScope;
+    adminOk ||
+    teacherOk ||
+    departmentRoles.size > 0 ||
+    hasHealthScope ||
+    hasDisciplineScope;
 
   if (!canAccessProfile) {
     redirect("/dashboard/students");
@@ -114,16 +139,10 @@ export default async function StudentProfilePage({
   let visibleTabs: StudentProfileTabId[];
   if (adminOk) {
     visibleTabs = allTabs;
-  } else if (teacherOk) {
-    visibleTabs = allTabs;
-  } else if (hasHealthScope && hasDisciplineScope) {
-    visibleTabs = ["discipline", "health"];
-  } else if (hasHealthScope) {
-    visibleTabs = ["health"];
-  } else if (hasDisciplineScope) {
-    visibleTabs = ["discipline"];
   } else {
-    visibleTabs = allTabs;
+    // Tabs are strictly derived from teacher_department_roles. Legacy
+    // attachment scopes no longer grant tab visibility on their own.
+    visibleTabs = allTabs.filter((t) => departmentRoles.has(t));
   }
 
   const viewer: StudentProfileViewerFlags = {
@@ -135,7 +154,22 @@ export default async function StudentProfilePage({
   };
 
   const adminClient = createAdminClient();
-  const useFullGradebook = adminOk;
+
+  // Department roles unlock full reads for their tab, matching admin behavior.
+  // Teachers with a department role see the same data as admin on that tab —
+  // they are not limited to students/subjects from their teaching assignments.
+  // Access is strictly department-role based; legacy scopes do not elevate reads.
+  const canReadAcademic = adminOk || departmentRoles.has("academic");
+  const canReadDiscipline = adminOk || departmentRoles.has("discipline");
+  const canReadHealth = adminOk || departmentRoles.has("health");
+  const canReadFinance = adminOk || departmentRoles.has("finance");
+
+  const academicClient = canReadAcademic ? adminClient : supabase;
+  const disciplineClient = canReadDiscipline ? adminClient : supabase;
+  const healthClient = canReadHealth ? adminClient : supabase;
+  const financeClient = canReadFinance ? adminClient : supabase;
+
+  const useFullGradebook = canReadAcademic;
 
   const [
     { data: academicRows, error: academicErr },
@@ -149,23 +183,23 @@ export default async function StudentProfilePage({
     profilePayments,
     profileFeeBalances,
   ] = await Promise.all([
-    supabase
+    academicClient
       .from("student_academic_records")
       .select("*")
       .eq("student_id", studentId)
       .order("updated_at", { ascending: false }),
-    supabase
+    disciplineClient
       .from("student_discipline_records")
       .select("*")
       .eq("student_id", studentId)
       .order("incident_date", { ascending: false })
       .order("created_at", { ascending: false }),
-    supabase
+    healthClient
       .from("student_health_records")
       .select("*")
       .eq("student_id", studentId)
       .order("updated_at", { ascending: false }),
-    supabase
+    financeClient
       .from("student_finance_records")
       .select("*")
       .eq("student_id", studentId)
@@ -178,10 +212,14 @@ export default async function StudentProfilePage({
           typedStudent.school_id
         )
       : Promise.resolve([]),
-    loadProfileAttendanceSummary(supabase, studentId, typedStudent.class_id),
-    loadProfileReportCards(supabase, studentId),
-    loadProfilePayments(supabase, studentId),
-    loadProfileFeeBalances(supabase, studentId),
+    loadProfileAttendanceSummary(
+      academicClient,
+      studentId,
+      typedStudent.class_id
+    ),
+    loadProfileReportCards(academicClient, studentId),
+    loadProfilePayments(financeClient, studentId),
+    loadProfileFeeBalances(financeClient, studentId),
   ]);
 
   const discIds = (disciplineRows ?? []).map((r) => (r as DisciplineRow).id);
@@ -202,7 +240,9 @@ export default async function StudentProfilePage({
         `and(record_type.eq.health,record_id.in.(${healthIds.join(",")}))`
       );
     }
-    const { data: attRows, error: attErr } = await supabase
+    const attachmentsClient =
+      canReadDiscipline || canReadHealth ? adminClient : supabase;
+    const { data: attRows, error: attErr } = await attachmentsClient
       .from("student_record_attachments")
       .select("*")
       .or(orParts.join(","))
@@ -237,6 +277,7 @@ export default async function StudentProfilePage({
     financeErr && `Finance: ${financeErr.message}`,
     schoolErr && `School: ${schoolErr.message}`,
     scopeErr && `Attachment scopes: ${scopeErr.message}`,
+    deptRoleErr && `Department roles: ${deptRoleErr.message}`,
     attachmentErr && `Attachments: ${attachmentErr}`,
   ]
     .filter(Boolean)

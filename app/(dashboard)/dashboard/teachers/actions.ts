@@ -7,6 +7,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeTeacherDisplayName } from "@/lib/teacher-display-name";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import type { Database } from "@/types/supabase";
+import {
+  TEACHER_DEPARTMENTS,
+  type SchoolTeacherMemberRow,
+  type TeacherActionState,
+  type TeacherDepartment,
+} from "./types";
 
 type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 
@@ -98,22 +104,6 @@ async function getSchoolIdForUserWithAdmin(userId: string): Promise<string | nul
   } catch {
     return null;
   }
-}
-
-export type TeacherActionState =
-  | { ok: true; message?: string }
-  | { ok: false; error: string };
-
-export interface SchoolTeacherMemberRow {
-  id: string;
-  user_id: string;
-  created_at: string;
-  /** profiles.full_name */
-  profileFullName: string | null;
-  /** profiles.email */
-  profileEmail: string | null;
-  /** profiles.password_changed — false until first password change */
-  profilePasswordChanged: boolean;
 }
 
 async function fetchSchoolTeacherMembersFallback(
@@ -676,6 +666,145 @@ export async function removeTeacherAssignmentAction(
   return { ok: true, message: "Assignment removed." };
 }
 
+/**
+ * Fetch department role assignments for all teachers in a school.
+ * Uses the service role so admin UIs always see every row.
+ */
+export async function fetchTeacherDepartmentRolesForSchool(
+  schoolId: string
+): Promise<Record<string, TeacherDepartment[]>> {
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("teacher_department_roles")
+      .select("user_id, department")
+      .eq("school_id", schoolId);
+
+    const rows = (data ?? []) as {
+      user_id: string;
+      department: TeacherDepartment;
+    }[];
+
+    const byUser: Record<string, TeacherDepartment[]> = {};
+    for (const r of rows) {
+      const list = byUser[r.user_id] ?? [];
+      if (!list.includes(r.department)) list.push(r.department);
+      byUser[r.user_id] = list;
+    }
+    for (const k of Object.keys(byUser)) {
+      byUser[k].sort((a, b) => a.localeCompare(b));
+    }
+    return byUser;
+  } catch {
+    return {};
+  }
+}
+
+function parseDepartmentList(formData: FormData): TeacherDepartment[] {
+  const raw = formData.getAll("departments").map((v) => String(v).trim());
+  const unique = Array.from(new Set(raw)).filter((v): v is TeacherDepartment =>
+    (TEACHER_DEPARTMENTS as readonly string[]).includes(v)
+  );
+  return unique;
+}
+
+/**
+ * Replace a teacher's department roles with the posted set. Only school
+ * admins (or super admins) may call this.
+ */
+export async function setTeacherDepartmentRolesAction(
+  _prev: TeacherActionState | null,
+  formData: FormData
+): Promise<TeacherActionState> {
+  const teacherUserId = String(formData.get("teacher_user_id") ?? "").trim();
+  if (!teacherUserId) {
+    return { ok: false, error: "Missing teacher reference." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized." };
+
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) return { ok: false, error: "No school found." };
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return {
+      ok: false,
+      error: "Only school administrators can manage department roles.",
+    };
+  }
+
+  const admin = createAdminClient();
+  const { data: mem } = await admin
+    .from("school_members")
+    .select("id, role")
+    .eq("school_id", schoolId)
+    .eq("user_id", teacherUserId)
+    .maybeSingle();
+
+  if (!mem || (mem as { role: string }).role !== "teacher") {
+    return { ok: false, error: "That user is not a teacher at your school." };
+  }
+
+  const desired = parseDepartmentList(formData);
+
+  const { data: existingRows } = await admin
+    .from("teacher_department_roles")
+    .select("id, department")
+    .eq("school_id", schoolId)
+    .eq("user_id", teacherUserId);
+
+  const existing = (existingRows ?? []) as {
+    id: string;
+    department: TeacherDepartment;
+  }[];
+  const existingSet = new Set(existing.map((r) => r.department));
+  const desiredSet = new Set(desired);
+
+  const toInsert: TeacherDepartment[] = desired.filter(
+    (d) => !existingSet.has(d)
+  );
+  const toDelete: string[] = existing
+    .filter((r) => !desiredSet.has(r.department))
+    .map((r) => r.id);
+
+  if (toDelete.length > 0) {
+    const { error: delErr } = await admin
+      .from("teacher_department_roles")
+      .delete()
+      .in("id", toDelete);
+    if (delErr) {
+      return {
+        ok: false,
+        error: delErr.message || "Could not update department roles.",
+      };
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const rows = toInsert.map((department) => ({
+      school_id: schoolId,
+      user_id: teacherUserId,
+      department,
+    }));
+    const { error: insErr } = await (admin as Db)
+      .from("teacher_department_roles")
+      .insert(rows);
+    if (insErr) {
+      return {
+        ok: false,
+        error: insErr.message || "Could not save department roles.",
+      };
+    }
+  }
+
+  revalidatePath("/dashboard/teachers");
+  return { ok: true, message: "Department roles updated." };
+}
+
 export async function removeTeacherFromSchoolAction(
   _prev: TeacherActionState | null,
   formData: FormData
@@ -752,6 +881,12 @@ export async function removeTeacherFromSchoolAction(
     .delete()
     .eq("school_id", schoolId)
     .eq("teacher_id", teacherUserId);
+
+  await admin
+    .from("teacher_department_roles")
+    .delete()
+    .eq("school_id", schoolId)
+    .eq("user_id", teacherUserId);
 
   const { error: delMemErr } = await admin
     .from("school_members")

@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import {
   removeTeacherAssignmentAction,
   updateTeacherAssignmentAction,
-  type TeacherActionState,
 } from "../teachers/actions";
+import type { TeacherActionState } from "../teachers/types";
 
 export type AssignmentActionState = TeacherActionState;
 

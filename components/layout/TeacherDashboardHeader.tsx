@@ -43,6 +43,12 @@ interface TeacherDashboardHeaderProps {
   avatarUrl?: string | null;
   /** First class/subject assignment, e.g. "Grade 1 – Mathematics". */
   primaryAssignmentLabel?: string | null;
+  /**
+   * True when the teacher has at least one department role assignment
+   * (Academic, Discipline, Health, Finance). Drives the visibility of the
+   * "Student Profiles" nav link.
+   */
+  hasDepartmentRole?: boolean;
 }
 
 function schoolLogoSrcWithCacheBust(url: string, version: number): string {
@@ -58,6 +64,7 @@ export function TeacherDashboardHeader({
   schoolCurrency = null,
   avatarUrl = null,
   primaryAssignmentLabel = null,
+  hasDepartmentRole = false,
 }: TeacherDashboardHeaderProps) {
   const pathname = usePathname();
   const schoolTitleLine =
@@ -207,6 +214,14 @@ export function TeacherDashboardHeader({
             >
               My Documents
             </Link>
+            {hasDepartmentRole ? (
+              <Link
+                href="/teacher-dashboard/students"
+                className={navLinkClass("/teacher-dashboard/students")}
+              >
+                Student Profiles
+              </Link>
+            ) : null}
             <Link
               href="/"
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-zinc-800"
@@ -307,6 +322,14 @@ export function TeacherDashboardHeader({
           >
             My Documents
           </Link>
+          {hasDepartmentRole ? (
+            <Link
+              href="/teacher-dashboard/students"
+              className={navLinkClass("/teacher-dashboard/students")}
+            >
+              Student Profiles
+            </Link>
+          ) : null}
           <Link
             href="/"
             className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-zinc-800"

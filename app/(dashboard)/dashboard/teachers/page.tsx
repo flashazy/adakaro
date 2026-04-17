@@ -4,7 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { formatShortLocaleDate } from "@/lib/format-date";
-import { fetchSchoolTeacherMembersForTeachersPage } from "./actions";
+import {
+  fetchSchoolTeacherMembersForTeachersPage,
+  fetchTeacherDepartmentRolesForSchool,
+} from "./actions";
+import type { TeacherDepartment } from "./types";
 import {
   TeachersPageClient,
   type AssignmentRow,
@@ -38,6 +42,8 @@ export default async function TeachersPage() {
   if (!isAdmin) redirect("/dashboard");
 
   const memberRows = await fetchSchoolTeacherMembersForTeachersPage(schoolId);
+  const departmentRolesByUser =
+    await fetchTeacherDepartmentRolesForSchool(schoolId);
 
   const teacherDisplayName = (
     fullName: string | null | undefined,
@@ -67,6 +73,9 @@ export default async function TeachersPage() {
     email: m.profileEmail,
     joinedAtLabel: formatShortLocaleDate(m.created_at),
     passwordChanged: m.profilePasswordChanged,
+    departmentRoles:
+      (departmentRolesByUser[m.user_id] as TeacherDepartment[] | undefined) ??
+      [],
   }));
 
   const { data: classRows } = await supabase

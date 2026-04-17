@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
-import type { TeacherActionState } from "../actions";
+import type { TeacherActionState } from "../types";
 
 /** Fields the assign/edit modal needs from an assignment row. */
 export interface AssignmentModalRow {

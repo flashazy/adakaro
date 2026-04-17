@@ -253,8 +253,20 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
+    // Teachers with department roles may open student profile pages under
+    // /dashboard/students/[studentId]/profile. The page itself enforces
+    // authorization (teacher-for-class or teacher_department_roles).
+    const isTeacherAllowedAdminRoute =
+      role === "teacher" &&
+      /^\/dashboard\/students\/[^/]+\/profile(?:\/|$)/.test(pathname);
+
     // Enforce role-based access on protected routes.
-    if (isAdminRoute && role !== "admin" && role !== "super_admin") {
+    if (
+      isAdminRoute &&
+      role !== "admin" &&
+      role !== "super_admin" &&
+      !isTeacherAllowedAdminRoute
+    ) {
       const url = request.nextUrl.clone();
       url.pathname =
         role === "teacher" ? "/teacher-dashboard" : "/parent-dashboard";

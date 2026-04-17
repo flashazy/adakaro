@@ -49,6 +49,13 @@ export default async function DashboardGroupLayout({
       supabase,
       user.id
     );
+    const { data: teacherDeptRoleRow } = await supabase
+      .from("teacher_department_roles")
+      .select("id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+    const hasDepartmentRole = Boolean(teacherDeptRoleRow);
     return (
       <>
         <a
@@ -66,6 +73,7 @@ export default async function DashboardGroupLayout({
             schoolCurrency={schoolDisplay?.currency ?? null}
             avatarUrl={profileRow?.avatar_url ?? null}
             primaryAssignmentLabel={primaryAssignmentLabel}
+            hasDepartmentRole={hasDepartmentRole}
           />
         </div>
         <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:bg-white">
