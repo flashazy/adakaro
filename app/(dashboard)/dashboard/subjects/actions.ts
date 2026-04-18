@@ -357,6 +357,148 @@ export async function updateSubjectAction(
   return { ok: true, message: "Subject updated." };
 }
 
+/** Auto code from name when no bulk prefix is given (mirrors client `generateSubjectCode`). */
+function autoSubjectCode(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "SUB-101";
+  const firstWord = trimmed.split(/\s+/)[0] ?? "";
+  const letters = firstWord.replace(/[^a-zA-Z]/g, "");
+  if (!letters) return "SUB-101";
+  const upper = letters.toUpperCase();
+  const prefix = upper.length <= 3 ? upper : upper.slice(0, 3);
+  return `${prefix}-101`;
+}
+
+export async function bulkCreateSubjectsAction(
+  _prev: SubjectActionState | null,
+  formData: FormData
+): Promise<SubjectActionState> {
+  const namesRaw = String(formData.get("names_raw") ?? "");
+  const codePrefix = toUppercase(String(formData.get("code_prefix") ?? "")).replace(
+    /[^A-Z0-9]/g,
+    ""
+  );
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const classIds = parseClassIdsFromForm(formData);
+
+  const parsed = namesRaw
+    .split(/[\n,]+/)
+    .map((s) => toUppercase(s))
+    .filter(Boolean);
+  const uniqueNames: string[] = [];
+  const seen = new Set<string>();
+  for (const n of parsed) {
+    if (!seen.has(n)) {
+      seen.add(n);
+      uniqueNames.push(n);
+    }
+  }
+
+  if (uniqueNames.length === 0) {
+    return { ok: false, error: "Enter at least one subject name." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized." };
+
+  const schoolId = await getSchoolIdForUserWithAdmin(user.id);
+  if (!schoolId) return { ok: false, error: "No school found." };
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return { ok: false, error: "Only school administrators can manage subjects." };
+  }
+
+  const admin = createAdminClient();
+  if (!(await assertClassIdsForSchool(admin, schoolId, classIds))) {
+    return {
+      ok: false,
+      error: "One or more selected classes are invalid for your school.",
+    };
+  }
+
+  let added = 0;
+  let skippedDuplicates = 0;
+  const failed: string[] = [];
+
+  for (let i = 0; i < uniqueNames.length; i++) {
+    const name = uniqueNames[i];
+    const code = codePrefix ? `${codePrefix}-${101 + i}` : autoSubjectCode(name);
+
+    const { data: inserted, error } = await admin
+      .from("subjects")
+      .insert({
+        school_id: schoolId,
+        name,
+        code,
+        description,
+      } as never)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      if (error.code === "23505") {
+        skippedDuplicates++;
+        continue;
+      }
+      failed.push(name);
+      continue;
+    }
+
+    const newId = (inserted as { id: string } | null)?.id;
+    if (!newId) {
+      failed.push(name);
+      continue;
+    }
+
+    if (classIds.length > 0) {
+      const sync = await syncSubjectClassLinks(admin, newId, classIds);
+      if (!sync.ok) {
+        await admin.from("subjects").delete().eq("id", newId);
+        failed.push(name);
+        continue;
+      }
+    }
+
+    added++;
+  }
+
+  if (added > 0) {
+    revalidatePath("/dashboard/subjects");
+    revalidatePath("/dashboard/teachers");
+  }
+
+  if (added === 0) {
+    if (failed.length > 0) {
+      return {
+        ok: false,
+        error: `Could not add: ${failed.slice(0, 5).join(", ")}${failed.length > 5 ? "…" : ""}.`,
+      };
+    }
+    return {
+      ok: false,
+      error: `All ${skippedDuplicates} subject${skippedDuplicates === 1 ? "" : "s"} already exist for your school.`,
+    };
+  }
+
+  const parts = [
+    `Added ${added} subject${added === 1 ? "" : "s"} successfully.`,
+  ];
+  if (skippedDuplicates > 0) {
+    parts.push(
+      `Skipped ${skippedDuplicates} (already exist${skippedDuplicates === 1 ? "s" : ""}).`
+    );
+  }
+  if (failed.length > 0) {
+    parts.push(
+      `Failed: ${failed.slice(0, 5).join(", ")}${failed.length > 5 ? "…" : ""}.`
+    );
+  }
+  return { ok: true, message: parts.join(" ") };
+}
+
 export async function deleteSubjectAction(
   _prev: SubjectActionState | null,
   formData: FormData

@@ -11,8 +11,9 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import {
+  bulkCreateSubjectsAction,
   createSubjectAction,
   deleteSubjectAction,
   updateSubjectAction,
@@ -67,6 +68,26 @@ function flash(state: SubjectActionState | null) {
 interface SubjectsPageClientProps {
   initialRows: SubjectRow[];
   classOptions: { id: string; name: string }[];
+}
+
+const SUBJECTS_PAGE_SIZE = 5;
+
+/** Compact list of page numbers with `"…"` separators (e.g. 1, …, 4, 5, 6, …, 12). */
+function getPaginationItems(
+  currentPage: number,
+  totalPages: number
+): (number | "ellipsis")[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  const items: (number | "ellipsis")[] = [1];
+  const start = Math.max(2, currentPage - 1);
+  const end = Math.min(totalPages - 1, currentPage + 1);
+  if (start > 2) items.push("ellipsis");
+  for (let p = start; p <= end; p++) items.push(p);
+  if (end < totalPages - 1) items.push("ellipsis");
+  items.push(totalPages);
+  return items;
 }
 
 function SubjectClassPicker({
@@ -223,6 +244,7 @@ export function SubjectsPageClient({
   const router = useRouter();
   const [editing, setEditing] = useState<SubjectRow | null>(null);
   const [deleting, setDeleting] = useState<SubjectRow | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const [createState, createAction, createPending] = useActionState(
     createSubjectAction,
@@ -236,6 +258,10 @@ export function SubjectsPageClient({
     deleteSubjectAction,
     null as SubjectActionState | null
   );
+  const [bulkState, bulkAction, bulkPending] = useActionState(
+    bulkCreateSubjectsAction,
+    null as SubjectActionState | null
+  );
 
   useLayoutEffect(() => {
     if (deleteState?.ok) {
@@ -244,10 +270,24 @@ export function SubjectsPageClient({
   }, [deleteState]);
 
   useEffect(() => {
-    if (createState?.ok || updateState?.ok || deleteState?.ok) {
+    if (
+      createState?.ok ||
+      updateState?.ok ||
+      deleteState?.ok ||
+      bulkState?.ok
+    ) {
       router.refresh();
     }
-  }, [createState, updateState, deleteState, router]);
+  }, [createState, updateState, deleteState, bulkState, router]);
+
+  useEffect(() => {
+    if (!bulkOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setBulkOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [bulkOpen]);
 
   const closeEditModal = () => setEditing(null);
 
@@ -261,6 +301,59 @@ export function SubjectsPageClient({
   }, [editing]);
 
   const rows = initialRows;
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [classFilter, setClassFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (
+        classFilter !== "all" &&
+        !r.assignedClassIds.includes(classFilter)
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      const haystack = [
+        r.name,
+        r.code ?? "",
+        r.description ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [rows, searchQuery, classFilter]);
+
+  const totalCount = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / SUBJECTS_PAGE_SIZE));
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, classFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * SUBJECTS_PAGE_SIZE;
+  const pagedRows = filteredRows.slice(
+    startIndex,
+    startIndex + SUBJECTS_PAGE_SIZE
+  );
+
+  const isFiltering = searchQuery.trim().length > 0 || classFilter !== "all";
+  const showingFrom = totalCount === 0 ? 0 : startIndex + 1;
+  const showingTo = Math.min(startIndex + SUBJECTS_PAGE_SIZE, totalCount);
+  const paginationItems = getPaginationItems(safePage, totalPages);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setClassFilter("all");
+  };
 
   return (
     <div className="space-y-10">
@@ -336,13 +429,22 @@ export function SubjectsPageClient({
               )}
             </div>
           </div>
-          <button
-            type="submit"
-            disabled={createPending}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
-          >
-            {createPending ? "Saving…" : "Add subject"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="submit"
+              disabled={createPending}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+            >
+              {createPending ? "Saving…" : "Add subject"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setBulkOpen(true)}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Bulk Add Subjects
+            </button>
+          </div>
         </form>
       </section>
 
@@ -366,73 +468,173 @@ export function SubjectsPageClient({
             page.
           </p>
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-zinc-700">
-                  <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
-                    Name
-                  </th>
-                  <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
-                    Code
-                  </th>
-                  <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
-                    Description
-                  </th>
-                  <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
-                    Assigned classes
-                  </th>
-                  <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
-                    Assigned to
-                  </th>
-                  <th className="pb-2 font-medium text-slate-700 dark:text-zinc-300">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="py-3 pr-4 font-medium text-slate-900 dark:text-white">
-                      {r.name}
-                    </td>
-                    <td className="py-3 pr-4 text-slate-600 dark:text-zinc-400">
-                      {r.code ?? "—"}
-                    </td>
-                    <td className="max-w-xs py-3 pr-4 text-slate-600 dark:text-zinc-400">
-                      <span className="line-clamp-2">
-                        {r.description?.trim() || "—"}
-                      </span>
-                    </td>
-                    <td className="max-w-[200px] py-3 pr-4 text-slate-600 dark:text-zinc-400">
-                      {r.assignedClassNames.trim() ? r.assignedClassNames : "—"}
-                    </td>
-                    <td className="py-3 pr-4 text-slate-600 dark:text-zinc-400">
-                      {r.assignmentCount}
-                    </td>
-                    <td className="py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditing(r)}
-                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleting(r)}
-                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+          <>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search subjects by name, code, or description..."
+                  aria-label="Search subjects"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+                />
+              </div>
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                aria-label="Filter by class"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20 sm:w-56"
+              >
+                <option value="all">All classes</option>
+                {classOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </select>
+              <button
+                type="button"
+                onClick={clearFilters}
+                disabled={!isFiltering}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Clear filters
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-500 dark:text-zinc-400">
+              {totalCount === 0
+                ? isFiltering
+                  ? "No subjects match the current filters."
+                  : "No subjects yet."
+                : `Showing ${showingFrom}–${showingTo} of ${totalCount} subject${totalCount === 1 ? "" : "s"}`}
+            </p>
+
+            {totalCount === 0 ? null : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-zinc-700">
+                      <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
+                        Name
+                      </th>
+                      <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
+                        Code
+                      </th>
+                      <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
+                        Description
+                      </th>
+                      <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
+                        Assigned classes
+                      </th>
+                      <th className="pb-2 pr-4 font-medium text-slate-700 dark:text-zinc-300">
+                        Assigned to
+                      </th>
+                      <th className="pb-2 font-medium text-slate-700 dark:text-zinc-300">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                    {pagedRows.map((r) => (
+                      <tr key={r.id}>
+                        <td className="py-3 pr-4 font-medium text-slate-900 dark:text-white">
+                          {r.name}
+                        </td>
+                        <td className="py-3 pr-4 text-slate-600 dark:text-zinc-400">
+                          {r.code ?? "—"}
+                        </td>
+                        <td className="max-w-xs py-3 pr-4 text-slate-600 dark:text-zinc-400">
+                          <span className="line-clamp-2">
+                            {r.description?.trim() || "—"}
+                          </span>
+                        </td>
+                        <td className="max-w-[200px] py-3 pr-4 text-slate-600 dark:text-zinc-400">
+                          {r.assignedClassNames.trim() ? r.assignedClassNames : "—"}
+                        </td>
+                        <td className="py-3 pr-4 text-slate-600 dark:text-zinc-400">
+                          {r.assignmentCount}
+                        </td>
+                        <td className="py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditing(r)}
+                              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleting(r)}
+                              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {totalPages > 1 ? (
+              <nav
+                className="mt-4 flex flex-wrap items-center justify-center gap-2"
+                aria-label="Subjects pagination"
+              >
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Previous
+                </button>
+                {paginationItems.map((item, idx) =>
+                  item === "ellipsis" ? (
+                    <span
+                      key={`ellipsis-${idx}`}
+                      className="px-2 text-sm text-slate-400 dark:text-zinc-500"
+                      aria-hidden
+                    >
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setPage(item)}
+                      aria-current={item === safePage ? "page" : undefined}
+                      className={
+                        item === safePage
+                          ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                          : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                      }
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Next
+                </button>
+              </nav>
+            ) : null}
+          </>
         )}
       </section>
 
@@ -588,6 +790,129 @@ export function SubjectsPageClient({
                   Teachers page first.
                 </p>
               ) : null}
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {bulkOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bulk-subject-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setBulkOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-lg overflow-visible rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3
+                  id="bulk-subject-title"
+                  className="text-lg font-semibold text-slate-900 dark:text-white"
+                >
+                  Bulk add subjects
+                </h3>
+                <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+                  Enter subject names separated by commas or new lines. Names
+                  are saved in UPPERCASE.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkOpen(false)}
+                className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+                aria-label="Close dialog"
+              >
+                <X className="h-5 w-5" strokeWidth={2} />
+              </button>
+            </div>
+
+            <form action={bulkAction} className="mt-4 space-y-3">
+              {flash(bulkState)}
+              <label className="block text-sm">
+                <span className="text-slate-700 dark:text-zinc-300">
+                  Subject names
+                </span>
+                <textarea
+                  name="names_raw"
+                  rows={6}
+                  required
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  placeholder={"BIOLOGY, CHEMISTRY, PHYSICS\nor one per line"}
+                />
+                <span className="mt-1 block text-xs text-slate-500 dark:text-zinc-500">
+                  Duplicates and entries that already exist for your school are
+                  skipped.
+                </span>
+              </label>
+
+              <label className="block text-sm">
+                <span className="text-slate-700 dark:text-zinc-300">
+                  Code prefix (optional)
+                </span>
+                <input
+                  name="code_prefix"
+                  type="text"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  placeholder="e.g. SCI → SCI-101, SCI-102…"
+                />
+                <span className="mt-1 block text-xs text-slate-500 dark:text-zinc-500">
+                  If left blank, codes are auto-generated from each subject
+                  name.
+                </span>
+              </label>
+
+              <label className="block text-sm">
+                <span className="text-slate-700 dark:text-zinc-300">
+                  Description (optional, applied to all)
+                </span>
+                <textarea
+                  name="description"
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  placeholder="Optional shared description"
+                />
+              </label>
+
+              <div className="block text-sm">
+                <span className="text-slate-700 dark:text-zinc-300">
+                  Assign to classes (applied to all)
+                </span>
+                {classOptions.length === 0 ? (
+                  <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                    No classes yet. Add classes first, then bulk-create
+                    subjects here.
+                  </p>
+                ) : (
+                  <SubjectClassPicker
+                    key="subject-bulk-classes"
+                    classOptions={classOptions}
+                  />
+                )}
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={bulkPending}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+                >
+                  {bulkPending ? "Adding…" : "Add subjects"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
