@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { toUppercase } from "@/lib/utils";
 
 async function getSchoolId() {
   const supabase = await createClient();
@@ -28,7 +29,7 @@ export async function addClass(
   _prevState: ClassActionState,
   formData: FormData
 ): Promise<ClassActionState> {
-  const name = (formData.get("name") as string)?.trim();
+  const name = toUppercase(String(formData.get("name") ?? ""));
   const description = (formData.get("description") as string)?.trim() || null;
 
   if (!name) {
@@ -70,7 +71,7 @@ export async function updateClass(
   classId: string,
   formData: FormData
 ): Promise<ClassActionState> {
-  const name = (formData.get("name") as string)?.trim();
+  const name = toUppercase(String(formData.get("name") ?? ""));
   const description = (formData.get("description") as string)?.trim() || null;
 
   if (!name) {

@@ -4,3 +4,8 @@ export function cn(
 ): string {
   return parts.filter(Boolean).join(" ");
 }
+
+/** Trim and convert to uppercase for stored display names (e.g. subjects, classes). */
+export function toUppercase(str: string): string {
+  return str.trim().toUpperCase();
+}

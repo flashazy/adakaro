@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertSchoolAdminForUser } from "../teachers/actions";
+import { toUppercase } from "@/lib/utils";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- admin client update typing
 type Db = any;
@@ -202,7 +203,7 @@ export async function createSubjectAction(
   _prev: SubjectActionState | null,
   formData: FormData
 ): Promise<SubjectActionState> {
-  const name = String(formData.get("name") ?? "").trim();
+  const name = toUppercase(String(formData.get("name") ?? ""));
   const code = String(formData.get("code") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
   const classIds = parseClassIdsFromForm(formData);
@@ -279,7 +280,7 @@ export async function updateSubjectAction(
   formData: FormData
 ): Promise<SubjectActionState> {
   const id = String(formData.get("id") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
+  const name = toUppercase(String(formData.get("name") ?? ""));
   const code = String(formData.get("code") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
   const classIds = parseClassIdsFromForm(formData);
