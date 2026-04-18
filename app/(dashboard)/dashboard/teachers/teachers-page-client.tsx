@@ -14,12 +14,14 @@ import {
   assignTeacherToClassAction,
   removeTeacherAssignmentAction,
   removeTeacherFromSchoolAction,
+  setTeacherCoordinatorClassesAction,
   setTeacherDepartmentRolesAction,
   updateTeacherAssignmentAction,
 } from "./actions";
 import type { TeacherActionState, TeacherDepartment } from "./types";
 import { AssignTeacherModal, type AssignModalState } from "./components/AssignTeacherModal";
 import { ManageDepartmentRolesModal } from "./components/ManageDepartmentRolesModal";
+import { AssignCoordinatorModal } from "./components/AssignCoordinatorModal";
 
 function flash(state: TeacherActionState | null) {
   if (!state) return null;
@@ -50,6 +52,11 @@ export interface TeacherRow {
   passwordChanged: boolean;
   /** Department roles assigned to this teacher for the active school. */
   departmentRoles: TeacherDepartment[];
+  /**
+   * Class ids this teacher coordinates. Populated only for teachers holding the
+   * Academic department role — Coordinator is a promotion of Academic.
+   */
+  coordinatorClassIds: string[];
 }
 
 const DEPARTMENT_LABELS: Record<TeacherDepartment, string> = {
@@ -148,6 +155,11 @@ export function TeachersPageClient({
     name: string;
     initial: TeacherDepartment[];
   } | null>(null);
+  const [coordinatorModal, setCoordinatorModal] = useState<{
+    userId: string;
+    name: string;
+    initial: string[];
+  } | null>(null);
 
   const assignSubjects = useMemo(() => {
     if (!assignClassId) return [];
@@ -188,12 +200,27 @@ export function TeachersPageClient({
     setTeacherDepartmentRolesAction,
     null as TeacherActionState | null
   );
+  const [coordinatorState, coordinatorAction, coordinatorPending] =
+    useActionState(
+      setTeacherCoordinatorClassesAction,
+      null as TeacherActionState | null
+    );
 
   useEffect(() => {
     if (rolesState?.ok) {
       setRolesModal(null);
     }
   }, [rolesState]);
+
+  useEffect(() => {
+    if (coordinatorState?.ok) {
+      // Mirrors the pattern used for `rolesState` below — close the modal
+      // once the server action reports success. The alternative (watching
+      // from a render path) would re-fire unnecessarily.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCoordinatorModal(null);
+    }
+  }, [coordinatorState]);
 
   const filteredSortedAssignments = useMemo(() => {
     let rows = [...assignments];
@@ -946,7 +973,35 @@ export function TeachersPageClient({
                             </span>
                           )}
                         </div>
-                        <div className="mt-2">
+                        {t.departmentRoles.includes("academic") ? (
+                          <div className="mt-2">
+                            <span className="text-xs font-medium text-slate-500 dark:text-zinc-500">
+                              Coordinator for:
+                            </span>{" "}
+                            {t.coordinatorClassIds.length === 0 ? (
+                              <span className="text-xs text-slate-400 dark:text-zinc-500">
+                                None
+                              </span>
+                            ) : (
+                              <span className="inline-flex flex-wrap gap-1 align-middle">
+                                {t.coordinatorClassIds.map((cid) => {
+                                  const name =
+                                    classOptions.find((c) => c.id === cid)
+                                      ?.name ?? "Class";
+                                  return (
+                                    <span
+                                      key={cid}
+                                      className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200"
+                                    >
+                                      {name}
+                                    </span>
+                                  );
+                                })}
+                              </span>
+                            )}
+                          </div>
+                        ) : null}
+                        <div className="mt-2 flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={() =>
@@ -960,6 +1015,23 @@ export function TeachersPageClient({
                           >
                             Manage Roles
                           </button>
+                          {t.departmentRoles.includes("academic") ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCoordinatorModal({
+                                  userId: t.userId,
+                                  name: t.fullName,
+                                  initial: t.coordinatorClassIds,
+                                })
+                              }
+                              className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                            >
+                              {t.coordinatorClassIds.length > 0
+                                ? "Manage coordinator classes"
+                                : "Assign as Coordinator"}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -1049,6 +1121,19 @@ export function TeachersPageClient({
           formAction={rolesAction}
           pending={rolesPending}
           flash={rolesState}
+        />
+      ) : null}
+
+      {coordinatorModal ? (
+        <AssignCoordinatorModal
+          teacherUserId={coordinatorModal.userId}
+          teacherName={coordinatorModal.name}
+          classOptions={classOptions}
+          initialClassIds={coordinatorModal.initial}
+          onClose={() => setCoordinatorModal(null)}
+          formAction={coordinatorAction}
+          pending={coordinatorPending}
+          flash={coordinatorState}
         />
       ) : null}
     </div>

@@ -56,6 +56,13 @@ export default async function DashboardGroupLayout({
       .limit(1)
       .maybeSingle();
     const hasDepartmentRole = Boolean(teacherDeptRoleRow);
+    const { data: coordinatorRow } = await supabase
+      .from("teacher_coordinators")
+      .select("id")
+      .eq("teacher_id", user.id)
+      .limit(1)
+      .maybeSingle();
+    const isCoordinator = Boolean(coordinatorRow);
     return (
       <>
         <a
@@ -74,6 +81,7 @@ export default async function DashboardGroupLayout({
             avatarUrl={profileRow?.avatar_url ?? null}
             primaryAssignmentLabel={primaryAssignmentLabel}
             hasDepartmentRole={hasDepartmentRole}
+            isCoordinator={isCoordinator}
           />
         </div>
         <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:bg-white">

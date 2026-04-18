@@ -33,3 +33,9 @@ export const TEACHER_DEPARTMENTS: readonly TeacherDepartment[] = [
   "health",
   "finance",
 ] as const;
+
+/** Class the admin can assign as a coordinator class to an Academic teacher. */
+export interface CoordinatorClassOption {
+  id: string;
+  name: string;
+}

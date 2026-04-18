@@ -6,6 +6,7 @@ import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { formatShortLocaleDate } from "@/lib/format-date";
 import {
   fetchSchoolTeacherMembersForTeachersPage,
+  fetchTeacherCoordinatorClassesForSchool,
   fetchTeacherDepartmentRolesForSchool,
 } from "./actions";
 import type { TeacherDepartment } from "./types";
@@ -44,6 +45,8 @@ export default async function TeachersPage() {
   const memberRows = await fetchSchoolTeacherMembersForTeachersPage(schoolId);
   const departmentRolesByUser =
     await fetchTeacherDepartmentRolesForSchool(schoolId);
+  const coordinatorClassesByUser =
+    await fetchTeacherCoordinatorClassesForSchool(schoolId);
 
   const teacherDisplayName = (
     fullName: string | null | undefined,
@@ -76,6 +79,7 @@ export default async function TeachersPage() {
     departmentRoles:
       (departmentRolesByUser[m.user_id] as TeacherDepartment[] | undefined) ??
       [],
+    coordinatorClassIds: coordinatorClassesByUser[m.user_id] ?? [],
   }));
 
   const { data: classRows } = await supabase

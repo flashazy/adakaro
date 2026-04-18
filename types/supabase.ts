@@ -667,6 +667,62 @@ export interface Database {
           },
         ];
       };
+      teacher_coordinators: {
+        Row: {
+          id: string;
+          teacher_id: string;
+          class_id: string;
+          school_id: string;
+          assigned_at: string;
+          assigned_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_id: string;
+          class_id: string;
+          school_id: string;
+          assigned_at?: string;
+          assigned_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          teacher_id?: string;
+          class_id?: string;
+          school_id?: string;
+          assigned_at?: string;
+          assigned_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "teacher_coordinators_teacher_id_fkey";
+            columns: ["teacher_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "teacher_coordinators_class_id_fkey";
+            columns: ["class_id"];
+            referencedRelation: "classes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "teacher_coordinators_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "teacher_coordinators_assigned_by_fkey";
+            columns: ["assigned_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       school_member_record_attachment_scopes: {
         Row: {
           school_id: string;

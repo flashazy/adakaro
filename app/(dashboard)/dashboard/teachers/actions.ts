@@ -801,8 +801,190 @@ export async function setTeacherDepartmentRolesAction(
     }
   }
 
+  // Coordinator is a promotion of Academic. If Academic is being removed,
+  // clear any lingering coordinator assignments so the role layers stay
+  // consistent.
+  if (!desiredSet.has("academic") && existingSet.has("academic")) {
+    await admin
+      .from("teacher_coordinators")
+      .delete()
+      .eq("school_id", schoolId)
+      .eq("teacher_id", teacherUserId);
+  }
+
   revalidatePath("/dashboard/teachers");
+  revalidatePath("/teacher-dashboard/coordinator");
   return { ok: true, message: "Department roles updated." };
+}
+
+/**
+ * Fetch all coordinator class assignments for all teachers in a school.
+ * Returns a map of teacher user_id -> array of class ids the teacher coordinates.
+ */
+export async function fetchTeacherCoordinatorClassesForSchool(
+  schoolId: string
+): Promise<Record<string, string[]>> {
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("teacher_coordinators")
+      .select("teacher_id, class_id")
+      .eq("school_id", schoolId);
+
+    const rows = (data ?? []) as {
+      teacher_id: string;
+      class_id: string;
+    }[];
+
+    const byTeacher: Record<string, string[]> = {};
+    for (const r of rows) {
+      const list = byTeacher[r.teacher_id] ?? [];
+      if (!list.includes(r.class_id)) list.push(r.class_id);
+      byTeacher[r.teacher_id] = list;
+    }
+    return byTeacher;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Replace a teacher's coordinator class assignments with the posted set.
+ *
+ * Only allowed when the teacher holds the `academic` department role.
+ * Does NOT modify `teacher_department_roles` — Academic behaviour is untouched.
+ */
+export async function setTeacherCoordinatorClassesAction(
+  _prev: TeacherActionState | null,
+  formData: FormData
+): Promise<TeacherActionState> {
+  const teacherUserId = String(formData.get("teacher_user_id") ?? "").trim();
+  if (!teacherUserId) {
+    return { ok: false, error: "Missing teacher reference." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized." };
+
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) return { ok: false, error: "No school found." };
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return {
+      ok: false,
+      error:
+        "Only school administrators can assign coordinator classes.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: mem } = await admin
+    .from("school_members")
+    .select("id, role")
+    .eq("school_id", schoolId)
+    .eq("user_id", teacherUserId)
+    .maybeSingle();
+
+  if (!mem || (mem as { role: string }).role !== "teacher") {
+    return { ok: false, error: "That user is not a teacher at your school." };
+  }
+
+  const { data: academicRow } = await admin
+    .from("teacher_department_roles")
+    .select("id")
+    .eq("school_id", schoolId)
+    .eq("user_id", teacherUserId)
+    .eq("department", "academic")
+    .maybeSingle();
+
+  if (!academicRow) {
+    return {
+      ok: false,
+      error:
+        "Only teachers with the Academic role can be promoted to Coordinator. Give this teacher the Academic role first.",
+    };
+  }
+
+  const rawClassIds = formData.getAll("class_ids").map((v) => String(v).trim());
+  const desired = Array.from(new Set(rawClassIds)).filter(Boolean);
+
+  if (desired.length > 0) {
+    const { data: validClasses } = await admin
+      .from("classes")
+      .select("id")
+      .eq("school_id", schoolId)
+      .in("id", desired);
+    const validIds = new Set(
+      ((validClasses ?? []) as { id: string }[]).map((c) => c.id)
+    );
+    for (const cid of desired) {
+      if (!validIds.has(cid)) {
+        return {
+          ok: false,
+          error: "One or more selected classes do not belong to your school.",
+        };
+      }
+    }
+  }
+
+  const { data: existingRows } = await admin
+    .from("teacher_coordinators")
+    .select("id, class_id")
+    .eq("school_id", schoolId)
+    .eq("teacher_id", teacherUserId);
+
+  const existing = (existingRows ?? []) as {
+    id: string;
+    class_id: string;
+  }[];
+  const existingSet = new Set(existing.map((r) => r.class_id));
+  const desiredSet = new Set(desired);
+
+  const toInsert: string[] = desired.filter((c) => !existingSet.has(c));
+  const toDelete: string[] = existing
+    .filter((r) => !desiredSet.has(r.class_id))
+    .map((r) => r.id);
+
+  if (toDelete.length > 0) {
+    const { error: delErr } = await admin
+      .from("teacher_coordinators")
+      .delete()
+      .in("id", toDelete);
+    if (delErr) {
+      return {
+        ok: false,
+        error:
+          delErr.message || "Could not update coordinator assignments.",
+      };
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const rows = toInsert.map((classId) => ({
+      school_id: schoolId,
+      teacher_id: teacherUserId,
+      class_id: classId,
+      assigned_by: user.id,
+    }));
+    const { error: insErr } = await (admin as Db)
+      .from("teacher_coordinators")
+      .insert(rows);
+    if (insErr) {
+      return {
+        ok: false,
+        error: insErr.message || "Could not save coordinator assignments.",
+      };
+    }
+  }
+
+  revalidatePath("/dashboard/teachers");
+  revalidatePath("/teacher-dashboard");
+  revalidatePath("/teacher-dashboard/coordinator");
+  return { ok: true, message: "Coordinator classes updated." };
 }
 
 export async function removeTeacherFromSchoolAction(
@@ -887,6 +1069,12 @@ export async function removeTeacherFromSchoolAction(
     .delete()
     .eq("school_id", schoolId)
     .eq("user_id", teacherUserId);
+
+  await admin
+    .from("teacher_coordinators")
+    .delete()
+    .eq("school_id", schoolId)
+    .eq("teacher_id", teacherUserId);
 
   const { error: delMemErr } = await admin
     .from("school_members")
