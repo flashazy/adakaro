@@ -5,6 +5,7 @@ import type {
   StudentReportRow,
 } from "./report-card-types";
 import type {
+  ReportCardDivision,
   ReportCardPreviewData,
   ReportCardSummary,
 } from "./report-card-preview-types";
@@ -318,6 +319,55 @@ function aggregateRankingScore(
   return picked.reduce((acc, p) => acc + p.avg, 0);
 }
 
+/**
+ * Tanzanian secondary-school grade points per letter grade. Lower is better,
+ * so the best 7 subjects (highest %) translate to the lowest point total.
+ */
+const DIVISION_POINTS_BY_GRADE: Record<string, number> = {
+  A: 1,
+  B: 2,
+  C: 3,
+  D: 4,
+  F: 5,
+};
+
+/**
+ * Convert a list of letter grades to total Division points and the matching
+ * Tanzanian secondary-school Division band. Caller is responsible for passing
+ * the right slice of grades — typically the best 7 subject grades.
+ *
+ * Bands (NECTA):
+ *   Division I   — 7–17 points
+ *   Division II  — 18–21 points
+ *   Division III — 22–25 points
+ *   Division IV  — 26–33 points
+ *   Division 0   — 34+ points
+ *
+ * Returns `null` when no grades were supplied (e.g. a student with no scored
+ * subjects yet); callers should hide the Division line in that case.
+ */
+export function calculateDivision(
+  grades: (string | null | undefined)[]
+): { totalPoints: number; division: string } | null {
+  const points: number[] = [];
+  for (const g of grades) {
+    const key = (g ?? "").trim().toUpperCase();
+    const pts = DIVISION_POINTS_BY_GRADE[key];
+    if (pts != null) points.push(pts);
+  }
+  if (points.length === 0) return null;
+  const totalPoints = points.reduce((acc, p) => acc + p, 0);
+  return { totalPoints, division: divisionLabelForPoints(totalPoints) };
+}
+
+function divisionLabelForPoints(totalPoints: number): string {
+  if (totalPoints <= 17) return "I";
+  if (totalPoints <= 21) return "II";
+  if (totalPoints <= 25) return "III";
+  if (totalPoints <= 33) return "IV";
+  return "0";
+}
+
 /** "1st", "2nd", "3rd", "4th", … — handles 11/12/13 correctly. */
 export function ordinalSuffix(n: number): string {
   if (!Number.isFinite(n)) return String(n);
@@ -400,6 +450,18 @@ export function computeReportCardStudentSummary(args: {
   const totalScore = Math.round(focusScore);
   const averagePercent: number | null = null;
 
+  // Tanzanian Secondary School Division — only computed for secondary schools,
+  // and only from the *contributing* (best-7) subjects so it stays in sync with
+  // the total marks figure right beside it on the footer.
+  let division: ReportCardDivision | null = null;
+  if (schoolLevel === "secondary") {
+    const bestGrades = focusPicked.map((p) => letterGradeFromPercent(p.avg));
+    const calc = calculateDivision(bestGrades);
+    if (calc) {
+      division = { totalPoints: calc.totalPoints, label: calc.division };
+    }
+  }
+
   const sentence = buildReportCardFooterSentence({
     studentName: args.studentName,
     term: args.term,
@@ -409,6 +471,7 @@ export function computeReportCardStudentSummary(args: {
     totalStudents: scored.length,
     totalScore,
     averagePercent,
+    division,
   });
 
   return {
@@ -419,6 +482,7 @@ export function computeReportCardStudentSummary(args: {
     averagePercent,
     sentence,
     selectedSubjects,
+    division,
   };
 }
 
@@ -438,14 +502,21 @@ export function buildReportCardFooterSentence(args: {
   totalScore: number | null;
   /** Legacy field — no longer rendered, kept so older call sites still type-check. */
   averagePercent: number | null;
+  /**
+   * Tanzanian Secondary School Division for this student. Only appended to the
+   * sentence when present; primary schools should pass `null`/omit it.
+   */
+  division?: ReportCardDivision | null;
 }): string | null {
   const {
     studentName,
     term,
     academicYear,
+    schoolLevel,
     rank,
     totalStudents,
     totalScore,
+    division,
   } = args;
   if (rank == null || totalStudents <= 0) return null;
   if (totalScore == null) return null;
@@ -456,5 +527,12 @@ export function buildReportCardFooterSentence(args: {
   // Both primary and secondary now read out a total marks figure for
   // consistency. The level note below the sentence (rendered separately by
   // the preview/PDF) explains what was summed.
-  return `${name} achieved position ${rankText} out of ${totalStudents} students, attaining a total score of ${totalScore} marks in the ${termText} ${yr} examinations.`;
+  let sentence = `${name} achieved position ${rankText} out of ${totalStudents} students, attaining a total score of ${totalScore} marks in the ${termText} ${yr} examinations.`;
+  if (schoolLevel === "secondary" && division) {
+    // Show both the Division label and the underlying points so parents and
+    // students can see exactly how close they are to the next Division band.
+    const pointsText = division.totalPoints === 1 ? "1 point" : `${division.totalPoints} points`;
+    sentence += ` Division: ${division.label} (${pointsText})`;
+  }
+  return sentence;
 }

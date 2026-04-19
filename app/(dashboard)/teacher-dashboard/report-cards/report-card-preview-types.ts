@@ -67,4 +67,21 @@ export interface ReportCardSummary {
    * ≤ the best-N cap so nothing was dropped.
    */
   selectedSubjects: string[] | null;
+  /**
+   * Tanzanian Secondary School Division calculated from the best-7 subject
+   * grade points (A=1, B=2, C=3, D=4, F=5). `null` for primary schools and
+   * for secondary students with no scored subjects.
+   */
+  division: ReportCardDivision | null;
+}
+
+/**
+ * Tanzanian secondary school Division summary derived from a student's best-7
+ * grade points. `label` is the human-readable Roman numeral / "0" tag printed
+ * on the report card footer.
+ */
+export interface ReportCardDivision {
+  totalPoints: number;
+  /** "I", "II", "III", "IV" or "0". */
+  label: string;
 }
