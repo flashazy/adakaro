@@ -895,7 +895,7 @@ function ReportCardPreviewModal({
           </div>
         </header>
         <div className="bg-slate-100 p-4 dark:bg-zinc-950 print:bg-white print:p-0">
-          <ReportCardPreview data={item.preview} />
+          <ReportCardPreview data={item.preview} viewer="coordinator" />
         </div>
       </div>
     </div>

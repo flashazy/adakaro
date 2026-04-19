@@ -72,7 +72,30 @@ function renderExamCell(
   });
 }
 
-export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
+/**
+ * Roles that can open this preview. Teachers see drafts/pending cards as
+ * they're being prepared, so the position/total/school-level summary at the
+ * bottom is hidden until a card is fully approved. Coordinators, parents and
+ * admins always see the summary because they only ever look at finished
+ * report cards.
+ */
+export type ReportCardPreviewViewer =
+  | "teacher"
+  | "coordinator"
+  | "parent"
+  | "admin";
+
+export function ReportCardPreview({
+  data,
+  viewer = "teacher",
+  reportCardStatus = null,
+}: {
+  data: ReportCardPreviewData;
+  /** Defaults to "teacher" (the strictest gate) to keep the preview safe. */
+  viewer?: ReportCardPreviewViewer;
+  /** Raw `report_cards.status` for the focus student, when known. */
+  reportCardStatus?: string | null;
+}) {
   const { format: storedFormat, setFormat } = useGradeDisplayFormat();
   const schoolLevel = data.summary?.schoolLevel ?? null;
   // Hide the "Show scores as" toggle for secondary schools — with a max
@@ -302,7 +325,15 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
         ) : null}
       </section>
 
-      {data.summary?.sentence ? (
+      {/*
+        The summary (position, total score, school-level note) is the
+        coordinator's final word on the card. We hide it from the teacher
+        preview while the card is still a draft / pending review so teachers
+        focus on entering scores. Coordinators / parents / admins always see
+        it; teachers only see it once the card hits "approved".
+      */}
+      {data.summary?.sentence &&
+      (viewer !== "teacher" || reportCardStatus === "approved") ? (
         <section className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-sm text-slate-800 print:border-slate-400 print:bg-white">
           <p>
             <span className="font-semibold text-slate-900">Summary:</span>{" "}

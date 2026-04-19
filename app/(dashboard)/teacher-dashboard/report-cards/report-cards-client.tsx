@@ -1700,7 +1700,11 @@ export function ReportCardsPageClient({
               </button>
             </div>
             <div className="print:bg-white">
-              <ReportCardPreview data={previewData} />
+              <ReportCardPreview
+                data={previewData}
+                viewer="teacher"
+                reportCardStatus={selectedStudent?.status ?? null}
+              />
             </div>
           </div>
         </div>

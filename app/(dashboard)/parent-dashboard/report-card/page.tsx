@@ -300,7 +300,7 @@ export default async function ParentReportCardPage({
       <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
         Report card
       </h1>
-      <ReportCardPreview data={data} />
+      <ReportCardPreview data={data} viewer="parent" />
     </div>
   );
 }
