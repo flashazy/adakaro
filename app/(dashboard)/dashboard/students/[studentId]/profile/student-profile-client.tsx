@@ -11,6 +11,7 @@ import type {
   ProfileGradebookScoreRow,
   ProfilePaymentRow,
   ProfileReportCardBlock,
+  ProfileReportCardSubjectLine,
 } from "@/lib/student-profile-auto-data";
 import type { Database, StudentFeeBalance } from "@/types/supabase";
 import {
@@ -59,6 +60,13 @@ function formatDateOnly(iso: string | null | undefined): string {
     return iso;
   }
 }
+
+/**
+ * Page size shared by the Assignment scores table and the Report cards
+ * subject-comment list on the Student Profile page. Five rows keeps the
+ * sections short so admins can scan them at a glance.
+ */
+const PROFILE_SECTION_PAGE_SIZE = 5;
 
 function incidentLabel(t: DisciplineRow["incident_type"]): string {
   const map: Record<DisciplineRow["incident_type"], string> = {
@@ -169,6 +177,100 @@ export function StudentProfileClient({
 
   const defaultYear = useMemo(() => new Date().getFullYear(), []);
 
+  // -------------------------------------------------------------------------
+  // Pagination + search for the Academic-tab "Assignment scores" table and
+  // the Report-cards subject-comment list. Five rows per page each, with the
+  // page reset to zero whenever the search query changes (so admins always
+  // see results from the first page after typing a new filter).
+  // -------------------------------------------------------------------------
+  const [scoresSearch, setScoresSearch] = useState("");
+  const [scoresPage, setScoresPage] = useState(0);
+  const [commentsSearch, setCommentsSearch] = useState("");
+  const [commentsPage, setCommentsPage] = useState(0);
+
+  useEffect(() => {
+    setScoresPage(0);
+  }, [scoresSearch]);
+  useEffect(() => {
+    setCommentsPage(0);
+  }, [commentsSearch]);
+
+  const filteredGradebookScores = useMemo(() => {
+    const q = scoresSearch.trim().toLowerCase();
+    if (!q) return profileGradebookScores;
+    return profileGradebookScores.filter(
+      (row) =>
+        row.subject.toLowerCase().includes(q) ||
+        row.assignmentTitle.toLowerCase().includes(q)
+    );
+  }, [profileGradebookScores, scoresSearch]);
+
+  const scoresTotalPages = Math.max(
+    1,
+    Math.ceil(filteredGradebookScores.length / PROFILE_SECTION_PAGE_SIZE)
+  );
+  const safeScoresPage = Math.min(scoresPage, scoresTotalPages - 1);
+  const paginatedGradebookScores = useMemo(
+    () =>
+      filteredGradebookScores.slice(
+        safeScoresPage * PROFILE_SECTION_PAGE_SIZE,
+        (safeScoresPage + 1) * PROFILE_SECTION_PAGE_SIZE
+      ),
+    [filteredGradebookScores, safeScoresPage]
+  );
+
+  // Flatten every (report card, subject line) pair so a single search box and
+  // pager can drive the entire "Report cards and teacher comments" section.
+  // Cards that don't have any subject lines on the current page are hidden,
+  // but each card that does keeps its own header/admin-note context.
+  type FlatReportCommentLine = {
+    card: ProfileReportCardBlock;
+    line: ProfileReportCardSubjectLine;
+    idx: number;
+  };
+
+  const flatReportCommentLines = useMemo<FlatReportCommentLine[]>(() => {
+    const out: FlatReportCommentLine[] = [];
+    for (const card of profileReportCards) {
+      card.subjectLines.forEach((line, idx) => {
+        out.push({ card, line, idx });
+      });
+    }
+    return out;
+  }, [profileReportCards]);
+
+  const filteredReportCommentLines = useMemo(() => {
+    const q = commentsSearch.trim().toLowerCase();
+    if (!q) return flatReportCommentLines;
+    return flatReportCommentLines.filter((entry) =>
+      entry.line.subject.toLowerCase().includes(q)
+    );
+  }, [flatReportCommentLines, commentsSearch]);
+
+  const commentsTotalPages = Math.max(
+    1,
+    Math.ceil(filteredReportCommentLines.length / PROFILE_SECTION_PAGE_SIZE)
+  );
+  const safeCommentsPage = Math.min(commentsPage, commentsTotalPages - 1);
+  const paginatedReportCommentLines = useMemo(
+    () =>
+      filteredReportCommentLines.slice(
+        safeCommentsPage * PROFILE_SECTION_PAGE_SIZE,
+        (safeCommentsPage + 1) * PROFILE_SECTION_PAGE_SIZE
+      ),
+    [filteredReportCommentLines, safeCommentsPage]
+  );
+
+  const commentLinesByCard = useMemo(() => {
+    const map = new Map<string, FlatReportCommentLine[]>();
+    for (const entry of paginatedReportCommentLines) {
+      const list = map.get(entry.card.id) ?? [];
+      list.push(entry);
+      map.set(entry.card.id, list);
+    }
+    return map;
+  }, [paginatedReportCommentLines]);
+
   function closeAllModals() {
     setAcademicModal(null);
     setDisciplineModal(null);
@@ -260,51 +362,126 @@ export function StudentProfileClient({
                 No assignment scores recorded for this student yet.
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
-                  <thead className="bg-slate-50 dark:bg-zinc-800/80">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Subject
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Assignment
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Score
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Grade
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Term
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                    {profileGradebookScores.map((row) => (
-                      <tr key={row.id}>
-                        <td className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-zinc-100">
-                          {row.subject}
-                        </td>
-                        <td className="max-w-[200px] px-3 py-2 text-slate-700 dark:text-zinc-300">
-                          {row.assignmentTitle}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-800 dark:text-zinc-200">
-                          {row.scoreDisplay}
-                        </td>
-                        <td
-                          className={`whitespace-nowrap px-3 py-2 ${tanzaniaGradeBadgeClass(row.grade)}`}
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
+                  <label
+                    htmlFor="profile-scores-search"
+                    className="sr-only"
+                  >
+                    Search assignment scores by subject or assignment
+                  </label>
+                  <input
+                    id="profile-scores-search"
+                    type="search"
+                    value={scoresSearch}
+                    onChange={(e) => setScoresSearch(e.target.value)}
+                    placeholder="Search by subject or assignment…"
+                    className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                  />
+                </div>
+
+                {filteredGradebookScores.length === 0 ? (
+                  <div className="px-4 py-12 text-center">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white">
+                      No scores match your search.
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                      Try a different subject or assignment name.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
+                        <thead className="bg-slate-50 dark:bg-zinc-800/80">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                              Subject
+                            </th>
+                            <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                              Assignment
+                            </th>
+                            <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                              Score
+                            </th>
+                            <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                              Grade
+                            </th>
+                            <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                              Term
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                          {paginatedGradebookScores.map((row) => (
+                            <tr key={row.id}>
+                              <td className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-zinc-100">
+                                {row.subject}
+                              </td>
+                              <td className="max-w-[200px] px-3 py-2 text-slate-700 dark:text-zinc-300">
+                                {row.assignmentTitle}
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-800 dark:text-zinc-200">
+                                {row.scoreDisplay}
+                              </td>
+                              <td
+                                className={`whitespace-nowrap px-3 py-2 ${tanzaniaGradeBadgeClass(row.grade)}`}
+                              >
+                                {row.grade}
+                              </td>
+                              <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-zinc-400">
+                                {row.termLabel}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row dark:border-zinc-800">
+                      <p className="text-xs text-slate-500 dark:text-zinc-400">
+                        Showing{" "}
+                        {filteredGradebookScores.length === 0
+                          ? 0
+                          : safeScoresPage * PROFILE_SECTION_PAGE_SIZE + 1}
+                        –
+                        {Math.min(
+                          (safeScoresPage + 1) * PROFILE_SECTION_PAGE_SIZE,
+                          filteredGradebookScores.length
+                        )}{" "}
+                        of {filteredGradebookScores.length} score
+                        {filteredGradebookScores.length === 1 ? "" : "s"}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={safeScoresPage <= 0}
+                          onClick={() =>
+                            setScoresPage((p) => Math.max(0, p - 1))
+                          }
+                          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
                         >
-                          {row.grade}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-zinc-400">
-                          {row.termLabel}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          Previous
+                        </button>
+                        <span className="text-xs text-slate-500 dark:text-zinc-400">
+                          Page {safeScoresPage + 1} / {scoresTotalPages}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={safeScoresPage >= scoresTotalPages - 1}
+                          onClick={() =>
+                            setScoresPage((p) =>
+                              Math.min(scoresTotalPages - 1, p + 1)
+                            )
+                          }
+                          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -363,74 +540,147 @@ export function StudentProfileClient({
                 No report cards for this student yet.
               </p>
             ) : (
-              <ul className="space-y-4">
-                {profileReportCards.map((rc) => (
-                  <li
-                    key={rc.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+              <div className="space-y-3">
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <label
+                    htmlFor="profile-report-comments-search"
+                    className="sr-only"
                   >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                        {rc.academicYear} · {rc.term}
-                      </p>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium capitalize text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
-                        {rc.status.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                    {rc.submittedAt ? (
-                      <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                        Submitted {formatDateOnly(rc.submittedAt)}
-                      </p>
-                    ) : null}
-                    {rc.adminNote ? (
-                      <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                        <span className="font-medium text-slate-800 dark:text-zinc-200">
-                          Admin note:{" "}
-                        </span>
-                        {rc.adminNote}
-                      </p>
-                    ) : null}
-                    {rc.subjectLines.length === 0 ? (
-                      <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-                        No subject comments on this report card.
-                      </p>
-                    ) : (
-                      <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
-                        {rc.subjectLines.map((line, idx) => (
+                    Search report card comments by subject
+                  </label>
+                  <input
+                    id="profile-report-comments-search"
+                    type="search"
+                    value={commentsSearch}
+                    onChange={(e) => setCommentsSearch(e.target.value)}
+                    placeholder="Search by subject…"
+                    className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                  />
+                </div>
+
+                {filteredReportCommentLines.length === 0 ? (
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-12 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white">
+                      No subject comments match your search.
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                      Try a different subject name.
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="space-y-4">
+                    {profileReportCards
+                      .filter((rc) => commentLinesByCard.has(rc.id))
+                      .map((rc) => {
+                        const linesForCard =
+                          commentLinesByCard.get(rc.id) ?? [];
+                        return (
                           <li
-                            key={`${rc.id}-${line.subject}-${idx}`}
-                            className="text-sm text-slate-700 dark:text-zinc-300"
+                            key={rc.id}
+                            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
                           >
-                            <span className="font-medium text-slate-900 dark:text-white">
-                              {line.subject}
-                            </span>
-                            {line.letterGrade || line.calculatedGrade ? (
-                              <span className="ml-2 text-slate-600 dark:text-zinc-400">
-                                (
-                                {line.letterGrade ??
-                                  line.calculatedGrade ??
-                                  (line.scorePercent != null
-                                    ? `${line.scorePercent}%`
-                                    : "—")}
-                                )
+                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                              <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                {rc.academicYear} · {rc.term}
+                              </p>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium capitalize text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
+                                {rc.status.replace(/_/g, " ")}
                               </span>
-                            ) : line.scorePercent != null ? (
-                              <span className="ml-2 text-slate-600 dark:text-zinc-400">
-                                ({line.scorePercent}%)
-                              </span>
-                            ) : null}
-                            {line.comment ? (
-                              <p className="mt-0.5 text-slate-600 dark:text-zinc-400">
-                                {line.comment}
+                            </div>
+                            {rc.submittedAt ? (
+                              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                                Submitted {formatDateOnly(rc.submittedAt)}
                               </p>
                             ) : null}
+                            {rc.adminNote ? (
+                              <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
+                                <span className="font-medium text-slate-800 dark:text-zinc-200">
+                                  Admin note:{" "}
+                                </span>
+                                {rc.adminNote}
+                              </p>
+                            ) : null}
+                            <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                              {linesForCard.map(({ line, idx }) => (
+                                <li
+                                  key={`${rc.id}-${line.subject}-${idx}`}
+                                  className="text-sm text-slate-700 dark:text-zinc-300"
+                                >
+                                  <span className="font-medium text-slate-900 dark:text-white">
+                                    {line.subject}
+                                  </span>
+                                  {line.letterGrade || line.calculatedGrade ? (
+                                    <span className="ml-2 text-slate-600 dark:text-zinc-400">
+                                      (
+                                      {line.letterGrade ??
+                                        line.calculatedGrade ??
+                                        (line.scorePercent != null
+                                          ? `${line.scorePercent}%`
+                                          : "—")}
+                                      )
+                                    </span>
+                                  ) : line.scorePercent != null ? (
+                                    <span className="ml-2 text-slate-600 dark:text-zinc-400">
+                                      ({line.scorePercent}%)
+                                    </span>
+                                  ) : null}
+                                  {line.comment ? (
+                                    <p className="mt-0.5 text-slate-600 dark:text-zinc-400">
+                                      {line.comment}
+                                    </p>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
                           </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                        );
+                      })}
+                  </ul>
+                )}
+
+                <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row dark:border-zinc-800 dark:bg-zinc-900">
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Showing{" "}
+                    {filteredReportCommentLines.length === 0
+                      ? 0
+                      : safeCommentsPage * PROFILE_SECTION_PAGE_SIZE + 1}
+                    –
+                    {Math.min(
+                      (safeCommentsPage + 1) * PROFILE_SECTION_PAGE_SIZE,
+                      filteredReportCommentLines.length
+                    )}{" "}
+                    of {filteredReportCommentLines.length} subject
+                    {filteredReportCommentLines.length === 1 ? "" : "s"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={safeCommentsPage <= 0}
+                      onClick={() =>
+                        setCommentsPage((p) => Math.max(0, p - 1))
+                      }
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-xs text-slate-500 dark:text-zinc-400">
+                      Page {safeCommentsPage + 1} / {commentsTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={safeCommentsPage >= commentsTotalPages - 1}
+                      onClick={() =>
+                        setCommentsPage((p) =>
+                          Math.min(commentsTotalPages - 1, p + 1)
+                        )
+                      }
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
