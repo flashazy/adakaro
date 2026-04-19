@@ -31,7 +31,11 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   y += 5;
   doc.text(`Term: ${data.term}   Academic year: ${data.academicYear}`, margin, y);
   y += 5;
-  doc.text(`Class teacher: ${data.teacherName}`, margin, y);
+  doc.text(
+    `${data.teacherIsCoordinator ? "Class Coordinator" : "Class teacher"}: ${data.teacherName}`,
+    margin,
+    y
+  );
   y += 5;
   doc.text(`Date issued: ${data.dateIssued}`, margin, y);
   y += 8;
@@ -169,7 +173,11 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
     y
   );
   y += 12;
-  doc.text("Class teacher: ___________________________", margin, y);
+  doc.text(
+    `${data.teacherIsCoordinator ? "Class Coordinator" : "Class teacher"}: ___________________________`,
+    margin,
+    y
+  );
   y += 10;
   doc.text("Head teacher: ___________________________", margin, y);
   y += 10;

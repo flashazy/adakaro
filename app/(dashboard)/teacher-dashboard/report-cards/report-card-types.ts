@@ -8,6 +8,12 @@ export interface TeacherClassOption {
   classId: string;
   className: string;
   academicYears: string[];
+  /**
+   * True when the current teacher holds the Coordinator role for this class
+   * (has a row in `teacher_coordinators`). Used to swap the report card label
+   * from "Class teacher" to "Class Coordinator".
+   */
+  isCoordinator: boolean;
 }
 
 /** Teacher-assigned subjects for report-card filters (class + academic year). */

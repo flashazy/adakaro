@@ -69,7 +69,9 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
           {data.academicYear}
         </p>
         <p className="sm:col-span-2">
-          <span className="font-semibold text-slate-700">Class teacher:</span>{" "}
+          <span className="font-semibold text-slate-700">
+            {data.teacherIsCoordinator ? "Class Coordinator:" : "Class teacher:"}
+          </span>{" "}
           {data.teacherName}
         </p>
         <p className="sm:col-span-2">
@@ -250,7 +252,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
       <section className="mt-8 grid gap-8 border-t border-slate-200 pt-6 sm:grid-cols-3">
         <div>
           <p className="text-xs font-semibold uppercase text-slate-600">
-            Class teacher
+            {data.teacherIsCoordinator ? "Class Coordinator" : "Class teacher"}
           </p>
           <div className="mt-8 border-b border-slate-400" />
           <p className="mt-1 text-xs text-slate-500">Signature</p>

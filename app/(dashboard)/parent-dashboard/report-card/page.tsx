@@ -279,6 +279,7 @@ export default async function ParentReportCardPage({
     term: row.term,
     academicYear: row.academic_year,
     teacherName: "—",
+    teacherIsCoordinator: false,
     dateIssued: new Intl.DateTimeFormat("en-GB", {
       dateStyle: "long",
     }).format(new Date()),

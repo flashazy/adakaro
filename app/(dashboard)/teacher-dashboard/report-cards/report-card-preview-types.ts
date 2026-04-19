@@ -6,6 +6,13 @@ export interface ReportCardPreviewData {
   term: string;
   academicYear: string;
   teacherName: string;
+  /**
+   * True when the teacher whose name appears on the card holds the
+   * Coordinator role for this class (i.e. has a row in `teacher_coordinators`
+   * for the class). Drives the "Class Coordinator" vs. "Class teacher" label
+   * in the preview and PDF. Defaults to `false` for plain class teachers.
+   */
+  teacherIsCoordinator: boolean;
   dateIssued: string;
   statusLabel: string;
   subjects: {

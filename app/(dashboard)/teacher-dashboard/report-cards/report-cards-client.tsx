@@ -214,6 +214,11 @@ function toPreviewData(args: {
   schoolLevel: SchoolLevel;
   className: string;
   teacherName: string;
+  /**
+   * True when the teacher named on this card holds the Coordinator role for
+   * the class — drives the "Class Coordinator" vs. "Class teacher" label.
+   */
+  teacherIsCoordinator: boolean;
   term: string;
   academicYear: string;
   subjects: string[];
@@ -249,6 +254,7 @@ function toPreviewData(args: {
     term: args.term,
     academicYear: args.academicYear,
     teacherName: args.teacherName,
+    teacherIsCoordinator: args.teacherIsCoordinator,
     dateIssued: issued,
     statusLabel: st.banner,
     subjects: buildSubjectPreviewRows(
@@ -686,6 +692,7 @@ export function ReportCardsPageClient({
       schoolLevel,
       className: selectedClass.className,
       teacherName,
+      teacherIsCoordinator: selectedClass.isCoordinator,
       term,
       academicYear,
       subjects: previewSubjectList,
@@ -1559,6 +1566,7 @@ export function ReportCardsPageClient({
                   schoolLevel,
                   className: selectedClass!.className,
                   teacherName,
+                  teacherIsCoordinator: selectedClass!.isCoordinator,
                   term,
                   academicYear,
                   subjects: subjectList,

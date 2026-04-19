@@ -143,10 +143,29 @@ export async function loadTeacherReportCardOptions(): Promise<
     byClass.get(r.class_id)!.years.add(r.academic_year?.trim() || "");
   }
 
+  // Which of these classes does the current teacher coordinate? Used downstream
+  // to swap the report card's "Class teacher" label for "Class Coordinator".
+  const coordinatorClassIds = new Set<string>();
+  if (classIds.length > 0) {
+    const { data: coordRows } = await admin
+      .from("teacher_coordinators")
+      .select("class_id")
+      .eq("teacher_id", user.id)
+      .in("class_id", classIds);
+    for (const r of (coordRows ?? []) as { class_id: string }[]) {
+      coordinatorClassIds.add(r.class_id);
+    }
+  }
+
   const classes: TeacherClassOption[] = [];
   for (const [classId, v] of byClass) {
     const academicYears = [...v.years].filter(Boolean).sort();
-    classes.push({ classId, className: v.name, academicYears });
+    classes.push({
+      classId,
+      className: v.name,
+      academicYears,
+      isCoordinator: coordinatorClassIds.has(classId),
+    });
   }
   classes.sort((a, b) => a.className.localeCompare(b.className));
 

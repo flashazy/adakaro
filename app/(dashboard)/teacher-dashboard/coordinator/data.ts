@@ -702,6 +702,19 @@ async function loadClassReportCards(
     }
   }
 
+  // Coordinator teacher IDs for this class — used to swap "Class teacher" for
+  // "Class Coordinator" on cards whose owning teacher coordinates the class.
+  const coordinatorTeacherIds = new Set<string>();
+  {
+    const { data: coordRows } = await admin
+      .from("teacher_coordinators")
+      .select("teacher_id")
+      .eq("class_id", params.classId);
+    for (const r of (coordRows ?? []) as { teacher_id: string }[]) {
+      if (r.teacher_id) coordinatorTeacherIds.add(r.teacher_id);
+    }
+  }
+
   const studentsForRank: StudentReportRow[] = cardRows.map((c) => ({
     studentId: c.student_id,
     fullName: c.students?.full_name ?? "",
@@ -827,6 +840,9 @@ async function loadClassReportCards(
       academicYear: params.academicYear,
       teacherName:
         (c.teacher_id && teacherNameById.get(c.teacher_id)) || "Teacher",
+      teacherIsCoordinator: c.teacher_id
+        ? coordinatorTeacherIds.has(c.teacher_id)
+        : false,
       dateIssued: formatIssuedDate(c.approved_at ?? c.updated_at),
       statusLabel: statusLabelFor(c.status),
       subjects: subjectRows,
