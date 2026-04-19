@@ -1,8 +1,15 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ReportCardPreview } from "@/app/(dashboard)/teacher-dashboard/report-cards/components/ReportCardPreview";
-import { buildSubjectPreviewRows } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-builder";
-import { loadSubjectPositionsForParentReportCard } from "@/app/(dashboard)/teacher-dashboard/report-cards/queries";
+import {
+  buildSubjectPreviewRows,
+  computeReportCardStudentSummary,
+} from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-builder";
+import {
+  loadParentReportCardCohort,
+  loadSubjectPositionsForParentReportCard,
+} from "@/app/(dashboard)/teacher-dashboard/report-cards/queries";
+import { normalizeSchoolLevel } from "@/lib/school-level";
 import type { ReportCardPreviewData } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-types";
 import type {
   ReportCardCommentRow,
@@ -193,11 +200,47 @@ export default async function ParentReportCardPage({
     academicYear: row.academic_year,
   });
 
+  // Footer summary needs the cohort to compute "X out of Y students" and the
+  // school level to decide between average % vs. total marks phrasing.
+  const cohortInfo = await loadParentReportCardCohort({
+    parentUserId: user.id,
+    focusStudentId: studentId,
+    classId: row.class_id,
+    term: row.term,
+    academicYear: row.academic_year,
+  });
+  const schoolLevel = normalizeSchoolLevel(cohortInfo?.schoolLevel);
+  // Make sure the focus student is part of the cohort even if their card is
+  // approved but not picked up by the cohort query (defensive).
+  const cohortStudents = (() => {
+    const list = cohortInfo?.cohort ?? [];
+    return list.some((s) => s.studentId === studentId)
+      ? list
+      : [...list, syntheticStudent];
+  })();
+  const cohortSubjects =
+    cohortInfo?.subjects && cohortInfo.subjects.length > 0
+      ? cohortInfo.subjects
+      : subjectOrder;
+  const summary = computeReportCardStudentSummary({
+    allStudents: cohortStudents,
+    subjects: cohortSubjects,
+    focusStudentId: studentId,
+    schoolLevel,
+    studentName: row.students?.full_name ?? "",
+    term: row.term,
+    academicYear: row.academic_year,
+  });
+
+  // Built after the summary so we can pass `selectedSubjects` into the row
+  // builder for the ✅ "Selected" indicator (only set when something was
+  // actually dropped from the best-N selection).
   const subjects: ReportCardPreviewData["subjects"] = buildSubjectPreviewRows(
     row.term,
     subjectOrder,
     syntheticStudent,
-    positionBySubject
+    positionBySubject,
+    summary.selectedSubjects
   );
 
   const { start, end } = termDateRange(term, academicYear);
@@ -247,6 +290,7 @@ export default async function ParentReportCardPage({
       late,
       daysInTermLabel: "this term (from school calendar)",
     },
+    summary,
   };
 
   return (

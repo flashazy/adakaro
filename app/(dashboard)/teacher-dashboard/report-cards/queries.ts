@@ -26,6 +26,10 @@ import {
   reportAcademicYearToEnrollmentYear,
 } from "@/lib/student-subject-enrollment-queries";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
+import {
+  normalizeSchoolLevel,
+  type SchoolLevel,
+} from "@/lib/school-level";
 
 export type {
   PendingReportCardRow,
@@ -48,6 +52,7 @@ export async function loadTeacherReportCardOptions(): Promise<
       schoolId: string;
       schoolName: string;
       logoUrl: string | null;
+      schoolLevel: SchoolLevel;
       teacherName: string;
       classes: TeacherClassOption[];
     }
@@ -150,22 +155,33 @@ export async function loadTeacherReportCardOptions(): Promise<
   let schoolId = primarySchoolId;
   let schoolName = "";
   let logoUrl: string | null = null;
+  let schoolLevel: SchoolLevel = normalizeSchoolLevel(undefined);
 
   if (primarySchoolId) {
-    const { data: schoolRow } = await admin
+    // `school_level` may be missing on older deployments; fall back gracefully.
+    let res = await admin
       .from("schools")
-      .select("id, name, logo_url")
+      .select("id, name, logo_url, school_level")
       .eq("id", primarySchoolId)
       .maybeSingle();
-    const s = schoolRow as {
+    if (res.error && /column.*school_level/i.test(res.error.message ?? "")) {
+      res = await admin
+        .from("schools")
+        .select("id, name, logo_url")
+        .eq("id", primarySchoolId)
+        .maybeSingle();
+    }
+    const s = res.data as {
       id: string;
       name: string;
       logo_url: string | null;
+      school_level?: string | null;
     } | null;
     if (s) {
       schoolId = s.id;
       schoolName = s.name;
       logoUrl = s.logo_url;
+      schoolLevel = normalizeSchoolLevel(s.school_level);
     }
   }
 
@@ -174,6 +190,7 @@ export async function loadTeacherReportCardOptions(): Promise<
     schoolId,
     schoolName,
     logoUrl,
+    schoolLevel,
     teacherName,
     classes,
   };
@@ -1047,4 +1064,168 @@ export async function loadSubjectPositionsForParentReportCard(params: {
     subjects,
     params.focusStudentId
   );
+}
+
+/**
+ * Returns the cohort + class subject list + school_level needed to render
+ * the parent-side report card footer (rank + total/avg). Mirrors the access
+ * checks used by `loadSubjectPositionsForParentReportCard` so a parent can
+ * only see classmates of a student they are linked to.
+ */
+export async function loadParentReportCardCohort(params: {
+  parentUserId: string;
+  focusStudentId: string;
+  classId: string;
+  term: string;
+  academicYear: string;
+}): Promise<{
+  cohort: StudentReportRow[];
+  subjects: string[];
+  schoolLevel: SchoolLevel;
+} | null> {
+  const admin = createAdminClient() as Db;
+  const termNorm = params.term.trim();
+  const yearNorm = params.academicYear.trim();
+
+  const { data: psLink } = await admin
+    .from("parent_students")
+    .select("student_id")
+    .eq("parent_id", params.parentUserId)
+    .eq("student_id", params.focusStudentId)
+    .maybeSingle();
+  if (!psLink) return null;
+
+  const { data: classRow } = await admin
+    .from("classes")
+    .select("id, school_id")
+    .eq("id", params.classId)
+    .maybeSingle();
+  const schoolId = (classRow as { school_id: string } | null)?.school_id;
+  let schoolLevel: SchoolLevel = normalizeSchoolLevel(undefined);
+  if (schoolId) {
+    let res = await admin
+      .from("schools")
+      .select("school_level")
+      .eq("id", schoolId)
+      .maybeSingle();
+    if (res.error && /column.*school_level/i.test(res.error.message ?? "")) {
+      // Older deployments without the column — keep default.
+      res = { data: null, error: null } as typeof res;
+    }
+    schoolLevel = normalizeSchoolLevel(
+      (res.data as { school_level?: string | null } | null)?.school_level
+    );
+  }
+
+  const { data: cards } = await admin
+    .from("report_cards")
+    .select("id, student_id")
+    .eq("class_id", params.classId)
+    .eq("term", termNorm)
+    .eq("academic_year", yearNorm)
+    .eq("status", "approved");
+
+  if (!cards?.length) {
+    return { cohort: [], subjects: [], schoolLevel };
+  }
+
+  const cardIds = (cards as { id: string; student_id: string }[]).map(
+    (c) => c.id
+  );
+  const cardToStudent = new Map(
+    (cards as { id: string; student_id: string }[]).map((c) => [
+      c.id,
+      c.student_id,
+    ])
+  );
+
+  const selectWithExams =
+    "id, report_card_id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
+  const selectOverride = `${selectWithExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
+  const selectFull = `${selectOverride}, position`;
+
+  let comsRes = await admin
+    .from("teacher_report_card_comments")
+    .select(selectFull)
+    .in("report_card_id", cardIds);
+  if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
+    comsRes = await admin
+      .from("teacher_report_card_comments")
+      .select(selectOverride)
+      .in("report_card_id", cardIds);
+  }
+  if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
+    comsRes = await admin
+      .from("teacher_report_card_comments")
+      .select(selectWithExams)
+      .in("report_card_id", cardIds);
+  }
+  if (comsRes.error || !comsRes.data) {
+    return { cohort: [], subjects: [], schoolLevel };
+  }
+
+  const parseNumeric = (
+    v: number | string | null | undefined
+  ): number | null => {
+    if (v == null || String(v).trim() === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const commentsByStudent = new Map<string, ReportCardCommentRow[]>();
+  for (const row of comsRes.data as {
+    id: string;
+    report_card_id: string;
+    subject: string;
+    comment: string | null;
+    score_percent: number | string | null;
+    letter_grade: string | null;
+    exam1_score: number | string | null;
+    exam2_score: number | string | null;
+    calculated_score: number | string | null;
+    calculated_grade: string | null;
+    exam1_gradebook_original?: number | string | null;
+    exam2_gradebook_original?: number | string | null;
+    exam1_score_overridden?: boolean | null;
+    exam2_score_overridden?: boolean | null;
+    position?: number | string | null;
+  }[]) {
+    const sid = cardToStudent.get(row.report_card_id);
+    if (!sid) continue;
+    const list = commentsByStudent.get(sid) ?? [];
+    list.push({
+      id: row.id,
+      subject: row.subject,
+      comment: row.comment,
+      scorePercent: parseNumeric(row.score_percent),
+      letterGrade: row.letter_grade,
+      exam1Score: parseNumeric(row.exam1_score),
+      exam2Score: parseNumeric(row.exam2_score),
+      calculatedScore: parseNumeric(row.calculated_score),
+      calculatedGrade: row.calculated_grade,
+      exam1GradebookOriginal: parseNumeric(row.exam1_gradebook_original),
+      exam2GradebookOriginal: parseNumeric(row.exam2_gradebook_original),
+      exam1ScoreOverridden: row.exam1_score_overridden === true,
+      exam2ScoreOverridden: row.exam2_score_overridden === true,
+      position: parseNumeric(row.position),
+    });
+    commentsByStudent.set(sid, list);
+  }
+
+  const cohort: StudentReportRow[] = (
+    cards as { id: string; student_id: string }[]
+  ).map((c) => ({
+    studentId: c.student_id,
+    fullName: "",
+    parentEmail: null,
+    reportCardId: c.id,
+    status: "approved" as ReportCardStatus,
+    comments: commentsByStudent.get(c.student_id) ?? [],
+  }));
+
+  const subjects = [
+    ...new Set(cohort.flatMap((s) => s.comments.map((x) => x.subject))),
+  ].sort((a, b) => a.localeCompare(b));
+
+  return { cohort, subjects, schoolLevel };
 }

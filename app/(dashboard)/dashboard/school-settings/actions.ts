@@ -9,6 +9,7 @@ import {
   isSchoolCurrencyCode,
   type SchoolCurrencyCode,
 } from "@/lib/currency";
+import { isSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 
 export interface SchoolSettingsState {
   error?: string;
@@ -277,5 +278,65 @@ export async function updateSchoolCurrency(
   revalidatePath("/dashboard/fee-structures");
   revalidatePath("/dashboard/payments");
   revalidatePath("/dashboard/reports");
+  return { success: true };
+}
+
+export async function updateSchoolLevel(
+  _prev: SchoolSettingsState,
+  formData: FormData
+): Promise<SchoolSettingsState> {
+  const raw = String(formData.get("school_level") ?? "").trim().toLowerCase();
+  if (!isSchoolLevel(raw)) {
+    return { error: "Please choose a valid school level." };
+  }
+  const schoolLevel = raw as SchoolLevel;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+
+  const { data: isAdmin, error: adminErr } = await supabase.rpc(
+    "is_school_admin",
+    { p_school_id: schoolId } as never
+  );
+  if (adminErr || !isAdmin) {
+    return { error: "You must be a school admin to change the school level." };
+  }
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not update school. Check server configuration (service role).",
+    };
+  }
+
+  const { error } = await admin
+    .from("schools")
+    .update({ school_level: schoolLevel } as never)
+    .eq("id", schoolId);
+
+  if (error) {
+    console.error("[updateSchoolLevel]", error);
+    return { error: error.message };
+  }
+
+  // Report-card preview/PDF read this setting; refresh every page that
+  // renders or generates a report card so the new rules take effect.
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/school-settings");
+  revalidatePath("/teacher-dashboard");
+  revalidatePath("/teacher-dashboard/report-cards");
+  revalidatePath("/teacher-dashboard/coordinator");
+  revalidatePath("/parent-dashboard/report-card");
   return { success: true };
 }

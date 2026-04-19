@@ -35,8 +35,10 @@ import type { ReportCardPreviewData } from "./report-card-preview-types";
 import {
   buildSubjectPreviewRows,
   computeClassSubjectPositions,
+  computeReportCardStudentSummary,
   mergeStudentCommentsWithDraftsForPreview,
 } from "./report-card-preview-builder";
+import type { SchoolLevel } from "@/lib/school-level";
 import {
   downloadBulkReportCardsPdf,
   downloadReportCardPdf,
@@ -206,48 +208,68 @@ function statusLabel(
   }
 }
 
-function toPreviewData(
-  schoolName: string,
-  logoUrl: string | null,
-  className: string,
-  teacherName: string,
-  term: string,
-  academicYear: string,
-  subjects: string[],
-  student: StudentReportRow,
-  attendance: { present: number; absent: number; late: number },
-  positionBySubject?: Record<string, string>
-): ReportCardPreviewData {
-  const st = statusLabel(student.status);
+function toPreviewData(args: {
+  schoolName: string;
+  logoUrl: string | null;
+  schoolLevel: SchoolLevel;
+  className: string;
+  teacherName: string;
+  term: string;
+  academicYear: string;
+  subjects: string[];
+  student: StudentReportRow;
+  attendance: { present: number; absent: number; late: number };
+  /** Per-subject ranks for this student, keyed by subject name. */
+  positionBySubject?: Record<string, string>;
+  /**
+   * Cohort used to compute the footer summary (rank + total/avg). Pass the
+   * full class so position-out-of-N matches what the table shows.
+   */
+  cohort?: StudentReportRow[];
+}): ReportCardPreviewData {
+  const st = statusLabel(args.student.status);
   const issued = new Intl.DateTimeFormat("en-GB", {
     dateStyle: "long",
   }).format(new Date());
+  const cohort = args.cohort ?? [args.student];
+  const summary = computeReportCardStudentSummary({
+    allStudents: cohort,
+    subjects: args.subjects,
+    focusStudentId: args.student.studentId,
+    schoolLevel: args.schoolLevel,
+    studentName: args.student.fullName,
+    term: args.term,
+    academicYear: args.academicYear,
+  });
   return {
-    schoolName,
-    logoUrl,
-    studentName: student.fullName,
-    className,
-    term,
-    academicYear,
-    teacherName,
+    schoolName: args.schoolName,
+    logoUrl: args.logoUrl,
+    studentName: args.student.fullName,
+    className: args.className,
+    term: args.term,
+    academicYear: args.academicYear,
+    teacherName: args.teacherName,
     dateIssued: issued,
     statusLabel: st.banner,
     subjects: buildSubjectPreviewRows(
-      term,
-      subjects,
-      student,
-      positionBySubject
+      args.term,
+      args.subjects,
+      args.student,
+      args.positionBySubject,
+      summary.selectedSubjects
     ),
     attendance: {
-      ...attendance,
+      ...args.attendance,
       daysInTermLabel: "recorded sessions in this term window",
     },
+    summary,
   };
 }
 
 export function ReportCardsPageClient({
   schoolId,
   schoolName,
+  schoolLevel,
   logoUrl,
   teacherName,
   classes,
@@ -256,6 +278,7 @@ export function ReportCardsPageClient({
 }: {
   schoolId: string;
   schoolName: string;
+  schoolLevel: SchoolLevel;
   logoUrl: string | null;
   teacherName: string;
   classes: TeacherClassOption[];
@@ -657,26 +680,29 @@ export function ReportCardsPageClient({
       drafts[selectedStudent.studentId],
       { restrictOutputToSubjects: true }
     );
-    return toPreviewData(
+    return toPreviewData({
       schoolName,
       logoUrl,
-      selectedClass.className,
+      schoolLevel,
+      className: selectedClass.className,
       teacherName,
       term,
       academicYear,
-      previewSubjectList,
-      mergedStudent,
-      attendanceByStudent[selectedStudent.studentId] ?? {
+      subjects: previewSubjectList,
+      student: mergedStudent,
+      attendance: attendanceByStudent[selectedStudent.studentId] ?? {
         present: 0,
         absent: 0,
         late: 0,
       },
-      positionBySubjectForPreview
-    );
+      positionBySubject: positionBySubjectForPreview,
+      cohort: studentsMergedForPreview,
+    });
   }, [
     selectedStudent,
     selectedClass,
     schoolName,
+    schoolLevel,
     logoUrl,
     teacherName,
     term,
@@ -1527,22 +1553,24 @@ export function ReportCardsPageClient({
                   subjectList,
                   s.studentId
                 );
-                return toPreviewData(
+                return toPreviewData({
                   schoolName,
                   logoUrl,
-                  selectedClass!.className,
+                  schoolLevel,
+                  className: selectedClass!.className,
                   teacherName,
                   term,
                   academicYear,
-                  subjectList,
-                  merged,
-                  attendanceByStudent[s.studentId] ?? {
+                  subjects: subjectList,
+                  student: merged,
+                  attendance: attendanceByStudent[s.studentId] ?? {
                     present: 0,
                     absent: 0,
                     late: 0,
                   },
-                  positions
-                );
+                  positionBySubject: positions,
+                  cohort: allMerged,
+                });
               });
               const safe = selectedClass!.className
                 .replace(/[^\w\s-]/g, "")

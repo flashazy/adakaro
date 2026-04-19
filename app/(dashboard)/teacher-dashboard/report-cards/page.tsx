@@ -67,6 +67,7 @@ export default async function TeacherReportCardsPage() {
           <ReportCardsPageClient
             schoolId={options.schoolId}
             schoolName={options.schoolName}
+            schoolLevel={options.schoolLevel}
             logoUrl={options.logoUrl}
             teacherName={options.teacherName}
             classes={options.classes}

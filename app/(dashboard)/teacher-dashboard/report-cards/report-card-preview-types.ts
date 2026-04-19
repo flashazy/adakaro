@@ -20,6 +20,14 @@ export interface ReportCardPreviewData {
     /** Class rank by term average for this subject (ties share rank; "—" if no average). */
     position: string;
     comment: string;
+    /**
+     * Whether this subject contributes to the student's total score.
+     * - `true`  → counted (one of the best 7 in secondary mode)
+     * - `false` → dropped (extra subject beyond the best 7)
+     * - `null`  → no indicator should be rendered (primary schools, or
+     *            secondary students with ≤7 subjects where every subject counts)
+     */
+    selected: boolean | null;
   }[];
   attendance: {
     present: number;
@@ -27,4 +35,36 @@ export interface ReportCardPreviewData {
     late: number;
     daysInTermLabel: string;
   };
+  /**
+   * Optional summary sentence printed below subject results. Shape is decided
+   * by the school's level: primary schools surface average %, secondary
+   * schools surface total marks of the best 7 subjects.
+   */
+  summary?: ReportCardSummary | null;
+}
+
+export interface ReportCardSummary {
+  /** "primary" or "secondary"; controls phrasing in the footer line. */
+  schoolLevel: "primary" | "secondary";
+  /** 1-based class rank for the focus student (null if no comparable score). */
+  rank: number | null;
+  /** Number of cohort students with a comparable score (rank denominator). */
+  totalStudents: number;
+  /** Sum of best-7 subject averages (secondary only). */
+  totalScore: number | null;
+  /**
+   * Legacy: mean of all subject averages as a percent (primary only).
+   * No longer populated — both school levels now expose `totalScore` instead.
+   * Kept on the type so older call sites continue to compile.
+   */
+  averagePercent: number | null;
+  /** Pre-formatted footer sentence (or null when nothing to render). */
+  sentence: string | null;
+  /**
+   * Subject names that contributed to the summary score for the focus
+   * student. `null` when no per-subject indicator should be shown — i.e.
+   * primary schools, or secondary students whose subject count is already
+   * ≤ the best-N cap so nothing was dropped.
+   */
+  selectedSubjects: string[] | null;
 }

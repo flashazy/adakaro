@@ -7,9 +7,11 @@ import {
   logoVersionFromRow,
 } from "@/lib/dashboard/resolve-school-display";
 import { normalizeSchoolCurrency, formatSchoolTitleWithCurrency } from "@/lib/currency";
+import { normalizeSchoolLevel } from "@/lib/school-level";
 import { SchoolCurrencyForm } from "./school-currency-form";
 import { SchoolAdmissionPrefixForm } from "./school-admission-prefix-form";
 import { SchoolLogoForm } from "./school-logo-form";
+import { SchoolLevelForm } from "./school-level-form";
 
 export const dynamic = "force-dynamic";
 
@@ -24,19 +26,42 @@ export default async function SchoolSettingsPage() {
   if (!display?.schoolId) redirect("/dashboard");
   const schoolId = display.schoolId;
 
-  const { data: school } = await supabase
-    .from("schools")
-    .select("name, currency, admission_prefix, logo_url, updated_at")
-    .eq("id", schoolId)
-    .maybeSingle();
-
-  const fetched = school as {
+  type FetchedSchool = {
     name: string;
     currency: string | null;
     admission_prefix: string | null;
     logo_url: string | null;
     updated_at: string;
-  } | null;
+    school_level?: string | null;
+  };
+
+  // `school_level` (migration 00086) may not exist on older deployments; fall
+  // back to the legacy column set so the page still loads.
+  const fullCols =
+    "name, currency, admission_prefix, logo_url, updated_at, school_level";
+  const baseCols =
+    "name, currency, admission_prefix, logo_url, updated_at";
+  let schoolRes = await supabase
+    .from("schools")
+    .select(fullCols)
+    .eq("id", schoolId)
+    .maybeSingle();
+  if (
+    schoolRes.error &&
+    /column.*school_level/i.test(schoolRes.error.message ?? "")
+  ) {
+    schoolRes = await supabase
+      .from("schools")
+      .select(baseCols)
+      .eq("id", schoolId)
+      .maybeSingle();
+  }
+  const fetched = (schoolRes.data as unknown as FetchedSchool | null) ?? null;
+
+  const { data: isAdminFlag } = await supabase.rpc("is_school_admin", {
+    p_school_id: schoolId,
+  } as never);
+  const isSchoolAdmin = !!isAdminFlag;
   const row = {
     name: (fetched?.name?.trim() || display.name?.trim() || "").trim(),
     currency: fetched?.currency ?? display.currency,
@@ -46,6 +71,7 @@ export default async function SchoolSettingsPage() {
     redirect("/dashboard");
   }
   const currency = normalizeSchoolCurrency(row.currency);
+  const schoolLevel = normalizeSchoolLevel(fetched?.school_level);
   const admissionPrefix = (fetched?.admission_prefix ?? "").trim();
   const logoUrl =
     (fetched?.logo_url?.trim() || display.logo_url?.trim() || null) ?? null;
@@ -103,6 +129,23 @@ export default async function SchoolSettingsPage() {
               schoolName={row.name}
               initialLogoUrl={logoUrl}
               initialLogoVersion={logoVersion}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+            School level
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+            Choose how report cards calculate rankings. Primary schools rank by
+            average %; secondary schools rank by total marks of the best 7
+            subjects.
+          </p>
+          <div className="mt-6">
+            <SchoolLevelForm
+              currentLevel={schoolLevel}
+              canEdit={isSchoolAdmin}
             />
           </div>
         </section>

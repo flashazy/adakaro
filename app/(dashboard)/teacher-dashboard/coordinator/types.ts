@@ -1,6 +1,7 @@
 import type { GradebookMajorExamTypeValue } from "@/lib/gradebook-major-exams";
 import type { ReportCardPreviewData } from "../report-cards/report-card-preview-types";
 import type { ReportCardStatus } from "../report-cards/report-card-types";
+import type { SchoolLevel } from "@/lib/school-level";
 
 /**
  * Shared coordinator-dashboard types and client-safe constants.
@@ -49,6 +50,8 @@ export interface CoordinatorClassOverview {
   schoolId: string;
   schoolName: string;
   schoolLogoUrl: string | null;
+  /** Drives report-card ranking maths (primary = avg %, secondary = best 7). */
+  schoolLevel: SchoolLevel;
   academicYear: string;
   studentCount: number;
   subjects: CoordinatorSubjectOverview[];

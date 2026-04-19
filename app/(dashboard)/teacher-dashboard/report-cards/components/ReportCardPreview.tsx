@@ -19,6 +19,10 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
   const { exam1, exam2 } = examLabelsForTerm(data.term);
   const exam1Head = `${exam1} (%)`;
   const exam2Head = `${exam2} (%)`;
+  // Only show the "Selected" column when something was actually dropped from
+  // the total (e.g. secondary student with >7 subjects). For everyone else
+  // every subject already counts so the column would just be visual noise.
+  const showSelectedColumn = data.subjects.some((r) => r.selected !== null);
 
   return (
     <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm print:shadow-none print:border-slate-300">
@@ -103,54 +107,90 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                 <th className="min-w-[10rem] border border-slate-600 px-2 py-2">
                   Teacher comment
                 </th>
+                {showSelectedColumn ? (
+                  <th className="border border-slate-600 px-2 py-2 text-center">
+                    Selected
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {data.subjects.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={showSelectedColumn ? 8 : 7}
                     className="border border-slate-200 px-2 py-3 text-slate-500"
                   >
                     No subject entries yet.
                   </td>
                 </tr>
               ) : (
-                data.subjects.map((r) => (
-                  <tr key={r.subject} className="odd:bg-white even:bg-slate-50">
-                    <td className="border border-slate-200 px-2 py-2 font-medium">
-                      {r.subject}
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2 tabular-nums">
-                      {r.exam1Pct}
-                      {r.exam1Overridden ? (
-                        <span className="font-semibold text-slate-800" title="Overridden from markbook">
-                          *
-                        </span>
+                data.subjects.map((r) => {
+                  // Highlight counted rows in light green so the "best 7" pop
+                  // visually; dropped rows stay neutral with a dimmer label.
+                  const rowClass =
+                    r.selected === true
+                      ? "bg-emerald-50/70 print:bg-emerald-50/70"
+                      : r.selected === false
+                        ? "bg-white text-slate-500"
+                        : "odd:bg-white even:bg-slate-50";
+                  return (
+                    <tr key={r.subject} className={rowClass}>
+                      <td className="border border-slate-200 px-2 py-2 font-medium">
+                        {r.subject}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-2 tabular-nums">
+                        {r.exam1Pct}
+                        {r.exam1Overridden ? (
+                          <span className="font-semibold text-slate-800" title="Overridden from markbook">
+                            *
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-2 tabular-nums">
+                        {r.exam2Pct}
+                        {r.exam2Overridden ? (
+                          <span className="font-semibold text-slate-800" title="Overridden from markbook">
+                            *
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-2 font-semibold tabular-nums">
+                        {r.averagePct}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-2 font-semibold">
+                        {r.grade}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-2 text-center font-semibold tabular-nums text-slate-800">
+                        {r.position}
+                      </td>
+                      <td className="border border-slate-200 px-2 py-2 text-slate-700">
+                        {r.comment || "—"}
+                      </td>
+                      {showSelectedColumn ? (
+                        <td className="border border-slate-200 px-2 py-2 text-center">
+                          {r.selected === true ? (
+                            <span
+                              className="inline-flex items-center gap-1 font-semibold text-emerald-700"
+                              aria-label="Counted toward total score"
+                              title="Counted toward total score"
+                            >
+                              <span aria-hidden>✅</span>
+                            </span>
+                          ) : r.selected === false ? (
+                            <span
+                              className="text-xs italic text-slate-500"
+                              aria-label="Not counted toward total score"
+                              title="Dropped from the best-7 selection"
+                            >
+                              (dropped)
+                            </span>
+                          ) : null}
+                        </td>
                       ) : null}
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2 tabular-nums">
-                      {r.exam2Pct}
-                      {r.exam2Overridden ? (
-                        <span className="font-semibold text-slate-800" title="Overridden from markbook">
-                          *
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2 font-semibold tabular-nums">
-                      {r.averagePct}
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2 font-semibold">
-                      {r.grade}
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2 text-center font-semibold tabular-nums text-slate-800">
-                      {r.position}
-                    </td>
-                    <td className="border border-slate-200 px-2 py-2 text-slate-700">
-                      {r.comment || "—"}
-                    </td>
-                  </tr>
-                ))
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -159,7 +199,27 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
           Final score per subject = (Exam 1 + Exam 2) ÷ 2 when both are entered.
           Grading: A = 75–100%, B = 65–74%, C = 45–64%, D = 30–44%, F = 0–29%.
         </p>
+        {showSelectedColumn ? (
+          <p className="mt-1 text-xs text-emerald-700">
+            ✅ Selected subjects are the best 7 used to calculate your total
+            score.
+          </p>
+        ) : null}
       </section>
+
+      {data.summary?.sentence ? (
+        <section className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-sm text-slate-800 print:border-slate-400 print:bg-white">
+          <p>
+            <span className="font-semibold text-slate-900">Summary:</span>{" "}
+            {data.summary.sentence}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {data.summary.schoolLevel === "secondary"
+              ? "Secondary school: best 7 subject averages count toward the total marks."
+              : "Primary school: total score is the sum of all subject averages."}
+          </p>
+        </section>
+      ) : null}
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">

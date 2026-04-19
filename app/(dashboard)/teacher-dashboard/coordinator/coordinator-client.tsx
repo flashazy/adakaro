@@ -34,6 +34,30 @@ import {
   type CoordinatorGenerateState,
   type CoordinatorShareState,
 } from "./actions";
+import {
+  SCHOOL_LEVEL_DESCRIPTIONS,
+  SCHOOL_LEVEL_LABELS,
+  type SchoolLevel,
+} from "@/lib/school-level";
+
+function SchoolLevelBadge({ level }: { level: SchoolLevel }) {
+  const isSecondary = level === "secondary";
+  return (
+    <span
+      title={SCHOOL_LEVEL_DESCRIPTIONS[level]}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+        isSecondary
+          ? "bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-200"
+          : "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-200"
+      }`}
+    >
+      {SCHOOL_LEVEL_LABELS[level]}
+      <span className="text-[10px] font-normal normal-case opacity-80">
+        {isSecondary ? "(best 7)" : "(avg %)"}
+      </span>
+    </span>
+  );
+}
 
 const STATUS_LABELS: Record<CoordinatorReportCardItem["status"], string> = {
   draft: "Draft",
@@ -417,6 +441,7 @@ function CoordinatorClassCard({
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
               {klass.className}
             </h2>
+            <SchoolLevelBadge level={klass.schoolLevel} />
             <button
               type="button"
               onClick={() => setShowGenerateModal(true)}
@@ -450,6 +475,7 @@ function CoordinatorClassCard({
           classId={klass.classId}
           className={klass.className}
           studentCount={klass.studentCount}
+          schoolLevel={klass.schoolLevel}
           term={term}
           academicYear={academicYear}
           onClose={() => setShowGenerateModal(false)}
@@ -880,6 +906,7 @@ function GenerateReportCardsModal({
   classId,
   className,
   studentCount,
+  schoolLevel,
   term,
   academicYear,
   onClose,
@@ -887,6 +914,7 @@ function GenerateReportCardsModal({
   classId: string;
   className: string;
   studentCount: number;
+  schoolLevel: SchoolLevel;
   term: "Term 1" | "Term 2";
   academicYear: string;
   onClose: () => void;
@@ -947,6 +975,14 @@ function GenerateReportCardsModal({
                 <span className="font-medium">{term}</span>, academic year{" "}
                 <span className="font-medium">{academicYear}</span>. Continue?
               </p>
+              <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
+                <SchoolLevelBadge level={schoolLevel} />
+                <span>
+                  {schoolLevel === "secondary"
+                    ? "Ranking uses total marks of the best 7 subjects per student."
+                    : "Ranking uses each student's average across all subjects."}
+                </span>
+              </div>
               <p className="text-xs text-slate-500 dark:text-zinc-400">
                 Students who already have a report card for this term and year
                 will be skipped — existing cards are never overwritten.

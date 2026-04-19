@@ -15,7 +15,12 @@ import {
 import {
   buildSubjectPreviewRows,
   computeClassSubjectPositions,
+  computeReportCardStudentSummary,
 } from "../report-cards/report-card-preview-builder";
+import {
+  normalizeSchoolLevel,
+  type SchoolLevel,
+} from "@/lib/school-level";
 import type { ReportCardPreviewData } from "../report-cards/report-card-preview-types";
 import type {
   ReportCardCommentRow,
@@ -591,6 +596,7 @@ async function loadClassReportCards(
     className: string;
     schoolName: string;
     schoolLogoUrl: string | null;
+    schoolLevel: SchoolLevel;
     academicYear: string;
     term: "Term 1" | "Term 2";
     /** Class-level subject list resolved from `subject_classes`. */
@@ -784,11 +790,26 @@ async function loadClassReportCards(
       allSubjects,
       c.student_id
     );
+    // Footer summary (rank + total/avg) uses the same cohort that powers the
+    // per-subject positions, so the footer line agrees with the table above.
+    // We compute the summary first so we can pass `selectedSubjects` (best 7
+    // for secondary students with >7 subjects) into the row builder for the
+    // ✅ "Selected" indicator column.
+    const summary = computeReportCardStudentSummary({
+      allStudents: studentsForRank,
+      subjects: allSubjects,
+      focusStudentId: c.student_id,
+      schoolLevel: params.schoolLevel,
+      studentName: studentRow.fullName,
+      term: params.term,
+      academicYear: params.academicYear,
+    });
     const subjectRows = buildSubjectPreviewRows(
       params.term,
       studentSubjects,
       studentRow,
-      positions
+      positions,
+      summary.selectedSubjects
     );
 
     const attendance = attendanceByStudent.get(c.student_id) ?? {
@@ -815,6 +836,7 @@ async function loadClassReportCards(
         late: attendance.late,
         daysInTermLabel: `${start} – ${end}`,
       },
+      summary,
     };
 
     return {
@@ -865,17 +887,28 @@ export async function loadCoordinatorOverview(params: {
     )
   );
 
-  const { data: schoolRows } = await admin
-    .from("schools")
-    .select("id, name, logo_url")
-    .in("id", schoolIds);
+  // `school_level` (migration 00086) may be missing on older deployments;
+  // fall back to the legacy column set so the coordinator dashboard still
+  // loads. Defaults to "primary" via `normalizeSchoolLevel` below.
+  let schoolRows:
+    | { id: string; name: string; logo_url: string | null; school_level?: string | null }[]
+    | null = null;
+  {
+    let res = await admin
+      .from("schools")
+      .select("id, name, logo_url, school_level")
+      .in("id", schoolIds);
+    if (res.error && /column.*school_level/i.test(res.error.message ?? "")) {
+      res = await admin
+        .from("schools")
+        .select("id, name, logo_url")
+        .in("id", schoolIds);
+    }
+    schoolRows = (res.data as typeof schoolRows) ?? [];
+  }
 
   const schoolById = new Map(
-    ((schoolRows ?? []) as {
-      id: string;
-      name: string;
-      logo_url: string | null;
-    }[]).map((s) => [s.id, s])
+    (schoolRows ?? []).map((s) => [s.id, s])
   );
 
   const academicYear = params.academicYear.trim() || defaultCoordinatorAcademicYear();
@@ -886,6 +919,7 @@ export async function loadCoordinatorOverview(params: {
     const c = classById.get(classId);
     if (!c) continue;
     const school = schoolById.get(c.school_id);
+    const schoolLevel = normalizeSchoolLevel(school?.school_level);
 
     const { count: studentCount } = await admin
       .from("students")
@@ -907,6 +941,7 @@ export async function loadCoordinatorOverview(params: {
       className: c.name,
       schoolName: school?.name ?? "School",
       schoolLogoUrl: school?.logo_url ?? null,
+      schoolLevel,
       academicYear,
       term: params.term,
       classSubjectNames: subjects.map((s) => s.name),
@@ -918,6 +953,7 @@ export async function loadCoordinatorOverview(params: {
       schoolId: c.school_id,
       schoolName: school?.name ?? "School",
       schoolLogoUrl: school?.logo_url ?? null,
+      schoolLevel,
       academicYear,
       studentCount: studentCount ?? 0,
       subjects,

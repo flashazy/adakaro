@@ -218,6 +218,7 @@ export interface Database {
           student_limit: number | null;
           admin_limit: number | null;
           admission_prefix: string | null;
+          school_level: "primary" | "secondary";
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -237,6 +238,7 @@ export interface Database {
           student_limit?: number | null;
           admin_limit?: number | null;
           admission_prefix?: string | null;
+          school_level?: "primary" | "secondary";
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -255,6 +257,7 @@ export interface Database {
           student_limit?: number | null;
           admin_limit?: number | null;
           admission_prefix?: string | null;
+          school_level?: "primary" | "secondary";
           updated_at?: string;
         };
       };
