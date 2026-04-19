@@ -30,6 +30,12 @@ import {
 import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
 import { getMaxScore, gradingScaleDescription } from "@/lib/tanzania-grades";
 import type { SchoolLevel } from "@/lib/school-level";
+import {
+  formatMarksCellLabel,
+  GradeDisplayFormatToggle,
+  useGradeDisplayFormat,
+  type GradeDisplayFormat,
+} from "@/lib/grade-display-format";
 
 const WEIGHT_FIELD_TOOLTIP =
   "Weight determines how much this assignment counts toward the final grade. Example: Final exam = 50%, Quiz = 10%. Default is 100%.";
@@ -133,7 +139,8 @@ function tanzaniaGradeCellSurface(letter: string): string {
 function formatMatrixCellDisplay(
   raw: string,
   maxScore: number,
-  schoolLevel: SchoolLevel
+  schoolLevel: SchoolLevel,
+  displayFormat: GradeDisplayFormat
 ): { text: string; letter: string } {
   const trimmed = raw.trim();
   if (trimmed === "") return { text: "—", letter: "—" };
@@ -145,7 +152,14 @@ function formatMatrixCellDisplay(
     maxScore > 0 ? tanzaniaPercentFromScore(n, maxScore) : null;
   const letter = tanzaniaLetterGrade(tanzPct, schoolLevel);
   if (p == null) return { text: "—", letter: "—" };
-  return { text: `${p}% (${letter})`, letter };
+  const text = formatMarksCellLabel({
+    score: n,
+    maxScore,
+    percent: p,
+    letter,
+    format: displayFormat,
+  });
+  return { text, letter };
 }
 
 export function TeacherGradebook({
@@ -189,6 +203,9 @@ export function TeacherGradebook({
   } | null>(null);
 
   const [matrixLoading, setMatrixLoading] = useState(false);
+
+  const { format: displayFormat, setFormat: setDisplayFormat } =
+    useGradeDisplayFormat();
 
   const [title, setTitle] = useState("");
   /** Controlled preset dropdown; resets to "" after applying so the same preset can be chosen again. */
@@ -894,9 +911,15 @@ export function TeacherGradebook({
       )}
 
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-          Filter
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+            Filter
+          </h2>
+          <GradeDisplayFormatToggle
+            value={displayFormat}
+            onChange={setDisplayFormat}
+          />
+        </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="block text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
@@ -1036,7 +1059,8 @@ export function TeacherGradebook({
                           const { text, letter } = formatMatrixCellDisplay(
                             raw,
                             a.max_score,
-                            schoolLevel
+                            schoolLevel,
+                            displayFormat
                           );
                           const surface =
                             letter !== "—"
@@ -1443,7 +1467,13 @@ export function TeacherGradebook({
                     <th className="px-3 py-2 text-left">Student</th>
                     <th className="px-3 py-2 text-left">Gender</th>
                     <th className="px-3 py-2 text-left">Score</th>
-                    <th className="px-3 py-2 text-left">%</th>
+                    <th className="px-3 py-2 text-left">
+                      {displayFormat === "marks"
+                        ? "Marks"
+                        : displayFormat === "both"
+                          ? "Marks - %"
+                          : "%"}
+                    </th>
                     <th className="px-3 py-2 text-left">Grade</th>
                     <th className="px-3 py-2 text-left">Remarks</th>
                   </tr>
@@ -1516,8 +1546,14 @@ export function TeacherGradebook({
                               className="w-24 rounded border border-slate-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-950"
                             />
                           </td>
-                          <td className="px-3 py-2 text-slate-600 dark:text-zinc-400">
-                            {p != null ? `${p}%` : "—"}
+                          <td className="px-3 py-2 text-slate-600 dark:text-zinc-400 tabular-nums">
+                            {formatMarksCellLabel({
+                              score: n,
+                              maxScore: matrix.assignment.max_score,
+                              percent: p,
+                              letter: null,
+                              format: displayFormat,
+                            })}
                           </td>
                           <td className="px-3 py-2">
                             <span

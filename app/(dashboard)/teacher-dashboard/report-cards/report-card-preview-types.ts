@@ -19,6 +19,16 @@ export interface ReportCardPreviewData {
     subject: string;
     exam1Pct: string;
     exam2Pct: string;
+    /**
+     * Raw percentage (0–100) for each exam plus the term average. Optional so
+     * older callers/snapshots stay compatible. Used by the on-screen "Show
+     * scores as" toggle to re-render the same value as a percentage, marks
+     * fraction (e.g. 41/50), or both. The persisted strings in `exam1Pct`,
+     * `exam2Pct`, and `averagePct` remain the canonical fallback.
+     */
+    exam1PercentRaw?: number | null;
+    exam2PercentRaw?: number | null;
+    averagePercentRaw?: number | null;
     /** True when the saved score was edited after using the gradebook value. */
     exam1Overridden: boolean;
     exam2Overridden: boolean;

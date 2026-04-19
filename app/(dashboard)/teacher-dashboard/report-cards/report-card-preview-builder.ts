@@ -240,6 +240,10 @@ export function buildSubjectPreviewRows(
       subject,
       exam1Pct: fmtPct(e1),
       exam2Pct: fmtPct(e2),
+      exam1PercentRaw: e1,
+      exam2PercentRaw: e2,
+      averagePercentRaw:
+        avgRaw != null && Number.isFinite(avgRaw) ? avgRaw : null,
       exam1Overridden: c?.exam1ScoreOverridden === true,
       exam2Overridden: c?.exam2ScoreOverridden === true,
       averagePct: avgRaw != null && Number.isFinite(avgRaw) ? `${avgRaw}%` : "—",

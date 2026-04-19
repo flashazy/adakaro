@@ -6,6 +6,13 @@ import {
 } from "../constants";
 import type { ReportCardPreviewData } from "../report-card-preview-types";
 import { gradingScaleDescription } from "@/lib/tanzania-grades";
+import {
+  formatReportCardCellLabel,
+  GradeDisplayFormatToggle,
+  useGradeDisplayFormat,
+  type GradeDisplayFormat,
+} from "@/lib/grade-display-format";
+import type { SchoolLevel } from "@/lib/school-level";
 
 export type { ReportCardPreviewData } from "../report-card-preview-types";
 
@@ -16,10 +23,63 @@ function examLabelsForTerm(term: string): { exam1: string; exam2: string } {
   return REPORT_CARD_EXAM_LABELS["Term 1"];
 }
 
+/** Header suffix for exam columns based on the chosen display format. */
+function columnHeaderSuffix(format: GradeDisplayFormat): string {
+  switch (format) {
+    case "marks":
+      return "(Marks)";
+    case "both":
+      return "(Marks / %)";
+    case "percentage":
+    default:
+      return "(%)";
+  }
+}
+
+/** Average column header based on the chosen display format. */
+function averageColumnHeader(format: GradeDisplayFormat): string {
+  switch (format) {
+    case "marks":
+      return "Average marks";
+    case "both":
+      return "Average (Marks / %)";
+    case "percentage":
+    default:
+      return "Average %";
+  }
+}
+
+/**
+ * Render an exam-cell value for the report card. Falls back to the
+ * pre-formatted percentage string from the builder when the raw percent isn't
+ * available (older snapshots) so existing report cards keep rendering as
+ * before regardless of the toggle.
+ */
+function renderExamCell(
+  rawPercent: number | null | undefined,
+  fallbackPct: string,
+  format: GradeDisplayFormat,
+  schoolLevel: SchoolLevel | null | undefined
+): string {
+  if (rawPercent == null || !Number.isFinite(rawPercent)) {
+    if (fallbackPct === "—") return "—";
+    return format === "percentage" ? fallbackPct : fallbackPct;
+  }
+  return formatReportCardCellLabel({
+    percent: rawPercent,
+    format,
+    schoolLevel,
+  });
+}
+
 export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
+  const { format, setFormat } = useGradeDisplayFormat();
+  const schoolLevel = data.summary?.schoolLevel ?? null;
   const { exam1, exam2 } = examLabelsForTerm(data.term);
-  const exam1Head = `${exam1} (%)`;
-  const exam2Head = `${exam2} (%)`;
+  const headSuffix = columnHeaderSuffix(format);
+  const exam1Head = `${exam1} ${headSuffix}`;
+  const exam2Head = `${exam2} ${headSuffix}`;
+  const averageHead = averageColumnHeader(format);
   // Only show the "Selected" column when something was actually dropped from
   // the total (e.g. secondary student with >7 subjects). For everyone else
   // every subject already counts so the column would just be visual noise.
@@ -82,9 +142,16 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-800">
-          Subject results
-        </h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
+            Subject results
+          </h2>
+          <GradeDisplayFormatToggle
+            value={format}
+            onChange={setFormat}
+            className="text-slate-700"
+          />
+        </div>
         {(() => {
           const anyOv = data.subjects.some(
             (r) => r.exam1Overridden || r.exam2Overridden
@@ -102,7 +169,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                 <th className="border border-slate-600 px-2 py-2">Subject</th>
                 <th className="border border-slate-600 px-2 py-2">{exam1Head}</th>
                 <th className="border border-slate-600 px-2 py-2">{exam2Head}</th>
-                <th className="border border-slate-600 px-2 py-2">Average %</th>
+                <th className="border border-slate-600 px-2 py-2">{averageHead}</th>
                 <th className="border border-slate-600 px-2 py-2">Grade</th>
                 <th className="border border-slate-600 px-2 py-2 text-center tabular-nums">
                   Position
@@ -143,7 +210,12 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                         {r.subject}
                       </td>
                       <td className="border border-slate-200 px-2 py-2 tabular-nums">
-                        {r.exam1Pct}
+                        {renderExamCell(
+                          r.exam1PercentRaw,
+                          r.exam1Pct,
+                          format,
+                          schoolLevel
+                        )}
                         {r.exam1Overridden ? (
                           <span className="font-semibold text-slate-800" title="Overridden from markbook">
                             *
@@ -151,7 +223,12 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                         ) : null}
                       </td>
                       <td className="border border-slate-200 px-2 py-2 tabular-nums">
-                        {r.exam2Pct}
+                        {renderExamCell(
+                          r.exam2PercentRaw,
+                          r.exam2Pct,
+                          format,
+                          schoolLevel
+                        )}
                         {r.exam2Overridden ? (
                           <span className="font-semibold text-slate-800" title="Overridden from markbook">
                             *
@@ -159,7 +236,12 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
                         ) : null}
                       </td>
                       <td className="border border-slate-200 px-2 py-2 font-semibold tabular-nums">
-                        {r.averagePct}
+                        {renderExamCell(
+                          r.averagePercentRaw,
+                          r.averagePct,
+                          format,
+                          schoolLevel
+                        )}
                       </td>
                       <td className="border border-slate-200 px-2 py-2 font-semibold">
                         {r.grade}
