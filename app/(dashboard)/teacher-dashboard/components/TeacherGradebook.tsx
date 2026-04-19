@@ -204,8 +204,16 @@ export function TeacherGradebook({
 
   const [matrixLoading, setMatrixLoading] = useState(false);
 
-  const { format: displayFormat, setFormat: setDisplayFormat } =
+  // The "Show scores as" toggle is only meaningful for primary schools (max
+  // score 50, where 41/50 ≠ 82% visually). Secondary schools use max score
+  // 100 so marks ≡ percentage — we hide the toggle and pin the display to
+  // "percentage" regardless of any previously-stored preference.
+  const { format: storedDisplayFormat, setFormat: setDisplayFormat } =
     useGradeDisplayFormat();
+  const showDisplayFormatToggle = schoolLevel === "primary";
+  const displayFormat: GradeDisplayFormat = showDisplayFormatToggle
+    ? storedDisplayFormat
+    : "percentage";
 
   const [title, setTitle] = useState("");
   /** Controlled preset dropdown; resets to "" after applying so the same preset can be chosen again. */
@@ -915,10 +923,12 @@ export function TeacherGradebook({
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
             Filter
           </h2>
-          <GradeDisplayFormatToggle
-            value={displayFormat}
-            onChange={setDisplayFormat}
-          />
+          {showDisplayFormatToggle ? (
+            <GradeDisplayFormatToggle
+              value={displayFormat}
+              onChange={setDisplayFormat}
+            />
+          ) : null}
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="block text-sm">

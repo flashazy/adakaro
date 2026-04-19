@@ -73,8 +73,16 @@ function renderExamCell(
 }
 
 export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
-  const { format, setFormat } = useGradeDisplayFormat();
+  const { format: storedFormat, setFormat } = useGradeDisplayFormat();
   const schoolLevel = data.summary?.schoolLevel ?? null;
+  // Hide the "Show scores as" toggle for secondary schools — with a max
+  // score of 100, marks and percentage are visually identical, so the
+  // toggle adds no value. Force the displayed format to "percentage" so a
+  // previously-saved preference doesn't leak into a secondary report card.
+  const showFormatToggle = schoolLevel === "primary";
+  const format: GradeDisplayFormat = showFormatToggle
+    ? storedFormat
+    : "percentage";
   const { exam1, exam2 } = examLabelsForTerm(data.term);
   const headSuffix = columnHeaderSuffix(format);
   const exam1Head = `${exam1} ${headSuffix}`;
@@ -146,11 +154,13 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
             Subject results
           </h2>
-          <GradeDisplayFormatToggle
-            value={format}
-            onChange={setFormat}
-            className="text-slate-700"
-          />
+          {showFormatToggle ? (
+            <GradeDisplayFormatToggle
+              value={format}
+              onChange={setFormat}
+              className="text-slate-700"
+            />
+          ) : null}
         </div>
         {(() => {
           const anyOv = data.subjects.some(
