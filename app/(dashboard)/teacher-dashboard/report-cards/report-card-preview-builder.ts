@@ -13,6 +13,7 @@ import {
   SECONDARY_BEST_SUBJECT_COUNT,
   type SchoolLevel,
 } from "@/lib/school-level";
+import { getMaxScore } from "@/lib/tanzania-grades";
 
 /** Draft fields needed to align report card preview with the editor. */
 export interface ReportCardExamDraftOverlay {
@@ -314,11 +315,21 @@ function pickContributingPairs(
 
 /**
  * Roll-up score that decides ranking and footer figures for a given level.
- * Both levels report a TOTAL marks figure — primary schools count every
+ * Both levels report a TOTAL **marks** figure — primary schools count every
  * subject so the total is the sum of all subject averages; secondary schools
  * cap at the best N (default 7). Ranking is by total marks for both levels;
  * because primary classes share the same subject roster the by-total ranking
  * is identical to a by-average ranking, so behaviour matches expectations.
+ *
+ * `pairs[].avg` is a 0–100 percentage (matches the table's "Average %"). To
+ * report marks we convert each subject's percent into marks against the
+ * school's standard max score (50 for primary, 100 for secondary). For
+ * secondary this is a 1:1 conversion (max=100), so the previous behaviour is
+ * preserved exactly. For primary it scales the previously-incorrect "sum of
+ * percentages" total down to the real "sum of average marks" total — e.g.
+ * 7 subjects @ ~60% no longer reports as 414 marks but as 7 × ~30 = ~210
+ * marks (capped at 50 × subject count = 350).
+ *
  * Returns null when the student has no usable subject scores.
  */
 function aggregateRankingScore(
@@ -327,7 +338,9 @@ function aggregateRankingScore(
 ): number | null {
   const picked = pickContributingPairs(pairs, level);
   if (picked.length === 0) return null;
-  return picked.reduce((acc, p) => acc + p.avg, 0);
+  const sumPct = picked.reduce((acc, p) => acc + p.avg, 0);
+  const maxScore = getMaxScore(level);
+  return (sumPct * maxScore) / 100;
 }
 
 /**
