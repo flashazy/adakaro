@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Pencil, Trash2, UserCircle } from "lucide-react";
 import { deleteStudent } from "./actions";
@@ -38,6 +38,8 @@ export interface SubjectEnrollmentEditProps {
   onYearChange: (year: number) => void;
   onTermChange: (term: SubjectEnrollmentTerm) => void;
   onToggleSubject: (subjectId: string, checked: boolean) => void;
+  /** Bulk select/deselect every subject in `classSubjects`. */
+  onToggleAllSubjects: (checked: boolean) => void;
 }
 
 function genderAbbrev(g: string | null | undefined): string {
@@ -106,6 +108,18 @@ export function StudentRow({
   }: {
     se: SubjectEnrollmentEditProps;
   }) {
+    const selectAllRef = useRef<HTMLInputElement>(null);
+    const allSelected =
+      se.classSubjects.length > 0 &&
+      se.selectedIds.length === se.classSubjects.length;
+    const someSelected = se.selectedIds.length > 0 && !allSelected;
+    // Native indeterminate state has no React prop — sync it imperatively.
+    useEffect(() => {
+      if (selectAllRef.current) {
+        selectAllRef.current.indeterminate = someSelected;
+      }
+    }, [someSelected]);
+
     return (
       <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
         <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">
@@ -162,27 +176,48 @@ export function StudentRow({
             Subjects first.
           </p>
         ) : (
-          <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
-            {se.classSubjects.map((sub) => (
-              <li key={sub.id} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id={`subj-${student.id}-${sub.id}`}
-                  checked={se.selectedIds.includes(sub.id)}
-                  onChange={(e) =>
-                    se.onToggleSubject(sub.id, e.target.checked)
-                  }
-                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
-                />
-                <label
-                  htmlFor={`subj-${student.id}-${sub.id}`}
-                  className="text-sm text-slate-800 dark:text-zinc-200"
-                >
-                  {sub.name}
-                </label>
-              </li>
-            ))}
-          </ul>
+          <>
+            <label
+              htmlFor={`subj-${student.id}-select-all`}
+              className="mt-2 flex items-center gap-2 border-b border-indigo-100 pb-2 dark:border-indigo-900/40"
+            >
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                id={`subj-${student.id}-select-all`}
+                checked={allSelected}
+                onChange={(e) => se.onToggleAllSubjects(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+              />
+              <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                Select All subjects
+              </span>
+              <span className="ml-auto text-xs text-slate-600 dark:text-zinc-400">
+                {se.selectedIds.length} of {se.classSubjects.length} selected
+              </span>
+            </label>
+            <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+              {se.classSubjects.map((sub) => (
+                <li key={sub.id} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id={`subj-${student.id}-${sub.id}`}
+                    checked={se.selectedIds.includes(sub.id)}
+                    onChange={(e) =>
+                      se.onToggleSubject(sub.id, e.target.checked)
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                  />
+                  <label
+                    htmlFor={`subj-${student.id}-${sub.id}`}
+                    className="text-sm text-slate-800 dark:text-zinc-200"
+                  >
+                    {sub.name}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     );

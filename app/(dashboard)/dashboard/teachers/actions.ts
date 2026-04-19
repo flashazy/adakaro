@@ -358,6 +358,228 @@ export async function addTeacherAction(
   }
 }
 
+export interface BulkAddTeachersResult {
+  ok: boolean;
+  /** Total non-empty unique names parsed from the input (after normalisation). */
+  attempted: number;
+  /** Display names actually created in this batch. */
+  created: string[];
+  /** Display names skipped because a teacher with that name already exists. */
+  skippedExisting: string[];
+  /** Per-name errors from the auth/profile/membership layer. */
+  failed: { name: string; error: string }[];
+  /** Top-level error (auth, school, permissions, etc.). */
+  error?: string;
+}
+
+/**
+ * Bulk-create teacher accounts from a list of full names. All teachers in the
+ * batch share the same temporary password and are created with
+ * `password_changed = false`, so each must set a new password on first login —
+ * exactly like the single-add flow.
+ *
+ * Names are deduped within the submission and any name that already matches an
+ * existing teacher at the school is reported back as `skippedExisting`
+ * instead of failing the whole batch.
+ */
+export async function bulkAddTeachersAction(input: {
+  names: string[];
+  password: string;
+}): Promise<BulkAddTeachersResult> {
+  const password = String(input?.password ?? "");
+  if (password.length < 8) {
+    return {
+      ok: false,
+      attempted: 0,
+      created: [],
+      skippedExisting: [],
+      failed: [],
+      error: "Password must be at least 8 characters.",
+    };
+  }
+
+  // Trim, collapse whitespace via the shared display-name normaliser, drop
+  // empties, and dedupe within the submission. We keep two parallel views:
+  // the original (display) string and the normalised key used for matching.
+  const seenKeys = new Set<string>();
+  const cleaned: { display: string; key: string }[] = [];
+  for (const raw of input?.names ?? []) {
+    const display = String(raw ?? "").trim().replace(/\s+/g, " ");
+    if (!display || display.length < 2) continue;
+    const key = normalizeTeacherDisplayName(display);
+    if (!key) continue;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    cleaned.push({ display, key });
+  }
+
+  if (cleaned.length === 0) {
+    return {
+      ok: false,
+      attempted: 0,
+      created: [],
+      skippedExisting: [],
+      failed: [],
+      error: "Add at least one teacher name (one per line).",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      ok: false,
+      attempted: cleaned.length,
+      created: [],
+      skippedExisting: [],
+      failed: [],
+      error: "Unauthorized.",
+    };
+  }
+
+  const schoolId = await getSchoolIdForUserWithAdmin(user.id);
+  if (!schoolId) {
+    return {
+      ok: false,
+      attempted: cleaned.length,
+      created: [],
+      skippedExisting: [],
+      failed: [],
+      error: "No school found for your account.",
+    };
+  }
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return {
+      ok: false,
+      attempted: cleaned.length,
+      created: [],
+      skippedExisting: [],
+      failed: [],
+      error: "Only school administrators can manage teachers.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  // Pre-flight: load existing teacher names once so we can mark duplicates
+  // before we create any auth users (which would otherwise be hard to roll
+  // back if a duplicate is detected mid-batch).
+  const existingMembers =
+    await fetchSchoolTeacherMembersForTeachersPage(schoolId);
+  const existingKeys = new Set(
+    existingMembers
+      .map((m) => normalizeTeacherDisplayName(m.profileFullName ?? ""))
+      .filter(Boolean)
+  );
+
+  const skippedExisting: string[] = [];
+  const created: string[] = [];
+  const failed: { name: string; error: string }[] = [];
+
+  // Sequential creation: each call hits Auth admin + profiles + school_members
+  // and we want the per-row failure reporting to stay simple. Volume here is
+  // expected to be small (a handful of teachers per batch), so the latency
+  // hit is acceptable.
+  for (const entry of cleaned) {
+    if (existingKeys.has(entry.key)) {
+      skippedExisting.push(entry.display);
+      continue;
+    }
+
+    const userId = randomUUID();
+    const syntheticEmail = `t.${userId.replace(/-/g, "")}@teachers.adakaro.app`;
+
+    let createdUserId: string | null = null;
+    try {
+      const { data: createdAuth, error: createErr } =
+        await admin.auth.admin.createUser({
+          id: userId,
+          email: syntheticEmail,
+          password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: entry.display,
+            role: "teacher",
+            password_changed: false,
+          },
+        });
+
+      if (createErr || !createdAuth.user) {
+        failed.push({
+          name: entry.display,
+          error: createErr?.message || "Could not create teacher account.",
+        });
+        continue;
+      }
+      createdUserId = createdAuth.user.id;
+
+      const { error: profErr } = await (admin as Db)
+        .from("profiles")
+        .update({
+          full_name: entry.display,
+          role: "teacher",
+          password_changed: false,
+        } satisfies ProfileUpdate)
+        .eq("id", createdUserId);
+
+      if (profErr) {
+        throw new Error(profErr.message || "Could not finalize profile.");
+      }
+
+      const { error: mErr } = await (admin as Db)
+        .from("school_members")
+        .insert({
+          school_id: schoolId,
+          user_id: createdUserId,
+          role: "teacher",
+        });
+
+      if (mErr) {
+        throw new Error(
+          mErr.message || "Could not add teacher to your school."
+        );
+      }
+
+      created.push(entry.display);
+      // Track the new key so a duplicate later in the same batch (defensive)
+      // is also caught.
+      existingKeys.add(entry.key);
+    } catch (e) {
+      if (createdUserId) {
+        try {
+          await admin.auth.admin.deleteUser(createdUserId);
+        } catch {
+          /* */
+        }
+      }
+      failed.push({
+        name: entry.display,
+        error:
+          e instanceof Error
+            ? e.message
+            : "Could not create teacher. Ensure SUPABASE_SERVICE_ROLE_KEY is set.",
+      });
+    }
+  }
+
+  if (created.length > 0) {
+    revalidatePath("/dashboard/teachers");
+  }
+
+  return {
+    ok: true,
+    attempted: cleaned.length,
+    created,
+    skippedExisting,
+    failed,
+  };
+}
+
 export async function assignTeacherToClassAction(
   _prev: TeacherActionState | null,
   formData: FormData

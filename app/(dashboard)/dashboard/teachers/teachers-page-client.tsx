@@ -22,6 +22,7 @@ import type { TeacherActionState, TeacherDepartment } from "./types";
 import { AssignTeacherModal, type AssignModalState } from "./components/AssignTeacherModal";
 import { ManageDepartmentRolesModal } from "./components/ManageDepartmentRolesModal";
 import { AssignCoordinatorModal } from "./components/AssignCoordinatorModal";
+import { BulkAddTeachersModal } from "./components/BulkAddTeachersModal";
 
 function flash(state: TeacherActionState | null) {
   if (!state) return null;
@@ -150,6 +151,7 @@ export function TeachersPageClient({
   const [teacherAccountsPage, setTeacherAccountsPage] = useState(1);
   const [addTeacherFullName, setAddTeacherFullName] = useState("");
   const [showAddTeacherPassword, setShowAddTeacherPassword] = useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [rolesModal, setRolesModal] = useState<{
     userId: string;
     name: string;
@@ -358,14 +360,34 @@ export function TeachersPageClient({
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-          Add teachers
-        </h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-          Create an account with the teacher&apos;s full name and a temporary
-          password. They sign in with that name and password, then choose a new
-          password. No email is sent.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              Add teachers
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+              Create an account with the teacher&apos;s full name and a
+              temporary password. They sign in with that name and password,
+              then choose a new password. No email is sent.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBulkAddOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-3.5 w-3.5"
+              aria-hidden="true"
+            >
+              <path d="M10 3a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H4a1 1 0 1 1 0-2h5V4a1 1 0 0 1 1-1Z" />
+            </svg>
+            Bulk Add Teachers
+          </button>
+        </div>
         <form action={addAction} className="mt-4 space-y-3">
           {flash(addState)}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1136,6 +1158,11 @@ export function TeachersPageClient({
           flash={coordinatorState}
         />
       ) : null}
+
+      <BulkAddTeachersModal
+        open={bulkAddOpen}
+        onClose={() => setBulkAddOpen(false)}
+      />
     </div>
   );
 }

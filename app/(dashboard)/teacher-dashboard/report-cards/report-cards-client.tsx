@@ -155,7 +155,11 @@ function gradebookScoresForSubject(
   return key ? scoresBySubject[key] : undefined;
 }
 
-function draftAverageLine(exam1: string, exam2: string): {
+function draftAverageLine(
+  exam1: string,
+  exam2: string,
+  schoolLevel: SchoolLevel
+): {
   average: string;
   grade: string;
 } {
@@ -165,24 +169,31 @@ function draftAverageLine(exam1: string, exam2: string): {
   if (avg == null) return { average: "—", grade: "—" };
   return {
     average: `${avg}%`,
-    grade: letterGradeFromPercent(avg),
+    grade: letterGradeFromPercent(avg, schoolLevel),
   };
 }
 
 /** Paginated student sidebar. */
 const REPORT_CARDS_STUDENTS_PAGE_SIZE = 5;
 
+// Includes both F (secondary failing band) and E (primary failing band) so the
+// auto-comment lookup works for either grading tier without extra branching.
 const GRADE_AUTO_COMMENTS: Record<string, string> = {
   A: "Excellent performance, keep it up",
   B: "Very good, keep working hard",
   C: "Good, but there is room for improvement",
   D: "Average, needs to put more effort",
+  E: "Below expectation, needs serious improvement",
   F: "Failure, requires serious improvement",
 };
 
 /** Suggested comment from term letter grade; null if grade not available. */
-function autoCommentFromGrades(exam1: string, exam2: string): string | null {
-  const { grade } = draftAverageLine(exam1, exam2);
+function autoCommentFromGrades(
+  exam1: string,
+  exam2: string,
+  schoolLevel: SchoolLevel
+): string | null {
+  const { grade } = draftAverageLine(exam1, exam2, schoolLevel);
   if (!grade || grade === "—") return null;
   return GRADE_AUTO_COMMENTS[grade] ?? null;
 }
@@ -262,7 +273,8 @@ function toPreviewData(args: {
       args.subjects,
       args.student,
       args.positionBySubject,
-      summary.selectedSubjects
+      summary.selectedSubjects,
+      args.schoolLevel
     ),
     attendance: {
       ...args.attendance,
@@ -663,10 +675,11 @@ export function ReportCardsPageClient({
         mergeStudentCommentsWithDraftsForPreview(
           s,
           subjects,
-          drafts[s.studentId]
+          drafts[s.studentId],
+          { schoolLevel }
         )
       ),
-    [students, subjects, drafts]
+    [students, subjects, drafts, schoolLevel]
   );
 
   const positionBySubjectForPreview = useMemo(() => {
@@ -684,7 +697,7 @@ export function ReportCardsPageClient({
       selectedStudent,
       previewSubjectList,
       drafts[selectedStudent.studentId],
-      { restrictOutputToSubjects: true }
+      { restrictOutputToSubjects: true, schoolLevel }
     );
     return toPreviewData({
       schoolName,
@@ -845,7 +858,7 @@ export function ReportCardsPageClient({
       for (const subject of subjList) {
         const cur = studentDraft[subject] ?? emptyDraftRow();
         if (cur.comment.trim() !== "") continue;
-        const auto = autoCommentFromGrades(cur.exam1, cur.exam2);
+        const auto = autoCommentFromGrades(cur.exam1, cur.exam2, schoolLevel);
         if (auto == null) continue;
         if (cur.comment === auto) continue;
         studentDraft[subject] = { ...cur, comment: auto };
@@ -1174,7 +1187,11 @@ export function ReportCardsPageClient({
               subject
             );
             const isDirty = !draftRowsEqual(row, baselineRow);
-            const { average, grade } = draftAverageLine(row.exam1, row.exam2);
+            const { average, grade } = draftAverageLine(
+              row.exam1,
+              row.exam2,
+              schoolLevel
+            );
             const isSavingThis = manualSaveSubject === subject;
             const isSavedPulse = manualSavedSubject === subject;
             const showGreenBorder = !!greenBorderSubjects[subject];
@@ -1543,7 +1560,8 @@ export function ReportCardsPageClient({
                 mergeStudentCommentsWithDraftsForPreview(
                   st,
                   subjects,
-                  drafts[st.studentId]
+                  drafts[st.studentId],
+                  { schoolLevel }
                 )
               );
               const items: ReportCardPreviewData[] = approved.map((s) => {
@@ -1553,7 +1571,7 @@ export function ReportCardsPageClient({
                   s,
                   subjectList,
                   drafts[s.studentId],
-                  { restrictOutputToSubjects: true }
+                  { restrictOutputToSubjects: true, schoolLevel }
                 );
                 const positions = computeClassSubjectPositions(
                   allMerged,

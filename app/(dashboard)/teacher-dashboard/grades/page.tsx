@@ -7,6 +7,11 @@ import { ensureTeacherHasAssignmentsOrRedirect } from "@/lib/teacher-assignment-
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { TeacherGradebook } from "../components/TeacherGradebook";
 import type { TeacherClassOption } from "../data";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import {
+  normalizeSchoolLevel,
+  type SchoolLevel,
+} from "@/lib/school-level";
 
 /** Manual widen — admin select with nested relation. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,6 +100,27 @@ export default async function TeacherGradesPage({
     .limit(1);
   const options = await loadTeacherClassOptionsWithAdmin(admin, user.id);
 
+  // Look up the teacher's school grading tier so the markbook can default new
+  // assignments to the right max score and label grades with the right scale.
+  // Falls back to "secondary" if the column is missing or the school isn't
+  // resolvable, which keeps legacy databases working unchanged.
+  let schoolLevel: SchoolLevel = "secondary";
+  try {
+    const schoolId = await getSchoolIdForUser(supabase, user.id);
+    if (schoolId) {
+      const { data: schoolRow } = await admin
+        .from("schools")
+        .select("school_level")
+        .eq("id", schoolId)
+        .maybeSingle();
+      schoolLevel = normalizeSchoolLevel(
+        (schoolRow as { school_level: string | null } | null)?.school_level
+      );
+    }
+  } catch {
+    // keep secondary fallback
+  }
+
   return (
     <>
       <div className="space-y-6">
@@ -118,6 +144,7 @@ export default async function TeacherGradesPage({
           <TeacherGradebook
             options={options}
             initialClassId={sp.classId?.trim() ?? null}
+            schoolLevel={schoolLevel}
           />
         </div>
       </div>

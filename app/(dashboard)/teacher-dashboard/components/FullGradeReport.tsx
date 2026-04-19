@@ -14,6 +14,8 @@ import {
   tanzaniaPercentFromScore,
 } from "./GradeReportPDF";
 import { downloadFullGradeReportPdf } from "./FullGradeReportPDF";
+import { passingThresholdPercent } from "@/lib/tanzania-grades";
+import type { SchoolLevel } from "@/lib/school-level";
 
 type ClassDraft = Record<
   string,
@@ -43,21 +45,19 @@ function cellPercentFromDraft(
 /** Score % and letter for one assignment cell. */
 function scoreGradeForAssignment(
   raw: string | undefined,
-  maxScore: number
+  maxScore: number,
+  schoolLevel: SchoolLevel
 ): { scoreLabel: string; grade: string; pct: number | null } {
   const trimmed = String(raw ?? "").trim();
   if (trimmed === "") return { scoreLabel: "—", grade: "—", pct: null };
   const n = Number(trimmed);
   if (!Number.isFinite(n)) return { scoreLabel: "—", grade: "—", pct: null };
   const pct = tanzaniaPercentFromScore(n, maxScore);
-  const letter = tanzaniaLetterGrade(pct);
+  const letter = tanzaniaLetterGrade(pct, schoolLevel);
   if (pct == null) return { scoreLabel: "—", grade: "—", pct: null };
   const scoreLabel = `${Math.round(pct * 10) / 10}%`;
   return { scoreLabel, grade: letter, pct };
 }
-
-/** Tanzania: passing at ≥30% (grades D–A); below 30% is F (failing band for this report). */
-const PASSING_MIN_PCT = 30;
 
 type Cell = {
   id: string;
@@ -87,10 +87,11 @@ function pctRate(part: number, whole: number): number {
 function passRateLineWithGrade(
   part: number,
   whole: number,
-  outOfNoun: "students" | "boys" | "girls"
+  outOfNoun: "students" | "boys" | "girls",
+  schoolLevel: SchoolLevel
 ): string {
   const r = pctRate(part, whole);
-  return `${r}% (${part} out of ${whole} ${outOfNoun}) (${tanzaniaLetterGrade(r)})`;
+  return `${r}% (${part} out of ${whole} ${outOfNoun}) (${tanzaniaLetterGrade(r, schoolLevel)})`;
 }
 
 function emptyPassFailStats(): {
@@ -114,15 +115,19 @@ function emptyPassFailStats(): {
   };
 }
 
-function computePassFailRates(cells: Cell[]): {
+function computePassFailRates(
+  cells: Cell[],
+  schoolLevel: SchoolLevel
+): {
   passing: PassRateStats;
   failing: FailRateStats;
 } {
   if (cells.length === 0) return emptyPassFailStats();
 
+  const passingMinPct = passingThresholdPercent(schoolLevel);
   const total = cells.length;
-  const passingCells = cells.filter((c) => c.pct >= PASSING_MIN_PCT);
-  const failingCells = cells.filter((c) => c.pct < PASSING_MIN_PCT);
+  const passingCells = cells.filter((c) => c.pct >= passingMinPct);
+  const failingCells = cells.filter((c) => c.pct < passingMinPct);
 
   const boysAll = cells.filter((c) => c.gender === "male");
   const girlsAll = cells.filter((c) => c.gender === "female");
@@ -135,14 +140,14 @@ function computePassFailRates(cells: Cell[]): {
   const failCount = failingCells.length;
 
   const passing: PassRateStats = {
-    passRateLine: passRateLineWithGrade(passCount, total, "students"),
+    passRateLine: passRateLineWithGrade(passCount, total, "students", schoolLevel),
     boysLine:
       boysAll.length > 0
-        ? passRateLineWithGrade(boysPass.length, boysAll.length, "boys")
+        ? passRateLineWithGrade(boysPass.length, boysAll.length, "boys", schoolLevel)
         : "— (0 out of 0 boys)",
     girlsLine:
       girlsAll.length > 0
-        ? passRateLineWithGrade(girlsPass.length, girlsAll.length, "girls")
+        ? passRateLineWithGrade(girlsPass.length, girlsAll.length, "girls", schoolLevel)
         : "— (0 out of 0 girls)",
   };
 
@@ -164,26 +169,30 @@ function computePassFailRates(cells: Cell[]): {
 function computeReportStatsForAssignment(
   students: { id: string; gender: string | null }[],
   assignment: { id: string; max_score: number },
-  draft: ClassDraft
+  draft: ClassDraft,
+  schoolLevel: SchoolLevel
 ) {
   const cells: Cell[] = [];
   for (const s of students) {
     const raw = draft[assignment.id]?.[s.id]?.score ?? "";
     const p = cellPercentFromDraft(raw, assignment.max_score);
     if (p == null) continue;
-    const letter = tanzaniaLetterGrade(p);
+    const letter = tanzaniaLetterGrade(p, schoolLevel);
     cells.push({ id: s.id, pct: p, letter, gender: s.gender });
   }
 
-  const { passing, failing } = computePassFailRates(cells);
+  const { passing, failing } = computePassFailRates(cells, schoolLevel);
 
-  const dist = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+  // Track both failing buckets so the same code path serves primary (E) and
+  // secondary (F) — the renderer only displays the bucket for the active tier.
+  const dist = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
   for (const c of cells) {
     const L = c.letter;
     if (L === "A") dist.A += 1;
     else if (L === "B") dist.B += 1;
     else if (L === "C") dist.C += 1;
     else if (L === "D") dist.D += 1;
+    else if (L === "E") dist.E += 1;
     else if (L === "F") dist.F += 1;
   }
 
@@ -206,14 +215,16 @@ export interface RankingRow {
 function buildStudentRanking(
   students: { id: string; full_name: string }[],
   assignment: { id: string; max_score: number },
-  draft: ClassDraft
+  draft: ClassDraft,
+  schoolLevel: SchoolLevel
 ): RankingRow[] {
   const scored: { id: string; name: string; pct: number; scoreLabel: string; grade: string }[] =
     [];
   for (const s of students) {
     const { scoreLabel, grade, pct } = scoreGradeForAssignment(
       draft[assignment.id]?.[s.id]?.score,
-      assignment.max_score
+      assignment.max_score,
+      schoolLevel
     );
     if (pct == null) continue;
     scored.push({
@@ -265,14 +276,20 @@ function formatFailingLines(prefix: string, seg: FailRateStats): string[] {
   ];
 }
 
-function PassRateBlock({ seg }: { seg: PassRateStats }) {
+function PassRateBlock({
+  seg,
+  schoolLevel,
+}: {
+  seg: PassRateStats;
+  schoolLevel: SchoolLevel;
+}) {
   return (
     <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-zinc-600 dark:bg-zinc-950/50">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-zinc-300">
         Passing students
       </p>
       <p className="mt-0.5 text-[11px] text-slate-500 dark:text-zinc-500">
-        Score ≥ 30%
+        Score ≥ {passingThresholdPercent(schoolLevel)}%
       </p>
       <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-slate-800 dark:text-zinc-200">
         <p>
@@ -289,14 +306,20 @@ function PassRateBlock({ seg }: { seg: PassRateStats }) {
   );
 }
 
-function FailRateBlock({ seg }: { seg: FailRateStats }) {
+function FailRateBlock({
+  seg,
+  schoolLevel,
+}: {
+  seg: FailRateStats;
+  schoolLevel: SchoolLevel;
+}) {
   return (
     <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-zinc-600 dark:bg-zinc-950/50">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-zinc-300">
         Failing students
       </p>
       <p className="mt-0.5 text-[11px] text-slate-500 dark:text-zinc-500">
-        Score &lt; 30%
+        Score &lt; {passingThresholdPercent(schoolLevel)}%
       </p>
       <div className="mt-2 space-y-1.5 text-sm leading-relaxed text-slate-800 dark:text-zinc-200">
         <p>
@@ -319,8 +342,15 @@ function buildPlainTextReport(
   students: { id: string; full_name: string; gender: string | null }[],
   draft: ClassDraft,
   stats: ReturnType<typeof computeReportStatsForAssignment>,
-  ranking: RankingRow[]
+  ranking: RankingRow[],
+  schoolLevel: SchoolLevel
 ): string {
+  const passingPct = passingThresholdPercent(schoolLevel);
+  // Failing band uses E (primary) or F (secondary) — show only the matching
+  // bucket so the plain-text export mirrors what's on screen.
+  const failingLetter = schoolLevel === "primary" ? "E" : "F";
+  const failingCount =
+    schoolLevel === "primary" ? stats.dist.E : stats.dist.F;
   const lines: string[] = [
     meta.schoolName.toUpperCase(),
     `${meta.className} — ${meta.subject}`,
@@ -330,16 +360,16 @@ function buildPlainTextReport(
     "",
     "CLASS STATISTICS (this assignment)",
     ...formatPassingLines(
-      "PASSING STUDENTS (score ≥ 30%)",
+      `PASSING STUDENTS (score ≥ ${passingPct}%)`,
       stats.passing
     ),
     "",
     ...formatFailingLines(
-      "FAILING STUDENTS (score < 30%)",
+      `FAILING STUDENTS (score < ${passingPct}%)`,
       stats.failing
     ),
     "",
-    `Grade distribution — A: ${stats.dist.A}  B: ${stats.dist.B}  C: ${stats.dist.C}  D: ${stats.dist.D}  F: ${stats.dist.F}`,
+    `Grade distribution — A: ${stats.dist.A}  B: ${stats.dist.B}  C: ${stats.dist.C}  D: ${stats.dist.D}  ${failingLetter}: ${failingCount}`,
     "",
     "STUDENT RANKING (Highest to Lowest)",
     ...ranking.map(
@@ -355,7 +385,8 @@ function buildPlainTextReport(
   for (const s of students) {
     const { scoreLabel, grade } = scoreGradeForAssignment(
       draft[assignment.id]?.[s.id]?.score,
-      assignment.max_score
+      assignment.max_score,
+      schoolLevel
     );
     const remarks = draft[assignment.id]?.[s.id]?.remarks?.trim() ?? "";
     const row = [
@@ -378,6 +409,7 @@ export function FullGradeReport({
   assignments,
   students,
   classDraft,
+  schoolLevel = "secondary",
 }: {
   open: boolean;
   onClose: () => void;
@@ -386,6 +418,11 @@ export function FullGradeReport({
   assignments: { id: string; title: string; max_score: number }[];
   students: { id: string; full_name: string; gender: string | null }[];
   classDraft: ClassDraft;
+  /**
+   * School grading tier used for letter bands and pass/fail thresholds.
+   * Defaults to "secondary" so legacy callers keep their behaviour.
+   */
+  schoolLevel?: SchoolLevel;
 }) {
   const reportRef = useRef<HTMLDivElement>(null);
   const [copyDone, setCopyDone] = useState(false);
@@ -412,20 +449,26 @@ export function FullGradeReport({
     if (!selectedAssignment) {
       return {
         ...emptyPassFailStats(),
-        dist: { A: 0, B: 0, C: 0, D: 0, F: 0 },
+        dist: { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 },
       };
     }
     return computeReportStatsForAssignment(
       students,
       selectedAssignment,
-      classDraft
+      classDraft,
+      schoolLevel
     );
-  }, [students, selectedAssignment, classDraft]);
+  }, [students, selectedAssignment, classDraft, schoolLevel]);
 
   const ranking = useMemo(() => {
     if (!selectedAssignment) return [] as RankingRow[];
-    return buildStudentRanking(students, selectedAssignment, classDraft);
-  }, [students, selectedAssignment, classDraft]);
+    return buildStudentRanking(
+      students,
+      selectedAssignment,
+      classDraft,
+      schoolLevel
+    );
+  }, [students, selectedAssignment, classDraft, schoolLevel]);
 
   const dateLabel = useMemo(
     () =>
@@ -443,7 +486,8 @@ export function FullGradeReport({
       students,
       classDraft,
       stats,
-      ranking
+      ranking,
+      schoolLevel
     );
     try {
       await navigator.clipboard.writeText(text);
@@ -452,7 +496,7 @@ export function FullGradeReport({
     } catch {
       /* ignore */
     }
-  }, [meta, selectedAssignment, students, classDraft, stats, ranking]);
+  }, [meta, selectedAssignment, students, classDraft, stats, ranking, schoolLevel]);
 
   const handlePrint = useCallback(() => {
     if (!reportRef.current) return;
@@ -507,7 +551,8 @@ export function FullGradeReport({
       const rows = students.map((s) => {
         const { scoreLabel, grade } = scoreGradeForAssignment(
           classDraft[selectedAssignment.id]?.[s.id]?.score,
-          selectedAssignment.max_score
+          selectedAssignment.max_score,
+          schoolLevel
         );
         return {
           name: s.full_name,
@@ -537,11 +582,21 @@ export function FullGradeReport({
         dist: stats.dist,
         ranking,
         rows,
+        schoolLevel,
       });
     } finally {
       setPdfBusy(false);
     }
-  }, [meta, selectedAssignment, students, classDraft, stats, ranking, dateLabel]);
+  }, [
+    meta,
+    selectedAssignment,
+    students,
+    classDraft,
+    stats,
+    ranking,
+    dateLabel,
+    schoolLevel,
+  ]);
 
   if (!open || typeof document === "undefined") return null;
 
@@ -651,16 +706,26 @@ export function FullGradeReport({
                         </span>
                       </h3>
                       <div className="mt-3 space-y-3">
-                        <PassRateBlock seg={stats.passing} />
-                        <FailRateBlock seg={stats.failing} />
+                        <PassRateBlock
+                          seg={stats.passing}
+                          schoolLevel={schoolLevel}
+                        />
+                        <FailRateBlock
+                          seg={stats.failing}
+                          schoolLevel={schoolLevel}
+                        />
                         <div className="rounded-md border border-dashed border-slate-200 bg-white/80 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950/30">
                           <p className="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-zinc-300">
                             Grade distribution (all scored)
                           </p>
                           <p className="mt-1 tabular-nums text-sm text-slate-800 dark:text-zinc-200">
                             A: {stats.dist.A} · B: {stats.dist.B} · C:{" "}
-                            {stats.dist.C} · D: {stats.dist.D} · F:{" "}
-                            {stats.dist.F}
+                            {stats.dist.C} · D: {stats.dist.D} ·{" "}
+                            {schoolLevel === "primary" ? (
+                              <>E: {stats.dist.E}</>
+                            ) : (
+                              <>F: {stats.dist.F}</>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -733,7 +798,8 @@ export function FullGradeReport({
                                 scoreGradeForAssignment(
                                   classDraft[selectedAssignment.id]?.[s.id]
                                     ?.score,
-                                  selectedAssignment.max_score
+                                  selectedAssignment.max_score,
+                                  schoolLevel
                                 );
                               const remarks =
                                 classDraft[selectedAssignment.id]?.[s.id]

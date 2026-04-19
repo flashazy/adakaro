@@ -214,6 +214,10 @@ export function StudentList({ students, classes }: StudentListProps) {
     });
   }
 
+  function toggleAllEditSubjects(checked: boolean) {
+    setEditSubjectIds(checked ? editClassSubjects.map((s) => s.id) : []);
+  }
+
   const handleInlineSave = useCallback(async () => {
     if (!editingId) return;
 
@@ -480,6 +484,7 @@ export function StudentList({ students, classes }: StudentListProps) {
                               onYearChange: setEditSubjectYear,
                               onTermChange: setEditSubjectTerm,
                               onToggleSubject: toggleEditSubject,
+                              onToggleAllSubjects: toggleAllEditSubjects,
                             }
                           : undefined
                       }

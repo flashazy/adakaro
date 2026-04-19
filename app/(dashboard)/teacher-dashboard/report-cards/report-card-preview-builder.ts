@@ -40,7 +40,11 @@ export function mergeStudentCommentsWithDraftsForPreview(
   student: StudentReportRow,
   subjects: string[],
   draftBySubject: Record<string, ReportCardExamDraftOverlay> | undefined,
-  options?: { restrictOutputToSubjects?: boolean }
+  options?: {
+    restrictOutputToSubjects?: boolean;
+    /** School tier for letter-grade lookup; defaults to secondary. */
+    schoolLevel?: SchoolLevel;
+  }
 ): StudentReportRow {
   if (!draftBySubject) return student;
 
@@ -48,6 +52,7 @@ export function mergeStudentCommentsWithDraftsForPreview(
     student.comments.map((c) => [c.subject, { ...c }])
   );
   const subjList = subjects.length > 0 ? subjects : ["General"];
+  const schoolLevel: SchoolLevel = options?.schoolLevel ?? "secondary";
 
   for (const subject of subjList) {
     const d = draftBySubject[subject];
@@ -56,7 +61,7 @@ export function mergeStudentCommentsWithDraftsForPreview(
     const e1 = parseDraftPercentString(d.exam1);
     const e2 = parseDraftPercentString(d.exam2);
     const avg = computeReportCardTermAverage(e1, e2);
-    const grade = avg != null ? letterGradeFromPercent(avg) : null;
+    const grade = avg != null ? letterGradeFromPercent(avg, schoolLevel) : null;
 
     const merged: ReportCardCommentRow = {
       id: prev?.id ?? "",
@@ -177,7 +182,9 @@ export function buildSubjectPreviewRows(
    * When provided, every row gets `selected: true | false`; otherwise rows
    * get `selected: null` so the table can hide the column entirely.
    */
-  selectedSubjects?: string[] | null
+  selectedSubjects?: string[] | null,
+  /** School tier for letter-grade lookup; defaults to secondary. */
+  schoolLevel: SchoolLevel = "secondary"
 ): ReportCardPreviewData["subjects"] {
   const bySub = new Map(student.comments.map((c) => [c.subject, c]));
   const list = subjects.length
@@ -206,7 +213,7 @@ export function buildSubjectPreviewRows(
       c?.letterGrade?.trim() ||
       "";
     if (!grade && avgRaw != null && Number.isFinite(avgRaw)) {
-      grade = letterGradeFromPercent(avgRaw);
+      grade = letterGradeFromPercent(avgRaw, schoolLevel);
     }
     if (!grade) grade = "—";
 
@@ -455,7 +462,9 @@ export function computeReportCardStudentSummary(args: {
   // the total marks figure right beside it on the footer.
   let division: ReportCardDivision | null = null;
   if (schoolLevel === "secondary") {
-    const bestGrades = focusPicked.map((p) => letterGradeFromPercent(p.avg));
+    const bestGrades = focusPicked.map((p) =>
+      letterGradeFromPercent(p.avg, schoolLevel)
+    );
     const calc = calculateDivision(bestGrades);
     if (calc) {
       division = { totalPoints: calc.totalPoints, label: calc.division };

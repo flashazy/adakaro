@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
 import { addStudent, getSubjectsForClass, type StudentActionState } from "./actions";
 import { todayIsoLocal } from "@/lib/enrollment-date";
@@ -110,14 +110,24 @@ export function AddStudentForm({
     { id: string; name: string }[]
   >([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
+  // Controlled subject selection so the new "Select All" checkbox can drive
+  // the per-subject boxes and the per-subject boxes can drive the header
+  // checkbox's checked / indeterminate state.
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!selectedClassId) {
       setClassSubjectOptions([]);
+      setSelectedSubjectIds([]);
       return;
     }
     let cancelled = false;
     setSubjectsLoading(true);
+    // Reset selection whenever the class changes — the previous IDs belong to
+    // a different class's subject list and we don't want phantom IDs sneaking
+    // into the FormData on submit.
+    setSelectedSubjectIds([]);
     void getSubjectsForClass(selectedClassId).then((opts) => {
       if (cancelled) return;
       setClassSubjectOptions(opts);
@@ -127,6 +137,36 @@ export function AddStudentForm({
       cancelled = true;
     };
   }, [selectedClassId]);
+
+  const allSelected = useMemo(
+    () =>
+      classSubjectOptions.length > 0 &&
+      selectedSubjectIds.length === classSubjectOptions.length,
+    [classSubjectOptions, selectedSubjectIds]
+  );
+  const someSelected =
+    selectedSubjectIds.length > 0 && !allSelected;
+
+  // Native `indeterminate` is a DOM-only flag (no React prop), so sync it
+  // imperatively whenever the partial-selection state changes.
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
+  function toggleSubject(subjectId: string, checked: boolean) {
+    setSelectedSubjectIds((prev) => {
+      if (checked) return prev.includes(subjectId) ? prev : [...prev, subjectId];
+      return prev.filter((id) => id !== subjectId);
+    });
+  }
+
+  function toggleAllSubjects(checked: boolean) {
+    setSelectedSubjectIds(
+      checked ? classSubjectOptions.map((sub) => sub.id) : []
+    );
+  }
 
   useEffect(() => {
     if (open && hasAdmissionPrefix) {
@@ -143,6 +183,7 @@ export function AddStudentForm({
       formRef.current?.reset();
       setSelectedClassId("");
       setClassSubjectOptions([]);
+      setSelectedSubjectIds([]);
       setOpen(false);
       router.refresh();
     }
@@ -378,25 +419,51 @@ export function AddStudentForm({
                     Manage Subjects first.
                   </p>
                 ) : (
-                  <ul className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto rounded-lg border border-slate-100 p-3 sm:grid-cols-2 dark:border-zinc-800">
-                    {classSubjectOptions.map((sub) => (
-                      <li key={sub.id} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id={`add-subj-${sub.id}`}
-                          name="subject_ids"
-                          value={sub.id}
-                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
-                        />
-                        <label
-                          htmlFor={`add-subj-${sub.id}`}
-                          className="text-sm text-slate-800 dark:text-zinc-200"
-                        >
-                          {sub.name}
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="rounded-lg border border-slate-100 p-3 dark:border-zinc-800">
+                    <label
+                      htmlFor="add-subj-select-all"
+                      className="flex items-center gap-2 border-b border-slate-100 pb-2 dark:border-zinc-800"
+                    >
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        id="add-subj-select-all"
+                        checked={allSelected}
+                        onChange={(e) => toggleAllSubjects(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                      />
+                      <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                        Select All subjects
+                      </span>
+                      <span className="ml-auto text-xs text-slate-500 dark:text-zinc-400">
+                        {selectedSubjectIds.length} of{" "}
+                        {classSubjectOptions.length} selected
+                      </span>
+                    </label>
+                    <ul className="mt-2 grid max-h-48 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                      {classSubjectOptions.map((sub) => (
+                        <li key={sub.id} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id={`add-subj-${sub.id}`}
+                            name="subject_ids"
+                            value={sub.id}
+                            checked={selectedSubjectIds.includes(sub.id)}
+                            onChange={(e) =>
+                              toggleSubject(sub.id, e.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                          />
+                          <label
+                            htmlFor={`add-subj-${sub.id}`}
+                            className="text-sm text-slate-800 dark:text-zinc-200"
+                          >
+                            {sub.name}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             ) : null}

@@ -822,7 +822,8 @@ async function loadClassReportCards(
       studentSubjects,
       studentRow,
       positions,
-      summary.selectedSubjects
+      summary.selectedSubjects,
+      params.schoolLevel
     );
 
     const attendance = attendanceByStudent.get(c.student_id) ?? {

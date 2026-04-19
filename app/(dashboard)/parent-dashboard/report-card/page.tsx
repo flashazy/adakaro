@@ -240,7 +240,8 @@ export default async function ParentReportCardPage({
     subjectOrder,
     syntheticStudent,
     positionBySubject,
-    summary.selectedSubjects
+    summary.selectedSubjects,
+    schoolLevel
   );
 
   const { start, end } = termDateRange(term, academicYear);

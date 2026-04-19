@@ -67,6 +67,139 @@ export async function addClass(
   }
 }
 
+export interface BulkAddClassesResult {
+  ok: boolean;
+  /** Total non-empty lines parsed from the textarea (after trim/uppercase). */
+  submitted: number;
+  /** Names actually inserted in this call. */
+  inserted: string[];
+  /**
+   * Names skipped because they already exist for this school OR were
+   * duplicated within the same submission.
+   */
+  skippedExisting: string[];
+  error?: string;
+}
+
+/**
+ * Bulk-create classes from a list of names. The optional `description` is
+ * applied to every newly-created class. Duplicates within the submission are
+ * collapsed and any name that already exists for the school is reported back
+ * as `skippedExisting` instead of failing the whole batch.
+ */
+export async function bulkAddClasses(input: {
+  names: string[];
+  description?: string | null;
+}): Promise<BulkAddClassesResult> {
+  // Normalize the description once so every row gets the same value (or null).
+  const description = (input.description ?? "").trim() || null;
+
+  // Trim, uppercase, drop empties, and collapse duplicates while preserving
+  // the order the admin typed them in (nicer for the success message).
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const raw of input.names) {
+    const cleaned = toUppercase(String(raw ?? ""));
+    if (!cleaned) continue;
+    if (seen.has(cleaned)) continue;
+    seen.add(cleaned);
+    names.push(cleaned);
+  }
+
+  if (names.length === 0) {
+    return {
+      ok: false,
+      submitted: 0,
+      inserted: [],
+      skippedExisting: [],
+      error: "Add at least one class name (one per line).",
+    };
+  }
+
+  try {
+    const { supabase, schoolId, userId } = await getSchoolId();
+
+    // Look up existing names so we can pre-filter and report them back to the
+    // admin instead of relying on per-row 23505 errors (which would also
+    // abort the insert batch).
+    const { data: existingRows, error: existingError } = await supabase
+      .from("classes")
+      .select("name")
+      .eq("school_id", schoolId)
+      .in("name", names);
+
+    if (existingError) {
+      return {
+        ok: false,
+        submitted: names.length,
+        inserted: [],
+        skippedExisting: [],
+        error: existingError.message,
+      };
+    }
+
+    const existingSet = new Set(
+      ((existingRows ?? []) as { name: string }[]).map((r) => r.name)
+    );
+    const skippedExisting = names.filter((n) => existingSet.has(n));
+    const toInsert = names.filter((n) => !existingSet.has(n));
+
+    if (toInsert.length === 0) {
+      return {
+        ok: true,
+        submitted: names.length,
+        inserted: [],
+        skippedExisting,
+      };
+    }
+
+    const { error } = await supabase.from("classes").insert(
+      toInsert.map((name) => ({
+        school_id: schoolId,
+        name,
+        description,
+      })) as never
+    );
+
+    if (error) {
+      return {
+        ok: false,
+        submitted: names.length,
+        inserted: [],
+        skippedExisting,
+        error: error.message,
+      };
+    }
+
+    revalidatePath("/dashboard/classes");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "bulk_create_classes",
+      {
+        inserted: toInsert,
+        skipped_existing: skippedExisting,
+      },
+      schoolId
+    );
+
+    return {
+      ok: true,
+      submitted: names.length,
+      inserted: toInsert,
+      skippedExisting,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      submitted: names.length,
+      inserted: [],
+      skippedExisting: [],
+      error: (e as Error).message,
+    };
+  }
+}
+
 export async function updateClass(
   classId: string,
   formData: FormData

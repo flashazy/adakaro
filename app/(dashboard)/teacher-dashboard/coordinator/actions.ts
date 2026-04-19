@@ -10,6 +10,7 @@ import {
 } from "@/lib/gradebook-major-exams";
 import { letterGradeFromPercent } from "../report-cards/report-card-grades";
 import { shareReportCardWithParent } from "../report-cards/actions";
+import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -21,11 +22,14 @@ type AdminDb = any;
  * canned text matches the student's actual performance — and so no report card
  * ever ships with a blank "Teacher comment" column.
  */
+// Includes both F (secondary failing band) and E (primary failing band) so the
+// canned text resolves correctly regardless of the school's grading tier.
 const DEFAULT_SUBJECT_COMMENT_BY_GRADE: Record<string, string> = {
   A: "Excellent performance, keep it up",
   B: "Good progress this term",
   C: "Satisfactory performance",
   D: "Needs improvement in this subject",
+  E: "Struggling with this subject, needs extra support",
   F: "Struggling with this subject, needs extra support",
 };
 
@@ -233,6 +237,24 @@ export async function generateReportCardsForClassAction(
     name: string;
     school_id: string;
   };
+
+  // Letter grades have to use this school's grading tier — primary schools
+  // have an A–E (max 50) scale, secondary the legacy A–F (max 100). We swallow
+  // the read error so a database without the `school_level` column still
+  // produces the original secondary-tier behaviour.
+  let coordinatorSchoolLevel: SchoolLevel = "secondary";
+  try {
+    const { data: schoolLvlRow } = await admin
+      .from("schools")
+      .select("school_level")
+      .eq("id", klass.school_id)
+      .maybeSingle();
+    coordinatorSchoolLevel = normalizeSchoolLevel(
+      (schoolLvlRow as { school_level: string | null } | null)?.school_level
+    );
+  } catch {
+    // keep the secondary fallback
+  }
 
   // 3. Active students in class
   const { data: studs } = await admin
@@ -566,7 +588,8 @@ export async function generateReportCardsForClassAction(
 
       if (exam1Pct != null || exam2Pct != null) allSubjectsEmpty = false;
 
-      const letter = avg != null ? letterGradeFromPercent(avg) : null;
+      const letter =
+        avg != null ? letterGradeFromPercent(avg, coordinatorSchoolLevel) : null;
       const position = positionFor(subjectKey, avg);
       const teacherComment =
         teacherCommentByStudentSubject.get(`${stud.id}\u0000${subjectKey}`) ??

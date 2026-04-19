@@ -2,6 +2,8 @@
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { passingThresholdPercent } from "@/lib/tanzania-grades";
+import type { SchoolLevel } from "@/lib/school-level";
 
 /** Lines include Tanzania letter after the count, e.g. `80% (4 out of 5 students) (A)`. */
 export interface PassRateStatsPdf {
@@ -36,8 +38,14 @@ export interface FullGradeReportPdfInput {
   assignmentMaxScore: number;
   passing: PassRateStatsPdf;
   failing: FailRateStatsPdf;
-  dist: { A: number; B: number; C: number; D: number; F: number };
+  /**
+   * Grade buckets for both tiers. Renderer picks E (primary) or F (secondary)
+   * based on `schoolLevel`.
+   */
+  dist: { A: number; B: number; C: number; D: number; E: number; F: number };
   ranking: RankingRowPdf[];
+  /** School grading tier; defaults to "secondary" so legacy callers work. */
+  schoolLevel?: SchoolLevel;
   rows: {
     name: string;
     gender: string;
@@ -148,12 +156,13 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
   doc.text("Class statistics (this assignment)", margin, y);
   y += 6;
 
+  const passingPct = passingThresholdPercent(data.schoolLevel);
   y = writePassRates(
     doc,
     margin,
     y,
     "Passing students",
-    "Score >= 30%",
+    `Score >= ${passingPct}%`,
     data.passing
   );
   y = writeFailRates(
@@ -161,7 +170,7 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
     margin,
     y,
     "Failing students",
-    "Score < 30%",
+    `Score < ${passingPct}%`,
     data.failing
   );
 
@@ -171,8 +180,10 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
   y += 4;
   doc.setFont("helvetica", "normal");
   const d = data.dist;
+  const failingLetter = data.schoolLevel === "primary" ? "E" : "F";
+  const failingCount = data.schoolLevel === "primary" ? d.E : d.F;
   doc.text(
-    `A: ${d.A}  B: ${d.B}  C: ${d.C}  D: ${d.D}  F: ${d.F}`,
+    `A: ${d.A}  B: ${d.B}  C: ${d.C}  D: ${d.D}  ${failingLetter}: ${failingCount}`,
     margin,
     y
   );

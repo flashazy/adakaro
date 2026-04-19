@@ -18,6 +18,7 @@ import type {
   ReportCardStatus,
 } from "./report-card-types";
 import { isMissingColumnSchemaError } from "./report-card-schema-compat";
+import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 
 interface TeacherReportCardCommentSelectRow {
   id: string;
@@ -179,9 +180,25 @@ export async function upsertReportCardComment(input: {
     input.exam1Score,
     input.exam2Score
   );
+  // The school's grading tier (primary vs secondary) controls which letter
+  // band a percentage maps to. We swallow read errors so an older deployment
+  // without `school_level` still produces the legacy secondary grade.
+  let schoolLevelForGrade: SchoolLevel = "secondary";
+  try {
+    const { data: schoolLvlRow } = await admin
+      .from("schools")
+      .select("school_level")
+      .eq("id", input.schoolId.trim())
+      .maybeSingle();
+    schoolLevelForGrade = normalizeSchoolLevel(
+      (schoolLvlRow as { school_level: string | null } | null)?.school_level
+    );
+  } catch {
+    // keep secondary fallback
+  }
   const calculated_grade =
     calculated_score != null
-      ? letterGradeFromPercent(calculated_score)
+      ? letterGradeFromPercent(calculated_score, schoolLevelForGrade)
       : null;
   const score_percent = calculated_score;
   const letter_grade = calculated_grade;

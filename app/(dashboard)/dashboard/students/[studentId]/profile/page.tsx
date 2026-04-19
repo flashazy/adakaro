@@ -11,6 +11,7 @@ import {
   loadProfilePayments,
   loadProfileReportCards,
 } from "@/lib/student-profile-auto-data";
+import { normalizeSchoolLevel } from "@/lib/school-level";
 import { StudentProfileClient } from "./student-profile-client";
 import type {
   StudentProfileTabId,
@@ -206,11 +207,33 @@ export default async function StudentProfilePage({
       .order("updated_at", { ascending: false }),
     supabase.from("schools").select("currency").eq("id", schoolId).maybeSingle(),
     useFullGradebook
-      ? loadProfileGradebookScores(
-          adminClient,
-          studentId,
-          typedStudent.school_id
-        )
+      ? (async () => {
+          // Fetch the school's grading tier so the gradebook letter band uses
+          // the right scale (A–E for primary, A–F for secondary). Falls back
+          // to the `normalizeSchoolLevel` default ("primary") when the column
+          // is missing or returns null — which matches the migration default
+          // for `schools.school_level`.
+          let studentSchoolLevel = normalizeSchoolLevel(undefined);
+          try {
+            const { data: schoolLevelRow } = await adminClient
+              .from("schools")
+              .select("school_level")
+              .eq("id", typedStudent.school_id)
+              .maybeSingle();
+            studentSchoolLevel = normalizeSchoolLevel(
+              (schoolLevelRow as { school_level: string | null } | null)
+                ?.school_level
+            );
+          } catch {
+            // Pre-migration DBs without the column — keep the default.
+          }
+          return loadProfileGradebookScores(
+            adminClient,
+            studentId,
+            typedStudent.school_id,
+            studentSchoolLevel
+          );
+        })()
       : Promise.resolve([]),
     loadProfileAttendanceSummary(
       academicClient,

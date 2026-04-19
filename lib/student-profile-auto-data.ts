@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { tanzaniaLetterGrade, tanzaniaPercentFromScore } from "@/lib/tanzania-grades";
+import type { SchoolLevel } from "@/lib/school-level";
 
 type TeacherScorePick = Pick<
   Database["public"]["Tables"]["teacher_scores"]["Row"],
@@ -134,7 +135,14 @@ function summarizeAttendanceDays(
 export async function loadProfileGradebookScores(
   admin: SupabaseClient<Database>,
   studentId: string,
-  studentSchoolId: string
+  studentSchoolId: string,
+  /**
+   * School grading tier the student belongs to. Drives the letter band
+   * (A–E for primary, A–F for secondary). Defaults to "secondary" so legacy
+   * callers keep their existing behaviour. Pass the value resolved via
+   * `normalizeSchoolLevel(school.school_level)`.
+   */
+  schoolLevel: SchoolLevel = "secondary"
 ): Promise<ProfileGradebookScoreRow[]> {
   const { data: scoresRaw, error } = await admin
     .from("teacher_scores")
@@ -182,7 +190,7 @@ export async function loadProfileGradebookScores(
       score != null && Number.isFinite(max)
         ? tanzaniaPercentFromScore(score, max)
         : null;
-    const grade = tanzaniaLetterGrade(pct);
+    const grade = tanzaniaLetterGrade(pct, schoolLevel);
     const scoreDisplay =
       score != null && Number.isFinite(max) ? `${score}/${max}` : "—";
     const termPart = a.term ?? "—";

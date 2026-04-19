@@ -5,6 +5,7 @@ import {
   type ReportTermValue,
 } from "../constants";
 import type { ReportCardPreviewData } from "../report-card-preview-types";
+import { gradingScaleDescription } from "@/lib/tanzania-grades";
 
 export type { ReportCardPreviewData } from "../report-card-preview-types";
 
@@ -199,7 +200,7 @@ export function ReportCardPreview({ data }: { data: ReportCardPreviewData }) {
         </div>
         <p className="mt-2 text-xs text-slate-500">
           Final score per subject = (Exam 1 + Exam 2) ÷ 2 when both are entered.
-          Grading: A = 75–100%, B = 65–74%, C = 45–64%, D = 30–44%, F = 0–29%.
+          Grading: {gradingScaleDescription(data.summary?.schoolLevel)}.
         </p>
         {showSelectedColumn ? (
           <p className="mt-1 text-xs text-emerald-700">

@@ -2,6 +2,7 @@
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import type { SchoolLevel } from "@/lib/school-level";
 
 export interface GradeReportExportData {
   schoolName: string;
@@ -23,8 +24,18 @@ export interface GradeReportExportData {
     boysCount: number;
     girlsAvg: string;
     girlsCount: number;
-    dist: { A: number; B: number; C: number; D: number; F: number };
+    /**
+     * Grade buckets for both tiers; the failing band uses E for primary and
+     * F for secondary, but we always carry both so the same caller shape
+     * works regardless of school level.
+     */
+    dist: { A: number; B: number; C: number; D: number; E: number; F: number };
   };
+  /**
+   * School grading tier. Drives which failing-band letter (E vs F) is
+   * displayed in the distribution line. Defaults to "secondary".
+   */
+  schoolLevel?: SchoolLevel;
 }
 
 export {
@@ -88,11 +99,14 @@ export function downloadGradeReportPdf(data: GradeReportExportData): void {
   doc.setFontSize(10);
 
   const s = data.stats;
+  const failingLetter = data.schoolLevel === "primary" ? "E" : "F";
+  const failingCount =
+    data.schoolLevel === "primary" ? s.dist.E : s.dist.F;
   const statLines = [
     `Combined average: ${s.combinedAvg}`,
     `Boys average: ${s.boysAvg} (n = ${s.boysCount})`,
     `Girls average: ${s.girlsAvg} (n = ${s.girlsCount})`,
-    `Grade distribution — A: ${s.dist.A}, B: ${s.dist.B}, C: ${s.dist.C}, D: ${s.dist.D}, F: ${s.dist.F}`,
+    `Grade distribution — A: ${s.dist.A}, B: ${s.dist.B}, C: ${s.dist.C}, D: ${s.dist.D}, ${failingLetter}: ${failingCount}`,
   ];
   for (const line of statLines) {
     const split = doc.splitTextToSize(line, 180);

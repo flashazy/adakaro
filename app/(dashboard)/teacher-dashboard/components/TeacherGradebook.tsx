@@ -28,6 +28,8 @@ import {
   resolvedMajorExamKindForDuplicateCheck,
 } from "@/lib/gradebook-major-exams";
 import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
+import { getMaxScore, gradingScaleDescription } from "@/lib/tanzania-grades";
+import type { SchoolLevel } from "@/lib/school-level";
 
 const WEIGHT_FIELD_TOOLTIP =
   "Weight determines how much this assignment counts toward the final grade. Example: Final exam = 50%, Quiz = 10%. Default is 100%.";
@@ -119,6 +121,8 @@ function tanzaniaGradeCellSurface(letter: string): string {
       return "border-amber-300/80 bg-amber-50 text-amber-950 dark:border-amber-700 dark:bg-amber-950/45 dark:text-amber-100";
     case "D":
       return "border-orange-300/80 bg-orange-50 text-orange-950 dark:border-orange-800 dark:bg-orange-950/45 dark:text-orange-100";
+    // Failing band — E (primary) and F (secondary) share the red surface.
+    case "E":
     case "F":
       return "border-red-300/80 bg-red-50 text-red-950 dark:border-red-800 dark:bg-red-950/45 dark:text-red-100";
     default:
@@ -128,7 +132,8 @@ function tanzaniaGradeCellSurface(letter: string): string {
 
 function formatMatrixCellDisplay(
   raw: string,
-  maxScore: number
+  maxScore: number,
+  schoolLevel: SchoolLevel
 ): { text: string; letter: string } {
   const trimmed = raw.trim();
   if (trimmed === "") return { text: "—", letter: "—" };
@@ -138,7 +143,7 @@ function formatMatrixCellDisplay(
     maxScore > 0 ? Math.round((n / maxScore) * 1000) / 10 : null;
   const tanzPct =
     maxScore > 0 ? tanzaniaPercentFromScore(n, maxScore) : null;
-  const letter = tanzaniaLetterGrade(tanzPct);
+  const letter = tanzaniaLetterGrade(tanzPct, schoolLevel);
   if (p == null) return { text: "—", letter: "—" };
   return { text: `${p}% (${letter})`, letter };
 }
@@ -146,9 +151,17 @@ function formatMatrixCellDisplay(
 export function TeacherGradebook({
   options,
   initialClassId,
+  schoolLevel = "secondary",
 }: {
   options: GradebookClassOption[];
   initialClassId: string | null;
+  /**
+   * School grading tier. Drives default max score for new assignments
+   * (50 for primary, 100 for secondary), letter-grade cell colours, and the
+   * grade distribution help text. Defaults to "secondary" so legacy callers
+   * keep their existing behaviour.
+   */
+  schoolLevel?: SchoolLevel;
 }) {
   const router = useRouter();
   const first = options[0];
@@ -180,7 +193,7 @@ export function TeacherGradebook({
   const [title, setTitle] = useState("");
   /** Controlled preset dropdown; resets to "" after applying so the same preset can be chosen again. */
   const [titlePresetValue, setTitlePresetValue] = useState("");
-  const [maxScore, setMaxScore] = useState("100");
+  const [maxScore, setMaxScore] = useState(String(getMaxScore(schoolLevel)));
   const [weight, setWeight] = useState("100");
   const [weightTooltipOpen, setWeightTooltipOpen] = useState(false);
   const [dueDate, setDueDate] = useState("");
@@ -703,18 +716,22 @@ export function TeacherGradebook({
     const boys = collect("male");
     const girls = collect("female");
 
-    const dist = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+    // Track both failing buckets so the same code path serves primary (E) and
+    // secondary (F) classes; the renderer only displays the bucket that
+    // matches the current school tier.
+    const dist = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
     for (const s of matrix.students) {
       const raw = scores[s.id]?.score?.trim() ?? "";
       if (raw === "") continue;
       const n = Number(raw);
       if (!Number.isFinite(n)) continue;
       const p = tanzaniaPercentFromScore(n, max);
-      const letter = tanzaniaLetterGrade(p);
+      const letter = tanzaniaLetterGrade(p, schoolLevel);
       if (letter === "A") dist.A += 1;
       else if (letter === "B") dist.B += 1;
       else if (letter === "C") dist.C += 1;
       else if (letter === "D") dist.D += 1;
+      else if (letter === "E") dist.E += 1;
       else if (letter === "F") dist.F += 1;
     }
 
@@ -726,7 +743,7 @@ export function TeacherGradebook({
       girlsCount: girls.length,
       dist,
     };
-  }, [matrix, scores]);
+  }, [matrix, scores, schoolLevel]);
 
   const handleExportPdf = async () => {
     if (!matrix) return;
@@ -746,7 +763,7 @@ export function TeacherGradebook({
           n != null && Number.isFinite(n)
             ? tanzaniaPercentFromScore(n, max)
             : null;
-        const letter = tanzaniaLetterGrade(p);
+        const letter = tanzaniaLetterGrade(p, schoolLevel);
         return {
           name: s.full_name,
           genderLabel: genderLabel(s.gender),
@@ -780,6 +797,7 @@ export function TeacherGradebook({
           girlsCount: gs.girlsCount,
           dist: gs.dist,
         },
+        schoolLevel,
       });
     } finally {
       setPdfBusy(false);
@@ -1017,7 +1035,8 @@ export function TeacherGradebook({
                             editingMatrixCell?.studentId === s.id;
                           const { text, letter } = formatMatrixCellDisplay(
                             raw,
-                            a.max_score
+                            a.max_score,
+                            schoolLevel
                           );
                           const surface =
                             letter !== "—"
@@ -1402,13 +1421,17 @@ export function TeacherGradebook({
                     </p>
                     <p className="text-sm font-medium text-slate-800 dark:text-zinc-200">
                       A: {genderStats.dist.A} · B: {genderStats.dist.B} · C:{" "}
-                      {genderStats.dist.C} · D: {genderStats.dist.D} · F:{" "}
-                      {genderStats.dist.F}
+                      {genderStats.dist.C} · D: {genderStats.dist.D} ·{" "}
+                      {schoolLevel === "primary" ? (
+                        <>E: {genderStats.dist.E}</>
+                      ) : (
+                        <>F: {genderStats.dist.F}</>
+                      )}
                     </p>
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-slate-500 dark:text-zinc-500">
-                  A 75–100% · B 65–74% · C 45–64% · D 30–44% · F 0–29%
+                  {gradingScaleDescription(schoolLevel)}
                 </p>
               </div>
             )}
@@ -1447,7 +1470,7 @@ export function TeacherGradebook({
                               matrix.assignment.max_score
                             )
                           : null;
-                      const letter = tanzaniaLetterGrade(tanzPct);
+                      const letter = tanzaniaLetterGrade(tanzPct, schoolLevel);
                       const persisted = hasPersistedScore(
                         matrix.scoreByStudent[s.id]
                       );
@@ -1611,6 +1634,7 @@ export function TeacherGradebook({
         assignments={classMatrixData?.assignments ?? []}
         students={classMatrixData?.students ?? []}
         classDraft={classDraft}
+        schoolLevel={schoolLevel}
       />
 
       <ConfirmDeleteModal

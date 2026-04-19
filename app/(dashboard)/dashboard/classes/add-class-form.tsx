@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRef, useEffect } from "react";
 import { addClass, type ClassActionState } from "./actions";
+import { BulkAddClassesModal } from "./bulk-add-classes-modal";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -24,6 +25,7 @@ const initialState: ClassActionState = {};
 export function AddClassForm() {
   const [state, formAction] = useActionState(addClass, initialState);
   const formRef = useRef<HTMLFormElement>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   useEffect(() => {
     if (state.success) formRef.current?.reset();
@@ -31,9 +33,27 @@ export function AddClassForm() {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-        Add a new class
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+          Add a new class
+        </h2>
+        <button
+          type="button"
+          onClick={() => setBulkOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="h-3.5 w-3.5"
+            aria-hidden="true"
+          >
+            <path d="M10 3a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H4a1 1 0 1 1 0-2h5V4a1 1 0 0 1 1-1Z" />
+          </svg>
+          Bulk Add Classes
+        </button>
+      </div>
 
       <form
         ref={formRef}
@@ -86,6 +106,11 @@ export function AddClassForm() {
           {state.success}
         </p>
       )}
+
+      <BulkAddClassesModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+      />
     </div>
   );
 }
