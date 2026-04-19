@@ -73,6 +73,7 @@ export function mergeStudentCommentsWithDraftsForPreview(
         : (prev?.exam2GradebookOriginal ?? null),
       exam1ScoreOverridden: d.exam1Overridden,
       exam2ScoreOverridden: d.exam2Overridden,
+      position: prev?.position ?? null,
     };
     bySub.set(subject, merged);
   }
@@ -186,6 +187,21 @@ export function buildSubjectPreviewRows(
     }
     if (!grade) grade = "—";
 
+    // Prefer the live class-wide rank when it produced a real value; fall back
+    // to the position snapshotted onto the comment row at generation time so
+    // coordinator-generated cards still show a number even when the live rank
+    // has nothing to compare against.
+    const livePosition = positionsBySubject?.[subject];
+    const storedPosition =
+      c?.position != null && Number.isFinite(c.position)
+        ? String(c.position)
+        : null;
+    const hasLivePosition =
+      typeof livePosition === "string" && livePosition !== "" && livePosition !== "—";
+    const position = hasLivePosition
+      ? livePosition
+      : storedPosition ?? livePosition ?? "—";
+
     return {
       subject,
       exam1Pct: fmtPct(e1),
@@ -194,7 +210,7 @@ export function buildSubjectPreviewRows(
       exam2Overridden: c?.exam2ScoreOverridden === true,
       averagePct: avgRaw != null && Number.isFinite(avgRaw) ? `${avgRaw}%` : "—",
       grade,
-      position: positionsBySubject?.[subject] ?? "—",
+      position,
       comment: c?.comment?.trim() ?? "",
     };
   });

@@ -33,6 +33,7 @@ interface TeacherReportCardCommentSelectRow {
   exam2_gradebook_original?: number | string | null;
   exam1_score_overridden?: boolean | null;
   exam2_score_overridden?: boolean | null;
+  position?: number | string | null;
 }
 
 function mapReportCardCommentRow(row: TeacherReportCardCommentSelectRow): ReportCardCommentRow {
@@ -57,6 +58,7 @@ function mapReportCardCommentRow(row: TeacherReportCardCommentSelectRow): Report
     exam2GradebookOriginal: parseNumeric(row.exam2_gradebook_original),
     exam1ScoreOverridden: row.exam1_score_overridden === true,
     exam2ScoreOverridden: row.exam2_score_overridden === true,
+    position: parseNumeric(row.position),
   };
 }
 
@@ -206,8 +208,9 @@ export async function upsertReportCardComment(input: {
     "id, subject, comment, score_percent, letter_grade";
   const selectColsExams =
     "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
-  const selectColsAll =
+  const selectColsOverride =
     `${selectColsExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
+  const selectColsAll = `${selectColsOverride}, position`;
 
   const extendedWrite = {
     comment: input.comment,
@@ -295,6 +298,15 @@ export async function upsertReportCardComment(input: {
     if (res.error && isMissingColumnSchemaError(res.error)) {
       res = await admin
         .from("teacher_report_card_comments")
+        .update(extendedWrite)
+        .eq("id", commentId)
+        .select(selectColsOverride)
+        .single();
+    }
+
+    if (res.error && isMissingColumnSchemaError(res.error)) {
+      res = await admin
+        .from("teacher_report_card_comments")
         .update(writeExamsNoOverrides)
         .eq("id", commentId)
         .select(selectColsExams)
@@ -340,6 +352,16 @@ export async function upsertReportCardComment(input: {
     )
     .select(selectColsAll)
     .single();
+
+  if (ins.error && isMissingColumnSchemaError(ins.error)) {
+    ins = await admin
+      .from("teacher_report_card_comments")
+      .insert(
+        insertExtended as Database["public"]["Tables"]["teacher_report_card_comments"]["Insert"]
+      )
+      .select(selectColsOverride)
+      .single();
+  }
 
   if (ins.error && isMissingColumnSchemaError(ins.error)) {
     ins = await admin

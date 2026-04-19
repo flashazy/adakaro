@@ -1610,6 +1610,7 @@ export interface Database {
           exam2_gradebook_original: number | null;
           exam1_score_overridden: boolean;
           exam2_score_overridden: boolean;
+          position: number | null;
         };
         Insert: {
           id?: string;
@@ -1633,6 +1634,7 @@ export interface Database {
           exam2_gradebook_original?: number | null;
           exam1_score_overridden?: boolean;
           exam2_score_overridden?: boolean;
+          position?: number | null;
         };
         Update: {
           teacher_id?: string;
@@ -1654,6 +1656,7 @@ export interface Database {
           exam2_gradebook_original?: number | null;
           exam1_score_overridden?: boolean;
           exam2_score_overridden?: boolean;
+          position?: number | null;
         };
         Relationships: [];
       };

@@ -111,12 +111,25 @@ export default async function ParentReportCardPage({
     );
   }
 
-  const { data: comments } = await supabase
-    .from("teacher_report_card_comments")
-    .select(
-      "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden"
-    )
-    .eq("report_card_id", row.id);
+  // `position` (migration 00085) may not exist on older deployments; the
+  // fallback select keeps parents able to view the report card.
+  let comments: unknown[] | null = null;
+  {
+    const baseCols =
+      "id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden";
+    const fullCols = `${baseCols}, position`;
+    let res = await supabase
+      .from("teacher_report_card_comments")
+      .select(fullCols)
+      .eq("report_card_id", row.id);
+    if (res.error && /column.*position/i.test(res.error.message ?? "")) {
+      res = await supabase
+        .from("teacher_report_card_comments")
+        .select(baseCols)
+        .eq("report_card_id", row.id);
+    }
+    comments = (res.data as unknown[] | null) ?? null;
+  }
 
   const parseNum = (v: unknown): number | null => {
     if (v == null || String(v).trim() === "") return null;
@@ -139,6 +152,7 @@ export default async function ParentReportCardPage({
       exam2_gradebook_original?: number | string | null;
       exam1_score_overridden?: boolean | null;
       exam2_score_overridden?: boolean | null;
+      position?: number | string | null;
     };
     return {
       id: r.id,
@@ -154,6 +168,7 @@ export default async function ParentReportCardPage({
       exam2GradebookOriginal: parseNum(r.exam2_gradebook_original),
       exam1ScoreOverridden: r.exam1_score_overridden === true,
       exam2ScoreOverridden: r.exam2_score_overridden === true,
+      position: parseNum(r.position),
     };
   });
 

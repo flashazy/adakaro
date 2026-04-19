@@ -31,6 +31,12 @@ export interface ReportCardCommentRow {
   exam2GradebookOriginal: number | null;
   exam1ScoreOverridden: boolean;
   exam2ScoreOverridden: boolean;
+  /**
+   * Class rank for this subject (1 = highest term average). Persisted by
+   * the coordinator's `Generate Report Cards` flow so the preview can show
+   * a position even when the live class-wide ranking has no data to work with.
+   */
+  position: number | null;
 }
 
 export interface StudentReportRow {

@@ -2,7 +2,18 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Eye, FilePlus2, Mail, Printer, Users, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  FilePlus2,
+  Mail,
+  Printer,
+  Search,
+  Users,
+  X,
+} from "lucide-react";
 import { GRADEBOOK_MAJOR_EXAM_TYPE_VALUES } from "@/lib/gradebook-major-exams";
 import {
   downloadBulkReportCardsPdf,
@@ -53,6 +64,149 @@ function safeFileName(input: string): string {
 function academicYearDropdownValues(): string[] {
   const y = new Date().getFullYear();
   return [y - 1, y, y + 1].map(String);
+}
+
+/** Items per page for the in-card subject and student tables. */
+const COORDINATOR_PAGE_SIZE = 5;
+
+/** Compact "Showing X–Y of N label" line shown above paginated tables. */
+function PageInfo({
+  total,
+  page,
+  pageSize,
+  noun,
+}: {
+  total: number;
+  page: number;
+  pageSize: number;
+  noun: { singular: string; plural: string };
+}) {
+  if (total === 0) return null;
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
+  const label = total === 1 ? noun.singular : noun.plural;
+  return (
+    <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
+      Showing {start}–{end} of {total} {label}
+    </p>
+  );
+}
+
+/** Previous / numbered / Next pagination control. */
+function PaginationControls({
+  page,
+  pageCount,
+  onChange,
+  ariaLabel,
+}: {
+  page: number;
+  pageCount: number;
+  onChange: (next: number) => void;
+  ariaLabel: string;
+}) {
+  if (pageCount <= 1) return null;
+
+  // Build a compact numeric range. For up to 7 pages we just list them all;
+  // beyond that we show the first, last, current and immediate neighbours with
+  // ellipses, which is plenty for the coordinator dashboard's typical sizes.
+  const pages: (number | "…")[] = [];
+  if (pageCount <= 7) {
+    for (let i = 1; i <= pageCount; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (page > 3) pages.push("…");
+    for (let i = Math.max(2, page - 1); i <= Math.min(pageCount - 1, page + 1); i++) {
+      pages.push(i);
+    }
+    if (page < pageCount - 2) pages.push("…");
+    pages.push(pageCount);
+  }
+
+  const btnBase =
+    "inline-flex h-8 min-w-[2rem] items-center justify-center rounded-md border px-2 text-xs font-medium transition";
+  const btnIdle =
+    "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
+  const btnActive =
+    "border-indigo-500 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-600";
+  const btnDisabled =
+    "cursor-not-allowed opacity-50";
+
+  return (
+    <nav
+      className="mt-3 flex flex-wrap items-center justify-end gap-1.5"
+      aria-label={ariaLabel}
+    >
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, page - 1))}
+        disabled={page <= 1}
+        className={`${btnBase} ${btnIdle} ${page <= 1 ? btnDisabled : ""}`}
+      >
+        <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+        <span className="ml-0.5">Previous</span>
+      </button>
+      {pages.map((p, idx) =>
+        p === "…" ? (
+          <span
+            key={`gap-${idx}`}
+            className="px-1 text-xs text-slate-400 dark:text-zinc-500"
+            aria-hidden
+          >
+            …
+          </span>
+        ) : (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onChange(p)}
+            aria-current={p === page ? "page" : undefined}
+            className={`${btnBase} ${p === page ? btnActive : btnIdle}`}
+          >
+            {p}
+          </button>
+        )
+      )}
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(pageCount, page + 1))}
+        disabled={page >= pageCount}
+        className={`${btnBase} ${btnIdle} ${page >= pageCount ? btnDisabled : ""}`}
+      >
+        <span className="mr-0.5">Next</span>
+        <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+      </button>
+    </nav>
+  );
+}
+
+/** Search box used above the subject table and the student report card list. */
+function SearchBox({
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder: string;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="relative mt-3 max-w-sm">
+      <Search
+        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
+        aria-hidden
+      />
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-8 pr-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+      />
+    </div>
+  );
 }
 
 function renderExamStatusBadge(status: MajorExamStatus) {
@@ -165,6 +319,88 @@ function CoordinatorClassCard({
 
   const [showGenerateModal, setShowGenerateModal] = useState(false);
 
+  // Subjects sorted alphabetically (case-insensitive) before any filter/page
+  // logic runs. The data layer already sorts, but we re-sort defensively so a
+  // future change there can't silently break the UI ordering — this is also
+  // the source of truth for the chips above the table, which now reuse it.
+  const sortedSubjects = useMemo(
+    () =>
+      [...klass.subjects].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      ),
+    [klass.subjects]
+  );
+
+  // Search + pagination state for the major exam submission status table.
+  const [subjectSearch, setSubjectSearch] = useState("");
+  const [subjectPage, setSubjectPage] = useState(1);
+
+  const filteredSubjects = useMemo(() => {
+    const q = subjectSearch.trim().toLowerCase();
+    if (!q) return sortedSubjects;
+    return sortedSubjects.filter((s) => s.name.toLowerCase().includes(q));
+  }, [sortedSubjects, subjectSearch]);
+
+  const subjectPageCount = Math.max(
+    1,
+    Math.ceil(filteredSubjects.length / COORDINATOR_PAGE_SIZE)
+  );
+  // Clamp the current page back into range whenever the filtered list shrinks
+  // (e.g. user types a search term that drops total pages below the active one).
+  useEffect(() => {
+    if (subjectPage > subjectPageCount) setSubjectPage(subjectPageCount);
+  }, [subjectPage, subjectPageCount]);
+  // Reset to page 1 whenever the search term changes — otherwise the user can
+  // type a filter that has only 1 page of results while still sitting on page 3.
+  useEffect(() => {
+    setSubjectPage(1);
+  }, [subjectSearch]);
+
+  const visibleSubjects = useMemo(() => {
+    const start = (subjectPage - 1) * COORDINATOR_PAGE_SIZE;
+    return filteredSubjects.slice(start, start + COORDINATOR_PAGE_SIZE);
+  }, [filteredSubjects, subjectPage]);
+
+  // Report cards sorted alphabetically by student name before filter+paginate.
+  // The data layer already sorts these but this guarantees the UI invariant.
+  const sortedReportCards = useMemo(
+    () =>
+      [...klass.reportCards].sort((a, b) =>
+        a.studentName.localeCompare(b.studentName, undefined, {
+          sensitivity: "base",
+        })
+      ),
+    [klass.reportCards]
+  );
+
+  // Search + pagination state for the per-class student report cards list.
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentPage, setStudentPage] = useState(1);
+
+  const filteredReportCards = useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    if (!q) return sortedReportCards;
+    return sortedReportCards.filter((r) =>
+      r.studentName.toLowerCase().includes(q)
+    );
+  }, [sortedReportCards, studentSearch]);
+
+  const studentPageCount = Math.max(
+    1,
+    Math.ceil(filteredReportCards.length / COORDINATOR_PAGE_SIZE)
+  );
+  useEffect(() => {
+    if (studentPage > studentPageCount) setStudentPage(studentPageCount);
+  }, [studentPage, studentPageCount]);
+  useEffect(() => {
+    setStudentPage(1);
+  }, [studentSearch]);
+
+  const visibleReportCards = useMemo(() => {
+    const start = (studentPage - 1) * COORDINATOR_PAGE_SIZE;
+    return filteredReportCards.slice(start, start + COORDINATOR_PAGE_SIZE);
+  }, [filteredReportCards, studentPage]);
+
   const handleBulkPrint = () => {
     if (approvedCards.length === 0) return;
     downloadBulkReportCardsPdf(
@@ -232,7 +468,7 @@ function CoordinatorClassCard({
             </p>
           ) : (
             <ul className="mt-2 flex flex-wrap gap-2">
-              {klass.subjects.map((s) => (
+              {sortedSubjects.map((s) => (
                 <li
                   key={`${klass.classId}-${s.name}`}
                   className="rounded-md bg-indigo-50 px-2 py-0.5 text-sm font-medium text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200"
@@ -277,42 +513,68 @@ function CoordinatorClassCard({
             Add subjects to this class to track exam submissions.
           </p>
         ) : (
-          <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/60">
-                  <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                    Subject
-                  </th>
-                  {GRADEBOOK_MAJOR_EXAM_TYPE_VALUES.map((et) => (
-                    <th
-                      key={et}
-                      className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300"
-                    >
-                      {MAJOR_EXAM_LABELS[et]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-zinc-700">
-                {klass.subjects.map((s) => (
-                  <tr
-                    key={`${klass.classId}-${s.name}-exams`}
-                    className="bg-white dark:bg-zinc-900"
-                  >
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-white">
-                      {s.name}
-                    </td>
-                    {GRADEBOOK_MAJOR_EXAM_TYPE_VALUES.map((et) => (
-                      <td key={et} className="whitespace-nowrap px-3 py-2">
-                        {renderExamStatusBadge(s.examStatus[et])}
-                      </td>
+          <>
+            <SearchBox
+              value={subjectSearch}
+              onChange={setSubjectSearch}
+              placeholder="Search subjects..."
+              ariaLabel={`Search subjects in ${klass.className}`}
+            />
+            <PageInfo
+              total={filteredSubjects.length}
+              page={subjectPage}
+              pageSize={COORDINATOR_PAGE_SIZE}
+              noun={{ singular: "subject", plural: "subjects" }}
+            />
+            {filteredSubjects.length === 0 ? (
+              <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+                No subjects match &ldquo;{subjectSearch}&rdquo;.
+              </p>
+            ) : (
+              <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/60">
+                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                        Subject
+                      </th>
+                      {GRADEBOOK_MAJOR_EXAM_TYPE_VALUES.map((et) => (
+                        <th
+                          key={et}
+                          className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300"
+                        >
+                          {MAJOR_EXAM_LABELS[et]}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-zinc-700">
+                    {visibleSubjects.map((s) => (
+                      <tr
+                        key={`${klass.classId}-${s.name}-exams`}
+                        className="bg-white dark:bg-zinc-900"
+                      >
+                        <td className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-white">
+                          {s.name}
+                        </td>
+                        {GRADEBOOK_MAJOR_EXAM_TYPE_VALUES.map((et) => (
+                          <td key={et} className="whitespace-nowrap px-3 py-2">
+                            {renderExamStatusBadge(s.examStatus[et])}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <PaginationControls
+              page={subjectPage}
+              pageCount={subjectPageCount}
+              onChange={setSubjectPage}
+              ariaLabel={`Subject pagination for ${klass.className}`}
+            />
+          </>
         )}
       </div>
 
@@ -326,16 +588,42 @@ function CoordinatorClassCard({
             academic year yet.
           </p>
         ) : (
-          <ul className="mt-3 divide-y divide-slate-200 dark:divide-zinc-700">
-            {klass.reportCards.map((item) => (
-              <ReportCardRow
-                key={item.reportCardId}
-                item={item}
-                className={klass.className}
-                academicYear={klass.academicYear}
-              />
-            ))}
-          </ul>
+          <>
+            <SearchBox
+              value={studentSearch}
+              onChange={setStudentSearch}
+              placeholder="Search students by name..."
+              ariaLabel={`Search students in ${klass.className}`}
+            />
+            <PageInfo
+              total={filteredReportCards.length}
+              page={studentPage}
+              pageSize={COORDINATOR_PAGE_SIZE}
+              noun={{ singular: "student", plural: "students" }}
+            />
+            {filteredReportCards.length === 0 ? (
+              <p className="mt-3 rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+                No students match &ldquo;{studentSearch}&rdquo;.
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-slate-200 dark:divide-zinc-700">
+                {visibleReportCards.map((item) => (
+                  <ReportCardRow
+                    key={item.reportCardId}
+                    item={item}
+                    className={klass.className}
+                    academicYear={klass.academicYear}
+                  />
+                ))}
+              </ul>
+            )}
+            <PaginationControls
+              page={studentPage}
+              pageCount={studentPageCount}
+              onChange={setStudentPage}
+              ariaLabel={`Student pagination for ${klass.className}`}
+            />
+          </>
         )}
       </div>
     </section>

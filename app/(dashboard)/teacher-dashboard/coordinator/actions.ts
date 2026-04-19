@@ -14,6 +14,47 @@ import { shareReportCardWithParent } from "../report-cards/actions";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
 
+/**
+ * Default per-subject comments used by the coordinator's "Generate Report
+ * Cards" flow when the subject teacher hasn't entered a comment of their own.
+ * Mapping is keyed by the calculated letter grade for that subject so the
+ * canned text matches the student's actual performance — and so no report card
+ * ever ships with a blank "Teacher comment" column.
+ */
+const DEFAULT_SUBJECT_COMMENT_BY_GRADE: Record<string, string> = {
+  A: "Excellent performance, keep it up",
+  B: "Good progress this term",
+  C: "Satisfactory performance",
+  D: "Needs improvement in this subject",
+  F: "Struggling with this subject, needs extra support",
+};
+
+/**
+ * Returns the configured default comment for the given letter grade, or
+ * `null` when no grade was calculated yet (e.g. the student has no exam
+ * scores). Falling back to the teacher's own comment is the caller's job —
+ * this helper only owns the canned text.
+ */
+function defaultCommentForGrade(grade: string | null | undefined): string | null {
+  if (!grade) return null;
+  return DEFAULT_SUBJECT_COMMENT_BY_GRADE[grade.trim().toUpperCase()] ?? null;
+}
+
+/**
+ * Picks the comment that should be persisted on a coordinator-generated report
+ * card row. Teacher-authored text always wins; if the teacher hasn't written
+ * anything, we fall back to the grade-based default so the column is never
+ * blank when a grade exists.
+ */
+function resolveCommentForGeneratedRow(
+  teacherComment: string | null | undefined,
+  letterGrade: string | null | undefined
+): string | null {
+  const trimmed = (teacherComment ?? "").trim();
+  if (trimmed) return trimmed;
+  return defaultCommentForGrade(letterGrade);
+}
+
 export type CoordinatorShareState =
   | { ok: true; message: string }
   | { ok: false; error: string };
@@ -229,17 +270,22 @@ export async function generateReportCardsForClassAction(
     a.name.localeCompare(b.name)
   );
 
-  // 5. Skip students that already have a report card for (term, academic_year)
+  // 5. Look up which students already have a report card for (term, academic_year).
+  //    We no longer skip them outright — existing cards still get their position
+  //    + teacher comments backfilled in step 8b so the coordinator's "Generate
+  //    Report Cards" button can be re-run to refresh those columns without first
+  //    deleting the cards by hand.
   const { data: existing } = await admin
     .from("report_cards")
-    .select("student_id")
+    .select("id, student_id")
     .eq("class_id", classId)
     .eq("term", term)
     .eq("academic_year", academicYear)
     .in("student_id", studentIds);
-  const alreadyHaveCard = new Set<string>(
-    ((existing ?? []) as { student_id: string }[]).map((r) => r.student_id)
-  );
+  const existingCardByStudent = new Map<string, string>();
+  for (const r of (existing ?? []) as { id: string; student_id: string }[]) {
+    existingCardByStudent.set(r.student_id, r.id);
+  }
 
   // 6. Gradebook assignments that back the report card's exam1 / exam2 for this term.
   //    Use the admin client — coordinators aren't necessarily the teacher who owns
@@ -291,141 +337,333 @@ export async function generateReportCardsForClassAction(
 
   // 7. Pull all relevant teacher_scores in a single query
   const allAssignmentIds: string[] = [];
-  for (const bucket of assignmentsBySubjectExam.values()) {
+  // assignmentId -> subjectKey, used below to bucket teacher remarks per subject.
+  const subjectKeyByAssignmentId = new Map<string, string>();
+  for (const [subjectKey, bucket] of assignmentsBySubjectExam.entries()) {
     for (const list of Object.values(bucket)) {
-      for (const meta of list ?? []) allAssignmentIds.push(meta.assignmentId);
+      for (const meta of list ?? []) {
+        allAssignmentIds.push(meta.assignmentId);
+        subjectKeyByAssignmentId.set(meta.assignmentId, subjectKey);
+      }
     }
   }
 
   const scoreByStudentAssignment = new Map<string, unknown>();
+  // (studentId\0subjectKey) -> the most recent teacher comment we could find,
+  // sourced from either teacher_scores.remarks or another teacher's
+  // teacher_report_card_comments row for the same (student, subject, term, year).
+  const teacherCommentByStudentSubject = new Map<string, string>();
   if (allAssignmentIds.length > 0) {
     const { data: scoreRows } = await admin
       .from("teacher_scores")
-      .select("assignment_id, student_id, score")
+      .select("assignment_id, student_id, score, remarks, updated_at")
       .in("assignment_id", allAssignmentIds)
-      .in("student_id", studentIds);
+      .in("student_id", studentIds)
+      .order("updated_at", { ascending: false });
 
     for (const s of (scoreRows ?? []) as {
       assignment_id: string;
       student_id: string;
       score: unknown;
+      remarks: string | null;
+      updated_at: string | null;
     }[]) {
-      scoreByStudentAssignment.set(
-        `${s.student_id}\u0000${s.assignment_id}`,
-        s.score
-      );
+      const cellKey = `${s.student_id}\u0000${s.assignment_id}`;
+      if (!scoreByStudentAssignment.has(cellKey)) {
+        scoreByStudentAssignment.set(cellKey, s.score);
+      }
+
+      const remark = (s.remarks ?? "").trim();
+      if (!remark) continue;
+      const subjectKey = subjectKeyByAssignmentId.get(s.assignment_id);
+      if (!subjectKey) continue;
+      const remarkKey = `${s.student_id}\u0000${subjectKey}`;
+      // Rows are ordered newest first, so the first remark we see wins.
+      if (!teacherCommentByStudentSubject.has(remarkKey)) {
+        teacherCommentByStudentSubject.set(remarkKey, remark);
+      }
     }
   }
 
-  // 8. Generate
+  // 7c. Also pull existing per-subject comments from other teachers'
+  // teacher_report_card_comments rows. Subject teachers usually write their
+  // remark in the report card editor (not in teacher_scores.remarks), so this
+  // is the most reliable source of the comment column the coordinator's
+  // "Teacher comment" column should display.
+  {
+    const { data: priorComments } = await admin
+      .from("teacher_report_card_comments")
+      .select("student_id, subject, comment, updated_at")
+      .eq("term", term)
+      .eq("academic_year", academicYear)
+      .in("student_id", studentIds)
+      .not("comment", "is", null)
+      .order("updated_at", { ascending: false });
+
+    for (const r of (priorComments ?? []) as {
+      student_id: string;
+      subject: string;
+      comment: string | null;
+      updated_at: string | null;
+    }[]) {
+      const trimmed = (r.comment ?? "").trim();
+      if (!trimmed) continue;
+      const subjectKey = normalizeSubjectKey(r.subject);
+      if (!subjectKey || !subjectsByKey.has(subjectKey)) continue;
+      const key = `${r.student_id}\u0000${subjectKey}`;
+      // Rows are ordered newest first; the freshest non-empty comment wins,
+      // and we don't overwrite a teacher_scores.remark that was already set.
+      if (!teacherCommentByStudentSubject.has(key)) {
+        teacherCommentByStudentSubject.set(key, trimmed);
+      }
+    }
+  }
+
+  // 7b. Compute term averages for every active student (not just those getting a
+  // new card) so the per-subject ranking reflects the whole class. Students who
+  // already have a report card stay out of the insert loop further down, but
+  // their averages still feed the position calculation.
+  const pickPctFor = (
+    studentId: string,
+    subjectKey: string,
+    examType: GradebookMajorExamTypeValue
+  ): number | null => {
+    const list = assignmentsBySubjectExam.get(subjectKey)?.[examType];
+    if (!list?.length) return null;
+    for (const meta of list) {
+      const raw = scoreByStudentAssignment.get(
+        `${studentId}\u0000${meta.assignmentId}`
+      );
+      const pct = percentFromScore(raw, meta.maxScore);
+      if (pct != null) return pct;
+    }
+    return null;
+  };
+
+  const termAverage = (
+    exam1Pct: number | null,
+    exam2Pct: number | null
+  ): number | null => {
+    if (exam1Pct != null && exam2Pct != null) {
+      return Math.round(((exam1Pct + exam2Pct) / 2) * 10) / 10;
+    }
+    if (exam1Pct != null) return exam1Pct;
+    if (exam2Pct != null) return exam2Pct;
+    return null;
+  };
+
+  // studentId -> subjectKey -> { exam1Pct, exam2Pct, avg }
+  const computedByStudent = new Map<
+    string,
+    Map<
+      string,
+      { exam1Pct: number | null; exam2Pct: number | null; avg: number | null }
+    >
+  >();
+  // subjectKey -> sorted (descending) list of class averages, for ranking.
+  const classAvgsBySubject = new Map<string, number[]>();
+
+  for (const stud of studentRows) {
+    const perSubject = new Map<
+      string,
+      { exam1Pct: number | null; exam2Pct: number | null; avg: number | null }
+    >();
+    for (const subj of subjectList) {
+      const subjectKey = normalizeSubjectKey(subj.name);
+      const e1 = pickPctFor(stud.id, subjectKey, wanted.exam1);
+      const e2 = pickPctFor(stud.id, subjectKey, wanted.exam2);
+      const avg = termAverage(e1, e2);
+      perSubject.set(subjectKey, { exam1Pct: e1, exam2Pct: e2, avg });
+      if (avg != null) {
+        const list = classAvgsBySubject.get(subjectKey) ?? [];
+        list.push(avg);
+        classAvgsBySubject.set(subjectKey, list);
+      }
+    }
+    computedByStudent.set(stud.id, perSubject);
+  }
+
+  for (const list of classAvgsBySubject.values()) {
+    list.sort((a, b) => b - a);
+  }
+
+  /** Competition-style 1-based rank: 1 + count of strictly higher averages. */
+  const positionFor = (subjectKey: string, avg: number | null): number | null => {
+    if (avg == null) return null;
+    const sorted = classAvgsBySubject.get(subjectKey);
+    if (!sorted?.length) return null;
+    let strictlyHigher = 0;
+    for (const v of sorted) {
+      if (v > avg) strictlyHigher += 1;
+      else break;
+    }
+    return strictlyHigher + 1;
+  };
+
+  // 8. Generate (or refresh existing). Existing cards stay in `pending_review`
+  //    /etc — we only backfill their per-subject `position` and `comment` so
+  //    the coordinator preview can show them. We never overwrite an existing
+  //    non-empty teacher comment, and we never touch exam scores on an existing
+  //    row (those belong to the subject teacher).
   let generated = 0;
+  let refreshed = 0;
   let studentsMissingAllScores = 0;
   const errors: string[] = [];
 
   for (const stud of studentRows) {
-    if (alreadyHaveCard.has(stud.id)) continue;
+    const existingCardId = existingCardByStudent.get(stud.id) ?? null;
 
-    const { data: createdCard, error: insCardErr } = await admin
-      .from("report_cards")
-      .insert({
-        student_id: stud.id,
-        class_id: classId,
-        school_id: klass.school_id,
-        teacher_id: user.id,
-        term,
-        academic_year: academicYear,
-        status: "pending_review",
-        submitted_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
+    let reportCardId: string;
+    if (existingCardId) {
+      reportCardId = existingCardId;
+    } else {
+      const { data: createdCard, error: insCardErr } = await admin
+        .from("report_cards")
+        .insert({
+          student_id: stud.id,
+          class_id: classId,
+          school_id: klass.school_id,
+          teacher_id: user.id,
+          term,
+          academic_year: academicYear,
+          status: "pending_review",
+          submitted_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
 
-    if (insCardErr || !createdCard) {
-      errors.push(
-        `${stud.full_name || "Student"}: ${
-          insCardErr?.message ?? "Could not create report card"
-        }`
-      );
-      continue;
+      if (insCardErr || !createdCard) {
+        errors.push(
+          `${stud.full_name || "Student"}: ${
+            insCardErr?.message ?? "Could not create report card"
+          }`
+        );
+        continue;
+      }
+      reportCardId = (createdCard as { id: string }).id;
     }
-    const reportCardId = (createdCard as { id: string }).id;
 
     let allSubjectsEmpty = true;
     const commentRows: Record<string, unknown>[] = [];
+    const perSubject =
+      computedByStudent.get(stud.id) ??
+      new Map<
+        string,
+        { exam1Pct: number | null; exam2Pct: number | null; avg: number | null }
+      >();
 
     for (const subj of subjectList) {
       const subjectKey = normalizeSubjectKey(subj.name);
-      const bucket = assignmentsBySubjectExam.get(subjectKey) ?? {};
-
-      const pickPct = (examType: GradebookMajorExamTypeValue): number | null => {
-        const list = bucket[examType];
-        if (!list?.length) return null;
-        for (const meta of list) {
-          const raw = scoreByStudentAssignment.get(
-            `${stud.id}\u0000${meta.assignmentId}`
-          );
-          const pct = percentFromScore(raw, meta.maxScore);
-          if (pct != null) return pct;
-        }
-        return null;
-      };
-
-      const exam1Pct = pickPct(wanted.exam1);
-      const exam2Pct = pickPct(wanted.exam2);
-
-      let avg: number | null = null;
-      if (exam1Pct != null && exam2Pct != null) {
-        avg = Math.round(((exam1Pct + exam2Pct) / 2) * 10) / 10;
-      } else if (exam1Pct != null) {
-        avg = exam1Pct;
-      } else if (exam2Pct != null) {
-        avg = exam2Pct;
-      }
+      const computed =
+        perSubject.get(subjectKey) ?? {
+          exam1Pct: null,
+          exam2Pct: null,
+          avg: null,
+        };
+      const exam1Pct = computed.exam1Pct;
+      const exam2Pct = computed.exam2Pct;
+      const avg = computed.avg;
 
       if (exam1Pct != null || exam2Pct != null) allSubjectsEmpty = false;
 
       const letter = avg != null ? letterGradeFromPercent(avg) : null;
+      const position = positionFor(subjectKey, avg);
+      const teacherComment =
+        teacherCommentByStudentSubject.get(`${stud.id}\u0000${subjectKey}`) ??
+        null;
+      // Teacher's own text wins; otherwise drop in the grade-based default so
+      // the report card never displays a blank "Teacher comment" column.
+      const resolvedComment = resolveCommentForGeneratedRow(
+        teacherComment,
+        letter
+      );
 
+      // NOTE: `teacher_report_card_comments` doesn't have a `school_id` column
+      // (PostgREST returns PGRST204 if you try to set it), so we deliberately
+      // omit it here — the join to a school still works through report_card_id
+      // -> report_cards.school_id and student_id -> students.school_id.
       commentRows.push({
         teacher_id: user.id,
-        school_id: klass.school_id,
         student_id: stud.id,
         subject: subj.name,
         academic_year: academicYear,
         term,
         report_card_id: reportCardId,
-        comment: null,
+        comment: resolvedComment,
         exam1_score: exam1Pct,
         exam2_score: exam2Pct,
         calculated_score: avg,
         calculated_grade: letter,
         score_percent: avg,
         letter_grade: letter,
+        position,
       });
     }
 
     if (allSubjectsEmpty) studentsMissingAllScores += 1;
 
     if (commentRows.length > 0) {
-      const { error: insCommentsErr } = await admin
-        .from("teacher_report_card_comments")
-        .insert(commentRows);
-      if (insCommentsErr) {
-        errors.push(
-          `${stud.full_name || "Student"}: ${insCommentsErr.message}`
-        );
-        // Don't fail the whole batch; the report card row itself was created.
-      }
-    }
+      if (existingCardId) {
+        // Refresh path — update each pre-existing comment row's `position` and
+        // (if currently null) `comment`, and insert any subject rows that
+        // weren't previously stored. We touch ONLY those two fields so we never
+        // clobber a teacher's exam scores or hand-written comment.
+        const refreshResult = await refreshCoordinatorCommentRows({
+          admin,
+          reportCardId,
+          coordinatorTeacherId: user.id,
+          studentId: stud.id,
+          academicYear,
+          term,
+          commentRows,
+          onError: (msg) =>
+            errors.push(`${stud.full_name || "Student"}: ${msg}`),
+        });
+        if (refreshResult.touched) refreshed += 1;
+      } else {
+        let insRes = await admin
+          .from("teacher_report_card_comments")
+          .insert(commentRows);
 
-    generated += 1;
+        // Older databases without the position column (migration 00085 not yet
+        // applied) reject the insert with a missing-column error. Strip the new
+        // field and retry so report card generation degrades gracefully.
+        if (
+          insRes.error &&
+          /column .*position/i.test(insRes.error.message ?? "")
+        ) {
+          const legacyRows = commentRows.map((row) => {
+            const next = { ...row } as Record<string, unknown>;
+            delete next.position;
+            return next;
+          });
+          insRes = await admin
+            .from("teacher_report_card_comments")
+            .insert(legacyRows);
+        }
+
+        if (insRes.error) {
+          errors.push(
+            `${stud.full_name || "Student"}: ${insRes.error.message}`
+          );
+          // Don't fail the whole batch; the report card row itself was created.
+        }
+        generated += 1;
+      }
+    } else if (!existingCardId) {
+      generated += 1;
+    }
   }
 
-  const skipped = alreadyHaveCard.size;
+  // `skipped` retains its old contract — number of students who already had a
+  // report card before this run — but they're no longer "skipped" entirely;
+  // their position + comment columns get refreshed in place. Surface that as a
+  // separate suffix so coordinators understand both happened.
+  const skipped = refreshed;
 
   // Any DB error for an individual student is surfaced but we still revalidate and
   // report partial success so the coordinator can see what landed.
-  if (generated === 0 && errors.length > 0) {
+  if (generated === 0 && refreshed === 0 && errors.length > 0) {
     return {
       ok: false,
       error: errors.slice(0, 3).join("; ") || "Could not generate report cards.",
@@ -439,9 +677,11 @@ export async function generateReportCardsForClassAction(
     generated === 1 ? "" : "s"
   } for ${klass.name}`;
   const suffixParts: string[] = [];
-  if (skipped > 0) {
+  if (refreshed > 0) {
     suffixParts.push(
-      `${skipped} student${skipped === 1 ? "" : "s"} already had a report card`
+      `refreshed positions and teacher comments on ${refreshed} existing card${
+        refreshed === 1 ? "" : "s"
+      }`
     );
   }
   if (studentsMissingAllScores > 0) {
@@ -449,6 +689,16 @@ export async function generateReportCardsForClassAction(
       `${studentsMissingAllScores} ${
         studentsMissingAllScores === 1 ? "has" : "have"
       } no exam scores yet`
+    );
+  }
+  // If the per-student write paths recorded errors but at least one card still
+  // landed, surface the first few so the coordinator notices instead of seeing
+  // a falsely cheerful "refreshed N cards" message.
+  if (errors.length > 0) {
+    suffixParts.push(
+      `${errors.length} write error${errors.length === 1 ? "" : "s"} (${errors
+        .slice(0, 2)
+        .join("; ")})`
     );
   }
   const message =
@@ -464,4 +714,156 @@ export async function generateReportCardsForClassAction(
     skipped,
     studentsMissingAllScores,
   };
+}
+
+/**
+ * For an existing report card, update each pre-existing comment row's
+ * `position` and `comment` (only when previously empty) and insert any subject
+ * row that wasn't previously stored. Never touches exam scores or a teacher's
+ * already-written comment.
+ */
+async function refreshCoordinatorCommentRows(args: {
+  admin: AdminDb;
+  reportCardId: string;
+  coordinatorTeacherId: string;
+  studentId: string;
+  academicYear: string;
+  term: "Term 1" | "Term 2";
+  commentRows: Record<string, unknown>[];
+  onError: (msg: string) => void;
+}): Promise<{ touched: boolean }> {
+  const {
+    admin,
+    reportCardId,
+    coordinatorTeacherId,
+    studentId,
+    academicYear,
+    term,
+    commentRows,
+    onError,
+  } = args;
+
+  // Pull every pre-existing comment row for this student / term / year (any
+  // teacher) so we know which subjects already exist and which need an insert.
+  const { data: priorRowsRaw, error: priorErr } = await admin
+    .from("teacher_report_card_comments")
+    .select("id, teacher_id, subject, comment")
+    .eq("student_id", studentId)
+    .eq("term", term)
+    .eq("academic_year", academicYear);
+
+  if (priorErr) {
+    onError(priorErr.message);
+    return { touched: false };
+  }
+
+  let touched = false;
+
+  // subjectKey -> array of pre-existing rows (may be from multiple teachers)
+  const priorBySubject = new Map<
+    string,
+    { id: string; teacher_id: string; comment: string | null }[]
+  >();
+  for (const r of (priorRowsRaw ?? []) as {
+    id: string;
+    teacher_id: string;
+    subject: string;
+    comment: string | null;
+  }[]) {
+    const key = normalizeSubjectKey(r.subject);
+    const list = priorBySubject.get(key) ?? [];
+    list.push({ id: r.id, teacher_id: r.teacher_id, comment: r.comment });
+    priorBySubject.set(key, list);
+  }
+
+  const toInsert: Record<string, unknown>[] = [];
+
+  for (const row of commentRows) {
+    const subjectName = String(row.subject ?? "");
+    const subjectKey = normalizeSubjectKey(subjectName);
+    const computedPosition =
+      typeof row.position === "number" ? (row.position as number) : null;
+    const computedComment =
+      typeof row.comment === "string" && row.comment.trim() !== ""
+        ? (row.comment as string)
+        : null;
+
+    const prior = priorBySubject.get(subjectKey) ?? [];
+
+    if (prior.length === 0) {
+      // No teacher (and no coordinator) has written a row for this subject yet —
+      // insert the coordinator's placeholder so the preview has the position.
+      // `school_id` is intentionally omitted — see note in the main insert
+      // above; the column doesn't exist on this table.
+      toInsert.push({
+        teacher_id: coordinatorTeacherId,
+        student_id: studentId,
+        subject: subjectName,
+        academic_year: academicYear,
+        term,
+        report_card_id: reportCardId,
+        comment: computedComment,
+        exam1_score: row.exam1_score ?? null,
+        exam2_score: row.exam2_score ?? null,
+        calculated_score: row.calculated_score ?? null,
+        calculated_grade: row.calculated_grade ?? null,
+        score_percent: row.score_percent ?? null,
+        letter_grade: row.letter_grade ?? null,
+        position: computedPosition,
+      });
+      continue;
+    }
+
+    // Backfill on every pre-existing row for this subject so the preview's
+    // "richest row wins" merger always sees a position. The comment update is
+    // skipped when a row already has one, to avoid clobbering teacher input.
+    for (const p of prior) {
+      const update: Record<string, unknown> = { position: computedPosition };
+      const existingTrimmed = (p.comment ?? "").trim();
+      if (!existingTrimmed && computedComment) {
+        update.comment = computedComment;
+      }
+      let upd = await admin
+        .from("teacher_report_card_comments")
+        .update(update)
+        .eq("id", p.id);
+
+      // Schema fallback: if `position` doesn't exist yet, drop it and retry so
+      // the comment refresh still lands.
+      if (upd.error && /column .*position/i.test(upd.error.message ?? "")) {
+        const { position: _drop, ...withoutPos } = update;
+        void _drop;
+        if (Object.keys(withoutPos).length === 0) continue;
+        upd = await admin
+          .from("teacher_report_card_comments")
+          .update(withoutPos)
+          .eq("id", p.id);
+      }
+      if (upd.error) onError(upd.error.message);
+      else touched = true;
+    }
+  }
+
+  if (toInsert.length > 0) {
+    let insRes = await admin
+      .from("teacher_report_card_comments")
+      .insert(toInsert);
+    if (
+      insRes.error &&
+      /column .*position/i.test(insRes.error.message ?? "")
+    ) {
+      const legacyRows = toInsert.map((row) => {
+        const next = { ...row } as Record<string, unknown>;
+        delete next.position;
+        return next;
+      });
+      insRes = await admin
+        .from("teacher_report_card_comments")
+        .insert(legacyRows);
+    }
+    if (insRes.error) onError(insRes.error.message);
+    else touched = true;
+  }
+
+  return { touched };
 }

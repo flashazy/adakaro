@@ -410,8 +410,9 @@ export async function loadStudentsReportData(
   if (cardIds.length) {
     const selectWithExams =
       "id, report_card_id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
-    const selectFull =
+    const selectOverride =
       `${selectWithExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
+    const selectFull = `${selectOverride}, position`;
     const selectLegacy =
       "id, report_card_id, subject, comment, score_percent, letter_grade";
 
@@ -420,6 +421,14 @@ export async function loadStudentsReportData(
       .select(selectFull)
       .eq("teacher_id", user.id)
       .in("report_card_id", cardIds);
+
+    if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
+      comsRes = await admin
+        .from("teacher_report_card_comments")
+        .select(selectOverride)
+        .eq("teacher_id", user.id)
+        .in("report_card_id", cardIds);
+    }
 
     if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
       comsRes = await admin
@@ -467,6 +476,7 @@ export async function loadStudentsReportData(
       exam2_gradebook_original?: number | string | null;
       exam1_score_overridden?: boolean | null;
       exam2_score_overridden?: boolean | null;
+      position?: number | string | null;
     }[]) {
       const scorePercent = parseNumeric(row.score_percent);
       const list = commentsByCard.get(row.report_card_id) ?? [];
@@ -484,6 +494,7 @@ export async function loadStudentsReportData(
         exam2GradebookOriginal: parseNumeric(row.exam2_gradebook_original),
         exam1ScoreOverridden: row.exam1_score_overridden === true,
         exam2ScoreOverridden: row.exam2_score_overridden === true,
+        position: parseNumeric(row.position),
       });
       commentsByCard.set(row.report_card_id, list);
     }
@@ -943,12 +954,20 @@ export async function loadSubjectPositionsForParentReportCard(params: {
 
   const selectWithExams =
     "id, report_card_id, subject, comment, score_percent, letter_grade, exam1_score, exam2_score, calculated_score, calculated_grade";
-  const selectFull = `${selectWithExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
+  const selectOverride = `${selectWithExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
+  const selectFull = `${selectOverride}, position`;
 
   let comsRes = await admin
     .from("teacher_report_card_comments")
     .select(selectFull)
     .in("report_card_id", cardIds);
+
+  if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
+    comsRes = await admin
+      .from("teacher_report_card_comments")
+      .select(selectOverride)
+      .in("report_card_id", cardIds);
+  }
 
   if (comsRes.error && isMissingColumnSchemaError(comsRes.error)) {
     comsRes = await admin
@@ -984,6 +1003,7 @@ export async function loadSubjectPositionsForParentReportCard(params: {
     exam2_gradebook_original?: number | string | null;
     exam1_score_overridden?: boolean | null;
     exam2_score_overridden?: boolean | null;
+    position?: number | string | null;
   }[]) {
     const sid = cardToStudent.get(row.report_card_id);
     if (!sid) continue;
@@ -1002,6 +1022,7 @@ export async function loadSubjectPositionsForParentReportCard(params: {
       exam2GradebookOriginal: parseNumeric(row.exam2_gradebook_original),
       exam1ScoreOverridden: row.exam1_score_overridden === true,
       exam2ScoreOverridden: row.exam2_score_overridden === true,
+      position: parseNumeric(row.position),
     });
     commentsByStudent.set(sid, list);
   }

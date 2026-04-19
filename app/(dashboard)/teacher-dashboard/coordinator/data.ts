@@ -256,21 +256,28 @@ async function loadClassCommentsByCard(
   const commentsByCard = new Map<string, ReportCardCommentRow[]>();
   if (cardIds.length === 0) return commentsByCard;
 
-  // Columns added over multiple migrations (00066/00069/00070). Fall back to
-  // narrower selects when the live schema is behind so coordinators on older DBs
-  // still see the teacher's scores instead of an empty preview.
+  // Columns added over multiple migrations (00066/00069/00070/00085). Fall back
+  // to narrower selects when the live schema is behind so coordinators on older
+  // DBs still see the teacher's scores instead of an empty preview.
   const selectColsLegacy =
     "id, report_card_id, subject, comment, score_percent, letter_grade";
   const selectColsExams =
     `${selectColsLegacy}, exam1_score, exam2_score, calculated_score, calculated_grade`;
-  const selectColsFull =
+  const selectColsOverride =
     `${selectColsExams}, exam1_gradebook_original, exam2_gradebook_original, exam1_score_overridden, exam2_score_overridden`;
+  const selectColsFull = `${selectColsOverride}, position`;
 
   let res = await admin
     .from("teacher_report_card_comments")
     .select(selectColsFull)
     .in("report_card_id", cardIds);
 
+  if (res.error && isMissingColumnSchemaError(res.error)) {
+    res = await admin
+      .from("teacher_report_card_comments")
+      .select(selectColsOverride)
+      .in("report_card_id", cardIds);
+  }
   if (res.error && isMissingColumnSchemaError(res.error)) {
     res = await admin
       .from("teacher_report_card_comments")
@@ -307,6 +314,7 @@ async function loadClassCommentsByCard(
     exam2_gradebook_original?: number | string | null;
     exam1_score_overridden?: boolean | null;
     exam2_score_overridden?: boolean | null;
+    position?: number | string | null;
   }[]) {
     const list = commentsByCard.get(row.report_card_id) ?? [];
     list.push({
@@ -323,6 +331,7 @@ async function loadClassCommentsByCard(
       exam2GradebookOriginal: parseNumeric(row.exam2_gradebook_original ?? null),
       exam1ScoreOverridden: row.exam1_score_overridden === true,
       exam2ScoreOverridden: row.exam2_score_overridden === true,
+      position: parseNumeric(row.position ?? null),
     });
     commentsByCard.set(row.report_card_id, list);
   }
@@ -332,32 +341,59 @@ async function loadClassCommentsByCard(
 
 /**
  * Merges per-subject comments that may come from different teachers (different
- * `teacher_id` rows) for the same (student, subject, term, year). Preference
- * order: richest score data first (both exams, then either exam, then any
- * `score_percent`, then whichever has text), so the coordinator preview shows
- * the subject teacher's scores when the coordinator-inserted placeholder has
- * none.
+ * `teacher_id` rows) for the same (student, subject, term, year). Instead of
+ * picking ONE row (which would drop the teacher's `comment` whenever the
+ * coordinator-inserted row had richer score columns), we field-merge across
+ * rows so the resulting preview row carries every teacher's contribution: the
+ * richest score from any row, the freshest non-empty comment, the highest
+ * stored position, etc.
  */
 function collapseCommentsToOnePerSubject(
   rows: ReportCardCommentRow[]
 ): ReportCardCommentRow[] {
   const bySubject = new Map<string, ReportCardCommentRow>();
-  const score = (r: ReportCardCommentRow): number => {
+  const scoreRichness = (r: ReportCardCommentRow): number => {
     let s = 0;
     if (r.exam1Score != null) s += 3;
     if (r.exam2Score != null) s += 3;
     if (r.calculatedScore != null) s += 2;
     if (r.scorePercent != null) s += 2;
     if (r.letterGrade) s += 1;
-    if (r.comment && r.comment.trim() !== "") s += 1;
     return s;
   };
   for (const r of rows) {
     const key = r.subject.trim().toLowerCase();
     const prev = bySubject.get(key);
-    if (!prev || score(r) > score(prev)) {
-      bySubject.set(key, r);
+    if (!prev) {
+      bySubject.set(key, { ...r });
+      continue;
     }
+
+    // Pick the row whose SCORE columns are richer as the base, so we keep its
+    // exam1/exam2/calculated/etc. Then patch in the freshest comment + best
+    // position from either row.
+    const base = scoreRichness(r) > scoreRichness(prev) ? r : prev;
+    const other = base === r ? prev : r;
+
+    const prevComment = (prev.comment ?? "").trim();
+    const incomingComment = (r.comment ?? "").trim();
+    const mergedComment = incomingComment || prevComment || base.comment || null;
+
+    const mergedPosition =
+      base.position ?? other.position ?? null;
+
+    const mergedLetterGrade =
+      base.letterGrade ?? other.letterGrade ?? null;
+    const mergedCalculatedGrade =
+      base.calculatedGrade ?? other.calculatedGrade ?? null;
+
+    bySubject.set(key, {
+      ...base,
+      comment: mergedComment,
+      position: mergedPosition,
+      letterGrade: mergedLetterGrade,
+      calculatedGrade: mergedCalculatedGrade,
+    });
   }
   return [...bySubject.values()];
 }
@@ -542,6 +578,7 @@ function mergeGradebookScoresIntoComments(
       exam2GradebookOriginal: existing?.exam2GradebookOriginal ?? null,
       exam1ScoreOverridden: existing?.exam1ScoreOverridden === true,
       exam2ScoreOverridden: existing?.exam2ScoreOverridden === true,
+      position: existing?.position ?? null,
     });
   }
   return out;
@@ -665,9 +702,16 @@ async function loadClassReportCards(
     parentEmail: c.students?.parent_email ?? null,
     reportCardId: c.id,
     status: c.status,
+    // IMPORTANT: pass `params.classSubjectNames` (the canonical, properly-cased
+    // subject list) instead of `[]`. When a student has no pre-existing comment
+    // rows the gradebook merge would otherwise stamp lowercase keys (e.g.
+    // "edk") onto the synthesized rows, causing the live `computeClassSubjectPositions`
+    // lookup to miss them — and the preview to fall back to "—" for every
+    // subject. Feeding canonical names into the merge keeps subject labels
+    // consistent across all students so the ranker can match them.
     comments: mergeGradebookScoresIntoComments(
       commentsByCard.get(c.id) ?? [],
-      [],
+      params.classSubjectNames,
       gradebookByStudent.get(c.student_id)
     ),
   }));
