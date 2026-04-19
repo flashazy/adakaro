@@ -16,6 +16,11 @@ import {
 import { downloadFullGradeReportPdf } from "./FullGradeReportPDF";
 import { passingThresholdPercent } from "@/lib/tanzania-grades";
 import type { SchoolLevel } from "@/lib/school-level";
+import {
+  DEFAULT_GRADE_DISPLAY_FORMAT,
+  formatMarksCellLabel,
+  type GradeDisplayFormat,
+} from "@/lib/grade-display-format";
 
 type ClassDraft = Record<
   string,
@@ -46,7 +51,8 @@ function cellPercentFromDraft(
 function scoreGradeForAssignment(
   raw: string | undefined,
   maxScore: number,
-  schoolLevel: SchoolLevel
+  schoolLevel: SchoolLevel,
+  displayFormat: GradeDisplayFormat = DEFAULT_GRADE_DISPLAY_FORMAT
 ): { scoreLabel: string; grade: string; pct: number | null } {
   const trimmed = String(raw ?? "").trim();
   if (trimmed === "") return { scoreLabel: "—", grade: "—", pct: null };
@@ -55,7 +61,15 @@ function scoreGradeForAssignment(
   const pct = tanzaniaPercentFromScore(n, maxScore);
   const letter = tanzaniaLetterGrade(pct, schoolLevel);
   if (pct == null) return { scoreLabel: "—", grade: "—", pct: null };
-  const scoreLabel = `${Math.round(pct * 10) / 10}%`;
+  // Score label only — the letter grade is rendered separately by callers
+  // (its own column in the scores table, parens in the ranking row, etc.).
+  const scoreLabel = formatMarksCellLabel({
+    score: n,
+    maxScore,
+    percent: pct,
+    letter: null,
+    format: displayFormat,
+  });
   return { scoreLabel, grade: letter, pct };
 }
 
@@ -216,7 +230,8 @@ function buildStudentRanking(
   students: { id: string; full_name: string }[],
   assignment: { id: string; max_score: number },
   draft: ClassDraft,
-  schoolLevel: SchoolLevel
+  schoolLevel: SchoolLevel,
+  displayFormat: GradeDisplayFormat = DEFAULT_GRADE_DISPLAY_FORMAT
 ): RankingRow[] {
   const scored: { id: string; name: string; pct: number; scoreLabel: string; grade: string }[] =
     [];
@@ -224,7 +239,8 @@ function buildStudentRanking(
     const { scoreLabel, grade, pct } = scoreGradeForAssignment(
       draft[assignment.id]?.[s.id]?.score,
       assignment.max_score,
-      schoolLevel
+      schoolLevel,
+      displayFormat
     );
     if (pct == null) continue;
     scored.push({
@@ -343,7 +359,8 @@ function buildPlainTextReport(
   draft: ClassDraft,
   stats: ReturnType<typeof computeReportStatsForAssignment>,
   ranking: RankingRow[],
-  schoolLevel: SchoolLevel
+  schoolLevel: SchoolLevel,
+  displayFormat: GradeDisplayFormat = DEFAULT_GRADE_DISPLAY_FORMAT
 ): string {
   const passingPct = passingThresholdPercent(schoolLevel);
   // Failing band uses E (primary) or F (secondary) — show only the matching
@@ -386,7 +403,8 @@ function buildPlainTextReport(
     const { scoreLabel, grade } = scoreGradeForAssignment(
       draft[assignment.id]?.[s.id]?.score,
       assignment.max_score,
-      schoolLevel
+      schoolLevel,
+      displayFormat
     );
     const remarks = draft[assignment.id]?.[s.id]?.remarks?.trim() ?? "";
     const row = [
@@ -410,6 +428,7 @@ export function FullGradeReport({
   students,
   classDraft,
   schoolLevel = "secondary",
+  displayFormat = DEFAULT_GRADE_DISPLAY_FORMAT,
 }: {
   open: boolean;
   onClose: () => void;
@@ -423,6 +442,13 @@ export function FullGradeReport({
    * Defaults to "secondary" so legacy callers keep their behaviour.
    */
   schoolLevel?: SchoolLevel;
+  /**
+   * Display format for score values (Percentage / Marks / Both). Mirrors the
+   * Marks page toggle so the on-screen ranking, scores table, and copied
+   * plain-text export match what the teacher sees in the matrix. The PDF
+   * export intentionally stays on "percentage" for now.
+   */
+  displayFormat?: GradeDisplayFormat;
 }) {
   const reportRef = useRef<HTMLDivElement>(null);
   const [copyDone, setCopyDone] = useState(false);
@@ -466,9 +492,10 @@ export function FullGradeReport({
       students,
       selectedAssignment,
       classDraft,
-      schoolLevel
+      schoolLevel,
+      displayFormat
     );
-  }, [students, selectedAssignment, classDraft, schoolLevel]);
+  }, [students, selectedAssignment, classDraft, schoolLevel, displayFormat]);
 
   const dateLabel = useMemo(
     () =>
@@ -487,7 +514,8 @@ export function FullGradeReport({
       classDraft,
       stats,
       ranking,
-      schoolLevel
+      schoolLevel,
+      displayFormat
     );
     try {
       await navigator.clipboard.writeText(text);
@@ -496,7 +524,16 @@ export function FullGradeReport({
     } catch {
       /* ignore */
     }
-  }, [meta, selectedAssignment, students, classDraft, stats, ranking, schoolLevel]);
+  }, [
+    meta,
+    selectedAssignment,
+    students,
+    classDraft,
+    stats,
+    ranking,
+    schoolLevel,
+    displayFormat,
+  ]);
 
   const handlePrint = useCallback(() => {
     if (!reportRef.current) return;
@@ -799,7 +836,8 @@ export function FullGradeReport({
                                   classDraft[selectedAssignment.id]?.[s.id]
                                     ?.score,
                                   selectedAssignment.max_score,
-                                  schoolLevel
+                                  schoolLevel,
+                                  displayFormat
                                 );
                               const remarks =
                                 classDraft[selectedAssignment.id]?.[s.id]

@@ -1671,6 +1671,7 @@ export function TeacherGradebook({
         students={classMatrixData?.students ?? []}
         classDraft={classDraft}
         schoolLevel={schoolLevel}
+        displayFormat={displayFormat}
       />
 
       <ConfirmDeleteModal
