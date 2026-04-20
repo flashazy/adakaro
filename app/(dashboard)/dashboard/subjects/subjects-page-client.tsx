@@ -2,6 +2,7 @@
 
 import {
   useActionState,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -13,6 +14,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import {
+  assignSubjectClassesAction,
   bulkCreateSubjectsAction,
   createSubjectAction,
   deleteSubjectAction,
@@ -88,6 +90,219 @@ function getPaginationItems(
   if (end < totalPages - 1) items.push("ellipsis");
   items.push(totalPages);
   return items;
+}
+
+/** Searchable single-select for mapping an existing catalog subject to classes. */
+function ExistingSubjectCombobox({
+  subjects,
+  selectedId,
+  onSelectedIdChange,
+}: {
+  subjects: SubjectRow[];
+  selectedId: string;
+  onSelectedIdChange: (id: string) => void;
+}) {
+  const listboxId = useId();
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return subjects
+      .filter((s) => {
+        if (!q) return true;
+        if (s.id === selectedId) return true;
+        const hay = [
+          s.name,
+          s.code ?? "",
+          s.description ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [subjects, query, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) setQuery("");
+  }, [selectedId]);
+
+  return (
+    <div className="mt-2 space-y-2">
+      <input type="hidden" name="subject_id" value={selectedId} />
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
+          strokeWidth={2}
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search subject..."
+          autoComplete="off"
+          aria-label="Search subjects"
+          aria-controls={listboxId}
+          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+        />
+      </div>
+      <div
+        id={listboxId}
+        role="listbox"
+        aria-label="Matching subjects"
+        className="max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-sm dark:border-zinc-600 dark:bg-zinc-900"
+      >
+        {filtered.length === 0 ? (
+          <p className="px-3 py-2.5 text-sm text-slate-500 dark:text-zinc-400">
+            {query.trim() ? "No matching subjects." : "No subjects."}
+          </p>
+        ) : (
+          filtered.map((s) => {
+            const isSelected = s.id === selectedId;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onSelectedIdChange(s.id)}
+                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                  isSelected
+                    ? "bg-indigo-50 font-medium text-indigo-900 dark:bg-indigo-500/15 dark:text-indigo-100"
+                    : "text-slate-800 hover:bg-slate-100 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {s.name}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Searchable multi-select with checkboxes; submits `subject_ids` via hidden inputs. */
+function ExistingSubjectsMultiPicker({
+  subjects,
+  selectedIds,
+  onSelectedIdsChange,
+}: {
+  subjects: SubjectRow[];
+  selectedIds: string[];
+  onSelectedIdsChange: (ids: string[]) => void;
+}) {
+  const listboxId = useId();
+  const [query, setQuery] = useState("");
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const sorted = [...subjects].sort((a, b) => a.name.localeCompare(b.name));
+    if (!q) return sorted;
+    return sorted.filter((s) => {
+      if (selectedSet.has(s.id)) return true;
+      const hay = [s.name, s.code ?? "", s.description ?? ""]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [subjects, query, selectedSet]);
+
+  /** Clear search only when the user clears all ticked subjects (not on every mount). */
+  const prevSelectionCount = useRef<number | null>(null);
+  useEffect(() => {
+    const len = selectedIds.length;
+    if (
+      prevSelectionCount.current !== null &&
+      len === 0 &&
+      prevSelectionCount.current > 0
+    ) {
+      setQuery("");
+    }
+    prevSelectionCount.current = len;
+  }, [selectedIds.length]);
+
+  function toggle(id: string) {
+    if (selectedSet.has(id)) {
+      onSelectedIdsChange(selectedIds.filter((x) => x !== id));
+    } else {
+      onSelectedIdsChange([...selectedIds, id]);
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {selectedIds.map((id) => (
+        <input key={id} type="hidden" name="subject_ids" value={id} />
+      ))}
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
+          strokeWidth={2}
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search subjects..."
+          autoComplete="off"
+          aria-label="Search subjects"
+          aria-controls={listboxId}
+          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+        />
+      </div>
+      <div
+        id={listboxId}
+        role="group"
+        aria-label="Subjects"
+        className="max-h-[12.5rem] overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-sm dark:border-zinc-600 dark:bg-zinc-900"
+      >
+        {subjects.length === 0 ? (
+          <p className="px-3 py-2.5 text-sm text-slate-500 dark:text-zinc-400">
+            No subjects.
+          </p>
+        ) : filtered.length === 0 ? (
+          <p className="px-3 py-2.5 text-sm text-slate-500 dark:text-zinc-400">
+            No matching subjects.
+          </p>
+        ) : (
+          filtered.map((s) => {
+            const checked = selectedSet.has(s.id);
+            return (
+              <label
+                key={s.id}
+                className={`flex min-h-10 cursor-pointer items-center gap-3 px-3 py-2 text-sm transition-colors ${
+                  checked
+                    ? "bg-indigo-50/80 dark:bg-indigo-500/10"
+                    : "hover:bg-slate-100 dark:hover:bg-zinc-800"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(s.id)}
+                  className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
+                />
+                <span
+                  className={
+                    checked
+                      ? "font-medium text-indigo-950 dark:text-indigo-100"
+                      : "text-slate-800 dark:text-zinc-100"
+                  }
+                >
+                  {s.name}
+                </span>
+              </label>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
 }
 
 function SubjectClassPicker({
@@ -245,9 +460,22 @@ export function SubjectsPageClient({
   const [editing, setEditing] = useState<SubjectRow | null>(null);
   const [deleting, setDeleting] = useState<SubjectRow | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [addMode, setAddMode] = useState<"existing" | "new">("new");
+  const [existingSubjectId, setExistingSubjectId] = useState("");
+  const [existingSelectMode, setExistingSelectMode] = useState<
+    "single" | "multiple"
+  >("single");
+  const [multipleSubjectIds, setMultipleSubjectIds] = useState<string[]>([]);
+  /** Bump to remount subject pickers + class picker (clears local search / class chips). */
+  const [assignFormResetNonce, setAssignFormResetNonce] = useState(0);
+  const assignWasPendingRef = useRef(false);
 
   const [createState, createAction, createPending] = useActionState(
     createSubjectAction,
+    null as SubjectActionState | null
+  );
+  const [assignState, assignAction, assignPending] = useActionState(
+    assignSubjectClassesAction,
     null as SubjectActionState | null
   );
   const [updateState, updateAction, updatePending] = useActionState(
@@ -272,13 +500,14 @@ export function SubjectsPageClient({
   useEffect(() => {
     if (
       createState?.ok ||
+      assignState?.ok ||
       updateState?.ok ||
       deleteState?.ok ||
       bulkState?.ok
     ) {
       router.refresh();
     }
-  }, [createState, updateState, deleteState, bulkState, router]);
+  }, [createState, assignState, updateState, deleteState, bulkState, router]);
 
   useEffect(() => {
     if (!bulkOpen) return;
@@ -301,6 +530,32 @@ export function SubjectsPageClient({
   }, [editing]);
 
   const rows = initialRows;
+
+  useEffect(() => {
+    if (
+      existingSubjectId &&
+      !rows.some((r) => r.id === existingSubjectId)
+    ) {
+      setExistingSubjectId("");
+    }
+  }, [rows, existingSubjectId]);
+
+  useEffect(() => {
+    setMultipleSubjectIds((prev) =>
+      prev.filter((id) => rows.some((r) => r.id === id))
+    );
+  }, [rows]);
+
+  useEffect(() => {
+    if (rows.length === 0 && addMode === "existing") {
+      setAddMode("new");
+    }
+  }, [rows.length, addMode]);
+
+  const selectedExistingRow = useMemo(
+    () => rows.find((r) => r.id === existingSubjectId) ?? null,
+    [rows, existingSubjectId]
+  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [classFilter, setClassFilter] = useState<string>("all");
@@ -350,6 +605,24 @@ export function SubjectsPageClient({
   const showingTo = Math.min(startIndex + SUBJECTS_PAGE_SIZE, totalCount);
   const paginationItems = getPaginationItems(safePage, totalPages);
 
+  /** Clears chosen subjects and remounts pickers (class chips + search inputs). */
+  const resetAssignFormLayout = useCallback(() => {
+    setMultipleSubjectIds([]);
+    setExistingSubjectId("");
+    setAssignFormResetNonce((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (
+      assignWasPendingRef.current &&
+      !assignPending &&
+      assignState?.ok
+    ) {
+      resetAssignFormLayout();
+    }
+    assignWasPendingRef.current = assignPending;
+  }, [assignPending, assignState, resetAssignFormLayout]);
+
   const clearFilters = () => {
     setSearchQuery("");
     setClassFilter("all");
@@ -371,51 +644,205 @@ export function SubjectsPageClient({
           Add subject
         </h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-          Create subjects your school uses for teacher assignments (e.g.
-          Mathematics, English).
+          Map catalog subjects to classes, or create new subjects for teacher
+          assignments.
         </p>
-        <form
-          action={createAction}
-          className="mt-4 space-y-3"
-          onSubmit={(e) => applyAutoSubjectCodeIfEmpty(e.currentTarget)}
-        >
-          {flash(createState)}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm sm:col-span-2">
-              <span className="text-slate-700 dark:text-zinc-300">Name</span>
-              <input
-                name="name"
-                type="text"
-                required
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                placeholder="Mathematics"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-slate-700 dark:text-zinc-300">
-                Code (optional)
-              </span>
-              <input
-                name="code"
-                type="text"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                placeholder="MATH-101"
-              />
-            </label>
-            <label className="block text-sm sm:col-span-2">
-              <span className="text-slate-700 dark:text-zinc-300">
-                Description (optional)
-              </span>
-              <textarea
-                name="description"
-                rows={2}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                placeholder="Core subject for Forms 1–4"
-              />
-            </label>
+
+        <fieldset className="mt-5 space-y-2 border-0 p-0">
+          <legend className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+            Choose subject source
+          </legend>
+          <label className="flex cursor-pointer items-center gap-2.5">
+            <input
+              type="radio"
+              className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
+              checked={addMode === "existing"}
+              disabled={rows.length === 0}
+              onChange={() => {
+                setAddMode("existing");
+              }}
+            />
+            <span
+              className={
+                rows.length === 0
+                  ? "text-sm text-slate-400 dark:text-zinc-500"
+                  : "text-sm text-slate-700 dark:text-zinc-300"
+              }
+            >
+              Select existing subject
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2.5">
+            <input
+              type="radio"
+              className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
+              checked={addMode === "new"}
+              onChange={() => {
+                setAddMode("new");
+              }}
+            />
+            <span className="text-sm text-slate-700 dark:text-zinc-300">
+              Create new subject
+            </span>
+          </label>
+        </fieldset>
+
+        {addMode === "existing" ? (
+          <form action={assignAction} className="mt-4 space-y-3">
+            {flash(assignState)}
+            <input
+              type="hidden"
+              name="assignment_mode"
+              value={existingSelectMode}
+            />
+
+            <fieldset className="space-y-2 border-0 p-0">
+              <legend className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                Subject selection
+              </legend>
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input
+                  type="radio"
+                  className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
+                  checked={existingSelectMode === "single"}
+                  onChange={() => {
+                    setExistingSelectMode("single");
+                    setMultipleSubjectIds([]);
+                  }}
+                />
+                <span className="text-sm text-slate-700 dark:text-zinc-300">
+                  Single subject
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input
+                  type="radio"
+                  className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
+                  checked={existingSelectMode === "multiple"}
+                  onChange={() => {
+                    setExistingSelectMode("multiple");
+                    setExistingSubjectId("");
+                  }}
+                />
+                <span className="text-sm text-slate-700 dark:text-zinc-300">
+                  Multiple subjects
+                </span>
+              </label>
+            </fieldset>
+
+            {existingSelectMode === "single" ? (
+              <>
+                <div className="block text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-slate-700 dark:text-zinc-300">
+                      Subject{" "}
+                      <span className="text-red-600 dark:text-red-400">*</span>
+                    </span>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {existingSubjectId ? (
+                        <button
+                          type="button"
+                          onClick={() => setExistingSubjectId("")}
+                          className="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                        >
+                          Clear selection
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={resetAssignFormLayout}
+                        className="shrink-0 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  </div>
+                  <ExistingSubjectCombobox
+                    key={assignFormResetNonce}
+                    subjects={rows}
+                    selectedId={existingSubjectId}
+                    onSelectedIdChange={setExistingSubjectId}
+                  />
+                </div>
+
+                {selectedExistingRow ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-sm">
+                      <span className="text-slate-700 dark:text-zinc-300">
+                        Code
+                      </span>
+                      <input
+                        type="text"
+                        readOnly
+                        tabIndex={-1}
+                        value={selectedExistingRow.code ?? "—"}
+                        className="mt-1 w-full cursor-default rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200"
+                      />
+                    </label>
+                    <label className="block text-sm sm:col-span-2">
+                      <span className="text-slate-700 dark:text-zinc-300">
+                        Description
+                      </span>
+                      <textarea
+                        readOnly
+                        tabIndex={-1}
+                        rows={2}
+                        value={
+                          selectedExistingRow.description?.trim()
+                            ? selectedExistingRow.description
+                            : "—"
+                        }
+                        className="mt-1 w-full cursor-default resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div className="block text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-slate-700 dark:text-zinc-300">
+                      Select subjects (multiple)
+                    </span>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {multipleSubjectIds.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setMultipleSubjectIds([])}
+                          className="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                        >
+                          Clear selection
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={resetAssignFormLayout}
+                        className="shrink-0 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  </div>
+                  <ExistingSubjectsMultiPicker
+                    key={assignFormResetNonce}
+                    subjects={rows}
+                    selectedIds={multipleSubjectIds}
+                    onSelectedIdsChange={setMultipleSubjectIds}
+                  />
+                </div>
+                <p className="text-sm text-slate-600 dark:text-zinc-400">
+                  Selected: {multipleSubjectIds.length} subject
+                  {multipleSubjectIds.length === 1 ? "" : "s"}
+                </p>
+              </>
+            )}
+
             <div className="block text-sm sm:col-span-2">
               <span className="text-slate-700 dark:text-zinc-300">
-                Assign to classes
+                {existingSelectMode === "multiple"
+                  ? "Assign selected subjects to classes:"
+                  : "Assign to classes"}
               </span>
               {classOptions.length === 0 ? (
                 <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
@@ -423,29 +850,116 @@ export function SubjectsPageClient({
                 </p>
               ) : (
                 <SubjectClassPicker
-                  key="subject-add-classes"
+                  key={
+                    existingSelectMode === "multiple"
+                      ? `subject-assign-multi-${assignFormResetNonce}-${[...multipleSubjectIds].sort().join(",") || "none"}`
+                      : `subject-assign-${assignFormResetNonce}-${existingSubjectId || "none"}`
+                  }
                   classOptions={classOptions}
+                  defaultSelectedIds={
+                    existingSelectMode === "multiple"
+                      ? []
+                      : (selectedExistingRow?.assignedClassIds ?? [])
+                  }
                 />
               )}
             </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
-              disabled={createPending}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
-            >
-              {createPending ? "Saving…" : "Add subject"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setBulkOpen(true)}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              Bulk Add Subjects
-            </button>
-          </div>
-        </form>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="submit"
+                disabled={
+                  assignPending ||
+                  (existingSelectMode === "single" && !existingSubjectId) ||
+                  (existingSelectMode === "multiple" &&
+                    multipleSubjectIds.length === 0)
+                }
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+              >
+                {assignPending ? "Saving…" : "Save assignments"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkOpen(true)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Bulk Add Subjects
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form
+            action={createAction}
+            className="mt-4 space-y-3"
+            onSubmit={(e) => applyAutoSubjectCodeIfEmpty(e.currentTarget)}
+          >
+            {flash(createState)}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-slate-700 dark:text-zinc-300">Name</span>
+                <input
+                  name="name"
+                  type="text"
+                  required
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  placeholder="Mathematics"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-slate-700 dark:text-zinc-300">
+                  Code (optional)
+                </span>
+                <input
+                  name="code"
+                  type="text"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  placeholder="MATH-101"
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-slate-700 dark:text-zinc-300">
+                  Description (optional)
+                </span>
+                <textarea
+                  name="description"
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  placeholder="Core subject for Forms 1–4"
+                />
+              </label>
+              <div className="block text-sm sm:col-span-2">
+                <span className="text-slate-700 dark:text-zinc-300">
+                  Assign to classes
+                </span>
+                {classOptions.length === 0 ? (
+                  <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                    No classes yet. Add classes first, then map subjects here.
+                  </p>
+                ) : (
+                  <SubjectClassPicker
+                    key="subject-add-classes"
+                    classOptions={classOptions}
+                  />
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="submit"
+                disabled={createPending}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+              >
+                {createPending ? "Saving…" : "Add subject"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkOpen(true)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Bulk Add Subjects
+              </button>
+            </div>
+          </form>
+        )}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">

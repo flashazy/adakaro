@@ -30,6 +30,12 @@ function parseClassIdsFromForm(formData: FormData): string[] {
   return [...new Set(ids)];
 }
 
+function parseSubjectIdsFromForm(formData: FormData): string[] {
+  const raw = formData.getAll("subject_ids");
+  const ids = raw.map((v) => String(v).trim()).filter(Boolean);
+  return [...new Set(ids)];
+}
+
 /** Primary school for a user — service role only (no RLS). Mirrors teachers/actions. */
 async function getSchoolIdForUserWithAdmin(userId: string): Promise<string | null> {
   try {
@@ -273,6 +279,97 @@ export async function createSubjectAction(
   revalidatePath("/dashboard/subjects");
   revalidatePath("/dashboard/teachers");
   return { ok: true, message: "Subject added." };
+}
+
+/**
+ * Update `subject_classes` for one or more existing subjects (no change to
+ * name/code/description). `assignment_mode`: `single` (default) uses
+ * `subject_id`; `multiple` uses `subject_ids` — each subject gets the same
+ * `class_ids` set.
+ */
+export async function assignSubjectClassesAction(
+  _prev: SubjectActionState | null,
+  formData: FormData
+): Promise<SubjectActionState> {
+  const mode = String(formData.get("assignment_mode") ?? "single").trim();
+  const classIds = parseClassIdsFromForm(formData);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized." };
+
+  const schoolId = await getSchoolIdForUserWithAdmin(user.id);
+  if (!schoolId) return { ok: false, error: "No school found." };
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return { ok: false, error: "Only school administrators can manage subjects." };
+  }
+
+  const admin = createAdminClient();
+
+  if (!(await assertClassIdsForSchool(admin, schoolId, classIds))) {
+    return { ok: false, error: "One or more selected classes are invalid for your school." };
+  }
+
+  if (mode === "multiple") {
+    const subjectIds = parseSubjectIdsFromForm(formData);
+    if (subjectIds.length === 0) {
+      return { ok: false, error: "Select at least one subject." };
+    }
+
+    const { data: subjRows } = await admin
+      .from("subjects")
+      .select("id")
+      .eq("school_id", schoolId)
+      .in("id", subjectIds);
+
+    const found = new Set(
+      (subjRows ?? []).map((r) => (r as { id: string }).id)
+    );
+    if (subjectIds.some((id) => !found.has(id))) {
+      return { ok: false, error: "One or more subjects are invalid for your school." };
+    }
+
+    for (const subjectId of subjectIds) {
+      const sync = await syncSubjectClassLinks(admin, subjectId, classIds);
+      if (!sync.ok) {
+        return { ok: false, error: sync.error };
+      }
+    }
+
+    revalidatePath("/dashboard/subjects");
+    revalidatePath("/dashboard/teachers");
+    return {
+      ok: true,
+      message: "Assignments saved successfully.",
+    };
+  }
+
+  const subjectId = String(formData.get("subject_id") ?? "").trim();
+  if (!subjectId) {
+    return { ok: false, error: "Select a subject from the list." };
+  }
+
+  const { data: existing } = await admin
+    .from("subjects")
+    .select("id, school_id")
+    .eq("id", subjectId)
+    .maybeSingle();
+
+  if (!existing || (existing as { school_id: string }).school_id !== schoolId) {
+    return { ok: false, error: "Subject not found." };
+  }
+
+  const sync = await syncSubjectClassLinks(admin, subjectId, classIds);
+  if (!sync.ok) {
+    return { ok: false, error: sync.error };
+  }
+
+  revalidatePath("/dashboard/subjects");
+  revalidatePath("/dashboard/teachers");
+  return { ok: true, message: "Assignments saved successfully." };
 }
 
 export async function updateSubjectAction(
