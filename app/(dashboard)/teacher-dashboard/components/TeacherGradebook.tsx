@@ -328,6 +328,7 @@ export function TeacherGradebook({
   const [scoresSaveButtonState, setScoresSaveButtonState] = useState<
     "idle" | "saved"
   >("idle");
+  const [isSaving, setIsSaving] = useState(false);
   const [matrixSaveButtonState, setMatrixSaveButtonState] = useState<
     "idle" | "saved"
   >("idle");
@@ -747,61 +748,66 @@ export function TeacherGradebook({
   const handleSaveScores = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!matrix) return;
+    setIsSaving(true);
     setError(null);
-    const list = matrix.students.map((s) => {
-      const raw = scores[s.id]?.score?.trim() ?? "";
-      const num = raw === "" ? null : Number(raw);
-      const persisted = matrix.scoreByStudent[s.id];
-      return {
-        studentId: s.id,
-        score: num != null && Number.isFinite(num) ? num : null,
-        comments: persisted?.comments ?? null,
-        remarks: scores[s.id]?.remarks?.trim() || null,
-      };
-    });
-    const res = await saveScoresAction({
-      assignmentId: matrix.assignment.id,
-      scores: list,
-    });
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-
-    setToastMessage("Scores saved");
-    setScoresSaveButtonState("saved");
-    window.setTimeout(() => setScoresSaveButtonState("idle"), 2000);
-
-    const flashIds = new Set<string>();
-    for (const s of matrix.students) {
-      const raw = scores[s.id]?.score?.trim() ?? "";
-      if (raw !== "" && Number.isFinite(Number(raw))) {
-        flashIds.add(s.id);
-      }
-    }
-    setFlashedStudentRowIds(flashIds);
-    window.setTimeout(() => setFlashedStudentRowIds(new Set()), 2000);
-
-    const reload = await loadScoresForAssignment(matrix.assignment.id);
-    if (reload.ok) {
-      setMatrix((prev) =>
-        prev ? { ...prev, scoreByStudent: reload.scoreByStudent } : null
-      );
-      const next: Record<string, { score: string; remarks: string }> = {};
-      for (const s of matrix.students) {
-        const ex = reload.scoreByStudent[s.id];
-        next[s.id] = {
-          score:
-            ex?.score != null && Number.isFinite(Number(ex.score))
-              ? String(ex.score)
-              : "",
-          remarks: displayRemarks(ex),
+    try {
+      const list = matrix.students.map((s) => {
+        const raw = scores[s.id]?.score?.trim() ?? "";
+        const num = raw === "" ? null : Number(raw);
+        const persisted = matrix.scoreByStudent[s.id];
+        return {
+          studentId: s.id,
+          score: num != null && Number.isFinite(num) ? num : null,
+          comments: persisted?.comments ?? null,
+          remarks: scores[s.id]?.remarks?.trim() || null,
         };
+      });
+      const res = await saveScoresAction({
+        assignmentId: matrix.assignment.id,
+        scores: list,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
       }
-      setScores(next);
+
+      setToastMessage("Scores saved");
+      setScoresSaveButtonState("saved");
+      window.setTimeout(() => setScoresSaveButtonState("idle"), 2000);
+
+      const flashIds = new Set<string>();
+      for (const s of matrix.students) {
+        const raw = scores[s.id]?.score?.trim() ?? "";
+        if (raw !== "" && Number.isFinite(Number(raw))) {
+          flashIds.add(s.id);
+        }
+      }
+      setFlashedStudentRowIds(flashIds);
+      window.setTimeout(() => setFlashedStudentRowIds(new Set()), 2000);
+
+      const reload = await loadScoresForAssignment(matrix.assignment.id);
+      if (reload.ok) {
+        setMatrix((prev) =>
+          prev ? { ...prev, scoreByStudent: reload.scoreByStudent } : null
+        );
+        const next: Record<string, { score: string; remarks: string }> = {};
+        for (const s of matrix.students) {
+          const ex = reload.scoreByStudent[s.id];
+          next[s.id] = {
+            score:
+              ex?.score != null && Number.isFinite(Number(ex.score))
+                ? String(ex.score)
+                : "",
+            remarks: displayRemarks(ex),
+          };
+        }
+        setScores(next);
+      }
+      await fetchClassMatrix();
+      router.refresh();
+    } finally {
+      setIsSaving(false);
     }
-    await fetchClassMatrix();
-    router.refresh();
   };
 
   const handleSaveClassMatrix = async (e: React.FormEvent) => {
@@ -1458,13 +1464,21 @@ export function TeacherGradebook({
                 <button
                   type="submit"
                   disabled={classMatrixSaving}
-                  className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                  className="inline-flex items-center justify-center rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
                 >
-                  {classMatrixSaving
-                    ? "Saving…"
-                    : matrixSaveButtonState === "saved"
-                      ? "Saved! ✓"
-                      : "Save matrix marks"}
+                  {classMatrixSaving ? (
+                    <>
+                      <Loader2
+                        className="mr-2 h-4 w-4 shrink-0 animate-spin"
+                        aria-hidden
+                      />
+                      Saving...
+                    </>
+                  ) : matrixSaveButtonState === "saved" ? (
+                    "Saved! ✓"
+                  ) : (
+                    "Save matrix marks"
+                  )}
                 </button>
                 <button
                   type="button"
@@ -2074,12 +2088,22 @@ export function TeacherGradebook({
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
-                disabled={matrixLoading}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                disabled={matrixLoading || isSaving}
+                className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
               >
-                {scoresSaveButtonState === "saved"
-                  ? "Saved! ✓"
-                  : "Save scores"}
+                {isSaving ? (
+                  <>
+                    <Loader2
+                      className="mr-2 h-4 w-4 shrink-0 animate-spin"
+                      aria-hidden
+                    />
+                    Saving...
+                  </>
+                ) : scoresSaveButtonState === "saved" ? (
+                  "Saved! ✓"
+                ) : (
+                  "Save scores"
+                )}
               </button>
               <button
                 type="button"
