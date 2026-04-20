@@ -715,14 +715,246 @@ export async function assignTeacherToClassAction(
     return { ok: false, error: error.message || "Could not save assignment." };
   }
 
+  revalidateAfterTeacherAssignmentMutations();
+  return { ok: true, message: "Assignment saved." };
+}
+
+function revalidateAfterTeacherAssignmentMutations() {
   revalidatePath("/dashboard/teachers");
+  revalidatePath("/dashboard/assignments");
   revalidatePath("/dashboard/subjects");
   revalidatePath("/teacher-dashboard");
   revalidatePath("/teacher-dashboard/attendance");
   revalidatePath("/teacher-dashboard/grades");
   revalidatePath("/teacher-dashboard/lessons");
   revalidatePath("/teacher-dashboard/report-cards");
-  return { ok: true, message: "Assignment saved." };
+}
+
+/**
+ * Create many class+subject assignments for one teacher (cartesian product of
+ * selected classes × subjects). Skips pairs without a subject_classes link,
+ * existing rows (same teacher, class, subject label, year), and unique violations.
+ */
+export async function bulkAssignTeacherClassesAction(
+  _prev: TeacherActionState | null,
+  formData: FormData
+): Promise<TeacherActionState> {
+  const teacherId = String(formData.get("teacher_id") ?? "").trim();
+  const academicYearRaw = String(formData.get("academic_year") ?? "");
+  const yearParsed = parseRequiredSingleCalendarYear(academicYearRaw);
+  if (!yearParsed.ok) {
+    return { ok: false, error: yearParsed.error };
+  }
+  const academicYear = yearParsed.year;
+
+  const classIds = [
+    ...new Set(
+      formData
+        .getAll("bulk_class_ids")
+        .map((v) => String(v).trim())
+        .filter(Boolean)
+    ),
+  ];
+  const subjectIds = [
+    ...new Set(
+      formData
+        .getAll("bulk_subject_ids")
+        .map((v) => String(v).trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  if (!teacherId) {
+    return { ok: false, error: "Teacher is required." };
+  }
+  if (classIds.length === 0) {
+    return { ok: false, error: "Select at least one class." };
+  }
+  if (subjectIds.length === 0) {
+    return { ok: false, error: "Select at least one subject." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized." };
+
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) return { ok: false, error: "No school found." };
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return {
+      ok: false,
+      error: "Only school administrators can assign classes.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: prof } = await admin
+    .from("profiles")
+    .select("email, password_changed")
+    .eq("id", teacherId)
+    .maybeSingle();
+
+  const profRow = prof as {
+    email: string | null;
+    password_changed?: boolean;
+  } | null;
+  const teacherEmailRaw = profRow?.email?.trim();
+  if (!teacherEmailRaw) {
+    return { ok: false, error: "Teacher not found." };
+  }
+  if (profRow?.password_changed === false) {
+    return {
+      ok: false,
+      error:
+        "That teacher has not activated their account yet. They must sign in and change their password before you can assign classes.",
+    };
+  }
+
+  const emailNorm = normalizeEmail(teacherEmailRaw);
+
+  const { data: mem } = await admin
+    .from("school_members")
+    .select("id")
+    .eq("school_id", schoolId)
+    .eq("user_id", teacherId)
+    .eq("role", "teacher")
+    .maybeSingle();
+
+  const { data: invitation } = await admin
+    .from("teacher_invitations")
+    .select("id")
+    .eq("school_id", schoolId)
+    .eq("email", emailNorm)
+    .not("used_at", "is", null)
+    .maybeSingle();
+
+  if (!mem && !invitation) {
+    return { ok: false, error: "That user is not a teacher at your school." };
+  }
+
+  const { data: classRows } = await admin
+    .from("classes")
+    .select("id")
+    .eq("school_id", schoolId)
+    .in("id", classIds);
+
+  const validClassIds = new Set(
+    ((classRows ?? []) as { id: string }[]).map((r) => r.id)
+  );
+  const filteredClassIds = classIds.filter((id) => validClassIds.has(id));
+  if (filteredClassIds.length === 0) {
+    return { ok: false, error: "No valid classes for your school were selected." };
+  }
+
+  const { data: subjectRows } = await admin
+    .from("subjects")
+    .select("id, name")
+    .eq("school_id", schoolId)
+    .in("id", subjectIds);
+
+  const subjectNameById = new Map(
+    ((subjectRows ?? []) as { id: string; name: string }[]).map((s) => [
+      s.id,
+      s.name?.trim() || "General",
+    ])
+  );
+  const filteredSubjectIds = subjectIds.filter((id) => subjectNameById.has(id));
+  if (filteredSubjectIds.length === 0) {
+    return { ok: false, error: "No valid subjects for your school were selected." };
+  }
+
+  const { data: linkRows } = await admin
+    .from("subject_classes")
+    .select("class_id, subject_id")
+    .in("class_id", filteredClassIds);
+
+  const linkSet = new Set<string>();
+  for (const r of (linkRows ?? []) as { class_id: string; subject_id: string }[]) {
+    linkSet.add(`${r.class_id}|${r.subject_id}`);
+  }
+
+  const { data: existingRows } = await admin
+    .from("teacher_assignments")
+    .select("class_id, subject")
+    .eq("teacher_id", teacherId)
+    .eq("academic_year", academicYear);
+
+  const existingKey = new Set(
+    ((existingRows ?? []) as { class_id: string; subject: string | null }[]).map(
+      (r) => `${r.class_id}|${(r.subject ?? "").trim().toLowerCase()}`
+    )
+  );
+
+  let created = 0;
+  let skippedDuplicates = 0;
+  let skippedNoLink = 0;
+
+  for (const classId of filteredClassIds) {
+    for (const subjectId of filteredSubjectIds) {
+      if (!linkSet.has(`${classId}|${subjectId}`)) {
+        skippedNoLink++;
+        continue;
+      }
+      const subjectName = subjectNameById.get(subjectId)!;
+      const dedupeKey = `${classId}|${subjectName.toLowerCase()}`;
+      if (existingKey.has(dedupeKey)) {
+        skippedDuplicates++;
+        continue;
+      }
+
+      const { error } = await (admin as Db).from("teacher_assignments").insert({
+        teacher_id: teacherId,
+        school_id: schoolId,
+        class_id: classId,
+        subject_id: subjectId,
+        subject: subjectName,
+        academic_year: academicYear,
+      });
+
+      if (error) {
+        if (error.code === "23505") {
+          skippedDuplicates++;
+          existingKey.add(dedupeKey);
+        } else {
+          return {
+            ok: false,
+            error: error.message || "Could not save one or more assignments.",
+          };
+        }
+      } else {
+        created++;
+        existingKey.add(dedupeKey);
+      }
+    }
+  }
+
+  if (created > 0) {
+    revalidateAfterTeacherAssignmentMutations();
+  }
+
+  const skippedTotal = skippedDuplicates + skippedNoLink;
+  let message: string;
+  if (created === 0 && skippedTotal === 0) {
+    message = "No assignments were created.";
+  } else {
+    message = `Created ${created} assignment${created === 1 ? "" : "s"}`;
+    if (skippedDuplicates > 0) {
+      message += `, skipped ${skippedDuplicates} duplicate${
+        skippedDuplicates === 1 ? "" : "s"
+      }`;
+    }
+    if (skippedNoLink > 0) {
+      message += skippedDuplicates > 0 ? " and" : ",";
+      message += ` skipped ${skippedNoLink} without a class–subject link`;
+    }
+    message += ".";
+  }
+
+  return { ok: true, message };
 }
 
 export async function updateTeacherAssignmentAction(

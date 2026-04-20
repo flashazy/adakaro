@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { filterLeafClassOptions } from "@/lib/class-options";
+import { fetchSchoolTeacherMembersForTeachersPage } from "../teachers/actions";
 import { AssignmentsPageClient, type AssignmentRow } from "./assignments-client";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,15 @@ export default async function AssignmentsPage() {
   if (!resolved?.schoolId) redirect("/dashboard");
 
   const schoolId = resolved.schoolId;
+
+  const teacherMemberRows =
+    await fetchSchoolTeacherMembersForTeachersPage(schoolId);
+  const bulkAssignableTeachers = teacherMemberRows
+    .filter((m) => m.profilePasswordChanged)
+    .map((m) => ({
+      userId: m.user_id,
+      fullName: teacherDisplayName(m.profileFullName, m.profileEmail),
+    }));
 
   const { data: isAdmin } = await supabase.rpc(
     "is_school_admin",
@@ -185,6 +195,8 @@ export default async function AssignmentsPage() {
         assignments={assignments}
         classOptions={classOptions}
         subjectOptionsByClassId={subjectOptionsByClassId}
+        bulkAssignableTeachers={bulkAssignableTeachers}
+        allSubjects={subjectOptionsList}
       />
       <div className="print:hidden">
         <SmartFloatingScrollButton sectionIds={[]} />

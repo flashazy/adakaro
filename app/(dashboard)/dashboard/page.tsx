@@ -111,7 +111,7 @@ const NAV_LINKS = [
   {
     href: "/dashboard/teachers",
     title: "Teachers",
-    desc: "Invite teachers and assign classes.",
+    desc: "Create and manage teacher accounts.",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6.75 4.5v.75A8.967 8.967 0 0 1 12 6.375a8.967 8.967 0 0 1 5.25 1.635v-.75A8.967 8.967 0 0 0 12 6.042Z" />

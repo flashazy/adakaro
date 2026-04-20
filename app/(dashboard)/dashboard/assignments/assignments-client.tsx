@@ -7,6 +7,13 @@ import {
   AssignTeacherModal,
   type AssignModalState,
 } from "../teachers/components/AssignTeacherModal";
+import { AssignSingleClassSubjectForm } from "../teachers/components/AssignSingleClassSubjectForm";
+import { BulkAssignClassSubjectSection } from "../teachers/components/BulkAssignClassSubjectSection";
+import {
+  assignTeacherToClassAction,
+  bulkAssignTeacherClassesAction,
+} from "../teachers/actions";
+import type { TeacherActionState } from "../teachers/types";
 import {
   deleteAssignmentAction,
   updateAssignmentAction,
@@ -19,6 +26,11 @@ import {
   STUDENT_LIST_ROW_OPTIONS,
   type StudentListRowOption,
 } from "@/lib/student-list-pagination";
+
+const SINGLE_ASSIGN_EXPANDED_STORAGE_KEY =
+  "adakaro:assignments:singleAssignExpanded";
+const BULK_ASSIGN_EXPANDED_STORAGE_KEY =
+  "adakaro:assignments:bulkAssignExpanded";
 
 export interface AssignmentRow {
   id: string;
@@ -38,18 +50,24 @@ interface AssignmentsPageClientProps {
     string,
     { id: string; name: string; code: string | null }[]
   >;
+  bulkAssignableTeachers: { userId: string; fullName: string }[];
+  allSubjects: { id: string; name: string; code: string | null }[];
 }
 
 export function AssignmentsPageClient({
   assignments,
   classOptions,
   subjectOptionsByClassId,
+  bulkAssignableTeachers,
+  allSubjects,
 }: AssignmentsPageClientProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
   const [editModal, setEditModal] = useState<AssignModalState | null>(null);
+  const [singleAssignExpanded, setSingleAssignExpanded] = useState(true);
+  const [bulkAssignExpanded, setBulkAssignExpanded] = useState(false);
 
   useEffect(() => {
     const stored = parseStudentListRowsPerPage(
@@ -57,6 +75,68 @@ export function AssignmentsPageClient({
     );
     if (stored != null) setRowsPerPage(stored);
   }, []);
+
+  useEffect(() => {
+    try {
+      const b = localStorage.getItem(BULK_ASSIGN_EXPANDED_STORAGE_KEY);
+      /** Bulk open is the only flag that hides Add one; otherwise Add one is open. */
+      const bulk = b === null || b === undefined ? false : b === "true";
+      if (bulk) {
+        setBulkAssignExpanded(true);
+        setSingleAssignExpanded(false);
+        localStorage.setItem(SINGLE_ASSIGN_EXPANDED_STORAGE_KEY, "false");
+        localStorage.setItem(BULK_ASSIGN_EXPANDED_STORAGE_KEY, "true");
+      } else {
+        setBulkAssignExpanded(false);
+        setSingleAssignExpanded(true);
+        localStorage.setItem(SINGLE_ASSIGN_EXPANDED_STORAGE_KEY, "true");
+        localStorage.setItem(BULK_ASSIGN_EXPANDED_STORAGE_KEY, "false");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggleSingleAssign() {
+    setSingleAssignExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(
+          SINGLE_ASSIGN_EXPANDED_STORAGE_KEY,
+          next ? "true" : "false"
+        );
+        if (next) {
+          setBulkAssignExpanded(false);
+          localStorage.setItem(BULK_ASSIGN_EXPANDED_STORAGE_KEY, "false");
+        }
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
+  function toggleBulkAssign() {
+    setBulkAssignExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(
+          BULK_ASSIGN_EXPANDED_STORAGE_KEY,
+          next ? "true" : "false"
+        );
+        if (next) {
+          setSingleAssignExpanded(false);
+          localStorage.setItem(SINGLE_ASSIGN_EXPANDED_STORAGE_KEY, "false");
+        } else {
+          setSingleAssignExpanded(true);
+          localStorage.setItem(SINGLE_ASSIGN_EXPANDED_STORAGE_KEY, "true");
+        }
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   const [updateState, updateAction, updatePending] = useActionState(
     updateAssignmentAction,
@@ -66,6 +146,15 @@ export function AssignmentsPageClient({
     deleteAssignmentAction,
     null as AssignmentActionState | null
   );
+  const [bulkAssignState, bulkAssignAction, bulkAssignPending] = useActionState(
+    bulkAssignTeacherClassesAction,
+    null as TeacherActionState | null
+  );
+  const [singleAssignState, singleAssignAction, singleAssignPending] =
+    useActionState(
+      assignTeacherToClassAction,
+      null as TeacherActionState | null
+    );
 
   useEffect(() => {
     if (updateState?.ok) {
@@ -79,6 +168,18 @@ export function AssignmentsPageClient({
       router.refresh();
     }
   }, [deleteState, router]);
+
+  useEffect(() => {
+    if (bulkAssignState?.ok) {
+      router.refresh();
+    }
+  }, [bulkAssignState, router]);
+
+  useEffect(() => {
+    if (singleAssignState?.ok) {
+      router.refresh();
+    }
+  }, [singleAssignState, router]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -134,7 +235,8 @@ export function AssignmentsPageClient({
           Teacher Assignments
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          View and update class assignments. Add or remove teachers from the{" "}
+          Add, search, and edit class–subject assignments here. Create teacher
+          accounts and set department roles on the{" "}
           <Link href="/dashboard/teachers" className="underline">
             Teachers
           </Link>{" "}
@@ -147,6 +249,28 @@ export function AssignmentsPageClient({
           {deleteState.error}
         </p>
       ) : null}
+
+      <AssignSingleClassSubjectForm
+        expanded={singleAssignExpanded}
+        onToggle={toggleSingleAssign}
+        assignableTeachers={bulkAssignableTeachers}
+        classOptions={classOptions}
+        subjectOptionsByClassId={subjectOptionsByClassId}
+        formAction={singleAssignAction}
+        pending={singleAssignPending}
+        flashState={singleAssignState}
+      />
+
+      <BulkAssignClassSubjectSection
+        expanded={bulkAssignExpanded}
+        onToggle={toggleBulkAssign}
+        assignableTeachers={bulkAssignableTeachers}
+        classOptions={classOptions}
+        allSubjects={allSubjects}
+        formAction={bulkAssignAction}
+        pending={bulkAssignPending}
+        flashState={bulkAssignState}
+      />
 
       <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 p-4">

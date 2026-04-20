@@ -18,9 +18,6 @@ export const DASHBOARD_CLASSES_ROWS_STORAGE_KEY =
 export const DASHBOARD_SUBJECTS_ROWS_STORAGE_KEY =
   "adakaro:dashboardSubjects:rowsPerPage";
 
-export const DASHBOARD_TEACHERS_ASSIGNMENTS_ROWS_STORAGE_KEY =
-  "adakaro:dashboardTeachers:assignments:rowsPerPage";
-
 export const DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY =
   "adakaro:dashboardTeachers:accounts:rowsPerPage";
 
