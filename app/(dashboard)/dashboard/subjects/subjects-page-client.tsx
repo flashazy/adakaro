@@ -92,98 +92,6 @@ function getPaginationItems(
   return items;
 }
 
-/** Searchable single-select for mapping an existing catalog subject to classes. */
-function ExistingSubjectCombobox({
-  subjects,
-  selectedId,
-  onSelectedIdChange,
-}: {
-  subjects: SubjectRow[];
-  selectedId: string;
-  onSelectedIdChange: (id: string) => void;
-}) {
-  const listboxId = useId();
-  const [query, setQuery] = useState("");
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return subjects
-      .filter((s) => {
-        if (!q) return true;
-        if (s.id === selectedId) return true;
-        const hay = [
-          s.name,
-          s.code ?? "",
-          s.description ?? "",
-        ]
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(q);
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [subjects, query, selectedId]);
-
-  useEffect(() => {
-    if (!selectedId) setQuery("");
-  }, [selectedId]);
-
-  return (
-    <div className="mt-2 space-y-2">
-      <input type="hidden" name="subject_id" value={selectedId} />
-      <div className="relative">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
-          strokeWidth={2}
-          aria-hidden
-        />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search subject..."
-          autoComplete="off"
-          aria-label="Search subjects"
-          aria-controls={listboxId}
-          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
-        />
-      </div>
-      <div
-        id={listboxId}
-        role="listbox"
-        aria-label="Matching subjects"
-        className="max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-sm dark:border-zinc-600 dark:bg-zinc-900"
-      >
-        {filtered.length === 0 ? (
-          <p className="px-3 py-2.5 text-sm text-slate-500 dark:text-zinc-400">
-            {query.trim() ? "No matching subjects." : "No subjects."}
-          </p>
-        ) : (
-          filtered.map((s) => {
-            const isSelected = s.id === selectedId;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onSelectedIdChange(s.id)}
-                className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                  isSelected
-                    ? "bg-indigo-50 font-medium text-indigo-900 dark:bg-indigo-500/15 dark:text-indigo-100"
-                    : "text-slate-800 hover:bg-slate-100 dark:text-zinc-100 dark:hover:bg-zinc-800"
-                }`}
-              >
-                {s.name}
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
 /** Searchable multi-select with checkboxes; submits `subject_ids` via hidden inputs. */
 function ExistingSubjectsMultiPicker({
   subjects,
@@ -461,10 +369,6 @@ export function SubjectsPageClient({
   const [deleting, setDeleting] = useState<SubjectRow | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [addMode, setAddMode] = useState<"existing" | "new">("new");
-  const [existingSubjectId, setExistingSubjectId] = useState("");
-  const [existingSelectMode, setExistingSelectMode] = useState<
-    "single" | "multiple"
-  >("single");
   const [multipleSubjectIds, setMultipleSubjectIds] = useState<string[]>([]);
   /** Bump to remount subject pickers + class picker (clears local search / class chips). */
   const [assignFormResetNonce, setAssignFormResetNonce] = useState(0);
@@ -532,15 +436,6 @@ export function SubjectsPageClient({
   const rows = initialRows;
 
   useEffect(() => {
-    if (
-      existingSubjectId &&
-      !rows.some((r) => r.id === existingSubjectId)
-    ) {
-      setExistingSubjectId("");
-    }
-  }, [rows, existingSubjectId]);
-
-  useEffect(() => {
     setMultipleSubjectIds((prev) =>
       prev.filter((id) => rows.some((r) => r.id === id))
     );
@@ -552,10 +447,12 @@ export function SubjectsPageClient({
     }
   }, [rows.length, addMode]);
 
-  const selectedExistingRow = useMemo(
-    () => rows.find((r) => r.id === existingSubjectId) ?? null,
-    [rows, existingSubjectId]
-  );
+  const assignClassPickerDefaults = useMemo(() => {
+    if (multipleSubjectIds.length !== 1) return [];
+    return (
+      rows.find((r) => r.id === multipleSubjectIds[0])?.assignedClassIds ?? []
+    );
+  }, [rows, multipleSubjectIds]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [classFilter, setClassFilter] = useState<string>("all");
@@ -608,7 +505,6 @@ export function SubjectsPageClient({
   /** Clears chosen subjects and remounts pickers (class chips + search inputs). */
   const resetAssignFormLayout = useCallback(() => {
     setMultipleSubjectIds([]);
-    setExistingSubjectId("");
     setAssignFormResetNonce((n) => n + 1);
   }, []);
 
@@ -669,7 +565,7 @@ export function SubjectsPageClient({
                   : "text-sm text-slate-700 dark:text-zinc-300"
               }
             >
-              Select existing subject
+              Select existing subject(s)
             </span>
           </label>
           <label className="flex cursor-pointer items-center gap-2.5">
@@ -679,6 +575,7 @@ export function SubjectsPageClient({
               checked={addMode === "new"}
               onChange={() => {
                 setAddMode("new");
+                setMultipleSubjectIds([]);
               }}
             />
             <span className="text-sm text-slate-700 dark:text-zinc-300">
@@ -690,159 +587,46 @@ export function SubjectsPageClient({
         {addMode === "existing" ? (
           <form action={assignAction} className="mt-4 space-y-3">
             {flash(assignState)}
-            <input
-              type="hidden"
-              name="assignment_mode"
-              value={existingSelectMode}
-            />
-
-            <fieldset className="space-y-2 border-0 p-0">
-              <legend className="text-sm font-medium text-slate-800 dark:text-zinc-200">
-                Subject selection
-              </legend>
-              <label className="flex cursor-pointer items-center gap-2.5">
-                <input
-                  type="radio"
-                  className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
-                  checked={existingSelectMode === "single"}
-                  onChange={() => {
-                    setExistingSelectMode("single");
-                    setMultipleSubjectIds([]);
-                  }}
-                />
-                <span className="text-sm text-slate-700 dark:text-zinc-300">
-                  Single subject
+            <div className="block text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-slate-700 dark:text-zinc-300">
+                  Subjects{" "}
+                  <span className="text-red-600 dark:text-red-400">*</span>
                 </span>
-              </label>
-              <label className="flex cursor-pointer items-center gap-2.5">
-                <input
-                  type="radio"
-                  className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
-                  checked={existingSelectMode === "multiple"}
-                  onChange={() => {
-                    setExistingSelectMode("multiple");
-                    setExistingSubjectId("");
-                  }}
-                />
-                <span className="text-sm text-slate-700 dark:text-zinc-300">
-                  Multiple subjects
-                </span>
-              </label>
-            </fieldset>
-
-            {existingSelectMode === "single" ? (
-              <>
-                <div className="block text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-slate-700 dark:text-zinc-300">
-                      Subject{" "}
-                      <span className="text-red-600 dark:text-red-400">*</span>
-                    </span>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      {existingSubjectId ? (
-                        <button
-                          type="button"
-                          onClick={() => setExistingSubjectId("")}
-                          className="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
-                        >
-                          Clear selection
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={resetAssignFormLayout}
-                        className="shrink-0 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                  </div>
-                  <ExistingSubjectCombobox
-                    key={assignFormResetNonce}
-                    subjects={rows}
-                    selectedId={existingSubjectId}
-                    onSelectedIdChange={setExistingSubjectId}
-                  />
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {multipleSubjectIds.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setMultipleSubjectIds([])}
+                      className="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    >
+                      Clear selection
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={resetAssignFormLayout}
+                    className="shrink-0 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  >
+                    Clear all
+                  </button>
                 </div>
-
-                {selectedExistingRow ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block text-sm">
-                      <span className="text-slate-700 dark:text-zinc-300">
-                        Code
-                      </span>
-                      <input
-                        type="text"
-                        readOnly
-                        tabIndex={-1}
-                        value={selectedExistingRow.code ?? "—"}
-                        className="mt-1 w-full cursor-default rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200"
-                      />
-                    </label>
-                    <label className="block text-sm sm:col-span-2">
-                      <span className="text-slate-700 dark:text-zinc-300">
-                        Description
-                      </span>
-                      <textarea
-                        readOnly
-                        tabIndex={-1}
-                        rows={2}
-                        value={
-                          selectedExistingRow.description?.trim()
-                            ? selectedExistingRow.description
-                            : "—"
-                        }
-                        className="mt-1 w-full cursor-default resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200"
-                      />
-                    </label>
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <div className="block text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-slate-700 dark:text-zinc-300">
-                      Select subjects (multiple)
-                    </span>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      {multipleSubjectIds.length > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => setMultipleSubjectIds([])}
-                          className="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
-                        >
-                          Clear selection
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={resetAssignFormLayout}
-                        className="shrink-0 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                  </div>
-                  <ExistingSubjectsMultiPicker
-                    key={assignFormResetNonce}
-                    subjects={rows}
-                    selectedIds={multipleSubjectIds}
-                    onSelectedIdsChange={setMultipleSubjectIds}
-                  />
-                </div>
-                <p className="text-sm text-slate-600 dark:text-zinc-400">
-                  Selected: {multipleSubjectIds.length} subject
-                  {multipleSubjectIds.length === 1 ? "" : "s"}
-                </p>
-              </>
-            )}
+              </div>
+              <ExistingSubjectsMultiPicker
+                key={assignFormResetNonce}
+                subjects={rows}
+                selectedIds={multipleSubjectIds}
+                onSelectedIdsChange={setMultipleSubjectIds}
+              />
+            </div>
+            <p className="text-sm text-slate-600 dark:text-zinc-400">
+              Selected: {multipleSubjectIds.length} subject
+              {multipleSubjectIds.length === 1 ? "" : "s"}
+            </p>
 
             <div className="block text-sm sm:col-span-2">
               <span className="text-slate-700 dark:text-zinc-300">
-                {existingSelectMode === "multiple"
-                  ? "Assign selected subjects to classes:"
-                  : "Assign to classes"}
+                Assign selected subjects to classes:
               </span>
               {classOptions.length === 0 ? (
                 <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
@@ -850,17 +634,9 @@ export function SubjectsPageClient({
                 </p>
               ) : (
                 <SubjectClassPicker
-                  key={
-                    existingSelectMode === "multiple"
-                      ? `subject-assign-multi-${assignFormResetNonce}-${[...multipleSubjectIds].sort().join(",") || "none"}`
-                      : `subject-assign-${assignFormResetNonce}-${existingSubjectId || "none"}`
-                  }
+                  key={`subject-assign-${assignFormResetNonce}-${[...multipleSubjectIds].sort().join(",") || "none"}`}
                   classOptions={classOptions}
-                  defaultSelectedIds={
-                    existingSelectMode === "multiple"
-                      ? []
-                      : (selectedExistingRow?.assignedClassIds ?? [])
-                  }
+                  defaultSelectedIds={assignClassPickerDefaults}
                 />
               )}
             </div>
@@ -868,10 +644,7 @@ export function SubjectsPageClient({
               <button
                 type="submit"
                 disabled={
-                  assignPending ||
-                  (existingSelectMode === "single" && !existingSubjectId) ||
-                  (existingSelectMode === "multiple" &&
-                    multipleSubjectIds.length === 0)
+                  assignPending || multipleSubjectIds.length === 0
                 }
                 className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
               >
