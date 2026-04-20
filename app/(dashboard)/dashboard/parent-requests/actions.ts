@@ -60,6 +60,7 @@ export async function approveRequest(
     }
 
     revalidatePath("/dashboard/parent-requests");
+    revalidatePath("/dashboard/parent-links/pending");
     return { success: "Request approved. Parent has been linked." };
   } catch (e) {
     return { error: (e as Error).message };
@@ -91,6 +92,7 @@ export async function rejectRequest(
     }
 
     revalidatePath("/dashboard/parent-requests");
+    revalidatePath("/dashboard/parent-links/pending");
     return { success: "Request rejected." };
   } catch (e) {
     return { error: (e as Error).message };

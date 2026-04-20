@@ -89,7 +89,7 @@ const NAV_LINKS = [
     ),
   },
   {
-    href: "/dashboard/parent-links",
+    href: "/dashboard/parent-links/approved",
     title: "Approved Connections",
     desc: "Link parents to students.",
     icon: (
@@ -99,7 +99,7 @@ const NAV_LINKS = [
     ),
   },
   {
-    href: "/dashboard/link-requests",
+    href: "/dashboard/parent-links/pending",
     title: "Pending Approvals",
     desc: "Review parent access requests.",
     icon: (

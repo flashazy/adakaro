@@ -39,6 +39,7 @@ export async function deleteParentLink(
     }
 
     revalidatePath("/dashboard/parent-links");
+    revalidatePath("/dashboard/parent-links/approved");
     return { success: "Link removed." };
   } catch (e) {
     return { error: (e as Error).message };

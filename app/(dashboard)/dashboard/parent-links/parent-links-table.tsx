@@ -4,17 +4,22 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import LinkRow, { type ParentLinkData } from "./link-row";
 import { deleteParentLink } from "./actions";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  APPROVED_CONNECTIONS_ROWS_STORAGE_KEY,
+  parseStudentListRowsPerPage,
+  STUDENT_LIST_ROW_OPTIONS,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
 
 type SortKey = "parent" | "student";
 type SortDir = "asc" | "desc";
 
-const PAGE_SIZES = [10, 25, 50] as const;
-
 export function ParentLinksTable({ links }: { links: ParentLinkData[] }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
-  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
+  const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>("parent");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [deleteTarget, setDeleteTarget] = useState<ParentLinkData | null>(
@@ -23,44 +28,62 @@ export function ParentLinksTable({ links }: { links: ParentLinkData[] }) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, startDelete] = useTransition();
 
+  useEffect(() => {
+    const stored = parseStudentListRowsPerPage(
+      localStorage.getItem(APPROVED_CONNECTIONS_ROWS_STORAGE_KEY)
+    );
+    if (stored != null) setRowsPerPage(stored);
+  }, []);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return links;
     return links.filter(
       (l) =>
         l.parentName.toLowerCase().includes(q) ||
-        l.studentName.toLowerCase().includes(q)
+        l.studentName.toLowerCase().includes(q) ||
+        (l.parentEmail?.toLowerCase().includes(q) ?? false)
     );
   }, [links, search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
     copy.sort((a, b) => {
-      const av =
-        sortKey === "parent" ? a.parentName : a.studentName;
-      const bv =
-        sortKey === "parent" ? b.parentName : b.studentName;
+      const av = sortKey === "parent" ? a.parentName : a.studentName;
+      const bv = sortKey === "parent" ? b.parentName : b.studentName;
       const cmp = av.localeCompare(bv, undefined, { sensitivity: "base" });
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copy;
   }, [filtered, sortKey, sortDir]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const safePage = Math.min(page, totalPages - 1);
-  const pageSlice = sorted.slice(
-    safePage * pageSize,
-    safePage * pageSize + pageSize
-  );
+  const totalFiltered = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
 
   useEffect(() => {
-    if (page > 0 && page > totalPages - 1) {
-      setPage(Math.max(0, totalPages - 1));
-    }
+    if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * rowsPerPage;
+  const pageSlice = sorted.slice(start, start + rowsPerPage);
+
+  const paginationItems = useMemo(
+    () => getCompactPaginationItems(safePage, totalPages),
+    [safePage, totalPages]
+  );
+
+  const showingFrom =
+    totalFiltered === 0 ? 0 : Math.min(start + 1, totalFiltered);
+  const showingTo =
+    totalFiltered === 0 ? 0 : Math.min(start + rowsPerPage, totalFiltered);
+
   function toggleSort(key: SortKey) {
-    setPage(0);
+    setPage(1);
     if (sortKey === key) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
@@ -71,12 +94,7 @@ export function ParentLinksTable({ links }: { links: ParentLinkData[] }) {
 
   function handleSearchChange(v: string) {
     setSearch(v);
-    setPage(0);
-  }
-
-  function handlePageSizeChange(n: (typeof PAGE_SIZES)[number]) {
-    setPageSize(n);
-    setPage(0);
+    setPage(1);
   }
 
   function confirmDelete() {
@@ -163,29 +181,9 @@ export function ParentLinksTable({ links }: { links: ParentLinkData[] }) {
             </svg>
             Connections
           </h2>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-zinc-400">
-              <span className="whitespace-nowrap">Rows per page</span>
-              <select
-                value={pageSize}
-                onChange={(e) =>
-                  handlePageSizeChange(
-                    Number(e.target.value) as (typeof PAGE_SIZES)[number]
-                  )
-                }
-                className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
-              >
-                {PAGE_SIZES.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-zinc-800 dark:text-zinc-400">
-              {filtered.length} of {links.length}
-            </span>
-          </div>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-zinc-800 dark:text-zinc-400">
+            {links.length} connection{links.length !== 1 ? "s" : ""}
+          </span>
         </div>
 
         <div className="border-b border-slate-200 px-6 py-3 dark:border-zinc-800">
@@ -197,9 +195,54 @@ export function ParentLinksTable({ links }: { links: ParentLinkData[] }) {
             type="search"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Search by parent or student name…"
+            placeholder="Search by parent or student name..."
             className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
           />
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-3 dark:border-zinc-800">
+          <p className="min-w-0 text-sm text-slate-600 dark:text-zinc-400">
+            {totalFiltered === 0 ? (
+              "No connections match your search."
+            ) : (
+              <>
+                Showing{" "}
+                <span className="font-medium text-slate-900 dark:text-white">
+                  {showingFrom}–{showingTo}
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-slate-900 dark:text-white">
+                  {totalFiltered}
+                </span>{" "}
+                connection{totalFiltered !== 1 ? "s" : ""}
+              </>
+            )}
+          </p>
+          <label className="flex shrink-0 items-center gap-2">
+            <span className="text-sm text-slate-500 dark:text-zinc-400">
+              Rows per page:
+            </span>
+            <select
+              value={rowsPerPage}
+              onChange={(e) => {
+                const n = Number(e.target.value) as StudentListRowOption;
+                setRowsPerPage(n);
+                setPage(1);
+                localStorage.setItem(
+                  APPROVED_CONNECTIONS_ROWS_STORAGE_KEY,
+                  String(n)
+                );
+              }}
+              aria-label="Rows per page"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            >
+              {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {filtered.length === 0 ? (
@@ -268,40 +311,54 @@ export function ParentLinksTable({ links }: { links: ParentLinkData[] }) {
               </table>
             </div>
 
-            <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 px-6 py-4 sm:flex-row dark:border-zinc-800">
-              <p className="text-xs text-slate-500 dark:text-zinc-400">
-                Showing{" "}
-                {sorted.length === 0
-                  ? 0
-                  : safePage * pageSize + 1}
-                –
-                {Math.min((safePage + 1) * pageSize, sorted.length)} of{" "}
-                {sorted.length}
-              </p>
-              <div className="flex items-center gap-2">
+            {totalPages > 1 ? (
+              <nav
+                className="flex flex-wrap items-center justify-center gap-2 border-t border-slate-200 px-6 py-4 dark:border-zinc-800"
+                aria-label="Connections pagination"
+              >
                 <button
                   type="button"
-                  disabled={safePage <= 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
                   Previous
                 </button>
-                <span className="text-xs text-slate-500 dark:text-zinc-400">
-                  Page {safePage + 1} / {totalPages}
-                </span>
+                {paginationItems.map((item, idx) =>
+                  item === "ellipsis" ? (
+                    <span
+                      key={`pl-ellipsis-${idx}`}
+                      className="px-2 text-sm text-slate-400 dark:text-zinc-500"
+                      aria-hidden
+                    >
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setPage(item)}
+                      aria-current={item === safePage ? "page" : undefined}
+                      className={
+                        item === safePage
+                          ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                          : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                      }
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
                 <button
                   type="button"
-                  disabled={safePage >= totalPages - 1}
-                  onClick={() =>
-                    setPage((p) => Math.min(totalPages - 1, p + 1))
-                  }
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
                   Next
                 </button>
-              </div>
-            </div>
+              </nav>
+            ) : null}
           </>
         )}
       </div>

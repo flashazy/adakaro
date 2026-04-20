@@ -7,7 +7,8 @@ import { getSchoolIdsForAdminUser } from "@/lib/dashboard/get-school-ids";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 import { QueryErrorBanner } from "../query-error-banner";
-import RequestRow, { type RequestData } from "./request-row";
+import { type RequestData } from "./request-row";
+import { PendingApprovalsTable } from "./pending-approvals-table";
 
 export default async function ParentRequestsPage() {
   const supabase = await createClient();
@@ -197,21 +198,19 @@ export default async function ParentRequestsPage() {
           </QueryErrorBanner>
         ) : null}
 
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          {/* Table header */}
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-zinc-800">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
-              <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-              </svg>
-              Pending Approvals
-            </h2>
-            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-              {requests.length}
-            </span>
-          </div>
-
-          {!fetchError && requests.length === 0 ? (
+        {!fetchError && requests.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-zinc-800">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                Pending Approvals
+              </h2>
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                0
+              </span>
+            </div>
             <div className="px-6 py-12 text-center">
               <svg className="mx-auto h-10 w-10 text-slate-300 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -223,22 +222,14 @@ export default async function ParentRequestsPage() {
                 No pending parent link requests at the moment.
               </p>
             </div>
-          ) : fetchError ? (
-            <div className="px-6 py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
-              Fix the error above to load requests.
-            </div>
-          ) : (
-            <div>
-              {requests.map((req) => (
-                <RequestRow
-                  key={req.id}
-                  request={req}
-                  students={students}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+          </div>
+        ) : fetchError ? (
+          <div className="rounded-xl border border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+            Fix the error above to load requests.
+          </div>
+        ) : (
+          <PendingApprovalsTable requests={requests} students={students} />
+        )}
       </main>
       <SmartFloatingScrollButton sectionIds={[]} />
     </>

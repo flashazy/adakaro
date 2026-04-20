@@ -5,7 +5,7 @@ import { normalizeSchoolCurrency } from "@/lib/currency";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddFeeStructureForm } from "./add-fee-structure-form";
-import { FeeStructureRow } from "./fee-structure-row";
+import { FeeStructuresList } from "./fee-structures-list";
 import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
@@ -128,39 +128,13 @@ export default async function FeeStructuresPage() {
         />
 
         {!fetchError && typedStructures.length > 0 ? (
-          <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            {/* Desktop header */}
-            <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_100px_100px_auto] sm:gap-4 dark:border-zinc-800">
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Fee Type
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Target
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Amount
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Due Date
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Actions
-              </p>
-            </div>
-
-            <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-              {typedStructures.map((s) => (
-                <FeeStructureRow
-                  key={s.id}
-                  structure={s}
-                  feeTypes={typedFeeTypes}
-                  classes={typedClasses}
-                  students={typedStudents}
-                  currencyCode={currencyCode}
-                />
-              ))}
-            </div>
-          </div>
+          <FeeStructuresList
+            structures={typedStructures}
+            feeTypes={typedFeeTypes}
+            classes={typedClasses}
+            students={typedStudents}
+            currencyCode={currencyCode}
+          />
         ) : !fetchError ? (
           <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
             <p className="text-sm text-slate-500 dark:text-zinc-400">

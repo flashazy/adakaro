@@ -5,6 +5,13 @@ import { useFormStatus } from "react-dom";
 import { recordPayment, type PaymentActionState } from "./actions";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  RECORD_PAYMENT_STUDENTS_ROWS_STORAGE_KEY,
+  parseStudentListRowsPerPage,
+  STUDENT_LIST_ROW_OPTIONS,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -80,8 +87,18 @@ export function PaymentClient({
   const money = (n: number) => formatCurrency(n, currencyCode);
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
+  const [studentListPage, setStudentListPage] = useState(1);
+  const [studentRowsPerPage, setStudentRowsPerPage] =
+    useState<StudentListRowOption>(5);
   const [selectedFeeId, setSelectedFeeId] = useState("");
   const [state, formAction] = useActionState(recordPayment, initialState);
+
+  useEffect(() => {
+    const stored = parseStudentListRowsPerPage(
+      localStorage.getItem(RECORD_PAYMENT_STUDENTS_ROWS_STORAGE_KEY)
+    );
+    if (stored != null) setStudentRowsPerPage(stored);
+  }, []);
 
   // Reset fee selection when student changes
   useEffect(() => {
@@ -99,6 +116,46 @@ export function PaymentClient({
         (s.class?.name.toLowerCase().includes(q) ?? false)
     );
   }, [students, studentSearch]);
+
+  useEffect(() => {
+    setStudentListPage(1);
+  }, [studentSearch]);
+
+  const studentTotalFiltered = filteredStudents.length;
+  const studentTotalPages = Math.max(
+    1,
+    Math.ceil(studentTotalFiltered / studentRowsPerPage)
+  );
+
+  useEffect(() => {
+    if (studentListPage > studentTotalPages)
+      setStudentListPage(studentTotalPages);
+  }, [studentListPage, studentTotalPages]);
+
+  const studentSafePage = Math.min(studentListPage, studentTotalPages);
+  const studentPageStart = (studentSafePage - 1) * studentRowsPerPage;
+  const pagedStudents = useMemo(
+    () =>
+      filteredStudents.slice(
+        studentPageStart,
+        studentPageStart + studentRowsPerPage
+      ),
+    [filteredStudents, studentPageStart, studentRowsPerPage]
+  );
+
+  const studentPaginationItems = useMemo(
+    () => getCompactPaginationItems(studentSafePage, studentTotalPages),
+    [studentSafePage, studentTotalPages]
+  );
+
+  const studentShowingFrom =
+    studentTotalFiltered === 0
+      ? 0
+      : Math.min(studentPageStart + 1, studentTotalFiltered);
+  const studentShowingTo =
+    studentTotalFiltered === 0
+      ? 0
+      : Math.min(studentPageStart + studentRowsPerPage, studentTotalFiltered);
 
   // Balances for the selected student with outstanding amounts
   const studentBalances = useMemo(
@@ -137,9 +194,55 @@ export function PaymentClient({
           placeholder="Search by name, admission # or class…"
           className="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
         />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-zinc-700">
+          <p className="min-w-0 text-sm text-slate-600 dark:text-zinc-400">
+            {studentTotalFiltered === 0 ? (
+              studentSearch.trim()
+                ? "No students match your search."
+                : "No students to display."
+            ) : (
+              <>
+                Showing{" "}
+                <span className="font-medium text-slate-900 dark:text-white">
+                  {studentShowingFrom}–{studentShowingTo}
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-slate-900 dark:text-white">
+                  {studentTotalFiltered}
+                </span>{" "}
+                student{studentTotalFiltered !== 1 ? "s" : ""}
+              </>
+            )}
+          </p>
+          <label className="flex shrink-0 items-center gap-2">
+            <span className="text-sm text-slate-500 dark:text-zinc-400">
+              Rows per page:
+            </span>
+            <select
+              value={studentRowsPerPage}
+              onChange={(e) => {
+                const n = Number(e.target.value) as StudentListRowOption;
+                setStudentRowsPerPage(n);
+                setStudentListPage(1);
+                localStorage.setItem(
+                  RECORD_PAYMENT_STUDENTS_ROWS_STORAGE_KEY,
+                  String(n)
+                );
+              }}
+              aria-label="Rows per page for student list"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            >
+              {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="mt-2 max-h-60 overflow-y-auto rounded-lg border border-slate-300 dark:border-zinc-700">
           {filteredStudents.length > 0 ? (
-            filteredStudents.map((s) => (
+            pagedStudents.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -167,6 +270,60 @@ export function PaymentClient({
             </p>
           )}
         </div>
+        {studentTotalPages > 1 ? (
+          <nav
+            className="mt-3 flex flex-wrap items-center justify-center gap-2"
+            aria-label="Student list pagination"
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setStudentListPage((p) => Math.max(1, p - 1))
+              }
+              disabled={studentSafePage <= 1}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Previous
+            </button>
+            {studentPaginationItems.map((item, idx) =>
+              item === "ellipsis" ? (
+                <span
+                  key={`pay-ellipsis-${idx}`}
+                  className="px-2 text-sm text-slate-400 dark:text-zinc-500"
+                  aria-hidden
+                >
+                  …
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setStudentListPage(item)}
+                  aria-current={item === studentSafePage ? "page" : undefined}
+                  className={
+                    item === studentSafePage
+                      ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                      : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  }
+                >
+                  {item}
+                </button>
+              )
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                setStudentListPage((p) =>
+                  Math.min(studentTotalPages, p + 1)
+                )
+              }
+              disabled={studentSafePage >= studentTotalPages}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Next
+            </button>
+          </nav>
+        ) : null}
       </div>
 
       {/* ─── Outstanding fees ─── */}

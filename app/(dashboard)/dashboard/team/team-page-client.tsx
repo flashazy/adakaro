@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { InviteAdminModal } from "./invite-modal";
 import { RemoveAdminButton } from "./remove-admin-button";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  TEAM_MEMBERS_ROWS_STORAGE_KEY,
+  parseStudentListRowsPerPage,
+  STUDENT_LIST_ROW_OPTIONS,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
 
 export interface TeamMemberRow {
   membershipId: string;
@@ -50,6 +57,51 @@ export function TeamPageClient({
   showUpgradeLink = false,
 }: TeamPageClientProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
+
+  useEffect(() => {
+    const stored = parseStudentListRowsPerPage(
+      localStorage.getItem(TEAM_MEMBERS_ROWS_STORAGE_KEY)
+    );
+    if (stored != null) setRowsPerPage(stored);
+  }, []);
+
+  const filteredMembers = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter(
+      (m) =>
+        m.fullName.toLowerCase().includes(q) ||
+        (m.email?.toLowerCase().includes(q) ?? false)
+    );
+  }, [members, memberSearch]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [memberSearch]);
+
+  const totalFiltered = filteredMembers.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * rowsPerPage;
+  const pageSlice = filteredMembers.slice(start, start + rowsPerPage);
+
+  const paginationItems = useMemo(
+    () => getCompactPaginationItems(safePage, totalPages),
+    [safePage, totalPages]
+  );
+
+  const showingFrom =
+    totalFiltered === 0 ? 0 : Math.min(start + 1, totalFiltered);
+  const showingTo =
+    totalFiltered === 0 ? 0 : Math.min(start + rowsPerPage, totalFiltered);
 
   const atAdminCap =
     maxAdmins != null && usedSlots >= maxAdmins;
@@ -103,6 +155,64 @@ export function TeamPageClient({
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
+          <label htmlFor="team-members-search" className="sr-only">
+            Search by name or email
+          </label>
+          <input
+            id="team-members-search"
+            type="search"
+            value={memberSearch}
+            onChange={(e) => setMemberSearch(e.target.value)}
+            placeholder="Search by name or email..."
+            className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+          />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
+          <p className="min-w-0 text-sm text-slate-600 dark:text-zinc-400">
+            {totalFiltered === 0 ? (
+              members.length === 0 ? (
+                "No team members yet."
+              ) : (
+                "No team members match your search."
+              )
+            ) : (
+              <>
+                Showing{" "}
+                <span className="font-medium text-slate-900 dark:text-white">
+                  {showingFrom}–{showingTo}
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-slate-900 dark:text-white">
+                  {totalFiltered}
+                </span>{" "}
+                team member{totalFiltered !== 1 ? "s" : ""}
+              </>
+            )}
+          </p>
+          <label className="flex shrink-0 items-center gap-2">
+            <span className="text-sm text-slate-500 dark:text-zinc-400">
+              Rows per page:
+            </span>
+            <select
+              value={rowsPerPage}
+              onChange={(e) => {
+                const n = Number(e.target.value) as StudentListRowOption;
+                setRowsPerPage(n);
+                setPage(1);
+                localStorage.setItem(TEAM_MEMBERS_ROWS_STORAGE_KEY, String(n));
+              }}
+              aria-label="Rows per page"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            >
+              {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead>
@@ -125,37 +235,98 @@ export function TeamPageClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-              {members.map((m) => (
-                <tr key={m.membershipId}>
-                  <td className="px-4 py-3 text-slate-800 dark:text-zinc-200">
-                    {m.fullName}
-                    {m.isCreator ? (
-                      <span className="ml-2 text-xs font-medium text-indigo-600 dark:text-indigo-400">
-                        (creator)
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-zinc-400">
-                    {m.email ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-zinc-400">
-                    Admin
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-zinc-400">
-                    {m.joinedAtLabel}
-                  </td>
-                  <td className="px-4 py-3">
-                    <RemoveAdminButton
-                      userId={m.userId}
-                      label={m.fullName}
-                      disabled={m.isCreator}
-                    />
+              {pageSlice.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-4 py-8 text-center text-slate-500 dark:text-zinc-400"
+                  >
+                    {members.length === 0
+                      ? "No administrators yet."
+                      : "No members match your search."}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                pageSlice.map((m) => (
+                  <tr key={m.membershipId}>
+                    <td className="px-4 py-3 text-slate-800 dark:text-zinc-200">
+                      {m.fullName}
+                      {m.isCreator ? (
+                        <span className="ml-2 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                          (creator)
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-zinc-400">
+                      {m.email ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-zinc-400">
+                      Admin
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-zinc-400">
+                      {m.joinedAtLabel}
+                    </td>
+                    <td className="px-4 py-3">
+                      <RemoveAdminButton
+                        userId={m.userId}
+                        label={m.fullName}
+                        disabled={m.isCreator}
+                      />
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && totalFiltered > 0 ? (
+          <nav
+            className="flex flex-wrap items-center justify-center gap-2 border-t border-slate-200 px-4 py-3 dark:border-zinc-800"
+            aria-label="Team members pagination"
+          >
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Previous
+            </button>
+            {paginationItems.map((item, idx) =>
+              item === "ellipsis" ? (
+                <span
+                  key={`tm-ellipsis-${idx}`}
+                  className="px-2 text-sm text-slate-400 dark:text-zinc-500"
+                  aria-hidden
+                >
+                  …
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setPage(item)}
+                  aria-current={item === safePage ? "page" : undefined}
+                  className={
+                    item === safePage
+                      ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                      : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  }
+                >
+                  {item}
+                </button>
+              )
+            )}
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Next
+            </button>
+          </nav>
+        ) : null}
       </div>
 
       {pendingInvites.length > 0 ? (

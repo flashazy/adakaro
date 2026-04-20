@@ -27,6 +27,27 @@ export const DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY =
 export const TEACHER_REPORT_CARDS_STUDENT_LIST_ROWS_STORAGE_KEY =
   "adakaro:teacherReportCards:studentList:rowsPerPage";
 
+export const DASHBOARD_FEE_TYPES_ROWS_STORAGE_KEY =
+  "adakaro:dashboardFeeTypes:rowsPerPage";
+
+export const DASHBOARD_FEE_STRUCTURES_ROWS_STORAGE_KEY =
+  "adakaro:dashboardFeeStructures:rowsPerPage";
+
+export const RECORD_PAYMENT_STUDENTS_ROWS_STORAGE_KEY =
+  "adakaro:recordPayment:students:rowsPerPage";
+
+export const APPROVED_CONNECTIONS_ROWS_STORAGE_KEY =
+  "adakaro:approvedConnections:rowsPerPage";
+
+export const PENDING_APPROVALS_ROWS_STORAGE_KEY =
+  "adakaro:pendingApprovals:rowsPerPage";
+
+export const TEAM_MEMBERS_ROWS_STORAGE_KEY =
+  "adakaro:teamMembers:rowsPerPage";
+
+export const TEACHER_ASSIGNMENTS_ROWS_STORAGE_KEY =
+  "adakaro:teacherAssignments:rowsPerPage";
+
 export function parseStudentListRowsPerPage(
   raw: string | null
 ): StudentListRowOption | null {

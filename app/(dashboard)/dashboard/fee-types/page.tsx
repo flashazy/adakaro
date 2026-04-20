@@ -4,7 +4,7 @@ import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { describeSupabaseError } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddFeeTypeForm } from "./add-fee-type-form";
-import { FeeTypeRow } from "./fee-type-row";
+import { FeeTypesList } from "./fee-types-list";
 import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
@@ -85,29 +85,7 @@ export default async function FeeTypesPage() {
         ) : null}
 
         {!fetchError && typedFeeTypes.length > 0 ? (
-          <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            {/* Desktop table header */}
-            <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_80px_auto] sm:gap-4 dark:border-zinc-800">
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Name
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Description
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Type
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Actions
-              </p>
-            </div>
-
-            <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-              {typedFeeTypes.map((ft) => (
-                <FeeTypeRow key={ft.id} feeType={ft} />
-              ))}
-            </div>
-          </div>
+          <FeeTypesList feeTypes={typedFeeTypes} />
         ) : !fetchError ? (
           <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
             <p className="text-sm text-slate-500 dark:text-zinc-400">
