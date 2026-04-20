@@ -9,6 +9,7 @@ import {
   getSchoolPlanRow,
   resolveSchoolPlanIdForFeatures,
 } from "@/lib/plan-limits";
+import { filterLeafClassOptions } from "@/lib/class-options";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddStudentForm } from "./add-student-form";
 import StudentImportModal from "./components/student-import-modal";
@@ -44,7 +45,7 @@ export default async function StudentsPage() {
 
   const { data: classes, error: classesError } = await supabase
     .from("classes")
-    .select("id, name")
+    .select("id, name, parent_class_id")
     .eq("school_id", schoolId)
     .order("name");
 
@@ -77,7 +78,11 @@ export default async function StudentsPage() {
     console.error("[students] query error:", listError);
   }
 
-  const typedClasses = (classes ?? []) as { id: string; name: string }[];
+  const typedClasses = (classes ?? []) as {
+    id: string;
+    name: string;
+    parent_class_id: string | null;
+  }[];
   const subjectCountByStudent = new Map<string, Set<string>>();
   for (const row of enrollmentRowsForCounts) {
     const r = row as { student_id: string; subject_id: string };
@@ -106,7 +111,13 @@ export default async function StudentsPage() {
         subjectCountByStudent.get(row.id)?.size ?? 0,
     };
   });
-  const classOptions = typedClasses.map((c) => ({ id: c.id, name: c.name }));
+  // Parent classes are umbrellas for their streams — students enrol into a
+  // specific stream, so filter them out of the picker. A top-level class with
+  // no children is NOT a parent and stays eligible.
+  const classOptions = filterLeafClassOptions(typedClasses).map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
 
   const planRow = await getSchoolPlanRow(supabase, schoolId);
   const planId = await resolveSchoolPlanIdForFeatures(

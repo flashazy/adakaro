@@ -21,6 +21,7 @@ import {
   normalizeSchoolLevel,
   type SchoolLevel,
 } from "@/lib/school-level";
+import { resolveClassCluster } from "@/lib/class-cluster";
 import type { ReportCardPreviewData } from "../report-cards/report-card-preview-types";
 import type {
   ReportCardCommentRow,
@@ -62,6 +63,26 @@ function parseNumeric(v: unknown): number | null {
   if (v == null || String(v).trim() === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Ascending sort by `admission_number`. Missing values sink to the bottom so
+ * a stray card without an admission number never steals the #1 slot.
+ * Numeric-only strings compare numerically so "A002" precedes "A010".
+ */
+function compareAdmissionNumbers(
+  a: string | null | undefined,
+  b: string | null | undefined
+): number {
+  const ax = (a ?? "").trim();
+  const bx = (b ?? "").trim();
+  if (!ax && !bx) return 0;
+  if (!ax) return 1;
+  if (!bx) return -1;
+  const an = Number(ax);
+  const bn = Number(bx);
+  if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+  return ax.localeCompare(bx, undefined, { numeric: true, sensitivity: "base" });
 }
 
 function emptyExamStatusMap(): Record<
@@ -141,12 +162,12 @@ async function loadCoordinatorClassesForUser(
 
 async function resolveSubjectsForClass(
   admin: Db,
-  classId: string
+  classIds: string[]
 ): Promise<CoordinatorSubjectOverview[]> {
   const { data: scRows } = await admin
     .from("subject_classes")
     .select("subject_id, subjects ( id, name )")
-    .eq("class_id", classId);
+    .in("class_id", classIds);
 
   const seen = new Map<string, { subjectId: string | null; name: string }>();
   for (const r of (scRows ?? []) as {
@@ -167,7 +188,7 @@ async function resolveSubjectsForClass(
 
 async function attachExamStatuses(
   admin: Db,
-  classId: string,
+  classIds: string[],
   academicYear: string,
   subjects: CoordinatorSubjectOverview[],
   rosterSize: number
@@ -177,7 +198,7 @@ async function attachExamStatuses(
   const { data: gbRowsRaw } = await admin
     .from("teacher_gradebook_assignments")
     .select("id, title, exam_type, subject, academic_year")
-    .eq("class_id", classId);
+    .in("class_id", classIds);
 
   const gbRows = ((gbRowsRaw ?? []) as {
     id: string;
@@ -419,7 +440,7 @@ interface GradebookExamPair {
 async function loadGradebookScoresForClass(
   admin: Db,
   params: {
-    classId: string;
+    classIds: string[];
     academicYear: string;
     term: "Term 1" | "Term 2";
     studentIds: string[];
@@ -439,7 +460,7 @@ async function loadGradebookScoresForClass(
   const { data: gbRowsRaw } = await admin
     .from("teacher_gradebook_assignments")
     .select("id, title, exam_type, subject, max_score, academic_year")
-    .eq("class_id", params.classId);
+    .in("class_id", params.classIds);
 
   const gbRows = ((gbRowsRaw ?? []) as {
     id: string;
@@ -592,7 +613,10 @@ function mergeGradebookScoresIntoComments(
 async function loadClassReportCards(
   admin: Db,
   params: {
+    /** Primary class id (the coordinator's assigned class — often the parent). */
     classId: string;
+    /** Cluster class ids: parent + every child stream, or just [classId]. */
+    classIds: string[];
     className: string;
     schoolName: string;
     schoolLogoUrl: string | null;
@@ -606,14 +630,15 @@ async function loadClassReportCards(
   const { data: cards } = await admin
     .from("report_cards")
     .select(
-      "id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email )"
+      "id, class_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number )"
     )
-    .eq("class_id", params.classId)
+    .in("class_id", params.classIds)
     .eq("term", params.term)
     .eq("academic_year", params.academicYear);
 
   const cardRows = (cards ?? []) as {
     id: string;
+    class_id: string;
     status: ReportCardStatus;
     student_id: string;
     term: string;
@@ -621,7 +646,11 @@ async function loadClassReportCards(
     approved_at: string | null;
     updated_at: string | null;
     teacher_id: string | null;
-    students: { full_name: string; parent_email: string | null } | null;
+    students: {
+      full_name: string;
+      parent_email: string | null;
+      admission_number: string | null;
+    } | null;
   }[];
 
   if (cardRows.length === 0) return [];
@@ -643,7 +672,7 @@ async function loadClassReportCards(
   // restricted by `teacher_id`, so `admin` returns every subject teacher's
   // scores — this matches what the teacher sees auto-filled in their editor.
   const gradebookByStudent = await loadGradebookScoresForClass(admin, {
-    classId: params.classId,
+    classIds: params.classIds,
     academicYear: params.academicYear,
     term: params.term,
     studentIds,
@@ -660,7 +689,7 @@ async function loadClassReportCards(
   const { data: attRowsRaw } = await admin
     .from("teacher_attendance")
     .select("student_id, status, attendance_date, subject_id")
-    .eq("class_id", params.classId)
+    .in("class_id", params.classIds)
     .in("student_id", studentIds)
     .gte("attendance_date", start)
     .lte("attendance_date", end);
@@ -704,12 +733,15 @@ async function loadClassReportCards(
 
   // Coordinator teacher IDs for this class — used to swap "Class teacher" for
   // "Class Coordinator" on cards whose owning teacher coordinates the class.
+  // For streamed classes we include coordinators of every class in the cluster
+  // so the label is consistent whether the card's teacher is on the parent
+  // or any child stream.
   const coordinatorTeacherIds = new Set<string>();
   {
     const { data: coordRows } = await admin
       .from("teacher_coordinators")
       .select("teacher_id")
-      .eq("class_id", params.classId);
+      .in("class_id", params.classIds);
     for (const r of (coordRows ?? []) as { teacher_id: string }[]) {
       if (r.teacher_id) coordinatorTeacherIds.add(r.teacher_id);
     }
@@ -760,9 +792,11 @@ async function loadClassReportCards(
   const subjectsByStudent = new Map<string, string[]>();
   await Promise.all(
     cardRows.map(async (c) => {
+      // Use the card's own class_id so enrolment rows line up with the
+      // student's actual stream — not the coordinator's parent class.
       const enrolled = await getStudentEnrolledSubjects(admin, {
         studentId: c.student_id,
-        classId: params.classId,
+        classId: c.class_id,
         academicYear: academicYearInt,
         term: termParsed,
         teacherSubjectLabels: allSubjects,
@@ -774,9 +808,21 @@ async function loadClassReportCards(
     })
   );
 
-  const cardsSorted = cardRows.sort((a, b) =>
-    (a.students?.full_name ?? "").localeCompare(b.students?.full_name ?? "")
-  );
+  // Cross-stream coordinators (parent class) rank by admission_number so one
+  // overall ordering spans every stream. Single-stream coordinators keep the
+  // existing alphabetical-by-name ordering so their view is unchanged.
+  const sortByAdmission = params.classIds.length > 1;
+  const cardsSorted = cardRows.sort((a, b) => {
+    if (sortByAdmission) {
+      return compareAdmissionNumbers(
+        a.students?.admission_number ?? null,
+        b.students?.admission_number ?? null
+      );
+    }
+    return (a.students?.full_name ?? "").localeCompare(
+      b.students?.full_name ?? ""
+    );
+  });
 
   const items: CoordinatorReportCardItem[] = cardsSorted.map((c) => {
     const studentSubjects = subjectsByStudent.get(c.student_id) ?? allSubjects;
@@ -938,16 +984,26 @@ export async function loadCoordinatorOverview(params: {
     const school = schoolById.get(c.school_id);
     const schoolLevel = normalizeSchoolLevel(school?.school_level);
 
+    // When the coordinator is assigned to a parent class, expand queries to
+    // the whole cluster (parent + every child stream). Coordinators promoted
+    // on a single stream only see that stream — they must be promoted on the
+    // parent class to get the aggregated view.
+    const cluster = await resolveClassCluster(admin, classId);
+    const clusterIds =
+      cluster.isParent && cluster.childClassIds.length > 0
+        ? cluster.classIds
+        : [classId];
+
     const { count: studentCount } = await admin
       .from("students")
       .select("id", { count: "exact", head: true })
-      .eq("class_id", classId)
+      .in("class_id", clusterIds)
       .eq("status", "active");
 
-    const subjects = await resolveSubjectsForClass(admin, classId);
+    const subjects = await resolveSubjectsForClass(admin, clusterIds);
     await attachExamStatuses(
       admin,
-      classId,
+      clusterIds,
       academicYear,
       subjects,
       studentCount ?? 0
@@ -955,6 +1011,7 @@ export async function loadCoordinatorOverview(params: {
 
     const reportCards = await loadClassReportCards(admin, {
       classId,
+      classIds: clusterIds,
       className: c.name,
       schoolName: school?.name ?? "School",
       schoolLogoUrl: school?.logo_url ?? null,

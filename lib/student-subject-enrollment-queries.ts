@@ -11,10 +11,31 @@ import {
   currentAcademicYear,
   getCurrentAcademicYearAndTerm,
 } from "@/lib/student-subject-enrollment";
+import { resolveClassCluster } from "@/lib/class-cluster";
 
 export type EnrollmentDb = SupabaseClient<Database>;
 
 export { getCurrentAcademicYearAndTerm };
+
+/**
+ * In-memory ascending sort by `admission_number`. Missing / blank numbers are
+ * pushed to the end so they don't hijack the top of the list. Numeric-looking
+ * numbers compare numerically so "A002" < "A010".
+ */
+function compareAdmissionNumbers(
+  a: string | null | undefined,
+  b: string | null | undefined
+): number {
+  const ax = (a ?? "").trim();
+  const bx = (b ?? "").trim();
+  if (!ax && !bx) return 0;
+  if (!ax) return 1;
+  if (!bx) return -1;
+  const an = Number(ax);
+  const bn = Number(bx);
+  if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+  return ax.localeCompare(bx, undefined, { numeric: true, sensitivity: "base" });
+}
 
 /** Map report-card academic year string (e.g. "2025/2026") to enrolment integer year. */
 export function reportAcademicYearToEnrollmentYear(reportYear: string): number {
@@ -65,11 +86,20 @@ export async function getStudentsForSubject(
     enrollmentDateOnOrBefore,
   } = params;
 
+  // Multi-stream: only expand the roster when `classId` is itself a parent
+  // class (e.g. FORM ONE) with child streams. A stream-specific exam (e.g.
+  // FORM 1A) must keep its roster scoped to that one class so teachers don't
+  // accidentally enter scores for the whole cohort.
+  const cluster = await resolveClassCluster(client, classId);
+  const clusterHasStreams =
+    cluster.isParent && cluster.childClassIds.length > 0;
+  const effectiveClassIds = clusterHasStreams ? cluster.classIds : [classId];
+
   let q = client
     .from("students")
-    .select("id, full_name, gender")
-    .eq("class_id", classId)
-    .eq("status", "active");
+    .select("id, full_name, gender, admission_number, class_id")
+    .eq("status", "active")
+    .in("class_id", effectiveClassIds);
   if (enrollmentDateOnOrBefore) {
     q = q.lte("enrollment_date", enrollmentDateOnOrBefore);
   }
@@ -97,9 +127,24 @@ export async function getStudentsForSubject(
     id: string;
     full_name: string;
     gender: string | null;
+    admission_number: string | null;
   }[];
 
+  // Cross-stream mode: sort strictly by admission_number so a parent-class
+  // exam shows every student across streams in a single numeric order (per
+  // the Phase 3 spec). Single-class mode keeps the existing gender/name sort
+  // to avoid changing behaviour for schools that never adopt streams.
   if (!subjectId) {
+    if (clusterHasStreams) {
+      const ordered = [...list].sort((a, b) =>
+        compareAdmissionNumbers(a.admission_number, b.admission_number)
+      );
+      return ordered.map(({ id, full_name, gender }) => ({
+        id,
+        full_name,
+        gender,
+      }));
+    }
     return sortStudentsByGenderThenName(list).map(({ id, full_name, gender }) => ({
       id,
       full_name,
@@ -110,7 +155,7 @@ export async function getStudentsForSubject(
   const { data: enrollRows, error: enrollError } = await client
     .from("student_subject_enrollment")
     .select("student_id")
-    .eq("class_id", classId)
+    .in("class_id", effectiveClassIds)
     .eq("academic_year", academicYear)
     .eq("term", term)
     .eq("subject_id", subjectId);
@@ -147,8 +192,20 @@ export async function getStudentsForSubject(
       classStudentsBeforeFilter: before,
       enrolledForSubjectRowCount: inSubject.size,
       rosterAfterIntersection: list.length,
+      clusterClassCount: effectiveClassIds.length,
     })
   );
+
+  if (clusterHasStreams) {
+    const ordered = [...list].sort((a, b) =>
+      compareAdmissionNumbers(a.admission_number, b.admission_number)
+    );
+    return ordered.map(({ id, full_name, gender }) => ({
+      id,
+      full_name,
+      gender,
+    }));
+  }
 
   return sortStudentsByGenderThenName(list).map(({ id, full_name, gender }) => ({
     id,

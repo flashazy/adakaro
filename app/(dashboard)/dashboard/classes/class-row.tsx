@@ -6,9 +6,20 @@ import type { Class } from "@/types/supabase";
 
 interface ClassRowProps {
   cls: Class;
+  /** Other top-level classes available as a parent. Excludes `cls` itself. */
+  parentOptions?: { id: string; name: string }[];
+  /** Indent + style this row as a child stream under a parent class. */
+  isStream?: boolean;
+  /** Number of children attached to this class (for the badge). */
+  streamCount?: number;
 }
 
-export function ClassRow({ cls }: ClassRowProps) {
+export function ClassRow({
+  cls,
+  parentOptions = [],
+  isStream = false,
+  streamCount = 0,
+}: ClassRowProps) {
   const [editing, setEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +63,23 @@ export function ClassRow({ cls }: ClassRowProps) {
             className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             placeholder="Description"
           />
+          {parentOptions.length > 0 && (
+            <select
+              name="parent_class_id"
+              defaultValue={cls.parent_class_id ?? ""}
+              className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            >
+              <option value="">— Top-level class —</option>
+              {parentOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {parentOptions.length === 0 && (
+            <input type="hidden" name="parent_class_id" value="" />
+          )}
           <div className="flex gap-2">
             <button
               type="submit"
@@ -82,12 +110,33 @@ export function ClassRow({ cls }: ClassRowProps) {
   }
 
   return (
-    <div className="relative px-6 py-4 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:items-center sm:gap-4">
-      <p className="text-sm font-medium text-slate-900 dark:text-white">
-        {cls.name}
-      </p>
+    <div
+      className={`relative px-6 py-4 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:items-center sm:gap-4 ${
+        isStream
+          ? "border-l-2 border-indigo-200 bg-slate-50/60 pl-10 dark:border-indigo-500/40 dark:bg-zinc-800/40"
+          : ""
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {isStream && (
+          <span
+            aria-hidden
+            className="text-xs font-medium text-indigo-500 dark:text-indigo-300"
+          >
+            ↳
+          </span>
+        )}
+        <p className="text-sm font-medium text-slate-900 dark:text-white">
+          {cls.name}
+        </p>
+      </div>
       <p className="mt-1 text-sm text-slate-500 sm:mt-0 dark:text-zinc-400">
-        {cls.description || "—"}
+        {streamCount > 0 && !isStream
+          ? cls.description?.trim() ||
+            `(${streamCount} stream${streamCount === 1 ? "" : "s"})`
+          : cls.description?.trim()
+            ? cls.description
+            : "—"}
       </p>
 
       <div className="mt-3 flex gap-2 sm:mt-0">

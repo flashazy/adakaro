@@ -3,6 +3,7 @@ import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
+import { filterLeafClassOptions } from "@/lib/class-options";
 import { AssignmentsPageClient, type AssignmentRow } from "./assignments-client";
 
 export const dynamic = "force-dynamic";
@@ -44,15 +45,27 @@ export default async function AssignmentsPage() {
 
   const { data: classRows } = await supabase
     .from("classes")
-    .select("id, name")
+    .select("id, name, parent_class_id")
     .eq("school_id", schoolId)
     .order("name", { ascending: true });
 
-  const classOptions =
-    (classRows ?? []).map((c) => ({
-      id: (c as { id: string }).id,
-      name: (c as { name: string }).name,
-    })) ?? [];
+  const classRowsTyped = (classRows ?? []) as {
+    id: string;
+    name: string;
+    parent_class_id: string | null;
+  }[];
+
+  // Teacher subject assignments must target a concrete stream — parent
+  // classes are umbrellas and handled cluster-wide via class_cluster_ids.
+  const classOptions = filterLeafClassOptions(classRowsTyped).map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
+  // Keep a name-lookup map that includes any parent classes so legacy rows
+  // still render with their original class name.
+  const allClassNameById = new Map(
+    classRowsTyped.map((c) => [c.id, c.name] as const)
+  );
 
   const admin = createAdminClient();
   const { data: subjectRows } = await admin
@@ -147,7 +160,7 @@ export default async function AssignmentsPage() {
     }
   }
 
-  const classNameById = new Map(classOptions.map((c) => [c.id, c.name]));
+  const classNameById = allClassNameById;
 
   const assignments: AssignmentRow[] = taRows.map((row) => {
     const prof = profilesById.get(row.teacher_id);

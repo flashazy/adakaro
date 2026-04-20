@@ -4,7 +4,7 @@ import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { describeSupabaseError } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddClassForm } from "./add-class-form";
-import { ClassRow } from "./class-row";
+import { ClassesList } from "./classes-list";
 import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
@@ -40,10 +40,48 @@ export default async function ClassesPage() {
     id: string;
     name: string;
     description: string | null;
+    parent_class_id: string | null;
     school_id: string;
     created_at: string;
     updated_at: string;
   }[];
+
+  // Group child streams under their parent class so the list reads as a tree.
+  // Top-level classes (no parent) come first in alphabetical order; each
+  // child stream follows its parent immediately. Orphans (parent missing
+  // from the visible set) fall back to top-level so they remain editable.
+  const byId = new Map(typedClasses.map((c) => [c.id, c] as const));
+  const childrenByParent = new Map<string, typeof typedClasses>();
+  const topLevel: typeof typedClasses = [];
+  for (const c of typedClasses) {
+    if (c.parent_class_id && byId.has(c.parent_class_id)) {
+      const list = childrenByParent.get(c.parent_class_id) ?? [];
+      list.push(c);
+      childrenByParent.set(c.parent_class_id, list);
+    } else {
+      topLevel.push(c);
+    }
+  }
+  topLevel.sort((a, b) => a.name.localeCompare(b.name));
+  for (const list of childrenByParent.values()) {
+    list.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  const orderedClasses: { cls: (typeof typedClasses)[number]; isStream: boolean; streamCount: number }[] = [];
+  for (const parent of topLevel) {
+    const children = childrenByParent.get(parent.id) ?? [];
+    orderedClasses.push({
+      cls: parent,
+      isStream: false,
+      streamCount: children.length,
+    });
+    for (const child of children) {
+      orderedClasses.push({ cls: child, isStream: true, streamCount: 0 });
+    }
+  }
+
+  // Only top-level classes can act as parents — streams cannot nest further
+  // (enforced by trigger). Excluding the row's own id is handled per-row.
+  const parentOptions = topLevel.map((c) => ({ id: c.id, name: c.name }));
 
   return (
     <>
@@ -85,29 +123,10 @@ export default async function ClassesPage() {
             </p>
           </QueryErrorBanner>
         ) : null}
-        <AddClassForm />
+        <AddClassForm parentOptions={parentOptions} />
 
         {!fetchError && typedClasses.length > 0 ? (
-          <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            {/* Desktop table header */}
-            <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:gap-4 dark:border-zinc-800">
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Name
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Description
-              </p>
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
-                Actions
-              </p>
-            </div>
-
-            <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-              {typedClasses.map((cls) => (
-                <ClassRow key={cls.id} cls={cls} />
-              ))}
-            </div>
-          </div>
+          <ClassesList items={orderedClasses} parentOptions={parentOptions} />
         ) : !fetchError ? (
           <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
             <p className="text-sm text-slate-500 dark:text-zinc-400">

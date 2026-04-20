@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { formatShortLocaleDate } from "@/lib/format-date";
+import { filterLeafClassOptions } from "@/lib/class-options";
 import {
   fetchSchoolTeacherMembersForTeachersPage,
   fetchTeacherCoordinatorClassesForSchool,
@@ -84,15 +85,27 @@ export default async function TeachersPage() {
 
   const { data: classRows } = await supabase
     .from("classes")
-    .select("id, name")
+    .select("id, name, parent_class_id")
     .eq("school_id", schoolId)
     .order("name", { ascending: true });
 
-  const classOptions =
-    (classRows ?? []).map((c) => ({
-      id: (c as { id: string }).id,
-      name: (c as { name: string }).name,
-    })) ?? [];
+  const classRowsTyped = (classRows ?? []) as {
+    id: string;
+    name: string;
+    parent_class_id: string | null;
+  }[];
+
+  // Coordinators (form masters) may supervise a parent class, so they get the
+  // full list. Teacher subject assignments bind to a concrete stream, so the
+  // picker there is filtered to non-parent classes only.
+  const coordinatorClassOptions = classRowsTyped.map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
+  const classOptions = filterLeafClassOptions(classRowsTyped).map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
 
   const admin = createAdminClient();
   const { data: subjectRows } = await admin
@@ -170,7 +183,11 @@ export default async function TeachersPage() {
       subjects: { name: string } | null;
     }[];
 
-  const classNameById = new Map(classOptions.map((c) => [c.id, c.name]));
+  // Use the full class list (including any parent classes) for name lookups —
+  // legacy teacher_assignments rows may still reference a parent class id.
+  const classNameById = new Map(
+    coordinatorClassOptions.map((c) => [c.id, c.name])
+  );
 
   const assignments: AssignmentRow[] = taRows.map((row) => {
     const prof = profilesById.get(row.teacher_id);
@@ -205,6 +222,7 @@ export default async function TeachersPage() {
           teachers={teachers}
           assignments={assignments}
           classOptions={classOptions}
+          coordinatorClassOptions={coordinatorClassOptions}
           subjectOptionsByClassId={subjectOptionsByClassIdResolved}
         />
       </div>

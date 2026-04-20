@@ -31,6 +31,8 @@ export async function addClass(
 ): Promise<ClassActionState> {
   const name = toUppercase(String(formData.get("name") ?? ""));
   const description = (formData.get("description") as string)?.trim() || null;
+  const parentClassIdRaw = String(formData.get("parent_class_id") ?? "").trim();
+  const parentClassId = parentClassIdRaw.length > 0 ? parentClassIdRaw : null;
 
   if (!name) {
     return { error: "Class name is required." };
@@ -43,6 +45,7 @@ export async function addClass(
       school_id: schoolId,
       name,
       description,
+      parent_class_id: parentClassId,
     } as never);
 
     if (error) {
@@ -57,11 +60,15 @@ export async function addClass(
     void logAdminActionFromServerAction(
       userId,
       "create_class",
-      { class_name: name },
+      { class_name: name, parent_class_id: parentClassId },
       schoolId
     );
 
-    return { success: `Class "${name}" created.` };
+    return {
+      success: parentClassId
+        ? `Stream "${name}" created.`
+        : `Class "${name}" created.`,
+    };
   } catch (e) {
     return { error: (e as Error).message };
   }
@@ -90,9 +97,12 @@ export interface BulkAddClassesResult {
 export async function bulkAddClasses(input: {
   names: string[];
   description?: string | null;
+  /** When set, every newly-created class is inserted as a child stream of this class. */
+  parentClassId?: string | null;
 }): Promise<BulkAddClassesResult> {
   // Normalize the description once so every row gets the same value (or null).
   const description = (input.description ?? "").trim() || null;
+  const parentClassId = (input.parentClassId ?? "").trim() || null;
 
   // Trim, uppercase, drop empties, and collapse duplicates while preserving
   // the order the admin typed them in (nicer for the success message).
@@ -158,6 +168,7 @@ export async function bulkAddClasses(input: {
         school_id: schoolId,
         name,
         description,
+        parent_class_id: parentClassId,
       })) as never
     );
 
@@ -179,6 +190,7 @@ export async function bulkAddClasses(input: {
       {
         inserted: toInsert,
         skipped_existing: skippedExisting,
+        parent_class_id: parentClassId,
       },
       schoolId
     );
@@ -206,9 +218,15 @@ export async function updateClass(
 ): Promise<ClassActionState> {
   const name = toUppercase(String(formData.get("name") ?? ""));
   const description = (formData.get("description") as string)?.trim() || null;
+  const parentClassIdRaw = String(formData.get("parent_class_id") ?? "").trim();
+  const parentClassId = parentClassIdRaw.length > 0 ? parentClassIdRaw : null;
 
   if (!name) {
     return { error: "Class name is required." };
+  }
+
+  if (parentClassId === classId) {
+    return { error: "A class cannot be its own parent." };
   }
 
   try {
@@ -216,7 +234,11 @@ export async function updateClass(
 
     const { error } = await supabase
       .from("classes")
-      .update({ name, description } as never)
+      .update({
+        name,
+        description,
+        parent_class_id: parentClassId,
+      } as never)
       .eq("id", classId);
 
     if (error) {

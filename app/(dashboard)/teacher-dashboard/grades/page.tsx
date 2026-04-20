@@ -47,18 +47,44 @@ async function loadTeacherClassOptionsWithAdmin(
 
   const classIds = [...new Set(rows.map((r) => r.class_id))];
   const classNameById = new Map<string, string>();
+  const parentByChild = new Map<string, string | null>();
   if (classIds.length > 0) {
     const { data: classRows } = await admin
       .from("classes")
-      .select("id, name")
+      .select("id, name, parent_class_id")
       .in("id", classIds);
     for (const c of classRows ?? []) {
-      const row = c as { id: string; name: string };
+      const row = c as {
+        id: string;
+        name: string;
+        parent_class_id: string | null;
+      };
       classNameById.set(row.id, row.name);
+      parentByChild.set(row.id, row.parent_class_id ?? null);
     }
   }
 
-  return rows.map((a) => ({
+  // Resolve parent class names so we can add cross-stream options for every
+  // child the teacher is assigned to. A single teacher assigned to FORM 1A
+  // and FORM 1B will see FORM 1A, FORM 1B, and FORM ONE in their dropdown.
+  const parentIds = [
+    ...new Set(
+      [...parentByChild.values()].filter((v): v is string => typeof v === "string")
+    ),
+  ];
+  const parentNameById = new Map<string, string>();
+  if (parentIds.length > 0) {
+    const { data: parentRows } = await admin
+      .from("classes")
+      .select("id, name")
+      .in("id", parentIds);
+    for (const p of parentRows ?? []) {
+      const row = p as { id: string; name: string };
+      parentNameById.set(row.id, row.name);
+    }
+  }
+
+  const streamOptions: TeacherClassOption[] = rows.map((a) => ({
     assignmentId: a.id,
     classId: a.class_id,
     className: classNameById.get(a.class_id) ?? "Class",
@@ -69,6 +95,32 @@ async function loadTeacherClassOptionsWithAdmin(
     academicYear: a.academic_year?.trim() || "",
     subjectId: a.subject_id,
   }));
+
+  // Synthesize a "parent class" option for each (parent, subject) pair so the
+  // teacher can create a FORM ONE exam that spans every stream. We key on
+  // (parent_id + subject display) so each subject the teacher teaches on any
+  // child stream shows up exactly once under the parent.
+  const parentOptions: TeacherClassOption[] = [];
+  const seenParentKey = new Set<string>();
+  for (const opt of streamOptions) {
+    const parentId = parentByChild.get(opt.classId) ?? null;
+    if (!parentId) continue;
+    const parentName = parentNameById.get(parentId);
+    if (!parentName) continue;
+    const key = `${parentId}\0${opt.subject.toLowerCase()}\0${opt.academicYear}`;
+    if (seenParentKey.has(key)) continue;
+    seenParentKey.add(key);
+    parentOptions.push({
+      assignmentId: opt.assignmentId,
+      classId: parentId,
+      className: parentName,
+      subject: opt.subject,
+      academicYear: opt.academicYear,
+      subjectId: opt.subjectId,
+    });
+  }
+
+  return [...streamOptions, ...parentOptions];
 }
 
 export const metadata = {

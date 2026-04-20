@@ -81,7 +81,14 @@ export interface AssignmentRow {
 interface TeachersPageClientProps {
   teachers: TeacherRow[];
   assignments: AssignmentRow[];
+  /** Leaf (stream) classes only — used for teacher subject assignments. */
   classOptions: { id: string; name: string }[];
+  /**
+   * Full class list including parent classes. Coordinators (form masters)
+   * may be assigned to a parent class, and legacy assignments may still
+   * reference a parent class id we need to render.
+   */
+  coordinatorClassOptions: { id: string; name: string }[];
   subjectOptionsByClassId: Record<
     string,
     { id: string; name: string; code: string | null }[]
@@ -128,6 +135,7 @@ export function TeachersPageClient({
   teachers,
   assignments,
   classOptions,
+  coordinatorClassOptions,
   subjectOptionsByClassId,
 }: TeachersPageClientProps) {
   const [modal, setModal] = useState<AssignModalState | null>(null);
@@ -1008,8 +1016,9 @@ export function TeachersPageClient({
                               <span className="inline-flex flex-wrap gap-1 align-middle">
                                 {t.coordinatorClassIds.map((cid) => {
                                   const name =
-                                    classOptions.find((c) => c.id === cid)
-                                      ?.name ?? "Class";
+                                    coordinatorClassOptions.find(
+                                      (c) => c.id === cid
+                                    )?.name ?? "Class";
                                   return (
                                     <span
                                       key={cid}
@@ -1150,7 +1159,7 @@ export function TeachersPageClient({
         <AssignCoordinatorModal
           teacherUserId={coordinatorModal.userId}
           teacherName={coordinatorModal.name}
-          classOptions={classOptions}
+          classOptions={coordinatorClassOptions}
           initialClassIds={coordinatorModal.initial}
           onClose={() => setCoordinatorModal(null)}
           formAction={coordinatorAction}

@@ -19,6 +19,7 @@ import {
   getCurrentAcademicYearAndTerm,
   getStudentsForSubject,
 } from "@/lib/student-subject-enrollment-queries";
+import { resolveClassCluster } from "@/lib/class-cluster";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -45,11 +46,16 @@ async function assertTeacherForClass(
   classId: string
 ): Promise<{ ok: true; schoolId: string } | { ok: false; error: string }> {
   const admin = createAdminClient();
+
+  // Multi-stream: a teacher assigned to FORM 1A should be able to act on the
+  // parent FORM ONE class (cross-stream exams) and vice versa. We resolve
+  // the cluster and treat any assignment inside the cluster as qualifying.
+  const cluster = await resolveClassCluster(admin, classId);
   const { data: row } = await admin
     .from("teacher_assignments")
     .select("school_id")
     .eq("teacher_id", userId)
-    .eq("class_id", classId)
+    .in("class_id", cluster.classIds)
     .limit(1)
     .maybeSingle();
 
@@ -68,11 +74,12 @@ async function assertTeacherTeachesSubjectInClass(
   const trimmed = subjectLabel.trim();
   if (!trimmed) return false;
   const admin = createAdminClient();
+  const cluster = await resolveClassCluster(admin, classId);
   const { data } = await admin
     .from("teacher_assignments")
     .select("id")
     .eq("teacher_id", userId)
-    .eq("class_id", classId)
+    .in("class_id", cluster.classIds)
     .eq("subject", trimmed)
     .limit(1)
     .maybeSingle();
@@ -85,11 +92,12 @@ async function assertTeacherTeachesSubjectIdInClass(
   subjectId: string
 ): Promise<boolean> {
   const admin = createAdminClient();
+  const cluster = await resolveClassCluster(admin, classId);
   const { data } = await admin
     .from("teacher_assignments")
     .select("id")
     .eq("teacher_id", userId)
-    .eq("class_id", classId)
+    .in("class_id", cluster.classIds)
     .eq("subject_id", subjectId)
     .limit(1)
     .maybeSingle();

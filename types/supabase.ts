@@ -357,6 +357,7 @@ export interface Database {
           school_id: string;
           name: string;
           description: string | null;
+          parent_class_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -365,12 +366,14 @@ export interface Database {
           school_id: string;
           name: string;
           description?: string | null;
+          parent_class_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           name?: string;
           description?: string | null;
+          parent_class_id?: string | null;
           updated_at?: string;
         };
       };

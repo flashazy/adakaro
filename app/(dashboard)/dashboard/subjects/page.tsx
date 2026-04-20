@@ -3,6 +3,7 @@ import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { filterLeafClassOptions } from "@/lib/class-options";
 import { fetchSubjectsForSchoolAdmin } from "./actions";
 import { SubjectsPageClient } from "./subjects-page-client";
 
@@ -37,14 +38,18 @@ export default async function SubjectsPage() {
   const admin = createAdminClient();
   const { data: classRows } = await admin
     .from("classes")
-    .select("id, name")
+    .select("id, name, parent_class_id")
     .eq("school_id", schoolId)
     .order("name", { ascending: true });
-  const classOptions =
-    (classRows ?? []).map((c) => ({
-      id: (c as { id: string }).id,
-      name: (c as { name: string }).name,
-    })) ?? [];
+  // Subjects bind to concrete streams, not umbrella parent classes, so strip
+  // parents from the picker while keeping standalone top-level classes.
+  const classOptions = filterLeafClassOptions(
+    (classRows ?? []) as {
+      id: string;
+      name: string;
+      parent_class_id: string | null;
+    }[]
+  ).map((c) => ({ id: c.id, name: c.name }));
 
   return (
     <>
