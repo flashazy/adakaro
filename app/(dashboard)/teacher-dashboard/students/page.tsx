@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTeacherClassOptions } from "../data";
+import { getTeacherTeachingClasses } from "../data";
 import {
   TeacherStudentProfilesClient,
   type TeacherProfileStudentRow,
@@ -41,7 +41,7 @@ export default async function TeacherStudentProfilesListPage() {
   ];
   const hasDepartmentRole = schoolIdsFromDept.length > 0;
 
-  const classOptions = await getTeacherClassOptions(user.id);
+  const classOptions = await getTeacherTeachingClasses(user.id);
   const classIdsFromAssignments = [
     ...new Set(classOptions.map((c) => c.classId)),
   ];

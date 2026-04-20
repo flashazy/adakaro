@@ -16,7 +16,7 @@ import {
   parseSubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
 import { getStudentsForSubject } from "@/lib/student-subject-enrollment-queries";
-import { getTeacherClassOptions } from "./data";
+import { getTeacherTeachingClasses } from "./data";
 import { TeacherDashboardLocked } from "./components/TeacherDashboardLocked";
 import { TeacherDocuments } from "./components/TeacherDocuments";
 
@@ -199,7 +199,7 @@ export default async function TeacherDashboardPage() {
     }
   }
 
-  const options = await getTeacherClassOptions(user.id);
+  const options = await getTeacherTeachingClasses(user.id);
   const assignedClassIds = [...new Set(options.map((o) => o.classId))];
 
   /** Official lesson plans (`lesson_plans`), not the legacy `teacher_lessons` calendar. */

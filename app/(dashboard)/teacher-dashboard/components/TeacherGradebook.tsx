@@ -2,7 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, FileText, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   createGradebookAssignmentAction,
@@ -55,7 +64,54 @@ export type GradebookClassOption = {
   subject: string;
   academicYear: string;
   subjectId: string | null;
+  markingScope?: "all_streams" | "single_stream";
 };
+
+const MATRIX_PAGE_SIZE_STORAGE_KEY = "teacherGradebook.matrixPageSize";
+const MATRIX_PAGE_SIZE_CHOICES = [5, 10, 15, 20, 25, 50] as const;
+
+const ENTER_SCORES_PAGE_STORAGE_KEY =
+  "teacherGradebook:enterScores:rowsPerPage";
+const ENTER_SCORES_PAGE_CHOICES = [5, 10, 15, 20, 25, 50] as const;
+
+function readStoredEnterScoresPageSize(): number {
+  if (typeof window === "undefined") return 5;
+  try {
+    const raw = localStorage.getItem(ENTER_SCORES_PAGE_STORAGE_KEY);
+    const n = raw ? parseInt(raw, 10) : NaN;
+    if (
+      ENTER_SCORES_PAGE_CHOICES.includes(
+        n as (typeof ENTER_SCORES_PAGE_CHOICES)[number]
+      )
+    ) {
+      return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 5;
+}
+
+function readStoredMatrixPageSize(): number {
+  if (typeof window === "undefined") return 5;
+  try {
+    const raw = localStorage.getItem(MATRIX_PAGE_SIZE_STORAGE_KEY);
+    const n = raw ? parseInt(raw, 10) : NaN;
+    if (MATRIX_PAGE_SIZE_CHOICES.includes(n as (typeof MATRIX_PAGE_SIZE_CHOICES)[number])) {
+      return n;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 5;
+}
+
+function classOptionLabel(o: GradebookClassOption): string {
+  if (o.markingScope === "all_streams") {
+    return `${o.className} (all streams)`;
+  }
+  return o.className;
+}
 
 type GbAssignment = {
   id: string;
@@ -237,6 +293,11 @@ export function TeacherGradebook({
   >({});
   const [classMatrixLoading, setClassMatrixLoading] = useState(false);
   const [classMatrixSaving, setClassMatrixSaving] = useState(false);
+  const [matrixPageSize, setMatrixPageSize] = useState(5);
+  const [matrixPageIndex, setMatrixPageIndex] = useState(0);
+  const [enterScoresSearch, setEnterScoresSearch] = useState("");
+  const [enterScoresPageSize, setEnterScoresPageSize] = useState(5);
+  const [enterScoresPageIndex, setEnterScoresPageIndex] = useState(0);
   const [deletingAssignmentId, setDeletingAssignmentId] = useState<string | null>(
     null
   );
@@ -377,6 +438,7 @@ export function TeacherGradebook({
       setAssignments([]);
       return;
     }
+    setAssignments([]);
     const res = await loadGradebookAssignmentsForClass(
       classId,
       subject,
@@ -401,6 +463,7 @@ export function TeacherGradebook({
       return;
     }
     setClassMatrixLoading(true);
+    setClassMatrixData(null);
     const res = await loadGradebookClassMatrix(
       classId,
       subject,
@@ -424,6 +487,124 @@ export function TeacherGradebook({
   useEffect(() => {
     void fetchClassMatrix();
   }, [fetchClassMatrix]);
+
+  useEffect(() => {
+    setMatrixPageSize(readStoredMatrixPageSize());
+    setEnterScoresPageSize(readStoredEnterScoresPageSize());
+  }, []);
+
+  useEffect(() => {
+    setMatrixPageIndex(0);
+  }, [classId, subject, gradebookTerm]);
+
+  useEffect(() => {
+    setEnterScoresPageIndex(0);
+  }, [enterScoresSearch]);
+
+  useEffect(() => {
+    setEnterScoresSearch("");
+    setEnterScoresPageIndex(0);
+  }, [assignmentId]);
+
+  const matrixStudentTotal = classMatrixData?.students.length ?? 0;
+
+  const matrixTablePaging = useMemo(() => {
+    const list = classMatrixData?.students ?? [];
+    const total = list.length;
+    if (total === 0) {
+      return {
+        rows: [] as typeof list,
+        label: "Showing 0 of 0 students",
+        canPrev: false,
+        canNext: false,
+      };
+    }
+    const maxPageIndex = Math.max(0, Math.ceil(total / matrixPageSize) - 1);
+    const eff = Math.min(matrixPageIndex, maxPageIndex);
+    const start = eff * matrixPageSize;
+    const slice = list.slice(start, start + matrixPageSize);
+    const from = start + 1;
+    const to = start + slice.length;
+    return {
+      rows: slice,
+      label: `Showing ${from}–${to} of ${total} students`,
+      canPrev: eff > 0,
+      canNext: eff < maxPageIndex,
+      effectivePageIndex: eff,
+      maxPageIndex,
+    };
+  }, [classMatrixData, matrixPageIndex, matrixPageSize]);
+
+  useEffect(() => {
+    if (matrixStudentTotal === 0) return;
+    const maxPage = Math.max(
+      0,
+      Math.ceil(matrixStudentTotal / matrixPageSize) - 1
+    );
+    setMatrixPageIndex((i) => Math.min(i, maxPage));
+  }, [matrixStudentTotal, matrixPageSize]);
+
+  const goMatrixPrev = useCallback(() => {
+    setMatrixPageIndex((i) => Math.max(0, i - 1));
+  }, []);
+
+  const goMatrixNext = useCallback(() => {
+    setMatrixPageIndex((i) => {
+      const total = classMatrixData?.students.length ?? 0;
+      if (total === 0) return 0;
+      const maxPage = Math.max(0, Math.ceil(total / matrixPageSize) - 1);
+      return Math.min(maxPage, i + 1);
+    });
+  }, [classMatrixData, matrixPageSize]);
+
+  const setMatrixPageSizePersist = useCallback((n: number) => {
+    setMatrixPageSize(n);
+    setMatrixPageIndex(0);
+    try {
+      localStorage.setItem(MATRIX_PAGE_SIZE_STORAGE_KEY, String(n));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const classSelectOptions = useMemo(() => {
+    const map = new Map<string, GradebookClassOption>();
+    for (const o of options) {
+      if (!map.has(o.classId)) map.set(o.classId, o);
+    }
+    return [...map.values()].sort((a, b) => {
+      const ra = a.markingScope === "all_streams" ? 0 : 1;
+      const rb = b.markingScope === "all_streams" ? 0 : 1;
+      if (ra !== rb) return ra - rb;
+      return a.className.localeCompare(b.className, undefined, {
+        sensitivity: "base",
+      });
+    });
+  }, [options]);
+
+  /** Same assignment set as the matrix (parent + stream scope for the filter class). */
+  const assignmentsForEnterScores = useMemo(() => {
+    if (classMatrixLoading) return [];
+    const ids = new Set(
+      (classMatrixData?.assignments ?? []).map((a) => a.id)
+    );
+    if (ids.size === 0) return [];
+    return assignments.filter((a) => ids.has(a.id));
+  }, [assignments, classMatrixData, classMatrixLoading]);
+
+  useEffect(() => {
+    if (!assignmentId || classMatrixLoading) return;
+    if (assignments.length === 0) return;
+    const allowed = new Set(assignmentsForEnterScores.map((a) => a.id));
+    if (allowed.size === 0 || !allowed.has(assignmentId)) {
+      setAssignmentId("");
+    }
+  }, [
+    assignmentId,
+    assignmentsForEnterScores,
+    classMatrixLoading,
+    assignments.length,
+  ]);
 
   useEffect(() => {
     if (!classMatrixData) {
@@ -457,13 +638,19 @@ export function TeacherGradebook({
       setMatrixLoading(false);
       return;
     }
+    if (!classId.trim()) {
+      setMatrix(null);
+      setScores({});
+      setMatrixLoading(false);
+      return;
+    }
     let cancelled = false;
     setMatrixLoading(true);
     setMatrix(null);
     setScores({});
     setError(null);
     void (async () => {
-      const res = await loadGradebookMatrix(assignmentId);
+      const res = await loadGradebookMatrix(assignmentId, classId);
       if (cancelled) return;
       setMatrixLoading(false);
       if (!res.ok) {
@@ -488,7 +675,7 @@ export function TeacherGradebook({
     return () => {
       cancelled = true;
     };
-  }, [assignmentId]);
+  }, [assignmentId, classId]);
 
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -770,6 +957,88 @@ export function TeacherGradebook({
     };
   }, [matrix, scores, schoolLevel]);
 
+  const enterScoresFilteredStudents = useMemo(() => {
+    if (!matrix) return [];
+    const q = enterScoresSearch.trim().toLowerCase();
+    if (!q) return matrix.students;
+    return matrix.students.filter((s) =>
+      s.full_name.toLowerCase().includes(q)
+    );
+  }, [matrix, enterScoresSearch]);
+
+  const enterScoresTablePaging = useMemo(() => {
+    const total = enterScoresFilteredStudents.length;
+    const size = enterScoresPageSize;
+    const totalPages = Math.max(1, Math.ceil(total / size) || 1);
+    const effIdx = Math.min(
+      enterScoresPageIndex,
+      Math.max(0, totalPages - 1)
+    );
+    const start = total === 0 ? 0 : effIdx * size + 1;
+    const end = total === 0 ? 0 : Math.min(total, (effIdx + 1) * size);
+    const rows = enterScoresFilteredStudents.slice(effIdx * size, end);
+    const label =
+      total === 0
+        ? "Showing 0 of 0 students"
+        : `Showing ${start}–${end} of ${total} students`;
+    return {
+      rows,
+      label,
+      total,
+      totalPages,
+      effIdx,
+      canPrev: effIdx > 0,
+      canNext: effIdx < totalPages - 1,
+    };
+  }, [
+    enterScoresFilteredStudents,
+    enterScoresPageIndex,
+    enterScoresPageSize,
+  ]);
+
+  useEffect(() => {
+    const n = enterScoresFilteredStudents.length;
+    if (n === 0) return;
+    const totalPages = Math.max(1, Math.ceil(n / enterScoresPageSize));
+    const maxIdx = totalPages - 1;
+    setEnterScoresPageIndex((i) => (i > maxIdx ? maxIdx : i));
+  }, [enterScoresFilteredStudents.length, enterScoresPageSize]);
+
+  const setEnterScoresPageSizePersist = useCallback((next: number) => {
+    setEnterScoresPageSize(next);
+    setEnterScoresPageIndex(0);
+    try {
+      localStorage.setItem(ENTER_SCORES_PAGE_STORAGE_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const enterScoresPageButtonIndices = useMemo(() => {
+    const total = enterScoresTablePaging.totalPages;
+    const cur = enterScoresTablePaging.effIdx;
+    const maxButtons = 7;
+    if (total <= maxButtons) {
+      return Array.from({ length: total }, (_, i) => i);
+    }
+    const half = Math.floor(maxButtons / 2);
+    let start = cur - half;
+    let end = cur + half;
+    if (start < 0) {
+      end += -start;
+      start = 0;
+    }
+    if (end > total - 1) {
+      start -= end - (total - 1);
+      end = total - 1;
+    }
+    start = Math.max(0, start);
+    end = Math.min(total - 1, end);
+    const out: number[] = [];
+    for (let i = start; i <= end; i++) out.push(i);
+    return out;
+  }, [enterScoresTablePaging.totalPages, enterScoresTablePaging.effIdx]);
+
   const handleExportPdf = async () => {
     if (!matrix) return;
     setPdfBusy(true);
@@ -944,13 +1213,11 @@ export function TeacherGradebook({
               }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
-              {[...new Map(options.map((o) => [o.classId, o])).values()].map(
-                (o) => (
-                  <option key={o.classId} value={o.classId}>
-                    {o.className}
-                  </option>
-                )
-              )}
+              {classSelectOptions.map((o) => (
+                <option key={o.classId} value={o.classId}>
+                  {classOptionLabel(o)}
+                </option>
+              ))}
             </select>
           </label>
           <label className="block text-sm">
@@ -1012,6 +1279,58 @@ export function TeacherGradebook({
           classMatrixData.assignments.length > 0 &&
           classMatrixData.students.length > 0 && (
             <form onSubmit={handleSaveClassMatrix} className="mt-4 space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-zinc-400">
+                  <span className="font-medium text-slate-700 dark:text-zinc-300">
+                    Rows per page
+                  </span>
+                  <select
+                    value={matrixPageSize}
+                    onChange={(e) =>
+                      setMatrixPageSizePersist(Number(e.target.value))
+                    }
+                    className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                    aria-label="Rows per page"
+                  >
+                    {MATRIX_PAGE_SIZE_CHOICES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-xs tabular-nums text-slate-600 dark:text-zinc-400">
+                  {matrixTablePaging.label}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={
+                      !matrixTablePaging.canPrev ||
+                      classMatrixLoading ||
+                      classMatrixSaving
+                    }
+                    onClick={goMatrixPrev}
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                    aria-label="Previous page of students"
+                  >
+                    <ChevronLeft className="h-4 w-4" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !matrixTablePaging.canNext ||
+                      classMatrixLoading ||
+                      classMatrixSaving
+                    }
+                    onClick={goMatrixNext}
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                    aria-label="Next page of students"
+                  >
+                    <ChevronRight className="h-4 w-4" aria-hidden />
+                  </button>
+                </div>
+              </div>
               <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
                 <table className="w-max min-w-full border-collapse text-left text-xs sm:text-sm">
                   <thead>
@@ -1052,7 +1371,7 @@ export function TeacherGradebook({
                     </tr>
                   </thead>
                   <tbody>
-                    {classMatrixData.students.map((s) => (
+                    {matrixTablePaging.rows.map((s) => (
                       <tr
                         key={s.id}
                         className="border-b border-slate-100 dark:border-zinc-800"
@@ -1346,7 +1665,7 @@ export function TeacherGradebook({
               className="w-full max-w-xl rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
               <option value="">Select assignment…</option>
-              {assignments.map((a) => (
+              {assignmentsForEnterScores.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.title} (max {a.max_score})
                 </option>
@@ -1470,6 +1789,46 @@ export function TeacherGradebook({
               </div>
             )}
 
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={enterScoresSearch}
+                onChange={(e) => setEnterScoresSearch(e.target.value)}
+                placeholder="Search students by name..."
+                className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                aria-label="Search students by name"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <p className="text-sm tabular-nums text-slate-600 dark:text-zinc-400">
+                {enterScoresTablePaging.label}
+              </p>
+              <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-zinc-400">
+                <span className="font-medium text-slate-700 dark:text-zinc-300">
+                  Rows per page
+                </span>
+                <select
+                  value={enterScoresPageSize}
+                  onChange={(e) =>
+                    setEnterScoresPageSizePersist(Number(e.target.value))
+                  }
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                  aria-label="Rows per page"
+                >
+                  {ENTER_SCORES_PAGE_CHOICES.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
             <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
               <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-700">
                 <thead className="bg-slate-50 dark:bg-zinc-900">
@@ -1495,8 +1854,14 @@ export function TeacherGradebook({
                         No active students in this class.
                       </td>
                     </tr>
+                  ) : enterScoresFilteredStudents.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-4 text-slate-500">
+                        No students match your search.
+                      </td>
+                    </tr>
                   ) : (
-                    matrix.students.map((s) => {
+                    enterScoresTablePaging.rows.map((s) => {
                       const raw = scores[s.id]?.score?.trim() ?? "";
                       const n = raw === "" ? null : Number(raw);
                       const p =
@@ -1648,6 +2013,64 @@ export function TeacherGradebook({
                 </tbody>
               </table>
             </div>
+            {matrix.students.length > 0 &&
+              enterScoresFilteredStudents.length > 0 && (
+                <div className="flex flex-wrap items-center justify-center gap-2 py-2 sm:justify-end">
+                  <button
+                    type="button"
+                    disabled={!enterScoresTablePaging.canPrev}
+                    onClick={() =>
+                      setEnterScoresPageIndex((i) => Math.max(0, i - 1))
+                    }
+                    className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
+                    <span>Previous</span>
+                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-1">
+                    {enterScoresPageButtonIndices.map((pageIdx) =>
+                      pageIdx === enterScoresTablePaging.effIdx ? (
+                        <span
+                          key={pageIdx}
+                          className="inline-flex h-8 min-w-[2rem] cursor-default items-center justify-center rounded-md border border-indigo-600 bg-indigo-50 px-2 text-sm font-semibold tabular-nums text-indigo-900 dark:border-indigo-500 dark:bg-indigo-950/60 dark:text-indigo-100"
+                          aria-current="page"
+                          aria-label={`Page ${pageIdx + 1}`}
+                        >
+                          {pageIdx + 1}
+                        </span>
+                      ) : (
+                        <button
+                          key={pageIdx}
+                          type="button"
+                          onClick={() => setEnterScoresPageIndex(pageIdx)}
+                          className="inline-flex h-8 min-w-[2rem] items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-sm tabular-nums text-slate-800 transition hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                          aria-label={`Page ${pageIdx + 1}`}
+                        >
+                          {pageIdx + 1}
+                        </button>
+                      )
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!enterScoresTablePaging.canNext}
+                    onClick={() =>
+                      setEnterScoresPageIndex((i) =>
+                        Math.min(
+                          enterScoresTablePaging.totalPages - 1,
+                          i + 1
+                        )
+                      )
+                    }
+                    className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                    aria-label="Next page"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                  </button>
+                </div>
+              )}
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"

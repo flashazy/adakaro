@@ -1,6 +1,8 @@
 "use server";
 
+import { fetchParentClassIdsWithChildrenForSchools } from "@/lib/teacher-leaf-classes";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getTeacherTeachingClasses } from "../data";
 import { createClient } from "@/lib/supabase/server";
 import { parseTeachingLearningProcess } from "@/lib/teaching-learning-process";
 import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
@@ -271,23 +273,18 @@ export async function getTeacherClasses() {
 
   if (!user.user) return [];
 
-  const admin = createAdminClient();
-
-  const { data, error } = await admin
-    .from("teacher_assignments")
-    .select(
-      `
-      class:classes (
-        id,
-        name
-      )
-    `
-    )
-    .eq("teacher_id", user.user.id);
-
-  if (error) return [];
-  type Row = { class: { id: string; name: string } | null };
-  return (data as Row[] | null)?.map((item) => item.class).filter(Boolean) || [];
+  const options = await getTeacherTeachingClasses(user.user.id);
+  const seen = new Set<string>();
+  const out: { id: string; name: string }[] = [];
+  for (const o of options) {
+    if (seen.has(o.classId)) continue;
+    seen.add(o.classId);
+    out.push({ id: o.classId, name: o.className });
+  }
+  out.sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
+  return out;
 }
 
 /** Subjects the teacher teaches per class (from `teacher_assignments`). */
@@ -301,18 +298,27 @@ export async function getTeacherSubjectsByClass(): Promise<
   const admin = createAdminClient();
   const { data: rows } = await (admin as Db)
     .from("teacher_assignments")
-    .select("class_id, subject_id, subjects ( id, name ), subject")
+    .select("class_id, school_id, subject_id, subjects ( id, name ), subject")
     .eq("teacher_id", user.user.id);
+
+  const taRows = (rows ?? []) as { school_id: string }[];
+  const schoolIds = [...new Set(taRows.map((r) => r.school_id).filter(Boolean))];
+  const parentIds = await fetchParentClassIdsWithChildrenForSchools(
+    admin,
+    schoolIds
+  );
 
   const map: Record<string, { id: string; name: string }[]> = {};
 
   for (const raw of rows ?? []) {
     const r = raw as {
       class_id: string;
+      school_id: string;
       subject_id: string | null;
       subjects: { id: string; name: string } | null;
       subject: string;
     };
+    if (parentIds.has(r.class_id)) continue;
     if (!r.subject_id || !r.subjects?.id) continue;
     const list = map[r.class_id] ?? [];
     if (!list.some((x) => x.id === r.subject_id)) {

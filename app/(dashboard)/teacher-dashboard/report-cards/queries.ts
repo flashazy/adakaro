@@ -1,5 +1,6 @@
 import "server-only";
 
+import { fetchParentClassIdsWithChildrenForSchools } from "@/lib/teacher-leaf-classes";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -108,7 +109,22 @@ export async function loadTeacherReportCardOptions(): Promise<
     subjects: { name: string } | null;
   }[];
 
-  const classIds = [...new Set(rows.map((r) => r.class_id))];
+  const schoolIdsForLeaf = [...new Set(rows.map((r) => r.school_id).filter(Boolean))];
+  const parentClassIds = await fetchParentClassIdsWithChildrenForSchools(
+    admin,
+    schoolIdsForLeaf
+  );
+  const leafRows = rows.filter((r) => !parentClassIds.has(r.class_id));
+
+  if (!leafRows.length) {
+    return {
+      ok: false,
+      error:
+        "No class assignments found. Ask your administrator to assign classes.",
+    };
+  }
+
+  const classIds = [...new Set(leafRows.map((r) => r.class_id))];
   const classNameById = new Map<string, string>();
   const classSchoolIdById = new Map<string, string>();
 
@@ -129,7 +145,7 @@ export async function loadTeacherReportCardOptions(): Promise<
     { name: string; schoolId: string; years: Set<string> }
   >();
 
-  for (const r of rows) {
+  for (const r of leafRows) {
     const name = classNameById.get(r.class_id) ?? "Class";
     const schoolFromClass = classSchoolIdById.get(r.class_id);
     const schoolIdForClass = schoolFromClass ?? r.school_id;
@@ -170,7 +186,9 @@ export async function loadTeacherReportCardOptions(): Promise<
   classes.sort((a, b) => a.className.localeCompare(b.className));
 
   const primarySchoolId =
-    rows[0]?.school_id ?? classSchoolIdById.get(rows[0]?.class_id ?? "") ?? "";
+    leafRows[0]?.school_id ??
+    classSchoolIdById.get(leafRows[0]?.class_id ?? "") ??
+    "";
   let schoolId = primarySchoolId;
   let schoolName = "";
   let logoUrl: string | null = null;

@@ -5,7 +5,7 @@ import { checkIsTeacher } from "@/lib/teacher-auth";
 import { ensureTeacherHasAssignmentsOrRedirect } from "@/lib/teacher-assignment-status";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { TeacherAttendanceForm } from "../components/TeacherAttendanceForm";
-import { getTeacherClassOptions } from "../data";
+import { getTeacherTeachingClasses } from "../data";
 
 export const metadata = {
   title: "Attendance — Teacher",
@@ -25,7 +25,7 @@ export default async function TeacherAttendancePage({
   if (!(await checkIsTeacher(supabase, user.id))) redirect("/dashboard");
   await ensureTeacherHasAssignmentsOrRedirect(supabase, user.id);
 
-  const options = await getTeacherClassOptions(user.id);
+  const options = await getTeacherTeachingClasses(user.id);
 
   return (
     <>
