@@ -11,6 +11,7 @@ import {
 import { letterGradeFromPercent } from "../report-cards/report-card-grades";
 import { shareReportCardWithParent } from "../report-cards/actions";
 import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
+import { resolveClassCluster } from "@/lib/class-cluster";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -238,6 +239,15 @@ export async function generateReportCardsForClassAction(
     school_id: string;
   };
 
+  // Parent form classes have no direct students; expand to the same cluster as
+  // `loadCoordinatorOverview` (parent + streams). Single-stream coordinators
+  // stay scoped to their class only.
+  const cluster = await resolveClassCluster(admin, classId);
+  const classIdsForData =
+    cluster.isParent && cluster.childClassIds.length > 0
+      ? cluster.classIds
+      : [classId];
+
   // Letter grades have to use this school's grading tier — primary schools
   // have an A–E (max 50) scale, secondary the legacy A–F (max 100). We swallow
   // the read error so a database without the `school_level` column still
@@ -256,11 +266,11 @@ export async function generateReportCardsForClassAction(
     // keep the secondary fallback
   }
 
-  // 3. Active students in class
+  // 3. Active students (all streams when coordinator class is a parent)
   const { data: studs } = await admin
     .from("students")
     .select("id, full_name")
-    .eq("class_id", classId)
+    .in("class_id", classIdsForData)
     .eq("status", "active");
 
   const studentRows = (studs ?? []) as { id: string; full_name: string }[];
@@ -276,7 +286,7 @@ export async function generateReportCardsForClassAction(
   const { data: scRows } = await admin
     .from("subject_classes")
     .select("subject_id, subjects ( id, name )")
-    .eq("class_id", classId);
+    .in("class_id", classIdsForData);
 
   const subjectsByKey = new Map<string, { name: string }>();
   for (const r of (scRows ?? []) as {
@@ -316,7 +326,7 @@ export async function generateReportCardsForClassAction(
   const { data: gbRowsRaw } = await admin
     .from("teacher_gradebook_assignments")
     .select("id, title, exam_type, subject, max_score, academic_year")
-    .eq("class_id", classId);
+    .in("class_id", classIdsForData);
 
   const gbRows = ((gbRowsRaw ?? []) as {
     id: string;

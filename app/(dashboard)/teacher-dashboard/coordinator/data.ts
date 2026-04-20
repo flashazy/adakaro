@@ -630,7 +630,7 @@ async function loadClassReportCards(
   const { data: cards } = await admin
     .from("report_cards")
     .select(
-      "id, class_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number )"
+      "id, class_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id )"
     )
     .in("class_id", params.classIds)
     .eq("term", params.term)
@@ -650,10 +650,29 @@ async function loadClassReportCards(
       full_name: string;
       parent_email: string | null;
       admission_number: string | null;
+      class_id: string;
     } | null;
   }[];
 
   if (cardRows.length === 0) return [];
+
+  const streamClassIds = [
+    ...new Set(
+      cardRows
+        .map((c) => c.students?.class_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+    ),
+  ];
+  const streamClassNameById = new Map<string, string>();
+  if (streamClassIds.length > 0) {
+    const { data: clsRows } = await admin
+      .from("classes")
+      .select("id, name")
+      .in("id", streamClassIds);
+    for (const row of (clsRows ?? []) as { id: string; name: string }[]) {
+      streamClassNameById.set(row.id, row.name.trim());
+    }
+  }
 
   const cardIds = cardRows.map((c) => c.id);
   const rawCommentsByCard = await loadClassCommentsByCard(admin, cardIds);
@@ -792,11 +811,10 @@ async function loadClassReportCards(
   const subjectsByStudent = new Map<string, string[]>();
   await Promise.all(
     cardRows.map(async (c) => {
-      // Use the card's own class_id so enrolment rows line up with the
-      // student's actual stream — not the coordinator's parent class.
+      const studentClassId = c.students?.class_id ?? c.class_id;
       const enrolled = await getStudentEnrolledSubjects(admin, {
         studentId: c.student_id,
-        classId: c.class_id,
+        classId: studentClassId,
         academicYear: academicYearInt,
         term: termParsed,
         teacherSubjectLabels: allSubjects,
@@ -878,11 +896,17 @@ async function loadClassReportCards(
       late: 0,
     };
 
+    const streamLabel =
+      params.classIds.length > 1 && c.students?.class_id
+        ? streamClassNameById.get(c.students.class_id)
+        : null;
+    const displayClassName = streamLabel ?? params.className;
+
     const preview: ReportCardPreviewData = {
       schoolName: params.schoolName,
       logoUrl: params.schoolLogoUrl,
       studentName: studentRow.fullName,
-      className: params.className,
+      className: displayClassName,
       term: params.term,
       academicYear: params.academicYear,
       teacherName:
