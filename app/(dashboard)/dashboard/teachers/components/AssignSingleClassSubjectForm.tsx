@@ -114,11 +114,7 @@ export function AssignSingleClassSubjectForm({
       >
         <div className="min-h-0 overflow-hidden">
           <div className="pt-4">
-            <p className="text-sm text-slate-600 dark:text-zinc-400">
-              Pick a teacher who has signed in and changed their password, then
-              choose class, subject, and year.
-            </p>
-            <form action={formAction} className="mt-4 space-y-3">
+            <form action={formAction} className="space-y-3">
         {flash(flashState)}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm sm:col-span-2">
@@ -296,9 +292,6 @@ export function AssignSingleClassSubjectForm({
                 </option>
               ))}
             </select>
-            <span className="mt-1 block text-xs text-slate-500">
-              Calendar year (January–December), e.g. 2025.
-            </span>
           </label>
         </div>
         <button

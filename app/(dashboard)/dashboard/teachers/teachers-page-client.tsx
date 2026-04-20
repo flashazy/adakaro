@@ -16,9 +16,10 @@ import { BulkAddTeachersModal } from "./components/BulkAddTeachersModal";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import {
   DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY,
-  parseStudentListRowsPerPage,
-  STUDENT_LIST_ROW_OPTIONS,
-  type StudentListRowOption,
+  parseTeacherAccountsRowsPerPage,
+  TEACHER_ACCOUNTS_ROW_OPTIONS,
+  TEACHER_ACCOUNTS_ROWS_STORAGE_KEY,
+  type TeacherAccountsRowOption,
 } from "@/lib/student-list-pagination";
 
 function flash(state: TeacherActionState | null) {
@@ -107,7 +108,7 @@ export function TeachersPageClient({
   const [teacherAccountsSearch, setTeacherAccountsSearch] = useState("");
   const [teacherAccountsPage, setTeacherAccountsPage] = useState(1);
   const [teacherAccountsRowsPerPage, setTeacherAccountsRowsPerPage] =
-    useState<StudentListRowOption>(5);
+    useState<TeacherAccountsRowOption>(3);
   const [addTeacherFullName, setAddTeacherFullName] = useState("");
   const [showAddTeacherPassword, setShowAddTeacherPassword] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
@@ -139,10 +140,19 @@ export function TeachersPageClient({
     );
 
   useEffect(() => {
-    const t = parseStudentListRowsPerPage(
-      localStorage.getItem(DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY)
-    );
-    if (t != null) setTeacherAccountsRowsPerPage(t);
+    try {
+      let raw = localStorage.getItem(TEACHER_ACCOUNTS_ROWS_STORAGE_KEY);
+      if (raw == null) {
+        raw = localStorage.getItem(DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY);
+      }
+      const t = parseTeacherAccountsRowsPerPage(raw);
+      if (t != null) {
+        setTeacherAccountsRowsPerPage(t);
+        localStorage.setItem(TEACHER_ACCOUNTS_ROWS_STORAGE_KEY, String(t));
+      }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
@@ -227,9 +237,8 @@ export function TeachersPageClient({
               Add teachers
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-              Create an account with the teacher&apos;s full name and a
-              temporary password. They sign in with that name and password,
-              then choose a new password. No email is sent.
+              Full name and temporary password. Teacher must change password on
+              first login.
             </p>
           </div>
           <button
@@ -543,18 +552,18 @@ export function TeachersPageClient({
                         onChange={(e) => {
                           const n = Number(
                             e.target.value
-                          ) as StudentListRowOption;
+                          ) as TeacherAccountsRowOption;
                           setTeacherAccountsRowsPerPage(n);
                           setTeacherAccountsPage(1);
                           localStorage.setItem(
-                            DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY,
+                            TEACHER_ACCOUNTS_ROWS_STORAGE_KEY,
                             String(n)
                           );
                         }}
                         aria-label="Rows per page for teacher accounts"
                         className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
                       >
-                        {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                        {TEACHER_ACCOUNTS_ROW_OPTIONS.map((n) => (
                           <option key={n} value={n}>
                             {n}
                           </option>

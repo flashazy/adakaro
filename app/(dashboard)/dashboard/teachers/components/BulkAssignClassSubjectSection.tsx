@@ -54,6 +54,7 @@ export function BulkAssignClassSubjectSection({
   onToggle,
   assignableTeachers,
   classOptions,
+  subjectOptionsByClassId,
   allSubjects,
   formAction,
   pending,
@@ -63,6 +64,8 @@ export function BulkAssignClassSubjectSection({
   onToggle: () => void;
   assignableTeachers: BulkAssignableTeacherOption[];
   classOptions: ClassOpt[];
+  /** Per class_id: subjects linked in Manage Subjects (subject_classes). */
+  subjectOptionsByClassId: Record<string, SubjectOpt[]>;
   allSubjects: SubjectOpt[];
   formAction: (formData: FormData) => void;
   pending: boolean;
@@ -93,6 +96,20 @@ export function BulkAssignClassSubjectSection({
     return copy;
   }, [allSubjects]);
 
+  /** Subjects shown in the bulk list: all school subjects if no class checked; else union linked to selected classes. */
+  const eligibleSubjects = useMemo(() => {
+    if (classIds.size === 0) return sortedSubjects;
+    const byId = new Map<string, SubjectOpt>();
+    for (const cid of classIds) {
+      for (const s of subjectOptionsByClassId[cid] ?? []) {
+        byId.set(s.id, s);
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+    );
+  }, [classIds, subjectOptionsByClassId, sortedSubjects]);
+
   const filteredClasses = useMemo(() => {
     const q = classQuery.trim().toLowerCase();
     if (!q) return sortedClasses;
@@ -103,12 +120,12 @@ export function BulkAssignClassSubjectSection({
 
   const filteredSubjects = useMemo(() => {
     const q = subjectQuery.trim().toLowerCase();
-    if (!q) return sortedSubjects;
-    return sortedSubjects.filter((s) => {
+    if (!q) return eligibleSubjects;
+    return eligibleSubjects.filter((s) => {
       const hay = [s.name, s.code ?? ""].join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [sortedSubjects, subjectQuery]);
+  }, [eligibleSubjects, subjectQuery]);
 
   /** ~3 visible class rows (borders + py-2 + space-y-2). */
   const classListMaxHeight = "max-h-[9rem]";
@@ -124,7 +141,20 @@ export function BulkAssignClassSubjectSection({
     }
   }, [flashState]);
 
+  useEffect(() => {
+    const allowed = new Set(eligibleSubjects.map((s) => s.id));
+    setSubjectIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (allowed.has(id)) next.add(id);
+      }
+      return next;
+    });
+  }, [eligibleSubjects]);
+
   const pairCount = classIds.size * subjectIds.size;
+  const noSubjectsForSelectedClasses =
+    classIds.size > 0 && eligibleSubjects.length === 0;
 
   function toggleClass(id: string) {
     setClassIds((prev) => {
@@ -164,14 +194,7 @@ export function BulkAssignClassSubjectSection({
       >
         <div className="min-h-0 overflow-hidden">
           <div className="pt-4">
-            <p className="text-sm text-slate-600 dark:text-zinc-400">
-              Select one teacher, then choose any number of classes and subjects.
-              We create one assignment per class × subject (only where that
-              subject is linked to the class in Manage Subjects). Existing
-              assignments for the same year are skipped.
-            </p>
-
-            <form action={formAction} className="mt-4 space-y-4">
+            <form action={formAction} className="space-y-4">
         {flash(flashState)}
 
         <label className="block text-sm">
@@ -299,10 +322,17 @@ export function BulkAssignClassSubjectSection({
             </span>
             {allSubjects.length > 0 ? (
               <span className="text-xs font-normal text-slate-500 dark:text-zinc-400">
-                ({subjectIds.size} of {sortedSubjects.length} selected)
+                ({subjectIds.size} of {eligibleSubjects.length} selected)
               </span>
             ) : null}
           </div>
+          {allSubjects.length > 0 ? (
+            <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+              {classIds.size === 0
+                ? `${eligibleSubjects.length} subjects — select classes to show only subjects linked to those classes.`
+                : `${eligibleSubjects.length} subjects available for selected classes.`}
+            </p>
+          ) : null}
           {allSubjects.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
               No subjects yet. Add subjects first.
@@ -322,14 +352,19 @@ export function BulkAssignClassSubjectSection({
                     value={subjectQuery}
                     onChange={(e) => setSubjectQuery(e.target.value)}
                     placeholder="Search subjects..."
-                    className="w-full rounded-md border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-300 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                    disabled={noSubjectsForSelectedClasses}
+                    className="w-full rounded-md border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
                   />
                 </label>
               </div>
               <div
                 className={`${subjectListMaxHeight} space-y-1 overflow-y-auto p-2 pt-2`}
               >
-                {filteredSubjects.length === 0 ? (
+                {noSubjectsForSelectedClasses ? (
+                  <p className="px-1 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                    No subjects available for selected classes.
+                  </p>
+                ) : filteredSubjects.length === 0 ? (
                   <p className="px-1 py-2 text-sm text-slate-500 dark:text-zinc-400">
                     No subjects match your search.
                   </p>
@@ -365,7 +400,7 @@ export function BulkAssignClassSubjectSection({
                   })
                 )}
               </div>
-              {filteredSubjects.length > 3 ? (
+              {!noSubjectsForSelectedClasses && filteredSubjects.length > 3 ? (
                 <p className="border-t border-slate-200 px-3 py-1.5 text-center text-xs text-slate-400 dark:border-zinc-700 dark:text-zinc-500">
                   Scroll for more
                 </p>
@@ -394,9 +429,6 @@ export function BulkAssignClassSubjectSection({
               </option>
             ))}
           </select>
-          <span className="mt-1 block text-xs text-slate-500 dark:text-zinc-400">
-            Calendar year (January–December), e.g. 2025.
-          </span>
         </label>
 
         <button
@@ -407,7 +439,8 @@ export function BulkAssignClassSubjectSection({
             !teacherId ||
             classIds.size === 0 ||
             subjectIds.size === 0 ||
-            pairCount === 0
+            pairCount === 0 ||
+            noSubjectsForSelectedClasses
           }
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
         >

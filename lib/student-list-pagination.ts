@@ -1,10 +1,18 @@
 /**
- * Row-size options (5–50) and per-surface localStorage keys for dashboard
+ * Row-size options and per-surface localStorage keys for dashboard
  * and teacher lists (students, classes, subjects, teachers, report cards).
  */
 export const STUDENT_LIST_ROW_OPTIONS = [5, 10, 15, 20, 25, 50] as const;
 
 export type StudentListRowOption = (typeof STUDENT_LIST_ROW_OPTIONS)[number];
+
+/** Teacher accounts list on /dashboard/teachers (includes 3 as minimum). */
+export const TEACHER_ACCOUNTS_ROW_OPTIONS = [
+  3, 5, 10, 15, 20, 25, 50,
+] as const;
+
+export type TeacherAccountsRowOption =
+  (typeof TEACHER_ACCOUNTS_ROW_OPTIONS)[number];
 
 export const DASHBOARD_STUDENTS_ROWS_STORAGE_KEY =
   "adakaro:dashboardStudents:rowsPerPage";
@@ -18,8 +26,12 @@ export const DASHBOARD_CLASSES_ROWS_STORAGE_KEY =
 export const DASHBOARD_SUBJECTS_ROWS_STORAGE_KEY =
   "adakaro:dashboardSubjects:rowsPerPage";
 
+/** @deprecated Prefer TEACHER_ACCOUNTS_ROWS_STORAGE_KEY; still read for migration. */
 export const DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY =
   "adakaro:dashboardTeachers:accounts:rowsPerPage";
+
+export const TEACHER_ACCOUNTS_ROWS_STORAGE_KEY =
+  "adakaro:teacherAccounts:rowsPerPage";
 
 export const TEACHER_REPORT_CARDS_STUDENT_LIST_ROWS_STORAGE_KEY =
   "adakaro:teacherReportCards:studentList:rowsPerPage";
@@ -53,5 +65,16 @@ export function parseStudentListRowsPerPage(
   if (!Number.isInteger(n) || n < 1) return null;
   return (STUDENT_LIST_ROW_OPTIONS as readonly number[]).includes(n)
     ? (n as StudentListRowOption)
+    : null;
+}
+
+export function parseTeacherAccountsRowsPerPage(
+  raw: string | null
+): TeacherAccountsRowOption | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return (TEACHER_ACCOUNTS_ROW_OPTIONS as readonly number[]).includes(n)
+    ? (n as TeacherAccountsRowOption)
     : null;
 }

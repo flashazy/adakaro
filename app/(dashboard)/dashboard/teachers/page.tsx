@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { formatShortLocaleDate } from "@/lib/format-date";
@@ -95,17 +94,7 @@ export default async function TeachersPage() {
             Teachers
           </h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-            Create teacher accounts, set department roles and coordinators, and
-            manage who belongs to your school. Class and subject teaching
-            assignments are on the{" "}
-            <Link
-              href="/dashboard/assignments"
-              className="font-medium text-indigo-600 underline-offset-2 hover:underline dark:text-indigo-400"
-            >
-              Assignments
-            </Link>{" "}
-            page. Teachers use the teacher dashboard — they never see fees or
-            payments.
+            Create and manage teacher accounts.
           </p>
         </div>
         <TeachersPageClient

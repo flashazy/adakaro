@@ -235,12 +235,7 @@ export function AssignmentsPageClient({
           Teacher Assignments
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Add, search, and edit class–subject assignments here. Create teacher
-          accounts and set department roles on the{" "}
-          <Link href="/dashboard/teachers" className="underline">
-            Teachers
-          </Link>{" "}
-          page.
+          Manage teacher class and subject assignments.
         </p>
       </div>
 
@@ -266,6 +261,7 @@ export function AssignmentsPageClient({
         onToggle={toggleBulkAssign}
         assignableTeachers={bulkAssignableTeachers}
         classOptions={classOptions}
+        subjectOptionsByClassId={subjectOptionsByClassId}
         allSubjects={allSubjects}
         formAction={bulkAssignAction}
         pending={bulkAssignPending}
