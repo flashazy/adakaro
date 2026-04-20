@@ -23,6 +23,14 @@ import { AssignTeacherModal, type AssignModalState } from "./components/AssignTe
 import { ManageDepartmentRolesModal } from "./components/ManageDepartmentRolesModal";
 import { AssignCoordinatorModal } from "./components/AssignCoordinatorModal";
 import { BulkAddTeachersModal } from "./components/BulkAddTeachersModal";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY,
+  DASHBOARD_TEACHERS_ASSIGNMENTS_ROWS_STORAGE_KEY,
+  parseStudentListRowsPerPage,
+  STUDENT_LIST_ROW_OPTIONS,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
 
 function flash(state: TeacherActionState | null) {
   if (!state) return null;
@@ -95,8 +103,6 @@ interface TeachersPageClientProps {
   >;
 }
 
-const ASSIGNMENTS_PAGE_SIZE = 20;
-
 /** Dropdown: window around current calendar year (default always in list). */
 function academicYearSelectValues(): string[] {
   const y = new Date().getFullYear();
@@ -157,6 +163,10 @@ export function TeachersPageClient({
   );
   const [teacherAccountsSearch, setTeacherAccountsSearch] = useState("");
   const [teacherAccountsPage, setTeacherAccountsPage] = useState(1);
+  const [assignmentRowsPerPage, setAssignmentRowsPerPage] =
+    useState<StudentListRowOption>(5);
+  const [teacherAccountsRowsPerPage, setTeacherAccountsRowsPerPage] =
+    useState<StudentListRowOption>(5);
   const [addTeacherFullName, setAddTeacherFullName] = useState("");
   const [showAddTeacherPassword, setShowAddTeacherPassword] = useState(false);
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
@@ -217,6 +227,17 @@ export function TeachersPageClient({
     );
 
   useEffect(() => {
+    const a = parseStudentListRowsPerPage(
+      localStorage.getItem(DASHBOARD_TEACHERS_ASSIGNMENTS_ROWS_STORAGE_KEY)
+    );
+    if (a != null) setAssignmentRowsPerPage(a);
+    const t = parseStudentListRowsPerPage(
+      localStorage.getItem(DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY)
+    );
+    if (t != null) setTeacherAccountsRowsPerPage(t);
+  }, []);
+
+  useEffect(() => {
     if (rolesState?.ok) {
       setRolesModal(null);
     }
@@ -268,14 +289,14 @@ export function TeachersPageClient({
 
   const assignmentTotalPages = Math.max(
     1,
-    Math.ceil(filteredSortedAssignments.length / ASSIGNMENTS_PAGE_SIZE)
+    Math.ceil(filteredSortedAssignments.length / assignmentRowsPerPage)
   );
   const assignmentSafePage = Math.min(assignmentPage, assignmentTotalPages);
   const assignmentStart =
-    (assignmentSafePage - 1) * ASSIGNMENTS_PAGE_SIZE;
+    (assignmentSafePage - 1) * assignmentRowsPerPage;
   const assignmentPageRows = filteredSortedAssignments.slice(
     assignmentStart,
-    assignmentStart + ASSIGNMENTS_PAGE_SIZE
+    assignmentStart + assignmentRowsPerPage
   );
 
   const teachersTabList = useMemo(
@@ -296,17 +317,32 @@ export function TeachersPageClient({
 
   const teacherAccountsTotalPages = Math.max(
     1,
-    Math.ceil(teacherAccountsFiltered.length / ASSIGNMENTS_PAGE_SIZE)
+    Math.ceil(teacherAccountsFiltered.length / teacherAccountsRowsPerPage)
   );
   const teacherAccountsSafePage = Math.min(
     teacherAccountsPage,
     teacherAccountsTotalPages
   );
   const teacherAccountsStart =
-    (teacherAccountsSafePage - 1) * ASSIGNMENTS_PAGE_SIZE;
+    (teacherAccountsSafePage - 1) * teacherAccountsRowsPerPage;
   const teacherAccountsPageRows = teacherAccountsFiltered.slice(
     teacherAccountsStart,
-    teacherAccountsStart + ASSIGNMENTS_PAGE_SIZE
+    teacherAccountsStart + teacherAccountsRowsPerPage
+  );
+
+  const assignmentPaginationItems = useMemo(
+    () =>
+      getCompactPaginationItems(assignmentSafePage, assignmentTotalPages),
+    [assignmentSafePage, assignmentTotalPages]
+  );
+
+  const teacherAccountsPaginationItems = useMemo(
+    () =>
+      getCompactPaginationItems(
+        teacherAccountsSafePage,
+        teacherAccountsTotalPages
+      ),
+    [teacherAccountsSafePage, teacherAccountsTotalPages]
   );
 
   useEffect(() => {
@@ -839,14 +875,43 @@ export function TeachersPageClient({
               </div>
 
               {filteredSortedAssignments.length > 0 ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-zinc-400">
-                  <span>
-                    {`${assignmentStart + 1}–${Math.min(
-                      assignmentStart + ASSIGNMENTS_PAGE_SIZE,
-                      filteredSortedAssignments.length
-                    )} of ${filteredSortedAssignments.length}`}
-                  </span>
-                  <div className="flex gap-2">
+                <div className="mt-3 flex flex-col gap-3 text-sm text-slate-600 dark:text-zinc-400 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>
+                      {`Showing ${assignmentStart + 1}–${Math.min(
+                        assignmentStart + assignmentRowsPerPage,
+                        filteredSortedAssignments.length
+                      )} of ${filteredSortedAssignments.length}`}
+                    </span>
+                    <label className="flex items-center gap-2">
+                      <span className="text-slate-500 dark:text-zinc-400">
+                        Rows
+                      </span>
+                      <select
+                        value={assignmentRowsPerPage}
+                        onChange={(e) => {
+                          const n = Number(
+                            e.target.value
+                          ) as StudentListRowOption;
+                          setAssignmentRowsPerPage(n);
+                          setAssignmentPage(1);
+                          localStorage.setItem(
+                            DASHBOARD_TEACHERS_ASSIGNMENTS_ROWS_STORAGE_KEY,
+                            String(n)
+                          );
+                        }}
+                        aria-label="Rows per page for assignments"
+                        className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                      >
+                        {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       disabled={assignmentSafePage <= 1}
@@ -857,6 +922,39 @@ export function TeachersPageClient({
                     >
                       Previous
                     </button>
+                    {assignmentTotalPages > 1 ? (
+                      <div className="flex flex-wrap items-center justify-center gap-1">
+                        {assignmentPaginationItems.map((item, idx) =>
+                          item === "ellipsis" ? (
+                            <span
+                              key={`assign-ellipsis-${idx}`}
+                              className="px-1 text-sm text-slate-400 dark:text-zinc-500"
+                              aria-hidden
+                            >
+                              …
+                            </span>
+                          ) : (
+                            <button
+                              key={item}
+                              type="button"
+                              onClick={() => setAssignmentPage(item)}
+                              aria-current={
+                                item === assignmentSafePage
+                                  ? "page"
+                                  : undefined
+                              }
+                              className={`min-w-[2rem] rounded border px-2.5 py-1 text-sm font-medium dark:border-zinc-600 ${
+                                item === assignmentSafePage
+                                  ? "border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-600"
+                                  : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                              }`}
+                            >
+                              {item}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       disabled={
@@ -1091,14 +1189,43 @@ export function TeachersPageClient({
                     </li>
                   ))}
                 </ul>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-zinc-400">
-                  <span>
-                    {`${teacherAccountsStart + 1}–${Math.min(
-                      teacherAccountsStart + ASSIGNMENTS_PAGE_SIZE,
-                      teacherAccountsFiltered.length
-                    )} of ${teacherAccountsFiltered.length}`}
-                  </span>
-                  <div className="flex gap-2">
+                <div className="mt-3 flex flex-col gap-3 text-sm text-slate-600 dark:text-zinc-400 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>
+                      {`Showing ${teacherAccountsStart + 1}–${Math.min(
+                        teacherAccountsStart + teacherAccountsRowsPerPage,
+                        teacherAccountsFiltered.length
+                      )} of ${teacherAccountsFiltered.length}`}
+                    </span>
+                    <label className="flex items-center gap-2">
+                      <span className="text-slate-500 dark:text-zinc-400">
+                        Rows
+                      </span>
+                      <select
+                        value={teacherAccountsRowsPerPage}
+                        onChange={(e) => {
+                          const n = Number(
+                            e.target.value
+                          ) as StudentListRowOption;
+                          setTeacherAccountsRowsPerPage(n);
+                          setTeacherAccountsPage(1);
+                          localStorage.setItem(
+                            DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY,
+                            String(n)
+                          );
+                        }}
+                        aria-label="Rows per page for teacher accounts"
+                        className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                      >
+                        {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       disabled={teacherAccountsSafePage <= 1}
@@ -1109,6 +1236,39 @@ export function TeachersPageClient({
                     >
                       Previous
                     </button>
+                    {teacherAccountsTotalPages > 1 ? (
+                      <div className="flex flex-wrap items-center justify-center gap-1">
+                        {teacherAccountsPaginationItems.map((item, idx) =>
+                          item === "ellipsis" ? (
+                            <span
+                              key={`teachers-ellipsis-${idx}`}
+                              className="px-1 text-sm text-slate-400 dark:text-zinc-500"
+                              aria-hidden
+                            >
+                              …
+                            </span>
+                          ) : (
+                            <button
+                              key={item}
+                              type="button"
+                              onClick={() => setTeacherAccountsPage(item)}
+                              aria-current={
+                                item === teacherAccountsSafePage
+                                  ? "page"
+                                  : undefined
+                              }
+                              className={`min-w-[2rem] rounded border px-2.5 py-1 text-sm font-medium dark:border-zinc-600 ${
+                                item === teacherAccountsSafePage
+                                  ? "border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-600"
+                                  : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                              }`}
+                            >
+                              {item}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       disabled={

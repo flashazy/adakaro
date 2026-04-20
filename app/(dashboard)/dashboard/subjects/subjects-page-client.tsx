@@ -22,6 +22,13 @@ import {
   type SubjectActionState,
   type SubjectRow,
 } from "./actions";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  DASHBOARD_SUBJECTS_ROWS_STORAGE_KEY,
+  parseStudentListRowsPerPage,
+  STUDENT_LIST_ROW_OPTIONS,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
 
 /** Auto code from subject name: first word, ≤3 letters → full word; else first 3 letters + "-101". */
 export function generateSubjectCode(name: string): string {
@@ -70,26 +77,6 @@ function flash(state: SubjectActionState | null) {
 interface SubjectsPageClientProps {
   initialRows: SubjectRow[];
   classOptions: { id: string; name: string }[];
-}
-
-const SUBJECTS_PAGE_SIZE = 5;
-
-/** Compact list of page numbers with `"…"` separators (e.g. 1, …, 4, 5, 6, …, 12). */
-function getPaginationItems(
-  currentPage: number,
-  totalPages: number
-): (number | "ellipsis")[] {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  }
-  const items: (number | "ellipsis")[] = [1];
-  const start = Math.max(2, currentPage - 1);
-  const end = Math.min(totalPages - 1, currentPage + 1);
-  if (start > 2) items.push("ellipsis");
-  for (let p = start; p <= end; p++) items.push(p);
-  if (end < totalPages - 1) items.push("ellipsis");
-  items.push(totalPages);
-  return items;
 }
 
 /** Searchable multi-select with checkboxes; submits `subject_ids` via hidden inputs. */
@@ -457,6 +444,14 @@ export function SubjectsPageClient({
   const [searchQuery, setSearchQuery] = useState("");
   const [classFilter, setClassFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
+
+  useEffect(() => {
+    const stored = parseStudentListRowsPerPage(
+      localStorage.getItem(DASHBOARD_SUBJECTS_ROWS_STORAGE_KEY)
+    );
+    if (stored != null) setRowsPerPage(stored);
+  }, []);
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -480,7 +475,7 @@ export function SubjectsPageClient({
   }, [rows, searchQuery, classFilter]);
 
   const totalCount = filteredRows.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / SUBJECTS_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / rowsPerPage));
 
   useEffect(() => {
     setPage(1);
@@ -491,16 +486,16 @@ export function SubjectsPageClient({
   }, [page, totalPages]);
 
   const safePage = Math.min(page, totalPages);
-  const startIndex = (safePage - 1) * SUBJECTS_PAGE_SIZE;
+  const startIndex = (safePage - 1) * rowsPerPage;
   const pagedRows = filteredRows.slice(
     startIndex,
-    startIndex + SUBJECTS_PAGE_SIZE
+    startIndex + rowsPerPage
   );
 
   const isFiltering = searchQuery.trim().length > 0 || classFilter !== "all";
   const showingFrom = totalCount === 0 ? 0 : startIndex + 1;
-  const showingTo = Math.min(startIndex + SUBJECTS_PAGE_SIZE, totalCount);
-  const paginationItems = getPaginationItems(safePage, totalPages);
+  const showingTo = Math.min(startIndex + rowsPerPage, totalCount);
+  const paginationItems = getCompactPaginationItems(safePage, totalPages);
 
   /** Clears chosen subjects and remounts pickers (class chips + search inputs). */
   const resetAssignFormLayout = useCallback(() => {
@@ -785,6 +780,31 @@ export function SubjectsPageClient({
                   </option>
                 ))}
               </select>
+              <label className="flex items-center gap-2">
+                <span className="shrink-0 text-sm text-slate-500 dark:text-zinc-400">
+                  Rows
+                </span>
+                <select
+                  value={rowsPerPage}
+                  onChange={(e) => {
+                    const n = Number(e.target.value) as StudentListRowOption;
+                    setRowsPerPage(n);
+                    setPage(1);
+                    localStorage.setItem(
+                      DASHBOARD_SUBJECTS_ROWS_STORAGE_KEY,
+                      String(n)
+                    );
+                  }}
+                  aria-label="Rows per page"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+                >
+                  {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 onClick={clearFilters}

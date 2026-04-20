@@ -39,6 +39,7 @@ import {
   SCHOOL_LEVEL_LABELS,
   type SchoolLevel,
 } from "@/lib/school-level";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 
 function SchoolLevelBadge({ level }: { level: SchoolLevel }) {
   const isSecondary = level === "secondary";
@@ -130,21 +131,7 @@ function PaginationControls({
 }) {
   if (pageCount <= 1) return null;
 
-  // Build a compact numeric range. For up to 7 pages we just list them all;
-  // beyond that we show the first, last, current and immediate neighbours with
-  // ellipses, which is plenty for the coordinator dashboard's typical sizes.
-  const pages: (number | "…")[] = [];
-  if (pageCount <= 7) {
-    for (let i = 1; i <= pageCount; i++) pages.push(i);
-  } else {
-    pages.push(1);
-    if (page > 3) pages.push("…");
-    for (let i = Math.max(2, page - 1); i <= Math.min(pageCount - 1, page + 1); i++) {
-      pages.push(i);
-    }
-    if (page < pageCount - 2) pages.push("…");
-    pages.push(pageCount);
-  }
+  const pages = getCompactPaginationItems(page, pageCount);
 
   const btnBase =
     "inline-flex h-8 min-w-[2rem] items-center justify-center rounded-md border px-2 text-xs font-medium transition";
@@ -170,7 +157,7 @@ function PaginationControls({
         <span className="ml-0.5">Previous</span>
       </button>
       {pages.map((p, idx) =>
-        p === "…" ? (
+        p === "ellipsis" ? (
           <span
             key={`gap-${idx}`}
             className="px-1 text-xs text-slate-400 dark:text-zinc-500"

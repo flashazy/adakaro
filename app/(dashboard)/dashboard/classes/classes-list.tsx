@@ -1,8 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClassRow } from "./class-row";
 import type { Class } from "@/types/supabase";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  DASHBOARD_CLASSES_ROWS_STORAGE_KEY,
+  parseStudentListRowsPerPage,
+  STUDENT_LIST_ROW_OPTIONS,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
 
 export interface ClassListItem {
   cls: Class;
@@ -15,34 +22,17 @@ interface ClassesListProps {
   parentOptions: { id: string; name: string }[];
 }
 
-const PAGE_SIZE = 5;
-
-/**
- * Build a compact page-number sequence with ellipses. The pattern always
- * includes the first and last page, the current page, and its direct
- * neighbours. Everything else collapses into a `"…"` token so very long
- * lists don't overflow the paginator.
- */
-function buildPageNumbers(current: number, total: number): (number | "ellipsis")[] {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-  const pages = new Set<number>([1, total, current, current - 1, current + 1]);
-  const sorted = [...pages].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
-  const out: (number | "ellipsis")[] = [];
-  for (let i = 0; i < sorted.length; i += 1) {
-    out.push(sorted[i]);
-    const next = sorted[i + 1];
-    if (next != null && next - sorted[i] > 1) {
-      out.push("ellipsis");
-    }
-  }
-  return out;
-}
-
 export function ClassesList({ items, parentOptions }: ClassesListProps) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
+
+  useEffect(() => {
+    const stored = parseStudentListRowsPerPage(
+      localStorage.getItem(DASHBOARD_CLASSES_ROWS_STORAGE_KEY)
+    );
+    if (stored != null) setRowsPerPage(stored);
+  }, []);
 
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -60,12 +50,17 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
   }, [items, normalizedQuery]);
 
   const total = filteredItems.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / rowsPerPage));
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const safePage = Math.min(page, totalPages);
-  const pageStart = (safePage - 1) * PAGE_SIZE;
-  const pageEnd = Math.min(pageStart + PAGE_SIZE, total);
+  const pageStart = (safePage - 1) * rowsPerPage;
+  const pageEnd = Math.min(pageStart + rowsPerPage, total);
   const visibleItems = filteredItems.slice(pageStart, pageEnd);
-  const pageNumbers = buildPageNumbers(safePage, totalPages);
+  const pageNumbers = getCompactPaginationItems(safePage, totalPages);
 
   function handleSearchChange(value: string) {
     setQuery(value);
@@ -100,7 +95,7 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-3 dark:border-zinc-800">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-6 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
           <p className="text-xs text-slate-500 dark:text-zinc-400">
             {total === 0
               ? normalizedQuery
@@ -110,6 +105,33 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
                   total === 1 ? "class" : "classes"
                 }`}
           </p>
+          {total > 0 ? (
+            <label className="flex items-center gap-2 sm:shrink-0">
+              <span className="text-xs text-slate-500 dark:text-zinc-400">
+                Rows
+              </span>
+              <select
+                value={rowsPerPage}
+                onChange={(e) => {
+                  const n = Number(e.target.value) as StudentListRowOption;
+                  setRowsPerPage(n);
+                  setPage(1);
+                  localStorage.setItem(
+                    DASHBOARD_CLASSES_ROWS_STORAGE_KEY,
+                    String(n)
+                  );
+                }}
+                aria-label="Rows per page"
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              >
+                {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
 
         <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:gap-4 dark:border-zinc-800">

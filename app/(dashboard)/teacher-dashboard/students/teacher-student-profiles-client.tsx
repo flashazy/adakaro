@@ -2,6 +2,13 @@
 
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import {
+  parseStudentListRowsPerPage,
+  STUDENT_LIST_ROW_OPTIONS,
+  TEACHER_STUDENTS_ROWS_STORAGE_KEY,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 
 export interface TeacherProfileStudentRow {
   id: string;
@@ -11,46 +18,10 @@ export interface TeacherProfileStudentRow {
   gender: string | null;
 }
 
-const ROW_OPTIONS = [10, 15, 20] as const;
-
 function genderAbbrev(g: string | null | undefined): string {
   if (g === "male") return "M";
   if (g === "female") return "F";
   return "—";
-}
-
-function getPageNumbers(
-  current: number,
-  total: number
-): (number | "ellipsis")[] {
-  if (total <= 0) return [];
-  if (total <= 9) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-
-  const pages: (number | "ellipsis")[] = [];
-  pages.push(1);
-
-  const start = Math.max(2, current - 1);
-  const end = Math.min(total - 1, current + 1);
-
-  if (start > 2) {
-    pages.push("ellipsis");
-  }
-
-  for (let i = start; i <= end; i++) {
-    pages.push(i);
-  }
-
-  if (end < total - 1) {
-    pages.push("ellipsis");
-  }
-
-  if (total > 1) {
-    pages.push(total);
-  }
-
-  return pages;
 }
 
 export function TeacherStudentProfilesClient({
@@ -60,8 +31,14 @@ export function TeacherStudentProfilesClient({
 }) {
   const [query, setQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] =
-    useState<(typeof ROW_OPTIONS)[number]>(10);
+  const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
+
+  useEffect(() => {
+    const stored = parseStudentListRowsPerPage(
+      localStorage.getItem(TEACHER_STUDENTS_ROWS_STORAGE_KEY)
+    );
+    if (stored != null) setRowsPerPage(stored);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -105,7 +82,7 @@ export function TeacherStudentProfilesClient({
       : Math.min(currentPage * rowsPerPage, totalFiltered);
 
   const pageNumbers = useMemo(
-    () => getPageNumbers(currentPage, totalPages),
+    () => getCompactPaginationItems(currentPage, totalPages),
     [currentPage, totalPages]
   );
 
@@ -145,12 +122,17 @@ export function TeacherStudentProfilesClient({
           <select
             value={rowsPerPage}
             onChange={(e) => {
-              setRowsPerPage(Number(e.target.value) as (typeof ROW_OPTIONS)[number]);
+              const n = Number(e.target.value) as StudentListRowOption;
+              setRowsPerPage(n);
               setCurrentPage(1);
+              localStorage.setItem(
+                TEACHER_STUDENTS_ROWS_STORAGE_KEY,
+                String(n)
+              );
             }}
             className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
           >
-            {ROW_OPTIONS.map((n) => (
+            {STUDENT_LIST_ROW_OPTIONS.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>

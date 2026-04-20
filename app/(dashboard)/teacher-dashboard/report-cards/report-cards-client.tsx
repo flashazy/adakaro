@@ -39,6 +39,13 @@ import {
   mergeStudentCommentsWithDraftsForPreview,
 } from "./report-card-preview-builder";
 import type { SchoolLevel } from "@/lib/school-level";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  parseStudentListRowsPerPage,
+  STUDENT_LIST_ROW_OPTIONS,
+  TEACHER_REPORT_CARDS_STUDENT_LIST_ROWS_STORAGE_KEY,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
 import {
   downloadBulkReportCardsPdf,
   downloadReportCardPdf,
@@ -172,9 +179,6 @@ function draftAverageLine(
     grade: letterGradeFromPercent(avg, schoolLevel),
   };
 }
-
-/** Paginated student sidebar. */
-const REPORT_CARDS_STUDENTS_PAGE_SIZE = 5;
 
 // Includes both F (secondary failing band) and E (primary failing band) so the
 // auto-comment lookup works for either grading tier without extra branching.
@@ -337,6 +341,8 @@ export function ReportCardsPageClient({
   const [studentId, setStudentId] = useState<string | null>(null);
   const [studentListSearch, setStudentListSearch] = useState("");
   const [studentListPage, setStudentListPage] = useState(1);
+  const [studentListRowsPerPage, setStudentListRowsPerPage] =
+    useState<StudentListRowOption>(5);
   const [subjectFilterOptions, setSubjectFilterOptions] = useState<
     ReportCardSubjectFilterOption[]
   >([]);
@@ -413,6 +419,13 @@ export function ReportCardsPageClient({
   useEffect(() => {
     return () => clearGreenBorderTimers();
   }, [clearGreenBorderTimers]);
+
+  useEffect(() => {
+    const stored = parseStudentListRowsPerPage(
+      localStorage.getItem(TEACHER_REPORT_CARDS_STUDENT_LIST_ROWS_STORAGE_KEY)
+    );
+    if (stored != null) setStudentListRowsPerPage(stored);
+  }, []);
 
   useEffect(() => {
     clearSubjectSaveFeedback();
@@ -628,15 +641,15 @@ export function ReportCardsPageClient({
   const studentListTotalPages = Math.max(
     1,
     Math.ceil(
-      studentsFilteredBySearch.length / REPORT_CARDS_STUDENTS_PAGE_SIZE
+      studentsFilteredBySearch.length / studentListRowsPerPage
     )
   );
   const studentListSafePage = Math.min(studentListPage, studentListTotalPages);
   const studentListStart =
-    (studentListSafePage - 1) * REPORT_CARDS_STUDENTS_PAGE_SIZE;
+    (studentListSafePage - 1) * studentListRowsPerPage;
   const studentsPageRows = studentsFilteredBySearch.slice(
     studentListStart,
-    studentListStart + REPORT_CARDS_STUDENTS_PAGE_SIZE
+    studentListStart + studentListRowsPerPage
   );
 
   useEffect(() => {
@@ -666,6 +679,12 @@ export function ReportCardsPageClient({
   useEffect(() => {
     setStudentListPage((p) => Math.min(p, studentListTotalPages));
   }, [studentListTotalPages]);
+
+  const studentListPaginationItems = useMemo(
+    () =>
+      getCompactPaginationItems(studentListSafePage, studentListTotalPages),
+    [studentListSafePage, studentListTotalPages]
+  );
 
   const selectedStudent = students.find((s) => s.studentId === studentId);
 
@@ -1007,23 +1026,52 @@ export function ReportCardsPageClient({
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">
             Students
           </h2>
-          <div className="relative mt-3">
-            <label htmlFor="report-cards-student-search" className="sr-only">
-              Search students by name
-            </label>
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-              aria-hidden
-            />
-            <input
-              id="report-cards-student-search"
-              type="search"
-              value={studentListSearch}
-              onChange={(e) => setStudentListSearch(e.target.value)}
-              placeholder="Search students by name…"
-              disabled={students.length === 0}
-              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
-            />
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="relative min-w-0 flex-1">
+              <label htmlFor="report-cards-student-search" className="sr-only">
+                Search students by name
+              </label>
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                aria-hidden
+              />
+              <input
+                id="report-cards-student-search"
+                type="search"
+                value={studentListSearch}
+                onChange={(e) => setStudentListSearch(e.target.value)}
+                placeholder="Search students by name…"
+                disabled={students.length === 0}
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+              />
+            </div>
+            {students.length > 0 ? (
+              <label className="flex shrink-0 items-center gap-2">
+                <span className="text-sm text-slate-500 dark:text-zinc-400">
+                  Rows
+                </span>
+                <select
+                  value={studentListRowsPerPage}
+                  onChange={(e) => {
+                    const n = Number(e.target.value) as StudentListRowOption;
+                    setStudentListRowsPerPage(n);
+                    setStudentListPage(1);
+                    localStorage.setItem(
+                      TEACHER_REPORT_CARDS_STUDENT_LIST_ROWS_STORAGE_KEY,
+                      String(n)
+                    );
+                  }}
+                  aria-label="Rows per page for student list"
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                >
+                  {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
           {students.length === 0 && !loading ? (
             <p className="mt-3 text-sm text-slate-500 dark:text-zinc-400">
@@ -1057,14 +1105,14 @@ export function ReportCardsPageClient({
               </ul>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-zinc-400">
                 <span>
-                  {`${studentListStart + 1}–${Math.min(
-                    studentListStart + REPORT_CARDS_STUDENTS_PAGE_SIZE,
+                  {`Showing ${studentListStart + 1}–${Math.min(
+                    studentListStart + studentListRowsPerPage,
                     studentsFilteredBySearch.length
                   )} of ${studentsFilteredBySearch.length} student${
                     studentsFilteredBySearch.length === 1 ? "" : "s"
                   }`}
                 </span>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     disabled={studentListSafePage <= 1}
@@ -1075,6 +1123,39 @@ export function ReportCardsPageClient({
                   >
                     Previous
                   </button>
+                  {studentListTotalPages > 1 ? (
+                    <div className="flex flex-wrap items-center justify-center gap-1">
+                      {studentListPaginationItems.map((item, idx) =>
+                        item === "ellipsis" ? (
+                          <span
+                            key={`rc-student-ellipsis-${idx}`}
+                            className="px-1 text-sm text-slate-400 dark:text-zinc-500"
+                            aria-hidden
+                          >
+                            …
+                          </span>
+                        ) : (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => setStudentListPage(item)}
+                            aria-current={
+                              item === studentListSafePage
+                                ? "page"
+                                : undefined
+                            }
+                            className={`min-w-[2rem] rounded border px-2.5 py-1 text-sm font-medium dark:border-zinc-600 ${
+                              item === studentListSafePage
+                                ? "border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-600"
+                                : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     disabled={
