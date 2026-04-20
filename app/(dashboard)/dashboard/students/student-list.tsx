@@ -20,8 +20,16 @@ import {
   type StudentListRowOption,
 } from "@/lib/student-list-pagination";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import { formatNativeSelectClassOptionLabel } from "@/lib/class-options";
 
 interface ClassOption {
+  id: string;
+  name: string;
+  parent_class_id: string | null;
+}
+
+/** Embedded class on a student row from the server (no hierarchy field). */
+interface StudentClassRef {
   id: string;
   name: string;
 }
@@ -31,7 +39,7 @@ interface StudentData {
   full_name: string;
   admission_number: string | null;
   class_id: string;
-  class: ClassOption | null;
+  class: StudentClassRef | null;
   gender: string | null;
   enrollment_date: string;
   parent_name: string | null;
@@ -335,7 +343,7 @@ export function StudentList({ students, classes }: StudentListProps) {
           <option value="">All classes</option>
           {classes.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {formatNativeSelectClassOptionLabel(c.name, c.parent_class_id)}
             </option>
           ))}
         </select>

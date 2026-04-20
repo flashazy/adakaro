@@ -117,6 +117,7 @@ export default async function StudentsPage() {
   const classOptions = filterLeafClassOptions(typedClasses).map((c) => ({
     id: c.id,
     name: c.name,
+    parent_class_id: c.parent_class_id,
   }));
 
   const planRow = await getSchoolPlanRow(supabase, schoolId);

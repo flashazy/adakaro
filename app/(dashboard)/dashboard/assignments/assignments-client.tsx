@@ -33,7 +33,7 @@ export interface AssignmentRow {
 
 interface AssignmentsPageClientProps {
   assignments: AssignmentRow[];
-  classOptions: { id: string; name: string }[];
+  classOptions: { id: string; name: string; parent_class_id: string | null }[];
   subjectOptionsByClassId: Record<
     string,
     { id: string; name: string; code: string | null }[]

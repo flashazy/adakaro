@@ -101,10 +101,12 @@ export default async function TeachersPage() {
   const coordinatorClassOptions = classRowsTyped.map((c) => ({
     id: c.id,
     name: c.name,
+    parent_class_id: c.parent_class_id,
   }));
   const classOptions = filterLeafClassOptions(classRowsTyped).map((c) => ({
     id: c.id,
     name: c.name,
+    parent_class_id: c.parent_class_id,
   }));
 
   const admin = createAdminClient();

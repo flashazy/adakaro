@@ -38,7 +38,7 @@ interface ImportResult {
 }
 
 interface Props {
-  classes: { id: string; name: string }[];
+  classes: { id: string; name: string; parent_class_id?: string | null }[];
   /** Pro / Enterprise only; others see an upgrade prompt. */
   canBulkImport?: boolean;
 }

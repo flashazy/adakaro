@@ -60,6 +60,7 @@ export default async function AssignmentsPage() {
   const classOptions = filterLeafClassOptions(classRowsTyped).map((c) => ({
     id: c.id,
     name: c.name,
+    parent_class_id: c.parent_class_id,
   }));
   // Keep a name-lookup map that includes any parent classes so legacy rows
   // still render with their original class name.

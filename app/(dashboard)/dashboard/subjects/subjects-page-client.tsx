@@ -22,6 +22,10 @@ import {
   type SubjectActionState,
   type SubjectRow,
 } from "./actions";
+import {
+  formatNativeSelectClassOptionLabel,
+  sortClassRowsByHierarchy,
+} from "@/lib/class-options";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import {
   DASHBOARD_SUBJECTS_ROWS_STORAGE_KEY,
@@ -76,7 +80,7 @@ function flash(state: SubjectActionState | null) {
 
 interface SubjectsPageClientProps {
   initialRows: SubjectRow[];
-  classOptions: { id: string; name: string }[];
+  classOptions: { id: string; name: string; parent_class_id: string | null }[];
 }
 
 /** Searchable multi-select with checkboxes; submits `subject_ids` via hidden inputs. */
@@ -204,7 +208,7 @@ function SubjectClassPicker({
   classOptions,
   defaultSelectedIds,
 }: {
-  classOptions: { id: string; name: string }[];
+  classOptions: { id: string; name: string; parent_class_id: string | null }[];
   defaultSelectedIds?: string[];
 }) {
   const listboxId = useId();
@@ -220,18 +224,21 @@ function SubjectClassPicker({
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
   const pillItems = useMemo(() => {
-    return selectedIds
+    const rows = selectedIds
       .map((id) => classOptions.find((c) => c.id === id))
-      .filter((c): c is { id: string; name: string } => c != null)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .filter(
+        (c): c is { id: string; name: string; parent_class_id: string | null } =>
+          c != null
+      );
+    return sortClassRowsByHierarchy(rows);
   }, [selectedIds, classOptions]);
 
   const available = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return classOptions
+    const pool = classOptions
       .filter((c) => !selectedSet.has(c.id))
-      .filter((c) => !q || c.name.toLowerCase().includes(q))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .filter((c) => !q || c.name.toLowerCase().includes(q));
+    return sortClassRowsByHierarchy(pool);
   }, [classOptions, selectedSet, query]);
 
   useEffect(() => {
@@ -277,7 +284,11 @@ function SubjectClassPicker({
           >
             {pillItems.map((c) => (
               <li key={c.id}>
-                <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-slate-50 py-1 pl-3 pr-1 text-sm font-medium text-slate-800 shadow-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100">
+                <span
+                  className={`inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-slate-50 py-1 pr-1 text-sm font-medium text-slate-800 shadow-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 ${
+                    c.parent_class_id ? "pl-5" : "pl-3"
+                  }`}
+                >
                   <span className="truncate">{c.name}</span>
                   <button
                     type="button"
@@ -332,7 +343,9 @@ function SubjectClassPicker({
                   key={c.id}
                   type="button"
                   role="option"
-                  className="w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                  className={`w-full py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-zinc-100 dark:hover:bg-zinc-800 ${
+                    c.parent_class_id ? "pl-8 pr-3" : "px-3"
+                  }`}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => addClass(c.id)}
                 >
@@ -776,7 +789,10 @@ export function SubjectsPageClient({
                 <option value="all">All classes</option>
                 {classOptions.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {formatNativeSelectClassOptionLabel(
+                      c.name,
+                      c.parent_class_id
+                    )}
                   </option>
                 ))}
               </select>

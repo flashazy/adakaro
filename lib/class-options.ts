@@ -35,3 +35,53 @@ export function filterLeafClassOptions<T extends ClassOptionRow>(rows: T[]): T[]
   const parentIds = collectParentClassIds(rows);
   return rows.filter((c) => !parentIds.has(c.id));
 }
+
+/** Class row with a display name (admin pickers, coordinator modal, etc.). */
+export type ClassOptionWithName = ClassOptionRow & { name: string };
+
+/**
+ * Sort classes so each parent appears before its child streams (DFS pre-order),
+ * with alphabetical order among roots and among siblings.
+ */
+export function sortClassRowsByHierarchy<T extends ClassOptionWithName>(
+  rows: T[]
+): T[] {
+  if (rows.length === 0) return [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const childrenByParent = new Map<string, T[]>();
+  for (const r of rows) {
+    const pid = r.parent_class_id;
+    if (pid && byId.has(pid)) {
+      const list = childrenByParent.get(pid) ?? [];
+      list.push(r);
+      childrenByParent.set(pid, list);
+    }
+  }
+  for (const list of childrenByParent.values()) {
+    list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  }
+  const roots = rows.filter((r) => {
+    if (!r.parent_class_id) return true;
+    return !byId.has(r.parent_class_id);
+  });
+  roots.sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
+  const out: T[] = [];
+  function visit(node: T) {
+    out.push(node);
+    const kids = childrenByParent.get(node.id);
+    if (kids) for (const k of kids) visit(k);
+  }
+  for (const r of roots) visit(r);
+  return out;
+}
+
+/** Leading spaces for child streams in native `<option>` text (indent is not styleable per option). */
+export function formatNativeSelectClassOptionLabel(
+  name: string,
+  parentClassId: string | null
+): string {
+  if (!parentClassId) return name;
+  return `\u00A0\u00A0\u00A0\u00A0${name}`;
+}

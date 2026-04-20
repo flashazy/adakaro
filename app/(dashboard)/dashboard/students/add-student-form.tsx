@@ -11,6 +11,7 @@ import {
   SUBJECT_ENROLLMENT_TERMS,
   currentAcademicYear,
 } from "@/lib/student-subject-enrollment";
+import { formatNativeSelectClassOptionLabel } from "@/lib/class-options";
 
 /** Title-case one segment (handles O'Connor-style apostrophes). */
 function capitalizeNameSegment(segment: string): string {
@@ -72,7 +73,7 @@ function SubmitButton({ disabled }: { disabled?: boolean }) {
 }
 
 interface Props {
-  classes: { id: string; name: string }[];
+  classes: { id: string; name: string; parent_class_id: string | null }[];
   /** Current enrolment count for plan warnings. */
   studentCount?: number;
   /** Plan cap; null = unlimited. */
@@ -342,7 +343,10 @@ export function AddStudentForm({
                 <option value="">Select a class</option>
                 {classes.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {formatNativeSelectClassOptionLabel(
+                      c.name,
+                      c.parent_class_id
+                    )}
                   </option>
                 ))}
               </select>

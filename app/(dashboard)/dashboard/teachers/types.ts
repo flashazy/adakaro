@@ -38,4 +38,5 @@ export const TEACHER_DEPARTMENTS: readonly TeacherDepartment[] = [
 export interface CoordinatorClassOption {
   id: string;
   name: string;
+  parent_class_id: string | null;
 }

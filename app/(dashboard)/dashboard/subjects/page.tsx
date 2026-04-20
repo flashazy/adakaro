@@ -49,7 +49,11 @@ export default async function SubjectsPage() {
       name: string;
       parent_class_id: string | null;
     }[]
-  ).map((c) => ({ id: c.id, name: c.name }));
+  ).map((c) => ({
+    id: c.id,
+    name: c.name,
+    parent_class_id: c.parent_class_id,
+  }));
 
   return (
     <>

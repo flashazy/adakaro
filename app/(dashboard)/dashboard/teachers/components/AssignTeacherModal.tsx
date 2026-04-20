@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
+import { formatNativeSelectClassOptionLabel } from "@/lib/class-options";
 import type { TeacherActionState } from "../types";
 
 /** Fields the assign/edit modal needs from an assignment row. */
@@ -21,7 +22,7 @@ export type AssignModalState =
 interface AssignTeacherModalProps {
   modal: AssignModalState;
   onClose: () => void;
-  classOptions: { id: string; name: string }[];
+  classOptions: { id: string; name: string; parent_class_id: string | null }[];
   subjectOptionsByClassId: Record<
     string,
     { id: string; name: string; code: string | null }[]
@@ -220,7 +221,10 @@ export function AssignTeacherModal({
               <option value="">Select…</option>
               {classOptions.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {formatNativeSelectClassOptionLabel(
+                    c.name,
+                    c.parent_class_id
+                  )}
                 </option>
               ))}
             </select>

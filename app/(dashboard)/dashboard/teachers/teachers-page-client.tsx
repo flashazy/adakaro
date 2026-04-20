@@ -31,6 +31,7 @@ import {
   STUDENT_LIST_ROW_OPTIONS,
   type StudentListRowOption,
 } from "@/lib/student-list-pagination";
+import { formatNativeSelectClassOptionLabel } from "@/lib/class-options";
 
 function flash(state: TeacherActionState | null) {
   if (!state) return null;
@@ -90,13 +91,17 @@ interface TeachersPageClientProps {
   teachers: TeacherRow[];
   assignments: AssignmentRow[];
   /** Leaf (stream) classes only — used for teacher subject assignments. */
-  classOptions: { id: string; name: string }[];
+  classOptions: { id: string; name: string; parent_class_id: string | null }[];
   /**
    * Full class list including parent classes. Coordinators (form masters)
    * may be assigned to a parent class, and legacy assignments may still
    * reference a parent class id we need to render.
    */
-  coordinatorClassOptions: { id: string; name: string }[];
+  coordinatorClassOptions: {
+    id: string;
+    name: string;
+    parent_class_id: string | null;
+  }[];
   subjectOptionsByClassId: Record<
     string,
     { id: string; name: string; code: string | null }[]
@@ -629,7 +634,10 @@ export function TeachersPageClient({
                 <option value="">Select…</option>
                 {classOptions.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {formatNativeSelectClassOptionLabel(
+                      c.name,
+                      c.parent_class_id
+                    )}
                   </option>
                 ))}
               </select>

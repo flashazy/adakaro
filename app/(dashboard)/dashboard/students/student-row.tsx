@@ -9,8 +9,15 @@ import {
   SUBJECT_ENROLLMENT_TERMS,
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
+import { formatNativeSelectClassOptionLabel } from "@/lib/class-options";
 
 interface ClassOption {
+  id: string;
+  name: string;
+  parent_class_id: string | null;
+}
+
+interface StudentClassRef {
   id: string;
   name: string;
 }
@@ -20,7 +27,7 @@ interface StudentData {
   full_name: string;
   admission_number: string | null;
   class_id: string;
-  class: ClassOption | null;
+  class: StudentClassRef | null;
   gender: string | null;
   enrollment_date: string;
   parent_name: string | null;
@@ -270,7 +277,10 @@ export function StudentRow({
             >
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {formatNativeSelectClassOptionLabel(
+                    c.name,
+                    c.parent_class_id
+                  )}
                 </option>
               ))}
             </select>
@@ -459,7 +469,10 @@ export function StudentRow({
               >
                 {classes.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {formatNativeSelectClassOptionLabel(
+                      c.name,
+                      c.parent_class_id
+                    )}
                   </option>
                 ))}
               </select>

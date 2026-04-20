@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
+import {
+  collectParentClassIds,
+  sortClassRowsByHierarchy,
+} from "@/lib/class-options";
 import type {
   CoordinatorClassOption,
   TeacherActionState,
@@ -52,6 +56,16 @@ export function AssignCoordinatorModal({
   );
   const [query, setQuery] = useState("");
 
+  const parentIds = useMemo(
+    () => collectParentClassIds(classOptions),
+    [classOptions]
+  );
+
+  const sortedClassOptions = useMemo(
+    () => sortClassRowsByHierarchy(classOptions),
+    [classOptions]
+  );
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -62,9 +76,11 @@ export function AssignCoordinatorModal({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return classOptions;
-    return classOptions.filter((c) => c.name.toLowerCase().includes(q));
-  }, [classOptions, query]);
+    if (!q) return sortedClassOptions;
+    return sortedClassOptions.filter((c) =>
+      c.name.toLowerCase().includes(q)
+    );
+  }, [sortedClassOptions, query]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -149,10 +165,14 @@ export function AssignCoordinatorModal({
                 ) : (
                   filtered.map((c) => {
                     const checked = selected.has(c.id);
+                    const isStream = Boolean(c.parent_class_id);
+                    const isParentWithStreams = parentIds.has(c.id);
                     return (
                       <label
                         key={c.id}
                         className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                          isStream ? "pl-8" : ""
+                        } ${
                           checked
                             ? "border-indigo-300 bg-indigo-50 dark:border-indigo-500/40 dark:bg-indigo-950/40"
                             : "border-slate-200 bg-white hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
@@ -164,9 +184,17 @@ export function AssignCoordinatorModal({
                           value={c.id}
                           checked={checked}
                           onChange={() => toggle(c.id)}
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+                          className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
                         />
-                        <span className="font-medium text-slate-900 dark:text-white">
+                        <span
+                          className={
+                            isParentWithStreams
+                              ? "font-semibold text-slate-900 dark:text-white"
+                              : isStream
+                                ? "font-normal text-slate-800 dark:text-zinc-200"
+                                : "font-medium text-slate-900 dark:text-white"
+                          }
+                        >
                           {c.name}
                         </span>
                       </label>
