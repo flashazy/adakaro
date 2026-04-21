@@ -179,13 +179,12 @@ function percentFromScore(score: unknown, maxScore: number): number | null {
 }
 
 /**
- * Coordinator-only. Creates report cards (status = `pending_review`) for every active
- * student in the class who does NOT already have one for the given term + academic year.
- * For each subject mapped to the class, inserts a `teacher_report_card_comments` row
- * pre-filled with the student's April Midterm / June Terminal (Term 1) or September
- * Midterm / December Annual (Term 2) percentages pulled from the gradebook. Missing
- * scores simply produce empty comment fields — the coordinator/teacher can fill them
- * in later. Existing report cards are never overwritten.
+ * Coordinator-only. For every active student in the class:
+ * - Inserts a `report_cards` row (pending_review) plus `teacher_report_card_comments`
+ *   when none exists for the term + academic year.
+ * - When a report card already exists, updates each `teacher_report_card_comments` row
+ *   with current exam % / grades / position from `teacher_scores` (same as new cards),
+ *   and only fills an empty teacher `comment` from the generated default.
  */
 export async function generateReportCardsForClassAction(
   _prev: CoordinatorGenerateState | null,
@@ -451,10 +450,9 @@ export async function generateReportCardsForClassAction(
     }
   }
 
-  // 7b. Compute term averages for every active student (not just those getting a
-  // new card) so the per-subject ranking reflects the whole class. Students who
-  // already have a report card stay out of the insert loop further down, but
-  // their averages still feed the position calculation.
+  // 7b. Compute term averages for every active student so the per-subject ranking
+  // reflects the whole class. Existing cards get the same computed values applied
+  // in the refresh path below.
   const pickPctFor = (
     studentId: string,
     subjectKey: string,
@@ -532,11 +530,9 @@ export async function generateReportCardsForClassAction(
     return strictlyHigher + 1;
   };
 
-  // 8. Generate (or refresh existing). Existing cards stay in `pending_review`
-  //    /etc — we only backfill their per-subject `position` and `comment` so
-  //    the coordinator preview can show them. We never overwrite an existing
-  //    non-empty teacher comment, and we never touch exam scores on an existing
-  //    row (those belong to the subject teacher).
+  // 8. Generate new cards or refresh existing: sync exam %, calculated grade,
+  //    letter grade, score_percent, and position from the current gradebook.
+  //    We never overwrite a non-empty teacher `comment`.
   let generated = 0;
   let refreshed = 0;
   let studentsMissingAllScores = 0;
@@ -637,10 +633,8 @@ export async function generateReportCardsForClassAction(
 
     if (commentRows.length > 0) {
       if (existingCardId) {
-        // Refresh path — update each pre-existing comment row's `position` and
-        // (if currently null) `comment`, and insert any subject rows that
-        // weren't previously stored. We touch ONLY those two fields so we never
-        // clobber a teacher's exam scores or hand-written comment.
+        // Refresh path — upsert scores from `teacher_scores` + recompute ranks,
+        // optionally backfill empty `comment`, and insert missing subject rows.
         const refreshResult = await refreshCoordinatorCommentRows({
           admin,
           reportCardId,
@@ -712,7 +706,7 @@ export async function generateReportCardsForClassAction(
   const suffixParts: string[] = [];
   if (refreshed > 0) {
     suffixParts.push(
-      `refreshed positions and teacher comments on ${refreshed} existing card${
+      `updated scores and positions on ${refreshed} existing card${
         refreshed === 1 ? "" : "s"
       }`
     );
@@ -750,10 +744,10 @@ export async function generateReportCardsForClassAction(
 }
 
 /**
- * For an existing report card, update each pre-existing comment row's
- * `position` and `comment` (only when previously empty) and insert any subject
- * row that wasn't previously stored. Never touches exam scores or a teacher's
- * already-written comment.
+ * For an existing report card, update each comment row with gradebook-derived
+ * exam %, calculated/letter grades, score_percent, and position; backfill
+ * `comment` only when empty; insert missing subjects. Never overwrites a
+ * non-empty teacher comment.
  */
 async function refreshCoordinatorCommentRows(args: {
   admin: AdminDb;
@@ -781,6 +775,7 @@ async function refreshCoordinatorCommentRows(args: {
   const { data: priorRowsRaw, error: priorErr } = await admin
     .from("teacher_report_card_comments")
     .select("id, teacher_id, subject, comment")
+    .eq("report_card_id", reportCardId)
     .eq("student_id", studentId)
     .eq("term", term)
     .eq("academic_year", academicYear);
@@ -848,10 +843,18 @@ async function refreshCoordinatorCommentRows(args: {
     }
 
     // Backfill on every pre-existing row for this subject so the preview's
-    // "richest row wins" merger always sees a position. The comment update is
-    // skipped when a row already has one, to avoid clobbering teacher input.
+    // "richest row wins" merger always sees fresh scores + position. The
+    // comment update is skipped when a row already has one.
     for (const p of prior) {
-      const update: Record<string, unknown> = { position: computedPosition };
+      const update: Record<string, unknown> = {
+        position: computedPosition,
+        exam1_score: row.exam1_score ?? null,
+        exam2_score: row.exam2_score ?? null,
+        calculated_score: row.calculated_score ?? null,
+        calculated_grade: row.calculated_grade ?? null,
+        score_percent: row.score_percent ?? null,
+        letter_grade: row.letter_grade ?? null,
+      };
       const existingTrimmed = (p.comment ?? "").trim();
       if (!existingTrimmed && computedComment) {
         update.comment = computedComment;

@@ -1014,7 +1014,9 @@ function GenerateReportCardsModal({
               </div>
               <p className="text-xs text-slate-500 dark:text-zinc-400">
                 Students who already have a report card for this term and year
-                will be skipped — existing cards are never overwritten.
+                get their subject scores and ranks refreshed from the gradebook;
+                new students get new cards. Existing teacher comments are kept
+                when already filled in.
               </p>
             </>
           )}

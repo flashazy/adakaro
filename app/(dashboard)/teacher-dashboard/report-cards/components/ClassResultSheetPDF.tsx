@@ -9,8 +9,12 @@ import {
   tanzaniaLetterGrade,
 } from "@/lib/tanzania-grades";
 import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
-import { ordinalSuffix } from "../report-card-preview-builder";
+import {
+  calculateDivision,
+  ordinalSuffix,
+} from "../report-card-preview-builder";
 import { subjectNameToNectaCode } from "@/lib/necta-subject-code";
+import { SECONDARY_BEST_SUBJECT_COUNT } from "@/lib/school-level";
 
 export interface ClassResultSheetPdfInput {
   schoolName: string;
@@ -63,28 +67,22 @@ function sortForResultSheet(
   });
 }
 
-function compareAdmissionNumbers(
-  a: string | null | undefined,
-  b: string | null | undefined
+/** Females first, then males; unknown/null sex last. */
+function nectaMainTableGenderOrder(
+  g: CoordinatorReportCardItem["gender"]
 ): number {
-  const ax = (a ?? "").trim();
-  const bx = (b ?? "").trim();
-  if (!ax && !bx) return 0;
-  if (!ax) return 1;
-  if (!bx) return -1;
-  const an = Number(ax);
-  const bn = Number(bx);
-  if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
-  return ax.localeCompare(bx, undefined, { numeric: true, sensitivity: "base" });
+  if (g === "female") return 0;
+  if (g === "male") return 1;
+  return 2;
 }
 
-/** NECTA-style sort: admission number (CNO), then name. */
+/** NECTA MAIN RESULTS: females first, then males; A–Z by name within each group. */
 function sortForNectaMainTable(
   items: CoordinatorReportCardItem[]
 ): CoordinatorReportCardItem[] {
   return [...items].sort((a, b) => {
-    const cmp = compareAdmissionNumbers(a.admissionNumber, b.admissionNumber);
-    if (cmp !== 0) return cmp;
+    const bySex = nectaMainTableGenderOrder(a.gender) - nectaMainTableGenderOrder(b.gender);
+    if (bySex !== 0) return bySex;
     return a.studentName.localeCompare(b.studentName, undefined, {
       sensitivity: "base",
     });
@@ -107,10 +105,22 @@ function divisionColumnKey(
   return "0";
 }
 
-type DivCounts = Record<"I" | "II" | "III" | "IV" | "0" | "ABS", number>;
+type DivSummaryKey =
+  | "I"
+  | "II"
+  | "III"
+  | "IV"
+  | "0"
+  | "INC"
+  | "ABS";
+
+type DivCounts = Record<
+  "I" | "II" | "III" | "IV" | "0" | "INC" | "ABS",
+  number
+>;
 
 function emptyDivCounts(): DivCounts {
-  return { I: 0, II: 0, III: 0, IV: 0, "0": 0, ABS: 0 };
+  return { I: 0, II: 0, III: 0, IV: 0, "0": 0, INC: 0, ABS: 0 };
 }
 
 /** Secondary letter grade A–F only (matches report-card footer). */
@@ -141,7 +151,8 @@ function effectiveSecondaryGradeForNecta(
 function nectaSubjectGradeLetterOrX(
   s: ReportCardPreviewData["subjects"][number]
 ): string {
-  if (s.hasMajorExamScore === false) return "X";
+  /** Only April/June (or term equivalents); omitting the flag must not fall back to legacy grades. */
+  if (s.hasMajorExamScore !== true) return "X";
   return effectiveSecondaryGradeForNecta(s) ?? "X";
 }
 
@@ -149,35 +160,55 @@ function nectaSubjectGradeLetterOrX(
 function subjectHasScoreForNectaPresence(
   s: ReportCardPreviewData["subjects"][number]
 ): boolean {
-  if (s.hasMajorExamScore === false) return false;
+  if (s.hasMajorExamScore !== true) return false;
   return effectiveSecondaryGradeForNecta(s) != null;
 }
 
-/** No exam scores in any enrolled subject for this term (NECTA absent candidate). */
-function isFullyAbsentForNecta(preview: ReportCardPreviewData): boolean {
-  if (preview.subjects.length === 0) return true;
-  return preview.subjects.every((s) => !subjectHasScoreForNectaPresence(s));
+/** Subjects with at least one major-exam score and a printable letter grade. */
+function scoredSubjectsForNecta(
+  preview: ReportCardPreviewData
+): ReportCardPreviewData["subjects"] {
+  return preview.subjects.filter((s) => subjectHasScoreForNectaPresence(s));
 }
 
 function nectaAggtAndDiv(preview: ReportCardPreviewData): {
   aggt: string;
   div: string;
 } {
-  if (isFullyAbsentForNecta(preview)) {
+  const scored = scoredSubjectsForNecta(preview);
+  const n = scored.length;
+  if (n === 0) {
     return { aggt: "-", div: "ABS" };
   }
-  const pts = preview.summary?.division?.totalPoints;
-  const aggt =
-    pts != null && Number.isFinite(pts) ? String(Math.round(pts)) : "—";
-  const div = preview.summary?.division?.label ?? "—";
-  return { aggt, div };
+  if (n < SECONDARY_BEST_SUBJECT_COUNT) {
+    return { aggt: "-", div: "INC" };
+  }
+  const withGrade = scored
+    .map((s) => ({
+      avg: s.averagePercentRaw ?? 0,
+      grade: effectiveSecondaryGradeForNecta(s),
+    }))
+    .filter((p): p is { avg: number; grade: string } => p.grade != null);
+  if (withGrade.length < SECONDARY_BEST_SUBJECT_COUNT) {
+    return { aggt: "-", div: "INC" };
+  }
+  const best7 = [...withGrade]
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, SECONDARY_BEST_SUBJECT_COUNT);
+  const calc = calculateDivision(best7.map((p) => p.grade));
+  if (!calc) {
+    return { aggt: "-", div: "INC" };
+  }
+  return {
+    aggt: String(Math.round(calc.totalPoints)),
+    div: calc.division,
+  };
 }
 
-function bucketForDivisionSummary(
-  r: CoordinatorReportCardItem
-): keyof DivCounts {
-  if (isFullyAbsentForNecta(r.preview)) return "ABS";
-  return divisionColumnKey(r.preview.summary?.division?.label);
+function bucketForDivisionSummary(r: CoordinatorReportCardItem): DivSummaryKey {
+  const { div } = nectaAggtAndDiv(r.preview);
+  if (div === "ABS" || div === "INC") return div;
+  return divisionColumnKey(div);
 }
 
 /**
@@ -272,7 +303,7 @@ function buildNectaSecondaryPdf(
   y += 5;
 
   const { F, M, T } = buildNectaDivisionPerformanceRows(reportCards);
-  const divHead = [["SEX", "I", "II", "III", "IV", "0", "ABS"]];
+  const divHead = [["SEX", "I", "II", "III", "IV", "0", "INC", "ABS"]];
   const divBody = [
     [
       "F",
@@ -281,6 +312,7 @@ function buildNectaSecondaryPdf(
       String(F.III),
       String(F.IV),
       String(F["0"]),
+      String(F.INC),
       String(F.ABS),
     ],
     [
@@ -290,6 +322,7 @@ function buildNectaSecondaryPdf(
       String(M.III),
       String(M.IV),
       String(M["0"]),
+      String(M.INC),
       String(M.ABS),
     ],
     [
@@ -299,6 +332,7 @@ function buildNectaSecondaryPdf(
       String(T.III),
       String(T.IV),
       String(T["0"]),
+      String(T.INC),
       String(T.ABS),
     ],
   ];
@@ -344,22 +378,52 @@ function buildNectaSecondaryPdf(
   y += 5;
 
   const orderedMain = sortForNectaMainTable(reportCards);
-  const mainHead = [["CNO", "SEX", "AGGT", "DIV", "DETAILED SUBJECTS"]];
-  const mainBody = orderedMain.map((r) => {
+  const mainHead = [
+    [
+      "S/N",
+      "CNO",
+      "STUDENT NAME",
+      "SEX",
+      "AGGT",
+      "DIV",
+      "DETAILED SUBJECTS",
+    ],
+  ];
+  const mainBody = orderedMain.map((r, idx) => {
+    const sn = String(idx + 1);
     const cno = (r.admissionNumber ?? "").trim() || "—";
+    const name = (r.studentName ?? "").trim() || "—";
     const sex = sexLetter(r.gender);
     const { aggt, div } = nectaAggtAndDiv(r.preview);
     const detail = buildDetailedSubjectsLine(r.preview);
-    return [cno, sex, aggt, div, detail];
+    return [sn, cno, name, sex, aggt, div, detail];
   });
+
+  /** Fixed widths (mm); last column uses remaining table width for wrapping. */
+  const mainTableInnerWidth = pageW - margin * 2;
+  const MAIN_COL_SN_MM = 8;
+  const MAIN_COL_CNO_MM = 15;
+  const MAIN_COL_NAME_MM = 35;
+  const MAIN_COL_SEX_MM = 10;
+  const MAIN_COL_AGGT_MM = 12;
+  const MAIN_COL_DIV_MM = 12;
+  const MAIN_COL_FIXED_SUM_MM =
+    MAIN_COL_SN_MM +
+    MAIN_COL_CNO_MM +
+    MAIN_COL_NAME_MM +
+    MAIN_COL_SEX_MM +
+    MAIN_COL_AGGT_MM +
+    MAIN_COL_DIV_MM;
+  const MAIN_COL_DETAIL_MM = mainTableInnerWidth - MAIN_COL_FIXED_SUM_MM;
 
   autoTable(doc, {
     startY: y,
     head: mainHead,
     body: mainBody.length
       ? mainBody
-      : [["—", "—", "—", "—", "No students"]],
+      : [["—", "—", "—", "—", "—", "—", "No students"]],
     theme: "grid",
+    tableWidth: mainTableInnerWidth,
     styles: {
       font: "times",
       fontSize: 7,
@@ -369,6 +433,7 @@ function buildNectaSecondaryPdf(
       fillColor: NECTA_CELL_FILL,
       textColor: [0, 0, 0],
       valign: "top",
+      overflow: "linebreak",
     },
     headStyles: {
       fillColor: NECTA_CELL_FILL,
@@ -377,11 +442,17 @@ function buildNectaSecondaryPdf(
       fontSize: 8,
     },
     columnStyles: {
-      0: { cellWidth: 28 },
-      1: { cellWidth: 12 },
-      2: { cellWidth: 16 },
-      3: { cellWidth: 14 },
-      4: { cellWidth: "auto" },
+      0: { cellWidth: MAIN_COL_SN_MM },
+      1: { cellWidth: MAIN_COL_CNO_MM },
+      2: { cellWidth: MAIN_COL_NAME_MM },
+      3: { cellWidth: MAIN_COL_SEX_MM },
+      4: { cellWidth: MAIN_COL_AGGT_MM },
+      5: { cellWidth: MAIN_COL_DIV_MM },
+      6: {
+        cellWidth: MAIN_COL_DETAIL_MM,
+        fontSize: 7,
+        overflow: "linebreak",
+      },
     },
     margin: { left: margin, right: margin },
     willDrawPage: (data) => {
@@ -405,7 +476,7 @@ function buildNectaSecondaryPdf(
   doc.setFontSize(7);
   doc.setTextColor(60, 60, 60);
   doc.text(
-    "AGGT = total grade points from best 7 subjects (A=1, B=2, C=3, D=4, F=5). DIV = Division from aggregate points.",
+    "AGGT = sum of grade points from best 7 scored subjects (A=1 … F=5). DIV = Division from that aggregate. INC = incomplete (<7 scored). ABS = absent (0 scored).",
     margin,
     y
   );

@@ -201,10 +201,14 @@ export function buildSubjectPreviewRows(
 
   return list.map((subject) => {
     const c = bySub.get(subject);
-    let e1 = parseNum(c?.exam1Score ?? null);
-    let e2 = parseNum(c?.exam2Score ?? null);
-    /** True only when midterm/terminal (gradebook) scores exist — not legacy `scorePercent` fill. */
-    const hasMajorExamScore = e1 != null || e2 != null;
+    /** April / June (or term equivalents) only — never infer from legacy `scorePercent`. */
+    const exam1FromSlots = parseNum(c?.exam1Score ?? null);
+    const exam2FromSlots = parseNum(c?.exam2Score ?? null);
+    let e1 = exam1FromSlots;
+    let e2 = exam2FromSlots;
+    /** True only when at least one major-exam slot has a numeric score this term. */
+    const hasMajorExamScore =
+      exam1FromSlots != null || exam2FromSlots != null;
     if (e1 == null && e2 == null && c?.scorePercent != null) {
       e1 = parseNum(c.scorePercent);
     }
