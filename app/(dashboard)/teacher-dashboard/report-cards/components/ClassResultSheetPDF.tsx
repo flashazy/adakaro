@@ -4,7 +4,10 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { CoordinatorReportCardItem } from "../../coordinator/types";
 import type { ReportCardPreviewData } from "../report-card-preview-types";
-import { gradingScaleDescription } from "@/lib/tanzania-grades";
+import {
+  gradingScaleDescription,
+  tanzaniaLetterGrade,
+} from "@/lib/tanzania-grades";
 import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { ordinalSuffix } from "../report-card-preview-builder";
 import { subjectNameToNectaCode } from "@/lib/necta-subject-code";
@@ -104,10 +107,10 @@ function divisionColumnKey(
   return "0";
 }
 
-type DivCounts = Record<"I" | "II" | "III" | "IV" | "0", number>;
+type DivCounts = Record<"I" | "II" | "III" | "IV" | "0" | "ABS", number>;
 
 function emptyDivCounts(): DivCounts {
-  return { I: 0, II: 0, III: 0, IV: 0, "0": 0 };
+  return { I: 0, II: 0, III: 0, IV: 0, "0": 0, ABS: 0 };
 }
 
 /** Secondary letter grade A–F only (matches report-card footer). */
@@ -119,22 +122,71 @@ function normalizeSecondaryGradeLetter(grade: string): string | null {
   return null;
 }
 
+/** Letter shown on the sheet: explicit grade or derived from term average %. */
+function effectiveSecondaryGradeForNecta(
+  s: ReportCardPreviewData["subjects"][number]
+): string | null {
+  const g = normalizeSecondaryGradeLetter(s.grade);
+  if (g) return g;
+  if (s.averagePercentRaw != null && Number.isFinite(s.averagePercentRaw)) {
+    return tanzaniaLetterGrade(s.averagePercentRaw, "secondary");
+  }
+  return null;
+}
+
+function subjectHasTermScore(
+  s: ReportCardPreviewData["subjects"][number]
+): boolean {
+  return effectiveSecondaryGradeForNecta(s) != null;
+}
+
+/** No exam scores in any enrolled subject for this term (NECTA absent candidate). */
+function isFullyAbsentForNecta(preview: ReportCardPreviewData): boolean {
+  if (preview.subjects.length === 0) return true;
+  return preview.subjects.every((s) => !subjectHasTermScore(s));
+}
+
+function nectaAggtAndDiv(preview: ReportCardPreviewData): {
+  aggt: string;
+  div: string;
+} {
+  if (isFullyAbsentForNecta(preview)) {
+    return { aggt: "-", div: "ABS" };
+  }
+  const pts = preview.summary?.division?.totalPoints;
+  const aggt =
+    pts != null && Number.isFinite(pts) ? String(Math.round(pts)) : "—";
+  const div = preview.summary?.division?.label ?? "—";
+  return { aggt, div };
+}
+
+function bucketForDivisionSummary(
+  r: CoordinatorReportCardItem
+): keyof DivCounts {
+  if (isFullyAbsentForNecta(r.preview)) return "ABS";
+  return divisionColumnKey(r.preview.summary?.division?.label);
+}
+
 /**
- * Space-separated: `CIV - 'C' HIST - 'D'` using grades from report-card preview
- * (same source as teacher_report_card_comments / merged gradebook).
+ * NECTA-style line: every enrolled subject is listed; real grade or `'X'` if
+ * absent for that subject. Fully absent candidates get all `'X'`.
  */
 function buildDetailedSubjectsLine(preview: ReportCardPreviewData): string {
   const sorted = [...preview.subjects].sort((a, b) =>
     a.subject.localeCompare(b.subject, undefined, { sensitivity: "base" })
   );
+  if (sorted.length === 0) return "—";
   const parts: string[] = [];
   for (const s of sorted) {
-    const g = normalizeSecondaryGradeLetter(s.grade);
-    if (!g) continue;
     const code = subjectNameToNectaCode(s.subject);
-    parts.push(`${code} - '${g}'`);
+    const g = effectiveSecondaryGradeForNecta(s);
+    if (g) {
+      parts.push(`${code} - '${g}'`);
+    } else {
+      parts.push(`${code} - 'X'`);
+    }
   }
-  return parts.length > 0 ? parts.join(" ") : "—";
+  return parts.join(" ");
 }
 
 function sexLetter(
@@ -152,7 +204,7 @@ function buildNectaDivisionPerformanceRows(
   const M = emptyDivCounts();
   const T = emptyDivCounts();
   for (const r of reportCards) {
-    const key = divisionColumnKey(r.preview.summary?.division?.label);
+    const key = bucketForDivisionSummary(r);
     T[key] += 1;
     if (r.gender === "female") F[key] += 1;
     else if (r.gender === "male") M[key] += 1;
@@ -211,7 +263,7 @@ function buildNectaSecondaryPdf(
   y += 5;
 
   const { F, M, T } = buildNectaDivisionPerformanceRows(reportCards);
-  const divHead = [["SEX", "I", "II", "III", "IV", "0"]];
+  const divHead = [["SEX", "I", "II", "III", "IV", "0", "ABS"]];
   const divBody = [
     [
       "F",
@@ -220,6 +272,7 @@ function buildNectaSecondaryPdf(
       String(F.III),
       String(F.IV),
       String(F["0"]),
+      String(F.ABS),
     ],
     [
       "M",
@@ -228,6 +281,7 @@ function buildNectaSecondaryPdf(
       String(M.III),
       String(M.IV),
       String(M["0"]),
+      String(M.ABS),
     ],
     [
       "T",
@@ -236,6 +290,7 @@ function buildNectaSecondaryPdf(
       String(T.III),
       String(T.IV),
       String(T["0"]),
+      String(T.ABS),
     ],
   ];
 
@@ -284,10 +339,7 @@ function buildNectaSecondaryPdf(
   const mainBody = orderedMain.map((r) => {
     const cno = (r.admissionNumber ?? "").trim() || "—";
     const sex = sexLetter(r.gender);
-    const pts = r.preview.summary?.division?.totalPoints;
-    const aggt =
-      pts != null && Number.isFinite(pts) ? String(Math.round(pts)) : "—";
-    const div = r.preview.summary?.division?.label ?? "—";
+    const { aggt, div } = nectaAggtAndDiv(r.preview);
     const detail = buildDetailedSubjectsLine(r.preview);
     return [cno, sex, aggt, div, detail];
   });
