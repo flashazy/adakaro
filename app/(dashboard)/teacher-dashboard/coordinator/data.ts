@@ -768,41 +768,23 @@ async function loadClassReportCards(
     }
   }
 
-  const studentsForRank: StudentReportRow[] = cardRows.map((c) => ({
-    studentId: c.student_id,
-    fullName: c.students?.full_name ?? "",
-    parentEmail: c.students?.parent_email ?? null,
-    reportCardId: c.id,
-    status: c.status,
-    // IMPORTANT: pass `params.classSubjectNames` (the canonical, properly-cased
-    // subject list) instead of `[]`. When a student has no pre-existing comment
-    // rows the gradebook merge would otherwise stamp lowercase keys (e.g.
-    // "edk") onto the synthesized rows, causing the live `computeClassSubjectPositions`
-    // lookup to miss them — and the preview to fall back to "—" for every
-    // subject. Feeding canonical names into the merge keeps subject labels
-    // consistent across all students so the ranker can match them.
-    comments: mergeGradebookScoresIntoComments(
-      commentsByCard.get(c.id) ?? [],
-      params.classSubjectNames,
-      gradebookByStudent.get(c.student_id)
-    ),
-  }));
-
-  // Class-wide subject list: merge subjects mapped to the class with any
-  // subjects found on comments (handles legacy rows whose subject label drifted
-  // from the canonical `subjects.name`).
+  // Class + DB comment subjects (before gradebook merge). Enrolment and per-student
+  // merge use the same lists as the report-card table so rank/totals never count
+  // subjects that are not shown for that student.
   const classSubjectSet = new Set<string>();
   for (const name of params.classSubjectNames) {
     const trimmed = name.trim();
     if (trimmed) classSubjectSet.add(trimmed);
   }
-  for (const s of studentsForRank) {
-    for (const c of s.comments) {
-      const t = c.subject.trim();
+  for (const [, list] of commentsByCard) {
+    for (const row of list) {
+      const t = row.subject?.trim();
       if (t) classSubjectSet.add(t);
     }
   }
-  const allSubjects = [...classSubjectSet].sort((a, b) => a.localeCompare(b));
+  const allSubjectsV0 = [...classSubjectSet].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
 
   // Per-student subject list: narrow to enrolled subjects when the student has
   // enrolment rows for the period, otherwise show the whole class list.
@@ -819,13 +801,39 @@ async function loadClassReportCards(
         classId: studentClassId,
         academicYear: academicYearInt,
         term: termParsed,
-        teacherSubjectLabels: allSubjects,
+        teacherSubjectLabels: allSubjectsV0,
       });
       subjectsByStudent.set(
         c.student_id,
-        enrolled.length > 0 ? enrolled : allSubjects
+        enrolled.length > 0 ? enrolled : allSubjectsV0
       );
     })
+  );
+
+  const studentsForRank: StudentReportRow[] = cardRows.map((c) => ({
+    studentId: c.student_id,
+    fullName: c.students?.full_name ?? "",
+    parentEmail: c.students?.parent_email ?? null,
+    reportCardId: c.id,
+    status: c.status,
+    comments: mergeGradebookScoresIntoComments(
+      commentsByCard.get(c.id) ?? [],
+      subjectsByStudent.get(c.student_id) ?? allSubjectsV0,
+      gradebookByStudent.get(c.student_id)
+    ),
+  }));
+
+  // Union class subjects with any label introduced by the gradebook merge
+  // (e.g. a subject that only came from `teacher_scores`).
+  const allSubjectsSet = new Set<string>(allSubjectsV0);
+  for (const s of studentsForRank) {
+    for (const c of s.comments) {
+      const t = c.subject.trim();
+      if (t) allSubjectsSet.add(t);
+    }
+  }
+  const allSubjects = [...allSubjectsSet].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
   );
 
   // Cross-stream coordinators (parent class) rank by admission_number so one
@@ -876,6 +884,7 @@ async function loadClassReportCards(
     // ✅ "Selected" indicator column.
     const summary = computeReportCardStudentSummary({
       allStudents: studentsForRank,
+      getSubjects: (id) => subjectsByStudent.get(id) ?? allSubjects,
       subjects: allSubjects,
       focusStudentId: c.student_id,
       schoolLevel: params.schoolLevel,

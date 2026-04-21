@@ -135,7 +135,13 @@ export function termAverageFromComment(
   }
   const storedCalc = parseNum(c.calculatedScore ?? null);
   const computed = computeReportCardTermAverage(e1, e2);
-  const avgRaw = storedCalc ?? computed;
+  // Prefer the live (exam) average so rank/totals follow current marks, not a stale DB snapshot.
+  const avgRaw =
+    computed != null && Number.isFinite(computed)
+      ? computed
+      : storedCalc != null && Number.isFinite(storedCalc)
+        ? storedCalc
+        : null;
   return avgRaw != null && Number.isFinite(avgRaw) ? avgRaw : null;
 }
 
@@ -214,7 +220,12 @@ export function buildSubjectPreviewRows(
     }
     const storedCalc = parseNum(c?.calculatedScore ?? null);
     const computed = computeReportCardTermAverage(e1, e2);
-    const avgRaw = storedCalc ?? computed;
+    const avgRaw =
+      computed != null && Number.isFinite(computed)
+        ? computed
+        : storedCalc != null && Number.isFinite(storedCalc)
+          ? storedCalc
+          : null;
     let grade =
       c?.calculatedGrade?.trim() ||
       c?.letterGrade?.trim() ||
@@ -425,14 +436,25 @@ export function ordinalSuffix(n: number): string {
  */
 export function computeReportCardStudentSummary(args: {
   allStudents: StudentReportRow[];
+  /**
+   * Default subject roster when `getSubjects` is omitted (same list for
+   * every student).
+   */
   subjects: string[];
+  /**
+   * When set, each student’s rank/total uses this list — must match the
+   * subjects used to build that student’s table rows (e.g. enrolled-only).
+   */
+  getSubjects?: (studentId: string) => string[];
   focusStudentId: string;
   schoolLevel: SchoolLevel;
   studentName: string;
   term: string;
   academicYear: string;
 }): ReportCardSummary {
-  const { allStudents, subjects, focusStudentId, schoolLevel } = args;
+  const { allStudents, subjects, getSubjects, focusStudentId, schoolLevel } =
+    args;
+  const resolveSubs = (id: string) => getSubjects?.(id) ?? subjects;
   // Robustness: every cohort student gets a numeric score, even when no
   // subjects are scored yet. Missing data is treated as 0 (never as "absent
   // from the ranking") so:
@@ -443,7 +465,8 @@ export function computeReportCardStudentSummary(args: {
   const scored: { studentId: string; score: number }[] = [];
   let focusPairs: { subject: string; avg: number }[] = [];
   for (const s of allStudents) {
-    const pairs = collectSubjectAveragePairs(s, subjects);
+    const subj = resolveSubs(s.studentId);
+    const pairs = collectSubjectAveragePairs(s, subj);
     const rawScore = aggregateRankingScore(pairs, schoolLevel);
     const score = rawScore != null && Number.isFinite(rawScore) ? rawScore : 0;
     if (s.studentId === focusStudentId) focusPairs = pairs;
