@@ -131,7 +131,7 @@ function LogoPlaceholder({ schoolName }: { schoolName: string }) {
   if (ch && /\S/.test(ch)) {
     return (
       <span
-        className="flex h-full w-full items-center justify-center bg-indigo-50 text-xl font-bold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300"
+        className="flex h-full w-full items-center justify-center bg-[rgb(var(--school-primary-rgb)/0.10)] text-xl font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary"
         aria-hidden
       >
         {ch.toUpperCase()}
@@ -404,7 +404,7 @@ export default async function ReceiptPage({ params }: PageProps) {
                   Receipt Number
                 </p>
                 {receiptTyped ? (
-                  <p className="mt-0.5 font-mono text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                  <p className="mt-0.5 font-mono text-sm font-bold text-school-primary dark:text-school-primary">
                     {receiptTyped.receipt_number}
                   </p>
                 ) : (

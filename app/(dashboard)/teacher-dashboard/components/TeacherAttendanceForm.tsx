@@ -729,7 +729,7 @@ export function TeacherAttendanceForm({
                         className={cn(
                           "rounded-full border px-3 py-1 text-sm transition-colors",
                           active
-                            ? "border-transparent bg-indigo-600 text-white hover:bg-indigo-600 dark:bg-indigo-600"
+                            ? "border-transparent bg-school-primary text-white hover:bg-school-primary dark:bg-school-primary"
                             : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
                         )}
                       >
@@ -753,7 +753,7 @@ export function TeacherAttendanceForm({
                 placeholder="Search students by name…"
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
                 autoComplete="off"
               />
             </label>
@@ -825,7 +825,7 @@ export function TeacherAttendanceForm({
                   "h-12 w-full rounded-xl text-base font-medium text-white shadow-sm transition hover:opacity-90",
                   isSaving || isPending
                     ? "cursor-not-allowed bg-gray-400"
-                    : "bg-indigo-600 hover:bg-indigo-500"
+                    : "bg-school-primary hover:brightness-105"
                 )}
               >
                 {isSaving ? "Saving…" : "Save attendance"}

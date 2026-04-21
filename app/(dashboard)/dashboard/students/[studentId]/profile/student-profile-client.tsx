@@ -80,7 +80,7 @@ function incidentLabel(t: DisciplineRow["incident_type"]): string {
 }
 
 const inputClass =
-  "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white";
+  "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white";
 const labelClass = "block text-sm font-medium text-slate-700 dark:text-zinc-300";
 
 export interface ProfileScholarshipLine {
@@ -321,7 +321,7 @@ export function StudentProfileClient({
               onClick={() => setTab(t.id)}
               className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                 tab === t.id
-                  ? "bg-indigo-600 text-white shadow-sm"
+                  ? "bg-school-primary text-white shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
               }`}
             >
@@ -346,7 +346,7 @@ export function StudentProfileClient({
                   setFormError(null);
                   setAcademicModal("new");
                 }}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
               >
                 Add record
               </button>
@@ -376,7 +376,7 @@ export function StudentProfileClient({
                     value={scoresSearch}
                     onChange={(e) => setScoresSearch(e.target.value)}
                     placeholder="Search by subject or assignment…"
-                    className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                    className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                   />
                 </div>
 
@@ -554,7 +554,7 @@ export function StudentProfileClient({
                     value={commentsSearch}
                     onChange={(e) => setCommentsSearch(e.target.value)}
                     placeholder="Search by subject…"
-                    className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                    className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                   />
                 </div>
 
@@ -719,7 +719,7 @@ export function StudentProfileClient({
                             setFormError(null);
                             setAcademicModal(r);
                           }}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                          className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
                         >
                           Edit
                         </button>
@@ -765,7 +765,7 @@ export function StudentProfileClient({
                   setFormError(null);
                   setDisciplineModal("new");
                 }}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
               >
                 Add record
               </button>
@@ -799,7 +799,7 @@ export function StudentProfileClient({
                           setFormError(null);
                           setDisciplineModal(r);
                         }}
-                        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                        className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
                       >
                         Edit
                       </button>
@@ -852,7 +852,7 @@ export function StudentProfileClient({
                   setFormError(null);
                   setHealthModal("new");
                 }}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
               >
                 Add record
               </button>
@@ -886,7 +886,7 @@ export function StudentProfileClient({
                           setFormError(null);
                           setHealthModal(r);
                         }}
-                        className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                        className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
                       >
                         Edit
                       </button>
@@ -941,7 +941,7 @@ export function StudentProfileClient({
                   setFormError(null);
                   setFinanceModal("new");
                 }}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
               >
                 Add record
               </button>
@@ -1064,14 +1064,14 @@ export function StudentProfileClient({
                           {p.receipt_number ? (
                             <Link
                               href={`/dashboard/receipts/${p.id}`}
-                              className="font-mono text-sm text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                              className="font-mono text-sm text-school-primary hover:opacity-90 dark:text-school-primary"
                             >
                               {p.receipt_number}
                             </Link>
                           ) : (
                             <Link
                               href={`/dashboard/receipts/${p.id}`}
-                              className="text-sm text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                              className="text-sm text-school-primary hover:opacity-90 dark:text-school-primary"
                             >
                               View
                             </Link>
@@ -1123,7 +1123,7 @@ export function StudentProfileClient({
                             setFormError(null);
                             setFinanceModal(r);
                           }}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                          className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
                         >
                           Edit
                         </button>
@@ -1272,7 +1272,7 @@ export function StudentProfileClient({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
                 >
                   {pending ? "Saving…" : "Save"}
                 </button>
@@ -1438,7 +1438,7 @@ export function StudentProfileClient({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
                 >
                   {pending ? "Saving…" : "Save"}
                 </button>
@@ -1574,7 +1574,7 @@ export function StudentProfileClient({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
                 >
                   {pending ? "Saving…" : "Save"}
                 </button>
@@ -1736,7 +1736,7 @@ export function StudentProfileClient({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
                 >
                   {pending ? "Saving…" : "Save"}
                 </button>

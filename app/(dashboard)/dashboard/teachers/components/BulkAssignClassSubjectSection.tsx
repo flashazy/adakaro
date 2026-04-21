@@ -180,7 +180,7 @@ export function BulkAssignClassSubjectSection({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 rounded-lg text-left text-base font-semibold text-slate-900 outline-none ring-offset-2 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-white dark:hover:bg-zinc-800 dark:ring-offset-zinc-900"
+        className="flex w-full items-center gap-2 rounded-lg text-left text-base font-semibold text-slate-900 outline-none ring-offset-2 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-school-primary dark:text-white dark:hover:bg-zinc-800 dark:ring-offset-zinc-900"
       >
         <span className="inline-block w-4 shrink-0 select-none" aria-hidden>
           {expanded ? "▼" : "▶"}
@@ -277,7 +277,7 @@ export function BulkAssignClassSubjectSection({
                           isStream ? "pl-6" : ""
                         } ${
                           checked
-                            ? "border-indigo-300 bg-indigo-50 dark:border-indigo-500/40 dark:bg-indigo-950/40"
+                            ? "border-[rgb(var(--school-primary-rgb)/0.35)] bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.35)] dark:bg-[rgb(var(--school-primary-rgb)/0.18)]"
                             : "border-slate-200 bg-white hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
                         }`}
                       >
@@ -285,7 +285,7 @@ export function BulkAssignClassSubjectSection({
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleClass(c.id)}
-                          className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+                          className="h-4 w-4 shrink-0 rounded border-slate-300 text-school-primary focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800"
                         />
                         <span
                           className={
@@ -376,7 +376,7 @@ export function BulkAssignClassSubjectSection({
                         key={s.id}
                         className={`flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors ${
                           checked
-                            ? "bg-indigo-50/80 dark:bg-indigo-950/30"
+                            ? "bg-[rgb(var(--school-primary-rgb)/0.10)]/80 dark:bg-[rgb(var(--school-primary-rgb)/0.14)]"
                             : "hover:bg-slate-50 dark:hover:bg-zinc-800"
                         }`}
                       >
@@ -384,7 +384,7 @@ export function BulkAssignClassSubjectSection({
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleSubject(s.id)}
-                          className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+                          className="h-4 w-4 shrink-0 rounded border-slate-300 text-school-primary focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800"
                         />
                         <span className="text-slate-900 dark:text-white">
                           {s.name}
@@ -442,7 +442,7 @@ export function BulkAssignClassSubjectSection({
             pairCount === 0 ||
             noSubjectsForSelectedClasses
           }
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending
             ? "Assigning…"

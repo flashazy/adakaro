@@ -165,11 +165,11 @@ export function GradeDisplayFormatToggle({
               aria-checked={active}
               onClick={() => onChange(opt.value)}
               className={cn(
-                "font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
+                "font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-school-primary",
                 padding,
                 idx > 0 && "border-l border-slate-200 dark:border-zinc-700",
                 active
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-school-primary text-white"
                   : "hover:bg-slate-50 dark:hover:bg-zinc-800"
               )}
             >

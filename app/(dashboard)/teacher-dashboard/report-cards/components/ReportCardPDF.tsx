@@ -5,6 +5,7 @@ import autoTable from "jspdf-autotable";
 import { reportCardExamColumnTitles } from "../report-card-preview-builder";
 import type { ReportCardPreviewData } from "../report-card-preview-types";
 import { gradingScaleDescription } from "@/lib/tanzania-grades";
+import { drawPdfSchoolMottoCentered } from "./report-card-pdf-motto";
 
 function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   let y = margin;
@@ -15,6 +16,7 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   doc.setFont("helvetica", "bold");
   doc.text(data.schoolName, pageW / 2, y, { align: "center" });
   y += 8;
+  y = drawPdfSchoolMottoCentered(doc, pageW / 2, y, data.schoolMotto, "helvetica");
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.text("Student report card", pageW / 2, y, { align: "center" });

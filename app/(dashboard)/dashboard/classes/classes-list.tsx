@@ -90,7 +90,7 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
           value={query}
           onChange={(e) => handleSearchChange(e.target.value)}
           placeholder="Search classes by name..."
-          className="block w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-white dark:placeholder:text-zinc-500"
+          className="block w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-800 dark:bg-zinc-900 dark:text-white dark:placeholder:text-zinc-500"
         />
       </div>
 
@@ -122,7 +122,7 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
                   );
                 }}
                 aria-label="Rows per page"
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
               >
                 {STUDENT_LIST_ROW_OPTIONS.map((n) => (
                   <option key={n} value={n}>
@@ -197,7 +197,7 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
                     aria-current={p === safePage ? "page" : undefined}
                     className={`min-w-[2rem] rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
                       p === safePage
-                        ? "bg-indigo-600 text-white shadow-sm hover:bg-indigo-500"
+                        ? "bg-school-primary text-white shadow-sm hover:brightness-105"
                         : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                     }`}
                   >

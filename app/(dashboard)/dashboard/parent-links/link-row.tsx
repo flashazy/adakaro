@@ -31,7 +31,7 @@ export default function LinkRow({
       </td>
 
       <td className="hidden px-6 py-3 sm:table-cell">
-        <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400">
+        <span className="inline-flex rounded-full bg-[rgb(var(--school-primary-rgb)/0.10)] px-2.5 py-0.5 text-xs font-medium text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary">
           {link.className}
         </span>
       </td>

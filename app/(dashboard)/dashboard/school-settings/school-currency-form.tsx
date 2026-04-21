@@ -3,10 +3,8 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { SchoolCurrencySelect } from "@/components/SchoolCurrencySelect";
-import {
-  updateSchoolCurrency,
-  type SchoolSettingsState,
-} from "./actions";
+import { updateSchoolCurrency } from "./actions";
+import type { SchoolSettingsState } from "./school-settings-shared";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -14,7 +12,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+      className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:cursor-not-allowed disabled:opacity-50"
     >
       {pending ? "Saving…" : "Save currency"}
     </button>
@@ -59,7 +57,7 @@ export function SchoolCurrencyForm({
           id="school-currency"
           defaultValue={currentCurrency}
           required
-          className="mt-2 block w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+          className="mt-2 block w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
         />
       </div>
 

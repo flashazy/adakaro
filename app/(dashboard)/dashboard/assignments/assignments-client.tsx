@@ -458,7 +458,7 @@ export function AssignmentsPageClient({
                   aria-current={item === safePage ? "page" : undefined}
                   className={
                     item === safePage
-                      ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                      ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                       : "rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-gray-50"
                   }
                 >

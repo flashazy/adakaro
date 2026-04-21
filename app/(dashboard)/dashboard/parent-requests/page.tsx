@@ -157,7 +157,7 @@ export default async function ParentRequestsPage() {
         >
           <Link
             href="/dashboard"
-            className="text-slate-600 transition-colors hover:text-indigo-600 dark:text-zinc-300 dark:hover:text-indigo-400"
+            className="text-slate-600 transition-colors hover:text-school-primary dark:text-zinc-300 dark:hover:opacity-90"
           >
             Dashboard
           </Link>

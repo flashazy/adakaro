@@ -174,7 +174,7 @@ export function AssignTeacherModal({
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+            className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--school-primary-rgb)/0.4)] dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
             aria-label="Close dialog"
           >
             <X className="h-5 w-5" strokeWidth={2} />
@@ -283,7 +283,7 @@ export function AssignTeacherModal({
             <button
               type="submit"
               disabled={modalPending || !canSubmit}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+              className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
             >
               {modalPending
                 ? "Saving…"

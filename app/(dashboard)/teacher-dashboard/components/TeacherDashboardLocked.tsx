@@ -46,7 +46,7 @@ export function TeacherDashboardLocked({ contact }: TeacherDashboardLockedProps)
                   </span>{" "}
                   <a
                     href={`mailto:${contact.adminEmail}`}
-                    className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                    className="font-medium text-school-primary hover:underline dark:text-school-primary"
                   >
                     {contact.adminEmail}
                   </a>
@@ -59,7 +59,7 @@ export function TeacherDashboardLocked({ contact }: TeacherDashboardLockedProps)
                   </span>{" "}
                   <a
                     href={`tel:${contact.adminPhone.replace(/\s/g, "")}`}
-                    className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                    className="font-medium text-school-primary hover:underline dark:text-school-primary"
                   >
                     {contact.adminPhone}
                   </a>

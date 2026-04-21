@@ -40,11 +40,11 @@ export default function PendingSchoolInvitations({
   }
 
   return (
-    <section className="mb-8 rounded-xl border border-indigo-200 bg-indigo-50/60 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/20">
-      <div className="border-b border-indigo-200/80 px-6 py-4 dark:border-indigo-900/60">
+    <section className="mb-8 rounded-xl border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.12)] shadow-sm dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)]">
+      <div className="border-b border-[rgb(var(--school-primary-rgb)/0.25)]/80 px-6 py-4 dark:border-[rgb(var(--school-primary-rgb)/0.35)]">
         <div className="flex items-center gap-2">
           <svg
-            className="h-5 w-5 text-indigo-600 dark:text-indigo-400"
+            className="h-5 w-5 text-school-primary dark:text-school-primary"
             fill="none"
             viewBox="0 0 24 24"
             strokeWidth={1.5}
@@ -79,7 +79,7 @@ export default function PendingSchoolInvitations({
         </div>
       )}
 
-      <ul className="divide-y divide-indigo-200/60 dark:divide-indigo-900/50">
+      <ul className="divide-y divide-[rgb(var(--school-primary-rgb)/0.25)] dark:divide-[rgb(var(--school-primary-rgb)/0.3)]">
         {visibleInvites.map((inv) => (
           <li key={inv.id} className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -94,7 +94,7 @@ export default function PendingSchoolInvitations({
               <button
                 type="button"
                 disabled={pending}
-                className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:brightness-90 disabled:opacity-50"
                 onClick={() => {
                   setMessage(null);
                   startTransition(async () => {

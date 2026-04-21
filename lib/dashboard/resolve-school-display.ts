@@ -3,6 +3,7 @@ import type { Database } from "@/types/supabase";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { parseSchoolDashboardRpc } from "@/lib/dashboard/parse-school-dashboard-rpc";
+import { resolveSchoolPrimaryHex } from "@/lib/school-primary-color";
 
 export interface ResolvedSchoolDisplay {
   schoolId: string;
@@ -11,6 +12,8 @@ export interface ResolvedSchoolDisplay {
   logo_url: string | null;
   /** Epoch ms from `schools.updated_at` — use as `?v=` on logo URLs to bust CDN/browser cache. */
   logo_version: number;
+  /** Hex accent for UI (CSS `--school-primary`). */
+  primary_color: string;
 }
 
 export function logoVersionFromRow(
@@ -78,7 +81,7 @@ async function fetchSchoolDisplayViaAdmin(
 
   const { data: school } = await admin
     .from("schools")
-    .select("name, currency, logo_url, updated_at")
+    .select("name, currency, logo_url, updated_at, primary_color")
     .eq("id", schoolId)
     .maybeSingle();
 
@@ -87,6 +90,7 @@ async function fetchSchoolDisplayViaAdmin(
     currency: string | null;
     logo_url: string | null;
     updated_at: string;
+    primary_color: string | null;
   } | null;
   const name = row?.name?.trim() ?? "";
   return {
@@ -95,6 +99,7 @@ async function fetchSchoolDisplayViaAdmin(
     currency: row?.currency ?? null,
     logo_url: row?.logo_url ?? null,
     logo_version: logoVersionFromRow(row?.updated_at),
+    primary_color: resolveSchoolPrimaryHex(row?.primary_color),
   };
 }
 
@@ -124,7 +129,7 @@ export async function resolveSchoolDisplay(
       let logo_url: string | null = null;
       const { data: row } = await supabase
         .from("schools")
-        .select("name, currency, logo_url, updated_at")
+        .select("name, currency, logo_url, updated_at, primary_color")
         .eq("id", parsed.school_id)
         .maybeSingle();
       const r = row as {
@@ -132,6 +137,7 @@ export async function resolveSchoolDisplay(
         currency: string | null;
         logo_url: string | null;
         updated_at: string;
+        primary_color: string | null;
       } | null;
       if (!name) {
         name = r?.name?.trim() ?? "";
@@ -147,6 +153,7 @@ export async function resolveSchoolDisplay(
           currency,
           logo_url,
           logo_version: logoVersionFromRow(r?.updated_at),
+          primary_color: resolveSchoolPrimaryHex(r?.primary_color),
         };
       }
     }
@@ -159,7 +166,7 @@ export async function resolveSchoolDisplay(
 
   const { data: row } = await supabase
     .from("schools")
-    .select("name, currency, logo_url, updated_at")
+    .select("name, currency, logo_url, updated_at, primary_color")
     .eq("id", schoolId)
     .maybeSingle();
 
@@ -168,17 +175,20 @@ export async function resolveSchoolDisplay(
     currency: string | null;
     logo_url: string | null;
     updated_at: string;
+    primary_color: string | null;
   } | null;
   let name = r?.name?.trim() ?? "";
   let currency = r?.currency ?? null;
   let logo_url = r?.logo_url ?? null;
   let logo_version = logoVersionFromRow(r?.updated_at);
+  let primary_color = resolveSchoolPrimaryHex(r?.primary_color);
 
   if (!name && adminFirst?.schoolId === schoolId) {
     name = adminFirst.name;
     currency = adminFirst.currency ?? currency;
     logo_url = adminFirst.logo_url ?? logo_url;
     logo_version = adminFirst.logo_version ?? logo_version;
+    primary_color = adminFirst.primary_color;
   }
 
   if (!name) {
@@ -195,10 +205,18 @@ export async function resolveSchoolDisplay(
       currency,
       logo_url: logo_url ?? null,
       logo_version,
+      primary_color,
     };
   }
 
-  return { schoolId, name, currency, logo_url, logo_version };
+  return {
+    schoolId,
+    name,
+    currency,
+    logo_url,
+    logo_version,
+    primary_color,
+  };
 }
 
 /**

@@ -21,7 +21,7 @@ function formatBytes(n: number | null): string {
 }
 
 const inputClass =
-  "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white";
+  "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white";
 const labelClass = "block text-sm font-medium text-slate-700 dark:text-zinc-300";
 
 export function StudentRecordAttachmentsPanel({
@@ -161,7 +161,7 @@ export function StudentRecordAttachmentsPanel({
                   type="button"
                   disabled={pending}
                   onClick={() => void openSigned(a.id, "inline")}
-                  className="text-sm font-medium text-indigo-600 hover:text-indigo-500 disabled:opacity-50 dark:text-indigo-400"
+                  className="text-sm font-medium text-school-primary hover:opacity-90 disabled:opacity-50 dark:text-school-primary"
                 >
                   View
                 </button>
@@ -169,7 +169,7 @@ export function StudentRecordAttachmentsPanel({
                   type="button"
                   disabled={pending}
                   onClick={() => void openSigned(a.id, "attachment")}
-                  className="text-sm font-medium text-indigo-600 hover:text-indigo-500 disabled:opacity-50 dark:text-indigo-400"
+                  className="text-sm font-medium text-school-primary hover:opacity-90 disabled:opacity-50 dark:text-school-primary"
                 >
                   Download
                 </button>
@@ -198,7 +198,7 @@ export function StudentRecordAttachmentsPanel({
               setError(null);
               setUploadOpen(true);
             }}
-            className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+            className="rounded-lg bg-school-primary px-3 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
           >
             Add attachment
           </button>
@@ -289,7 +289,7 @@ export function StudentRecordAttachmentsPanel({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
                 >
                   {pending ? "Uploading…" : "Upload"}
                 </button>

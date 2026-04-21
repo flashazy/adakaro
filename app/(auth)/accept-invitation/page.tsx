@@ -16,7 +16,7 @@ function InvalidToken() {
       </p>
       <Link
         href="/"
-        className="mt-6 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+        className="mt-6 inline-block text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
       >
         ← Back to home
       </Link>
@@ -36,7 +36,7 @@ function InviteNotFound() {
       </p>
       <Link
         href="/login"
-        className="mt-6 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+        className="mt-6 inline-block text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
       >
         Go to sign in
       </Link>

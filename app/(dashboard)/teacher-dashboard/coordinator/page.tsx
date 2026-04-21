@@ -66,7 +66,7 @@ export default async function CoordinatorDashboardPage({
           </div>
           <Link
             href="/teacher-dashboard"
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+            className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
           >
             ← Back to dashboard
           </Link>

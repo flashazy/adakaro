@@ -126,7 +126,7 @@ export function ConfirmDeleteModal({
               disabled={isDeleting}
               className={
                 confirmVariant === "primary"
-                  ? "inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500 sm:w-auto"
+                  ? "inline-flex w-full items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:opacity-60 dark:bg-school-primary dark:hover:brightness-110 sm:w-auto"
                   : "inline-flex w-full items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-500 disabled:opacity-60 dark:bg-red-600 dark:hover:bg-red-500 sm:w-auto"
               }
             >

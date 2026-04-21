@@ -271,8 +271,8 @@ export default async function ApprovedConnectionsPage() {
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mx-auto flex max-w-5xl items-center justify-between py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-950/40">
-              <svg className="h-5 w-5 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.16)] dark:bg-[rgb(var(--school-primary-rgb)/0.18)]">
+              <svg className="h-5 w-5 text-school-primary dark:text-school-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
               </svg>
             </div>
@@ -301,7 +301,7 @@ export default async function ApprovedConnectionsPage() {
         >
           <Link
             href="/dashboard"
-            className="text-slate-600 transition-colors hover:text-indigo-600 dark:text-zinc-300 dark:hover:text-indigo-400"
+            className="text-slate-600 transition-colors hover:text-school-primary dark:text-zinc-300 dark:hover:opacity-90"
           >
             Dashboard
           </Link>

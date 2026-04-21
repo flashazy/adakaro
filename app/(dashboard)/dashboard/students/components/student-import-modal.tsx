@@ -285,7 +285,7 @@ export default function StudentImportModal({
             reset();
             setOpen(true);
           }}
-          className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-800 transition-colors hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-950/60"
+          className="inline-flex items-center gap-2 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.10)] px-4 py-2 text-sm font-medium text-school-primary transition-colors hover:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:border-[rgb(var(--school-primary-rgb)/0.45)] dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.2)]"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
@@ -373,7 +373,7 @@ export default function StudentImportModal({
                     >
                       Download template
                     </button>
-                    <label className="inline-flex cursor-pointer items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+                    <label className="inline-flex cursor-pointer items-center rounded-lg bg-school-primary px-3 py-2 text-sm font-medium text-white hover:brightness-90">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -445,7 +445,7 @@ export default function StudentImportModal({
                 <div className="mt-4">
                   <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
                     <div
-                      className="h-full rounded-full bg-indigo-600 transition-[width] duration-200"
+                      className="h-full rounded-full bg-school-primary transition-[width] duration-200"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
@@ -608,7 +608,7 @@ export default function StudentImportModal({
                       type="button"
                       onClick={handleConfirmImport}
                       disabled={pending || summary.valid + summary.warnings === 0}
-                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-lg bg-school-primary px-4 py-2 text-sm font-medium text-white hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {pending ? "Importing…" : "Confirm import"}
                     </button>
@@ -618,7 +618,7 @@ export default function StudentImportModal({
                   <button
                     type="button"
                     onClick={close}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    className="rounded-lg bg-school-primary px-4 py-2 text-sm font-medium text-white hover:brightness-90"
                   >
                     Close
                   </button>

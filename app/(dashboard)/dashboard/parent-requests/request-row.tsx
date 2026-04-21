@@ -140,7 +140,7 @@ export default function RequestRow({
       <tr className="align-top">
         <td className="px-6 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--school-primary-rgb)/0.16)] text-xs font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary">
               {request.parentName.charAt(0).toUpperCase()}
             </div>
             <p className="text-sm font-medium text-slate-900 dark:text-white">
@@ -165,13 +165,13 @@ export default function RequestRow({
             Adm. {request.admissionNumber}
           </p>
           <div className="mt-2 sm:hidden">
-            <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400">
+            <span className="inline-flex rounded-full bg-[rgb(var(--school-primary-rgb)/0.10)] px-2.5 py-0.5 text-xs font-medium text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary">
               {studentClassName}
             </span>
           </div>
         </td>
         <td className="hidden px-6 py-3 sm:table-cell">
-          <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400">
+          <span className="inline-flex rounded-full bg-[rgb(var(--school-primary-rgb)/0.10)] px-2.5 py-0.5 text-xs font-medium text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary">
             {studentClassName}
           </span>
         </td>
@@ -263,7 +263,7 @@ export default function RequestRow({
               <select
                 value={selectedStudentId}
                 onChange={(e) => setSelectedStudentId(e.target.value)}
-                className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 transition-colors focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 <option value="">Select a student…</option>
                 {sortedStudents.map((s) => (

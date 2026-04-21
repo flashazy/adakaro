@@ -17,7 +17,7 @@ function SubmitButton({ isLoading }: { isLoading: boolean }) {
       type="submit"
       disabled={busy}
       aria-busy={busy}
-      className="inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex w-full items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:cursor-not-allowed disabled:opacity-60"
     >
       {busy ? (
         <>
@@ -84,7 +84,7 @@ export default function SignupContent() {
             type="text"
             autoComplete="name"
             required
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-school-primary dark:focus:ring-school-primary"
             placeholder="Jane Doe"
           />
         </div>
@@ -102,7 +102,7 @@ export default function SignupContent() {
             type="email"
             autoComplete="email"
             required
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-school-primary dark:focus:ring-school-primary"
             placeholder="you@example.com"
           />
         </div>
@@ -122,7 +122,7 @@ export default function SignupContent() {
             name="phone"
             type="tel"
             autoComplete="tel"
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-school-primary dark:focus:ring-school-primary"
             placeholder="+254 700 000 000"
           />
         </div>
@@ -166,7 +166,7 @@ export default function SignupContent() {
             I am a&hellip;
           </legend>
           <div className="mt-2 grid grid-cols-2 gap-3">
-            <label className="group relative flex cursor-pointer items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-sm transition-colors has-[:checked]:border-indigo-600 has-[:checked]:ring-1 has-[:checked]:ring-indigo-600 dark:border-zinc-700 dark:bg-zinc-800 dark:has-[:checked]:border-indigo-400 dark:has-[:checked]:ring-indigo-400">
+            <label className="group relative flex cursor-pointer items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-sm transition-colors has-[:checked]:border-school-primary has-[:checked]:ring-1 has-[:checked]:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:has-[:checked]:border-[rgb(var(--school-primary-rgb)/0.45)] dark:has-[:checked]:ring-school-primary">
               <input
                 type="radio"
                 name="role"
@@ -184,7 +184,7 @@ export default function SignupContent() {
               </div>
             </label>
 
-            <label className="group relative flex cursor-pointer items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-sm transition-colors has-[:checked]:border-indigo-600 has-[:checked]:ring-1 has-[:checked]:ring-indigo-600 dark:border-zinc-700 dark:bg-zinc-800 dark:has-[:checked]:border-indigo-400 dark:has-[:checked]:ring-indigo-400">
+            <label className="group relative flex cursor-pointer items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-sm transition-colors has-[:checked]:border-school-primary has-[:checked]:ring-1 has-[:checked]:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:has-[:checked]:border-[rgb(var(--school-primary-rgb)/0.45)] dark:has-[:checked]:ring-school-primary">
               <input
                 type="radio"
                 name="role"
@@ -211,7 +211,7 @@ export default function SignupContent() {
         Already have an account?{" "}
         <Link
           href={loginHref}
-          className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+          className="font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
         >
           Sign in
         </Link>

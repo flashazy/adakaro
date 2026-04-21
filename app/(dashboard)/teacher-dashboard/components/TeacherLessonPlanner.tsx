@@ -312,7 +312,7 @@ export function TeacherLessonPlanner({
                 }}
                 className={`min-h-[3rem] rounded-lg border p-1 text-left text-xs transition ${
                   lessonDate === c.iso
-                    ? "border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-950/40"
+                    ? "border-school-primary bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)]"
                     : "border-slate-100 hover:bg-slate-50 dark:border-zinc-800 dark:hover:bg-zinc-800"
                 }`}
               >
@@ -320,7 +320,7 @@ export function TeacherLessonPlanner({
                   {c.day}
                 </span>
                 {(lessonsByDate.get(c.iso!) ?? []).length > 0 && (
-                  <span className="mt-0.5 block text-[10px] text-indigo-600 dark:text-indigo-400">
+                  <span className="mt-0.5 block text-[10px] text-school-primary dark:text-school-primary">
                     {(lessonsByDate.get(c.iso!) ?? []).length} lesson
                     {(lessonsByDate.get(c.iso!) ?? []).length === 1 ? "" : "s"}
                   </span>
@@ -429,7 +429,7 @@ export function TeacherLessonPlanner({
             <button
               type="submit"
               disabled={isPending}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+              className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
             >
               {editingId ? "Update lesson" : "Save lesson"}
             </button>
@@ -481,7 +481,7 @@ export function TeacherLessonPlanner({
                     <button
                       type="button"
                       onClick={() => startEdit(l)}
-                      className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                      className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
                     >
                       Edit
                     </button>

@@ -97,7 +97,7 @@ export function FeeStructureRow({
               name="fee_type_id"
               defaultValue={structure.fee_type_id ?? ""}
               required
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             >
               <option value="">Select</option>
               {feeTypes.map((ft) => (
@@ -118,7 +118,7 @@ export function FeeStructureRow({
               step="0.01"
               defaultValue={structure.amount}
               required
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             />
           </div>
           <div>
@@ -154,7 +154,7 @@ export function FeeStructureRow({
                 name="class_id"
                 defaultValue={structure.class_id ?? ""}
                 required
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 <option value="">Select</option>
                 {classes.map((c) => (
@@ -168,7 +168,7 @@ export function FeeStructureRow({
                 name="student_id"
                 defaultValue={structure.student_id ?? ""}
                 required
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 <option value="">Select</option>
                 {students.map((s) => (
@@ -188,7 +188,7 @@ export function FeeStructureRow({
               name="due_date"
               type="date"
               defaultValue={structure.due_date ?? ""}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             />
           </div>
         </div>
@@ -196,7 +196,7 @@ export function FeeStructureRow({
           <button
             type="submit"
             disabled={isPending}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+            className="rounded-lg bg-school-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:brightness-105 disabled:opacity-50"
           >
             {isPending ? "Saving…" : "Save"}
           </button>

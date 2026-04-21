@@ -6,11 +6,15 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* School accent — overridden per-request in dashboard layout when school loads */
+  --school-primary: #4f46e5;
+  --school-primary-rgb: 79 70 229;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-school-primary: var(--school-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

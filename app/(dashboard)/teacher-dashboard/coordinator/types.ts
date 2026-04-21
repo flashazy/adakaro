@@ -53,6 +53,8 @@ export interface CoordinatorClassOverview {
   className: string;
   schoolId: string;
   schoolName: string;
+  /** School motto from settings (PDFs only when set). */
+  schoolMotto?: string | null;
   schoolLogoUrl: string | null;
   /** Drives report-card ranking maths (primary = avg %, secondary = best 7). */
   schoolLevel: SchoolLevel;

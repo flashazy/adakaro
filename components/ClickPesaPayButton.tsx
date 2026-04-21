@@ -114,7 +114,7 @@ export default function ClickPesaPayButton({
         type="button"
         onClick={handlePay}
         disabled={loading}
-        className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center justify-center gap-2 rounded-lg bg-school-primary px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {loading ? (
           <>
@@ -172,12 +172,12 @@ export default function ClickPesaPayButton({
                 <section
                   className={`rounded-xl border p-4 ${
                     hasBillPay
-                      ? "border-indigo-200 bg-indigo-50/50 dark:border-indigo-900/40 dark:bg-indigo-950/20"
+                      ? "border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.08)] dark:border-[rgb(var(--school-primary-rgb)/0.28)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)]"
                       : "border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/50"
                   }`}
                 >
                   <div className="mb-3 flex items-center gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.16)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:text-school-primary">
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V9.75a2.25 2.25 0 0 0-.659-1.591l-5.25-5.25A2.25 2.25 0 0 0 10.5 1.5Z" />
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 2.25V6a.75.75 0 0 0 .75.75h3.75" />
@@ -196,13 +196,13 @@ export default function ClickPesaPayButton({
                   {hasBillPay ? (
                     <>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                        <code className="min-w-0 flex-1 break-all rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-center font-mono text-base font-semibold tracking-wide text-slate-900 dark:border-indigo-900/50 dark:bg-zinc-900 dark:text-white">
+                        <code className="min-w-0 flex-1 break-all rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] bg-white px-3 py-2.5 text-center font-mono text-base font-semibold tracking-wide text-slate-900 dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:bg-zinc-900 dark:text-white">
                           {controlNumber}
                         </code>
                         <button
                           type="button"
                           onClick={copyControlNumber}
-                          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-4 py-2.5 text-sm font-medium text-indigo-700 shadow-sm transition hover:bg-indigo-50 dark:border-indigo-800 dark:bg-zinc-900 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.35)] bg-white px-4 py-2.5 text-sm font-medium text-school-primary shadow-sm transition hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.45)] dark:bg-zinc-900 dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />

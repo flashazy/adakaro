@@ -67,7 +67,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+      className="w-full rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
     >
       {pending ? "Recording…" : "Record payment"}
     </button>
@@ -192,7 +192,7 @@ export function PaymentClient({
           value={studentSearch}
           onChange={(e) => setStudentSearch(e.target.value)}
           placeholder="Search by name, admission # or class…"
-          className="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+          className="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
         />
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-zinc-700">
           <p className="min-w-0 text-sm text-slate-600 dark:text-zinc-400">
@@ -249,7 +249,7 @@ export function PaymentClient({
                 onClick={() => setSelectedStudentId(s.id)}
                 className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm transition-colors ${
                   selectedStudentId === s.id
-                    ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300"
+                    ? "bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary"
                     : "text-slate-900 hover:bg-slate-50 dark:text-white dark:hover:bg-zinc-800"
                 }`}
               >
@@ -302,7 +302,7 @@ export function PaymentClient({
                   aria-current={item === studentSafePage ? "page" : undefined}
                   className={
                     item === studentSafePage
-                      ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                      ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                       : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   }
                 >
@@ -344,7 +344,7 @@ export function PaymentClient({
                   onClick={() => setSelectedFeeId(b.fee_structure_id)}
                   className={`flex w-full items-center justify-between px-6 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800 ${
                     selectedFeeId === b.fee_structure_id
-                      ? "bg-indigo-50 dark:bg-indigo-950/20"
+                      ? "bg-[rgb(var(--school-primary-rgb)/0.10)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)]"
                       : ""
                   }`}
                 >
@@ -406,7 +406,7 @@ export function PaymentClient({
                 max={Number(selectedBalance.balance)}
                 defaultValue={Number(selectedBalance.balance)}
                 required
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               />
             </div>
 
@@ -421,7 +421,7 @@ export function PaymentClient({
                 id="payment_method"
                 name="payment_method"
                 required
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 {METHODS.map((m) => (
                   <option key={m.value} value={m.value}>
@@ -442,7 +442,7 @@ export function PaymentClient({
                 id="reference_number"
                 name="reference_number"
                 type="text"
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="e.g. MPesa code"
               />
             </div>
@@ -459,7 +459,7 @@ export function PaymentClient({
                 name="payment_date"
                 type="date"
                 defaultValue={today}
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               />
             </div>
 
@@ -474,7 +474,7 @@ export function PaymentClient({
                 id="notes"
                 name="notes"
                 rows={2}
-                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="Optional notes"
               />
             </div>
@@ -497,7 +497,7 @@ export function PaymentClient({
               {state.paymentId && (
                 <Link
                   href={`/dashboard/receipts/${state.paymentId}`}
-                  className="mt-1 inline-block text-sm font-medium text-indigo-600 underline hover:text-indigo-500 dark:text-indigo-400"
+                  className="mt-1 inline-block text-sm font-medium text-school-primary underline hover:opacity-90 dark:text-school-primary"
                 >
                   View receipt →
                 </Link>

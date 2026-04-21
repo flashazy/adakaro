@@ -95,7 +95,7 @@ export function TeacherStudentProfilesClient({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search students by name, admission #, or class..."
-            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pl-3 pr-10 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-full dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pl-3 pr-10 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary sm:w-full dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
             aria-label="Search students"
           />
           <svg
@@ -130,7 +130,7 @@ export function TeacherStudentProfilesClient({
                 String(n)
               );
             }}
-            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
+            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
           >
             {STUDENT_LIST_ROW_OPTIONS.map((n) => (
               <option key={n} value={n}>
@@ -155,7 +155,7 @@ export function TeacherStudentProfilesClient({
           <button
             type="button"
             onClick={() => setQuery("")}
-            className="ml-2 text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+            className="ml-2 text-school-primary hover:opacity-90 dark:text-school-primary dark:hover:opacity-90"
           >
             Clear search
           </button>
@@ -204,7 +204,7 @@ export function TeacherStudentProfilesClient({
                       <td className="sticky right-0 z-20 border-l border-slate-200 bg-white px-2 py-3 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
                         <Link
                           href={`/dashboard/students/${s.id}/profile`}
-                          className="inline-flex rounded-md border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                          className="inline-flex rounded-md border border-[rgb(var(--school-primary-rgb)/0.25)] px-3 py-1.5 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
                         >
                           View Profile
                         </Link>

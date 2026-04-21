@@ -62,7 +62,7 @@ export function FloatingScrollButton() {
       type="button"
       onClick={handleClick}
       style={{ opacity: topFadeOpacity }}
-      className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg shadow-slate-900/10 transition-[opacity,transform] duration-200 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-black/30 dark:hover:bg-zinc-700"
+      className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg shadow-slate-900/10 transition-[opacity,transform] duration-200 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-black/30 dark:hover:bg-zinc-700"
       aria-label={nearBottom ? "Scroll to top" : "Scroll down"}
     >
       <span className="relative flex h-5 w-5 items-center justify-center">

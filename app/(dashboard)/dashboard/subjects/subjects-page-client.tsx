@@ -151,7 +151,7 @@ function ExistingSubjectsMultiPicker({
           autoComplete="off"
           aria-label="Search subjects"
           aria-controls={listboxId}
-          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+          className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-school-primary dark:focus:ring-school-primary/20"
         />
       </div>
       <div
@@ -176,7 +176,7 @@ function ExistingSubjectsMultiPicker({
                 key={s.id}
                 className={`flex min-h-10 cursor-pointer items-center gap-3 px-3 py-2 text-sm transition-colors ${
                   checked
-                    ? "bg-indigo-50/80 dark:bg-indigo-500/10"
+                    ? "bg-[rgb(var(--school-primary-rgb)/0.10)]/80 dark:bg-[rgb(var(--school-primary-rgb)/0.12)]"
                     : "hover:bg-slate-100 dark:hover:bg-zinc-800"
                 }`}
               >
@@ -184,12 +184,12 @@ function ExistingSubjectsMultiPicker({
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggle(s.id)}
-                  className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
+                  className="h-4 w-4 shrink-0 rounded border-slate-300 text-school-primary focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-900 dark:text-school-primary"
                 />
                 <span
                   className={
                     checked
-                      ? "font-medium text-indigo-950 dark:text-indigo-100"
+                      ? "font-medium text-school-primary dark:text-school-primary"
                       : "text-slate-800 dark:text-zinc-100"
                   }
                 >
@@ -319,7 +319,7 @@ function SubjectClassPicker({
           onFocus={() => setOpen(true)}
           placeholder="Search or select a class..."
           disabled={!canAddMore}
-          className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+          className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-school-primary dark:focus:ring-school-primary/20"
           autoComplete="off"
           aria-autocomplete="list"
           aria-expanded={open}
@@ -537,7 +537,7 @@ export function SubjectsPageClient({
       <div>
         <Link
           href="/dashboard"
-          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+          className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
         >
           ← Back to dashboard
         </Link>
@@ -559,7 +559,7 @@ export function SubjectsPageClient({
           <label className="flex cursor-pointer items-center gap-2.5">
             <input
               type="radio"
-              className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
+              className="h-4 w-4 border-slate-300 text-school-primary focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-900 dark:text-school-primary"
               checked={addMode === "existing"}
               disabled={rows.length === 0}
               onChange={() => {
@@ -579,7 +579,7 @@ export function SubjectsPageClient({
           <label className="flex cursor-pointer items-center gap-2.5">
             <input
               type="radio"
-              className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-indigo-500"
+              className="h-4 w-4 border-slate-300 text-school-primary focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-900 dark:text-school-primary"
               checked={addMode === "new"}
               onChange={() => {
                 setAddMode("new");
@@ -606,7 +606,7 @@ export function SubjectsPageClient({
                     <button
                       type="button"
                       onClick={() => setMultipleSubjectIds([])}
-                      className="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                      className="shrink-0 text-xs font-medium text-school-primary hover:opacity-90 dark:text-school-primary dark:hover:opacity-90"
                     >
                       Clear selection
                     </button>
@@ -654,7 +654,7 @@ export function SubjectsPageClient({
                 disabled={
                   assignPending || multipleSubjectIds.length === 0
                 }
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
               >
                 {assignPending ? "Saving…" : "Save assignments"}
               </button>
@@ -727,7 +727,7 @@ export function SubjectsPageClient({
               <button
                 type="submit"
                 disabled={createPending}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
               >
                 {createPending ? "Saving…" : "Add subject"}
               </button>
@@ -756,7 +756,7 @@ export function SubjectsPageClient({
             No subjects yet. Add one above, then assign them on the{" "}
             <Link
               href="/dashboard/teachers"
-              className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              className="font-medium text-school-primary hover:underline dark:text-school-primary"
             >
               Teachers
             </Link>{" "}
@@ -777,14 +777,14 @@ export function SubjectsPageClient({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search subjects by name, code, or description..."
                   aria-label="Search subjects"
-                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-school-primary dark:focus:ring-school-primary/20"
                 />
               </div>
               <select
                 value={classFilter}
                 onChange={(e) => setClassFilter(e.target.value)}
                 aria-label="Filter by class"
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20 sm:w-56"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:focus:border-school-primary dark:focus:ring-school-primary/20 sm:w-56"
               >
                 <option value="all">All classes</option>
                 {classOptions.map((c) => (
@@ -812,7 +812,7 @@ export function SubjectsPageClient({
                     );
                   }}
                   aria-label="Rows per page"
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400/20"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:focus:border-school-primary dark:focus:ring-school-primary/20"
                 >
                   {STUDENT_LIST_ROW_OPTIONS.map((n) => (
                     <option key={n} value={n}>
@@ -939,7 +939,7 @@ export function SubjectsPageClient({
                       aria-current={item === safePage ? "page" : undefined}
                       className={
                         item === safePage
-                          ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                          ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                           : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                       }
                     >
@@ -986,7 +986,7 @@ export function SubjectsPageClient({
               <button
                 type="button"
                 onClick={closeEditModal}
-                className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+                className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--school-primary-rgb)/0.4)] dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
                 aria-label="Close dialog"
               >
                 <X className="h-5 w-5" strokeWidth={2} />
@@ -1058,7 +1058,7 @@ export function SubjectsPageClient({
                 <button
                   type="submit"
                   disabled={updatePending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
                 >
                   {updatePending ? "Saving…" : "Save"}
                 </button>
@@ -1149,7 +1149,7 @@ export function SubjectsPageClient({
               <button
                 type="button"
                 onClick={() => setBulkOpen(false)}
-                className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+                className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--school-primary-rgb)/0.4)] dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
                 aria-label="Close dialog"
               >
                 <X className="h-5 w-5" strokeWidth={2} />
@@ -1231,7 +1231,7 @@ export function SubjectsPageClient({
                 <button
                   type="submit"
                   disabled={bulkPending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
                 >
                   {bulkPending ? "Adding…" : "Add subjects"}
                 </button>

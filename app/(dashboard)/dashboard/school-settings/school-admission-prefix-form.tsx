@@ -157,7 +157,7 @@ export function SchoolAdmissionPrefixForm({
           autoComplete="off"
           value={value}
           onChange={(e) => setValue(e.target.value.toUpperCase())}
-          className="mt-1.5 block w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm uppercase text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+          className="mt-1.5 block w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm uppercase text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
         />
         <div className="mt-1.5 text-xs text-slate-500 dark:text-zinc-400">
           {checkLoading ? (
@@ -183,7 +183,7 @@ export function SchoolAdmissionPrefixForm({
               <button
                 key={a}
                 type="button"
-                className="mr-2 font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                className="mr-2 font-medium text-school-primary hover:underline dark:text-school-primary"
                 onClick={() => setValue(a)}
               >
                 {a}
@@ -195,7 +195,7 @@ export function SchoolAdmissionPrefixForm({
       <button
         type="submit"
         disabled={busy || !canSave}
-        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? "Saving…" : "Save prefix"}
       </button>

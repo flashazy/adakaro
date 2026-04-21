@@ -8,10 +8,8 @@ import {
   SCHOOL_LEVEL_VALUES,
   type SchoolLevel,
 } from "@/lib/school-level";
-import {
-  updateSchoolLevel,
-  type SchoolSettingsState,
-} from "./actions";
+import { updateSchoolLevel } from "./actions";
+import type { SchoolSettingsState } from "./school-settings-shared";
 
 function SubmitButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
@@ -19,7 +17,7 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
     <button
       type="submit"
       disabled={pending || disabled}
-      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+      className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:cursor-not-allowed disabled:opacity-50"
     >
       {pending ? "Saving…" : "Save school level"}
     </button>
@@ -61,7 +59,7 @@ export function SchoolLevelForm({
               htmlFor={id}
               className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition-colors ${
                 checked
-                  ? "border-indigo-500 bg-indigo-50/60 dark:border-indigo-500/70 dark:bg-indigo-950/30"
+                  ? "border-school-primary bg-[rgb(var(--school-primary-rgb)/0.12)] dark:border-[rgb(var(--school-primary-rgb)/0.38)] dark:bg-[rgb(var(--school-primary-rgb)/0.14)]"
                   : "border-slate-200 bg-white hover:border-slate-300 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600"
               } ${canEdit ? "" : "cursor-not-allowed opacity-70"}`}
             >
@@ -71,7 +69,7 @@ export function SchoolLevelForm({
                 name="school_level"
                 value={value}
                 defaultChecked={checked}
-                className="mt-1 h-4 w-4 cursor-pointer accent-indigo-600 disabled:cursor-not-allowed"
+                className="mt-1 h-4 w-4 cursor-pointer accent-school-primary disabled:cursor-not-allowed"
                 required
               />
               <span className="flex-1">

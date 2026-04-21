@@ -225,6 +225,7 @@ function statusLabel(
 
 function toPreviewData(args: {
   schoolName: string;
+  schoolMotto?: string | null;
   logoUrl: string | null;
   schoolLevel: SchoolLevel;
   className: string;
@@ -261,8 +262,10 @@ function toPreviewData(args: {
     term: args.term,
     academicYear: args.academicYear,
   });
+  const mottoTrim = (args.schoolMotto ?? "").trim();
   return {
     schoolName: args.schoolName,
+    schoolMotto: mottoTrim ? mottoTrim : null,
     logoUrl: args.logoUrl,
     studentName: args.student.fullName,
     className: args.className,
@@ -291,6 +294,7 @@ function toPreviewData(args: {
 export function ReportCardsPageClient({
   schoolId,
   schoolName,
+  schoolMotto,
   schoolLevel,
   logoUrl,
   teacherName,
@@ -300,6 +304,7 @@ export function ReportCardsPageClient({
 }: {
   schoolId: string;
   schoolName: string;
+  schoolMotto: string | null;
   schoolLevel: SchoolLevel;
   logoUrl: string | null;
   teacherName: string;
@@ -720,6 +725,7 @@ export function ReportCardsPageClient({
     );
     return toPreviewData({
       schoolName,
+      schoolMotto,
       logoUrl,
       schoolLevel,
       className: selectedClass.className,
@@ -741,6 +747,7 @@ export function ReportCardsPageClient({
     selectedStudent,
     selectedClass,
     schoolName,
+    schoolMotto,
     schoolLevel,
     logoUrl,
     teacherName,
@@ -1091,7 +1098,7 @@ export function ReportCardsPageClient({
                       onClick={() => setStudentId(s.studentId)}
                       className={`w-full rounded-lg px-2 py-1.5 text-left ${
                         studentId === s.studentId
-                          ? "bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-100"
+                          ? "bg-[rgb(var(--school-primary-rgb)/0.16)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.15)] dark:text-school-primary"
                           : "hover:bg-slate-50 dark:hover:bg-zinc-800"
                       }`}
                     >
@@ -1146,7 +1153,7 @@ export function ReportCardsPageClient({
                             }
                             className={`min-w-[2rem] rounded border px-2.5 py-1 text-sm font-medium dark:border-zinc-600 ${
                               item === studentListSafePage
-                                ? "border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-600"
+                                ? "border-school-primary bg-school-primary text-white dark:border-school-primary dark:bg-school-primary"
                                 : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                             }`}
                           >
@@ -1546,8 +1553,8 @@ export function ReportCardsPageClient({
                   className={cn(
                     "mt-2 inline-flex min-h-[2.25rem] items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-white",
                     isSavingThis
-                      ? "cursor-wait bg-indigo-500/85"
-                      : "bg-indigo-600 hover:bg-indigo-500"
+                      ? "cursor-wait bg-school-primary/85"
+                      : "bg-school-primary hover:brightness-105"
                   )}
                 >
                   {isSavingThis ? (
@@ -1661,6 +1668,7 @@ export function ReportCardsPageClient({
                 );
                 return toPreviewData({
                   schoolName,
+                  schoolMotto,
                   logoUrl,
                   schoolLevel,
                   className: selectedClass!.className,

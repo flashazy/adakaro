@@ -60,7 +60,7 @@ export default async function LessonPlanViewPage({
             <LessonPlanPrintButton />
             <Link
               href={`/teacher-dashboard/lesson-plans/${id}/edit`}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+              className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105"
             >
               Edit
             </Link>

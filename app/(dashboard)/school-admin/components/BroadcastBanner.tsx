@@ -94,7 +94,7 @@ export function BroadcastBanner({
   const urgent = primaryUnread?.is_urgent === true;
   const panelClass = urgent
     ? "border-red-300 bg-red-50 dark:border-red-900/60 dark:bg-red-950/35"
-    : "border-indigo-200 bg-indigo-50 dark:border-indigo-900/50 dark:bg-indigo-950/30";
+    : "border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:bg-[rgb(var(--school-primary-rgb)/0.14)]";
 
   return (
     <div className="mb-6 space-y-4 print:hidden">
@@ -145,7 +145,7 @@ export function BroadcastBanner({
           <p className="mt-3 text-xs text-slate-500 dark:text-zinc-500">
             <Link
               href="/dashboard/messages"
-              className="font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-200"
+              className="font-medium text-school-primary underline underline-offset-2 hover:opacity-90 dark:text-school-primary dark:hover:text-school-primary"
             >
               Open Messages
             </Link>{" "}
@@ -157,7 +157,7 @@ export function BroadcastBanner({
           <span>No new broadcast messages.</span>
           <Link
             href="/dashboard/messages"
-            className="font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+            className="font-medium text-school-primary hover:opacity-90 dark:text-school-primary dark:hover:opacity-90"
           >
             View Messages
           </Link>

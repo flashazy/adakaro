@@ -3,11 +3,8 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import {
-  uploadSchoolLogo,
-  removeSchoolLogo,
-  type SchoolSettingsState,
-} from "./actions";
+import { uploadSchoolLogo, removeSchoolLogo } from "./actions";
+import type { SchoolSettingsState } from "./school-settings-shared";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const ACCEPT =
@@ -36,7 +33,7 @@ function UploadSubmitButton({ disabled }: { disabled: boolean }) {
     <button
       type="submit"
       disabled={pending || disabled}
-      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+      className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:cursor-not-allowed disabled:opacity-50"
     >
       {pending ? "Uploading…" : "Save logo"}
     </button>

@@ -619,6 +619,7 @@ async function loadClassReportCards(
     classIds: string[];
     className: string;
     schoolName: string;
+    schoolMotto: string | null;
     schoolLogoUrl: string | null;
     schoolLevel: SchoolLevel;
     academicYear: string;
@@ -905,6 +906,7 @@ async function loadClassReportCards(
 
     const preview: ReportCardPreviewData = {
       schoolName: params.schoolName,
+      schoolMotto: params.schoolMotto,
       logoUrl: params.schoolLogoUrl,
       studentName: studentRow.fullName,
       className: displayClassName,
@@ -981,13 +983,25 @@ export async function loadCoordinatorOverview(params: {
   // fall back to the legacy column set so the coordinator dashboard still
   // loads. Defaults to "primary" via `normalizeSchoolLevel` below.
   let schoolRows:
-    | { id: string; name: string; logo_url: string | null; school_level?: string | null }[]
+    | {
+        id: string;
+        name: string;
+        logo_url: string | null;
+        school_level?: string | null;
+        motto?: string | null;
+      }[]
     | null = null;
   {
     let res = await admin
       .from("schools")
-      .select("id, name, logo_url, school_level")
+      .select("id, name, logo_url, school_level, motto")
       .in("id", schoolIds);
+    if (res.error && /column/i.test(res.error.message ?? "")) {
+      res = await admin
+        .from("schools")
+        .select("id, name, logo_url, school_level")
+        .in("id", schoolIds);
+    }
     if (res.error && /column.*school_level/i.test(res.error.message ?? "")) {
       res = await admin
         .from("schools")
@@ -1036,11 +1050,13 @@ export async function loadCoordinatorOverview(params: {
       studentCount ?? 0
     );
 
+    const mottoTrim = (school?.motto ?? "").trim();
     const reportCards = await loadClassReportCards(admin, {
       classId,
       classIds: clusterIds,
       className: c.name,
       schoolName: school?.name ?? "School",
+      schoolMotto: mottoTrim ? mottoTrim : null,
       schoolLogoUrl: school?.logo_url ?? null,
       schoolLevel,
       academicYear,
@@ -1053,6 +1069,7 @@ export async function loadCoordinatorOverview(params: {
       className: c.name,
       schoolId: c.school_id,
       schoolName: school?.name ?? "School",
+      schoolMotto: mottoTrim ? mottoTrim : null,
       schoolLogoUrl: school?.logo_url ?? null,
       schoolLevel,
       academicYear,

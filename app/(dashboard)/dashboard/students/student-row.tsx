@@ -128,8 +128,8 @@ export function StudentRow({
     }, [someSelected]);
 
     return (
-      <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-        <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">
+      <div className="rounded-lg border border-[rgb(var(--school-primary-rgb)/0.18)] bg-[rgb(var(--school-primary-rgb)/0.10)]/40 p-3 dark:border-[rgb(var(--school-primary-rgb)/0.28)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)]">
+        <p className="text-xs font-semibold text-school-primary dark:text-school-primary">
           Subjects this student will study
         </p>
         <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400">
@@ -186,7 +186,7 @@ export function StudentRow({
           <>
             <label
               htmlFor={`subj-${student.id}-select-all`}
-              className="mt-2 flex items-center gap-2 border-b border-indigo-100 pb-2 dark:border-indigo-900/40"
+              className="mt-2 flex items-center gap-2 border-b border-[rgb(var(--school-primary-rgb)/0.18)] pb-2 dark:border-[rgb(var(--school-primary-rgb)/0.28)]"
             >
               <input
                 ref={selectAllRef}
@@ -194,7 +194,7 @@ export function StudentRow({
                 id={`subj-${student.id}-select-all`}
                 checked={allSelected}
                 onChange={(e) => se.onToggleAllSubjects(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                className="h-4 w-4 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
               />
               <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">
                 Select All subjects
@@ -213,7 +213,7 @@ export function StudentRow({
                     onChange={(e) =>
                       se.onToggleSubject(sub.id, e.target.checked)
                     }
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                    className="h-4 w-4 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
                   />
                   <label
                     htmlFor={`subj-${student.id}-${sub.id}`}
@@ -400,7 +400,7 @@ export function StudentRow({
                   href={`/dashboard/students/${student.id}/profile`}
                   title="View profile"
                   aria-label="View profile"
-                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-indigo-400"
+                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-school-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-school-primary/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:opacity-90"
                 >
                   <UserCircle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                 </Link>
@@ -551,7 +551,7 @@ export function StudentRow({
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-                  <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
+                  <span className="rounded-full bg-[rgb(var(--school-primary-rgb)/0.10)] px-2.5 py-0.5 text-xs font-medium text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary">
                     {student.class?.name || "—"}
                   </span>
                   <span className="text-xs font-medium tabular-nums text-gray-600 dark:text-zinc-400">
@@ -583,7 +583,7 @@ export function StudentRow({
               <div className="flex flex-wrap items-center gap-1 pt-1">
                 <Link
                   href={`/dashboard/students/${student.id}/profile`}
-                  className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:border-zinc-600 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+                  className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-zinc-600 dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
                 >
                   View profile
                 </Link>

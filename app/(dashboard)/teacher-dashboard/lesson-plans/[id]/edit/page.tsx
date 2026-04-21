@@ -119,7 +119,7 @@ export default async function EditLessonPlanPage({
           </div>
           <Link
             href="/teacher-dashboard/lesson-plans"
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+            className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
           >
             ← Back to lesson plans
           </Link>

@@ -12,6 +12,12 @@ import { SchoolCurrencyForm } from "./school-currency-form";
 import { SchoolAdmissionPrefixForm } from "./school-admission-prefix-form";
 import { SchoolLogoForm } from "./school-logo-form";
 import { SchoolLevelForm } from "./school-level-form";
+import { SchoolInformationForm } from "./school-information-form";
+import { SchoolAcademicSettingsForm } from "./school-academic-settings-form";
+import { SchoolBrandingForm } from "./school-branding-form";
+import { SchoolAdminAccountForm } from "./school-admin-account-form";
+import { SchoolSettingsCollapsibleSection } from "./school-settings-collapsible-section";
+import type { TermStructureValue } from "./school-settings-shared";
 
 export const dynamic = "force-dynamic";
 
@@ -33,19 +39,44 @@ export default async function SchoolSettingsPage() {
     logo_url: string | null;
     updated_at: string;
     school_level?: string | null;
+    address?: string | null;
+    city?: string | null;
+    postal_code?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    registration_number?: string | null;
+    motto?: string | null;
+    primary_color?: string | null;
+    current_academic_year?: string | null;
+    term_structure?: string | null;
+    term_1_start?: string | null;
+    term_1_end?: string | null;
+    term_2_start?: string | null;
+    term_2_end?: string | null;
+    term_3_start?: string | null;
+    term_3_end?: string | null;
   };
 
-  // `school_level` (migration 00086) may not exist on older deployments; fall
-  // back to the legacy column set so the page still loads.
+  // `school_level` (migration 00086) and extended settings (00088) may not exist
+  // on older deployments; fall back to smaller column sets so the page loads.
+  const extendedCols =
+    "name, currency, admission_prefix, logo_url, updated_at, school_level, address, city, postal_code, phone, email, registration_number, motto, primary_color, current_academic_year, term_structure, term_1_start, term_1_end, term_2_start, term_2_end, term_3_start, term_3_end";
   const fullCols =
     "name, currency, admission_prefix, logo_url, updated_at, school_level";
   const baseCols =
     "name, currency, admission_prefix, logo_url, updated_at";
   let schoolRes = await supabase
     .from("schools")
-    .select(fullCols)
+    .select(extendedCols)
     .eq("id", schoolId)
     .maybeSingle();
+  if (schoolRes.error && /column/i.test(schoolRes.error.message ?? "")) {
+    schoolRes = await supabase
+      .from("schools")
+      .select(fullCols)
+      .eq("id", schoolId)
+      .maybeSingle();
+  }
   if (
     schoolRes.error &&
     /column.*school_level/i.test(schoolRes.error.message ?? "")
@@ -62,6 +93,11 @@ export default async function SchoolSettingsPage() {
     p_school_id: schoolId,
   } as never);
   const isSchoolAdmin = !!isAdminFlag;
+
+  const termStructure: TermStructureValue =
+    fetched?.term_structure === "3_terms" ? "3_terms" : "2_terms";
+
+  const accountEmail = (user.email ?? "").trim() || "—";
   const row = {
     name: (fetched?.name?.trim() || display.name?.trim() || "").trim(),
     currency: fetched?.currency ?? display.currency,
@@ -102,69 +138,118 @@ export default async function SchoolSettingsPage() {
       </header>
 
       <main className="mx-auto max-w-3xl space-y-8 py-10">
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Student admission prefix
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-            Auto-generated admission numbers use this prefix (e.g. MTZ-012).
-          </p>
-          <div className="mt-6">
-            <SchoolAdmissionPrefixForm
-              schoolId={schoolId}
-              currentPrefix={admissionPrefix}
-            />
-          </div>
-        </section>
+        <SchoolSettingsCollapsibleSection
+          sectionId="school-information"
+          title="School information"
+          description="Contact details and registration shown on official documents where configured."
+        >
+          <SchoolInformationForm
+            canEdit={isSchoolAdmin}
+            initial={{
+              name: row.name,
+              address: fetched?.address ?? null,
+              city: fetched?.city ?? null,
+              postalCode: fetched?.postal_code ?? null,
+              phone: fetched?.phone ?? null,
+              email: fetched?.email ?? null,
+              registrationNumber: fetched?.registration_number ?? null,
+            }}
+          />
+        </SchoolSettingsCollapsibleSection>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            School logo
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-            Shown on your dashboard header and anywhere the school is identified.
-          </p>
-          <div className="mt-6">
-            <SchoolLogoForm
-              schoolName={row.name}
-              initialLogoUrl={logoUrl}
-              initialLogoVersion={logoVersion}
-            />
-          </div>
-        </section>
+        <SchoolSettingsCollapsibleSection
+          sectionId="academic-settings"
+          title="Academic settings"
+          description="Calendar reference for reports and planning (optional)."
+        >
+          <SchoolAcademicSettingsForm
+            canEdit={isSchoolAdmin}
+            initial={{
+              currentAcademicYear: fetched?.current_academic_year ?? null,
+              termStructure,
+              term1Start: fetched?.term_1_start ?? null,
+              term1End: fetched?.term_1_end ?? null,
+              term2Start: fetched?.term_2_start ?? null,
+              term2End: fetched?.term_2_end ?? null,
+              term3Start: fetched?.term_3_start ?? null,
+              term3End: fetched?.term_3_end ?? null,
+            }}
+          />
+        </SchoolSettingsCollapsibleSection>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            School level
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-            Choose how report cards calculate rankings. Primary schools rank by
-            average %; secondary schools rank by total marks of the best 7
-            subjects.
-          </p>
-          <div className="mt-6">
-            <SchoolLevelForm
-              currentLevel={schoolLevel}
-              canEdit={isSchoolAdmin}
-            />
-          </div>
-        </section>
+        <SchoolSettingsCollapsibleSection
+          sectionId="admin-account"
+          title="Admin account"
+          description="Update the password and email for your own sign-in (all school admins can use this page)."
+        >
+          <SchoolAdminAccountForm currentEmail={accountEmail} />
+        </SchoolSettingsCollapsibleSection>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Currency
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-            Online payments via ClickPesa support{" "}
-            <strong className="text-slate-700 dark:text-zinc-300">TZS</strong> and{" "}
-            <strong className="text-slate-700 dark:text-zinc-300">USD</strong>{" "}
-            checkout. If you use KES or UGX, parents may see a notice when paying
-            online.
-          </p>
-          <div className="mt-6">
-            <SchoolCurrencyForm currentCurrency={currency} />
-          </div>
-        </section>
+        <SchoolSettingsCollapsibleSection
+          sectionId="school-branding"
+          title="School branding"
+          description="Optional motto and accent color for your school profile."
+        >
+          <SchoolBrandingForm
+            key={`${fetched?.updated_at ?? ""}-${fetched?.primary_color ?? ""}`}
+            canEdit={isSchoolAdmin}
+            initial={{
+              motto: fetched?.motto ?? null,
+              primaryColor: fetched?.primary_color ?? null,
+            }}
+          />
+        </SchoolSettingsCollapsibleSection>
+
+        <SchoolSettingsCollapsibleSection
+          sectionId="admission-prefix"
+          title="Student admission prefix"
+          description="Auto-generated admission numbers use this prefix (e.g. MTZ-012)."
+        >
+          <SchoolAdmissionPrefixForm
+            schoolId={schoolId}
+            currentPrefix={admissionPrefix}
+          />
+        </SchoolSettingsCollapsibleSection>
+
+        <SchoolSettingsCollapsibleSection
+          sectionId="school-logo"
+          title="School logo"
+          description="Shown on your dashboard header and anywhere the school is identified."
+        >
+          <SchoolLogoForm
+            schoolName={row.name}
+            initialLogoUrl={logoUrl}
+            initialLogoVersion={logoVersion}
+          />
+        </SchoolSettingsCollapsibleSection>
+
+        <SchoolSettingsCollapsibleSection
+          sectionId="school-level"
+          title="School level"
+          description="Choose how report cards calculate rankings. Primary schools rank by average %; secondary schools rank by total marks of the best 7 subjects."
+        >
+          <SchoolLevelForm
+            currentLevel={schoolLevel}
+            canEdit={isSchoolAdmin}
+          />
+        </SchoolSettingsCollapsibleSection>
+
+        <SchoolSettingsCollapsibleSection
+          sectionId="currency"
+          title="Currency"
+          description={
+            <>
+              Online payments via ClickPesa support{" "}
+              <strong className="text-slate-700 dark:text-zinc-300">TZS</strong>{" "}
+              and{" "}
+              <strong className="text-slate-700 dark:text-zinc-300">USD</strong>{" "}
+              checkout. If you use KES or UGX, parents may see a notice when
+              paying online.
+            </>
+          }
+        >
+          <SchoolCurrencyForm currentCurrency={currency} />
+        </SchoolSettingsCollapsibleSection>
       </main>
       <SmartFloatingScrollButton sectionIds={[]} />
     </>

@@ -65,7 +65,7 @@ function SubmitButton({ disabled }: { disabled?: boolean }) {
     <button
       type="submit"
       disabled={pending || disabled}
-      className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+      className="w-full rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
     >
       {pending ? "Adding…" : "Add student"}
     </button>
@@ -231,7 +231,7 @@ export function AddStudentForm({
               Upgrade on the{" "}
               <a
                 href="/pricing"
-                className="font-medium text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-400"
+                className="font-medium text-school-primary underline-offset-2 hover:underline dark:text-school-primary"
               >
                 Pricing
               </a>{" "}
@@ -259,7 +259,7 @@ export function AddStudentForm({
                 name="full_name"
                 type="text"
                 required
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="e.g. Jane Doe"
                 onBlur={(e) => {
                   e.currentTarget.value = toTitleCase(e.currentTarget.value);
@@ -289,7 +289,7 @@ export function AddStudentForm({
                     autoComplete="off"
                     value={admissionValue}
                     onChange={(e) => setAdmissionValue(e.target.value)}
-                    className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                    className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                     placeholder={`e.g. ${effectivePrefix}-001`}
                   />
                   <button
@@ -309,7 +309,7 @@ export function AddStudentForm({
                   id="admission_number"
                   name="admission_number"
                   type="text"
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                   placeholder="e.g. ADM-001 (optional)"
                 />
               )}
@@ -338,7 +338,7 @@ export function AddStudentForm({
                 required
                 value={selectedClassId}
                 onChange={(e) => setSelectedClassId(e.target.value)}
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 <option value="">Select a class</option>
                 {classes.map((c) => (
@@ -364,7 +364,7 @@ export function AddStudentForm({
                 name="gender"
                 required
                 defaultValue=""
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               >
                 <option value="" disabled>
                   Select gender
@@ -434,7 +434,7 @@ export function AddStudentForm({
                         id="add-subj-select-all"
                         checked={allSelected}
                         onChange={(e) => toggleAllSubjects(e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                        className="h-4 w-4 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
                       />
                       <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">
                         Select All subjects
@@ -456,7 +456,7 @@ export function AddStudentForm({
                             onChange={(e) =>
                               toggleSubject(sub.id, e.target.checked)
                             }
-                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600"
+                            className="h-4 w-4 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
                           />
                           <label
                             htmlFor={`add-subj-${sub.id}`}
@@ -485,7 +485,7 @@ export function AddStudentForm({
                 type="date"
                 defaultValue={todayIsoLocal()}
                 suppressHydrationWarning
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               />
               <p className="text-xs text-gray-500 dark:text-zinc-400">
                 Defaults to today; change for a back-dated enrolment.
@@ -508,7 +508,7 @@ export function AddStudentForm({
                 id="parent_name"
                 name="parent_name"
                 type="text"
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="Parent's full name"
                 onBlur={(e) => {
                   e.currentTarget.value = toTitleCase(e.currentTarget.value);
@@ -527,7 +527,7 @@ export function AddStudentForm({
                 id="parent_email"
                 name="parent_email"
                 type="email"
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="parent@example.com"
                 onBlur={(e) => {
                   e.currentTarget.value = toLowercaseEmail(
@@ -548,7 +548,7 @@ export function AddStudentForm({
                 id="parent_phone"
                 name="parent_phone"
                 type="tel"
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="+254 700 000 000"
               />
             </div>

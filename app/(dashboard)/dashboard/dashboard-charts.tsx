@@ -126,7 +126,7 @@ function CollapsibleAnalyticsCard({
         onClick={() => setCollapsed(!collapsed)}
         aria-expanded={!collapsed}
         aria-controls={sectionId}
-        className="flex w-full items-start justify-between gap-3 rounded-xl px-6 py-4 text-left transition hover:bg-slate-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:hover:bg-zinc-800/40"
+        className="flex w-full items-start justify-between gap-3 rounded-xl px-6 py-4 text-left transition hover:bg-slate-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-school-primary dark:hover:bg-zinc-800/40"
       >
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white">

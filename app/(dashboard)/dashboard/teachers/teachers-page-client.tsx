@@ -224,7 +224,7 @@ export function TeachersPageClient({
       <div>
         <Link
           href="/dashboard"
-          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+          className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
         >
           ← Back to dashboard
         </Link>
@@ -244,7 +244,7 @@ export function TeachersPageClient({
           <button
             type="button"
             onClick={() => setBulkAddOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:bg-indigo-500/20"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.10)] px-3 py-1.5 text-xs font-semibold text-school-primary transition-colors hover:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:border-[rgb(var(--school-primary-rgb)/0.35)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.20)]"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -316,7 +316,7 @@ export function TeachersPageClient({
           <button
             type="submit"
             disabled={addPending}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+            className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
           >
             {addPending ? "Saving…" : "Create teacher account"}
           </button>
@@ -439,7 +439,7 @@ export function TeachersPageClient({
                               {t.departmentRoles.map((d) => (
                                 <span
                                   key={d}
-                                  className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200"
+                                  className="rounded-md bg-[rgb(var(--school-primary-rgb)/0.10)] px-2 py-0.5 text-xs font-medium text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.20)] dark:text-school-primary"
                                 >
                                   {DEPARTMENT_LABELS[d]}
                                 </span>
@@ -486,7 +486,7 @@ export function TeachersPageClient({
                                 initial: t.departmentRoles,
                               })
                             }
-                            className="rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                            className="rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] px-3 py-1.5 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
                           >
                             Manage Roles
                           </button>
@@ -605,7 +605,7 @@ export function TeachersPageClient({
                               }
                               className={`min-w-[2rem] rounded border px-2.5 py-1 text-sm font-medium dark:border-zinc-600 ${
                                 item === teacherAccountsSafePage
-                                  ? "border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-600"
+                                  ? "border-school-primary bg-school-primary text-white dark:border-school-primary dark:bg-school-primary"
                                   : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                               }`}
                             >

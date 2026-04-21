@@ -15,9 +15,12 @@ import {
 } from "../report-card-preview-builder";
 import { subjectNameToNectaCode } from "@/lib/necta-subject-code";
 import { SECONDARY_BEST_SUBJECT_COUNT } from "@/lib/school-level";
+import { drawPdfSchoolMottoCentered } from "./report-card-pdf-motto";
 
 export interface ClassResultSheetPdfInput {
   schoolName: string;
+  /** From school settings; optional line under the school name on PDFs. */
+  schoolMotto?: string | null;
   className: string;
   schoolLevel: SchoolLevel;
   /** Human label including exam context, e.g. "Term 1 (June Terminal Report)". */
@@ -265,6 +268,7 @@ function buildNectaSecondaryPdf(
 ) {
   const {
     schoolName,
+    schoolMotto,
     className,
     term,
     academicYear,
@@ -282,18 +286,26 @@ function buildNectaSecondaryPdf(
   doc.setFontSize(15);
   doc.setTextColor(0, 0, 0);
   doc.text(schoolName, pageW / 2, 18, { align: "center" });
+  let yHead = 18 + 8;
+  yHead = drawPdfSchoolMottoCentered(doc, pageW / 2, yHead, schoolMotto, "times");
+  doc.setFont("times", "bold");
   doc.setFontSize(11);
-  doc.text(examTitle, pageW / 2, 26, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  const yExam = yHead;
+  doc.text(examTitle, pageW / 2, yExam, { align: "center" });
   const coord = (coordinatorName ?? "").trim();
   if (coord) {
     doc.setFont("times", "normal");
     doc.setFontSize(8);
     doc.setTextColor(60, 60, 60);
-    doc.text(`Class coordinator: ${coord}`, pageW / 2, 33, { align: "center" });
+    doc.text(`Class coordinator: ${coord}`, pageW / 2, yExam + 7, {
+      align: "center",
+    });
     doc.setTextColor(0, 0, 0);
   }
 
-  let y = 40;
+  /** Same vertical gap as legacy layout: exam baseline + 14 mm to first table. */
+  let y = yExam + 14;
 
   doc.setFont("times", "bold");
   doc.setFontSize(10);
@@ -507,6 +519,7 @@ function buildPrimaryClassResultSheetPdf(
 ) {
   const {
     schoolName,
+    schoolMotto,
     className,
     schoolLevel,
     termDisplayLabel,
@@ -525,6 +538,7 @@ function buildPrimaryClassResultSheetPdf(
   doc.setFont("helvetica", "bold");
   doc.text(schoolName, pageW / 2, y, { align: "center" });
   y += 8;
+  y = drawPdfSchoolMottoCentered(doc, pageW / 2, y, schoolMotto, "helvetica");
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.text("Class result sheet", pageW / 2, y, { align: "center" });

@@ -28,7 +28,7 @@ export default async function TeacherReportCardsPage() {
     return (
       <div className="space-y-4">
         <p className="text-sm text-red-600">{options.error}</p>
-        <Link href="/teacher-dashboard" className="text-indigo-600">
+        <Link href="/teacher-dashboard" className="text-school-primary">
           ← Back to dashboard
         </Link>
       </div>
@@ -58,7 +58,7 @@ export default async function TeacherReportCardsPage() {
           </div>
           <Link
             href="/teacher-dashboard"
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+            className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
           >
             ← Back to dashboard
           </Link>
@@ -67,6 +67,7 @@ export default async function TeacherReportCardsPage() {
           <ReportCardsPageClient
             schoolId={options.schoolId}
             schoolName={options.schoolName}
+            schoolMotto={options.schoolMotto}
             schoolLevel={options.schoolLevel}
             logoUrl={options.logoUrl}
             teacherName={options.teacherName}

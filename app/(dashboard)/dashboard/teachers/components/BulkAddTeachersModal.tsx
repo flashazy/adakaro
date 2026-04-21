@@ -199,7 +199,7 @@ export function BulkAddTeachersModal({
                 }}
                 rows={10}
                 spellCheck={false}
-                className="mt-1.5 block w-full flex-1 resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm placeholder:font-sans placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="mt-1.5 block w-full flex-1 resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm placeholder:font-sans placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder={
                   "Halima Mdee\nFatmah Shemweta Jadu\nJohn Doe\nJane Okello"
                 }
@@ -242,7 +242,7 @@ export function BulkAddTeachersModal({
                         key={`${name}-${i}`}
                         className="flex items-center gap-2 rounded-md bg-white px-2 py-1 text-slate-800 shadow-sm dark:bg-zinc-900 dark:text-zinc-100"
                       >
-                        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200">
+                        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--school-primary-rgb)/0.16)] text-[11px] font-semibold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary">
                           {i + 1}
                         </span>
                         <span className="truncate">{name}</span>
@@ -274,7 +274,7 @@ export function BulkAddTeachersModal({
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={8}
                 autoComplete="new-password"
-                className="block w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-11 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className="block w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-11 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="At least 8 characters — applied to every teacher in this batch"
               />
               <button
@@ -358,7 +358,7 @@ export function BulkAddTeachersModal({
             <button
               type="submit"
               disabled={pending || !hasPreview || !passwordValid}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {pending
                 ? "Creating…"

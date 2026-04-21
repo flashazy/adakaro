@@ -164,7 +164,7 @@ export function DashboardHeader({
                   />
                 ) : schoolInitial ? (
                   <span
-                    className="flex h-full w-full items-center justify-center bg-indigo-100 text-sm font-bold text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200"
+                    className="flex h-full w-full items-center justify-center bg-[rgb(var(--school-primary-rgb)/0.16)] text-sm font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.20)] dark:text-school-primary"
                     aria-hidden
                   >
                     {schoolInitial}
@@ -209,7 +209,7 @@ export function DashboardHeader({
       href={href}
       className={
         isActive
-          ? "rounded-lg bg-indigo-600 px-2.5 py-1.5 text-sm font-semibold text-white shadow-sm dark:bg-indigo-500"
+          ? "rounded-lg bg-school-primary px-2.5 py-1.5 text-sm font-semibold text-white shadow-sm dark:bg-school-primary"
           : "rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
       }
     >

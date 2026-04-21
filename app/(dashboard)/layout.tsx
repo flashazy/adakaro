@@ -10,6 +10,7 @@ import { isSchoolAdminBroadcastAudience } from "@/lib/broadcasts/school-admin-au
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { getPrimaryTeacherAssignmentLabel } from "@/lib/teacher-assignment-status";
+import { SchoolPrimaryCssVars } from "@/components/school-branding/school-primary-css-vars";
 
 export default async function DashboardGroupLayout({
   children,
@@ -65,9 +66,10 @@ export default async function DashboardGroupLayout({
     const isCoordinator = Boolean(coordinatorRow);
     return (
       <>
+        <SchoolPrimaryCssVars primaryColor={schoolDisplay?.primary_color} />
         <a
           href="#page-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-indigo-600 focus:px-3 focus:py-2 focus:text-white print:hidden"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-school-primary focus:px-3 focus:py-2 focus:text-white print:hidden"
         >
           Skip to content
         </a>
@@ -129,9 +131,10 @@ export default async function DashboardGroupLayout({
 
   return (
     <>
+      <SchoolPrimaryCssVars primaryColor={schoolDisplay?.primary_color} />
       <a
         href="#page-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-indigo-600 focus:px-3 focus:py-2 focus:text-white print:hidden"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-school-primary focus:px-3 focus:py-2 focus:text-white print:hidden"
       >
         Skip to content
       </a>

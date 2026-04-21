@@ -282,7 +282,7 @@ export function TeacherDocuments({
           <button
             type="button"
             onClick={() => setUploadOpen(true)}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-60"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:brightness-105 disabled:opacity-60"
             disabled={pending}
           >
             {pending ? (
@@ -312,7 +312,7 @@ export function TeacherDocuments({
             aria-valuemax={100}
           >
             <div
-              className="h-full rounded-full bg-indigo-500 transition-[width] duration-300 dark:bg-indigo-400"
+              className="h-full rounded-full bg-school-primary transition-[width] duration-300 dark:bg-school-primary"
               style={{ width: `${usagePct}%` }}
             />
           </div>
@@ -326,7 +326,7 @@ export function TeacherDocuments({
               placeholder="Search by name…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             />
           </div>
         </div>
@@ -339,7 +339,7 @@ export function TeacherDocuments({
               onClick={() => setTab(t.filter)}
               className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 tab === t.filter
-                  ? "bg-indigo-600 text-white dark:bg-indigo-500"
+                  ? "bg-school-primary text-white dark:bg-school-primary"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
               }`}
             >
@@ -390,7 +390,7 @@ export function TeacherDocuments({
                   >
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 shrink-0 text-indigo-500" />
+                        <FileText className="h-4 w-4 shrink-0 text-school-primary" />
                         <span className="font-medium text-slate-900 dark:text-zinc-100">
                           {d.document_name}
                         </span>
@@ -533,7 +533,7 @@ export function TeacherDocuments({
                   id="doc-file"
                   type="file"
                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
-                  className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700 dark:text-zinc-400 dark:file:bg-indigo-950/50 dark:file:text-indigo-200"
+                  className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[rgb(var(--school-primary-rgb)/0.10)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-school-primary dark:text-zinc-400 dark:file:bg-[rgb(var(--school-primary-rgb)/0.15)] dark:file:text-school-primary"
                   onChange={(e) => {
                     const f = e.target.files?.[0] ?? null;
                     setUploadFile(f);
@@ -599,7 +599,7 @@ export function TeacherDocuments({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-lg bg-school-primary px-4 py-2 text-sm font-medium text-white hover:brightness-105 disabled:opacity-60"
                 >
                   {pending && (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -690,7 +690,7 @@ export function TeacherDocuments({
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-medium text-white hover:brightness-105 disabled:opacity-60"
                 onClick={handleRenameSubmit}
                 disabled={pending}
               >

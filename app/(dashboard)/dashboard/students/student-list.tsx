@@ -316,7 +316,7 @@ export function StudentList({ students, classes }: StudentListProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search students…"
-            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pl-3 pr-10 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-64 sm:flex-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pl-3 pr-10 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary sm:w-64 sm:flex-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
           />
           <svg
             className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -338,7 +338,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         <select
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
-          className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
+          className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
         >
           <option value="">All classes</option>
           {classes.map((c) => (
@@ -363,7 +363,7 @@ export function StudentList({ students, classes }: StudentListProps) {
                 String(n)
               );
             }}
-            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
+            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
           >
             {STUDENT_LIST_ROW_OPTIONS.map((n) => (
               <option key={n} value={n}>
@@ -393,7 +393,7 @@ export function StudentList({ students, classes }: StudentListProps) {
               setQuery("");
               setClassFilter("");
             }}
-            className="ml-2 text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+            className="ml-2 text-school-primary hover:opacity-90 dark:text-school-primary dark:hover:opacity-90"
           >
             Clear filters
           </button>

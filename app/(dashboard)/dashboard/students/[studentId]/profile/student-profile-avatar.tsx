@@ -182,7 +182,7 @@ export function StudentProfileAvatar({
 
   const photoFrameClass = `group relative flex h-[200px] w-[200px] shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 dark:border-zinc-600 dark:bg-zinc-800/80 ${
     canChangePhoto
-      ? "transition hover:border-indigo-400 hover:bg-slate-100 disabled:opacity-60 dark:hover:border-indigo-500 dark:hover:bg-zinc-800"
+      ? "transition hover:border-[rgb(var(--school-primary-rgb)/0.45)] hover:bg-slate-100 disabled:opacity-60 dark:hover:border-school-primary dark:hover:bg-zinc-800"
       : ""
   }`;
 
@@ -264,13 +264,13 @@ export function StudentProfileAvatar({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={pending}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+              className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
             >
               Change photo
             </button>
             <button
               type="button"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
               title={photoRequirementsDescription}
               aria-label={`Photo requirements: ${photoRequirementsDescription}`}
             >
@@ -351,7 +351,7 @@ export function StudentProfileAvatar({
                   value={zoom}
                   disabled={!sourceReady || pending}
                   onChange={(e) => setZoom(Number(e.target.value))}
-                  className="mt-2 block w-full accent-indigo-600"
+                  className="mt-2 block w-full accent-school-primary"
                 />
               </div>
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -367,7 +367,7 @@ export function StudentProfileAvatar({
                   type="button"
                   onClick={confirmUpload}
                   disabled={pending || !sourceReady}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
                 >
                   {pending ? "Uploading…" : "Save photo"}
                 </button>

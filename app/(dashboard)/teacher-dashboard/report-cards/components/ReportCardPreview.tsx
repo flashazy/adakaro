@@ -334,7 +334,7 @@ export function ReportCardPreview({
       */}
       {data.summary?.sentence &&
       (viewer !== "teacher" || reportCardStatus === "approved") ? (
-        <section className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/70 px-4 py-3 text-sm text-slate-800 print:border-slate-400 print:bg-white">
+        <section className="mt-4 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.10)] px-4 py-3 text-sm text-slate-800 print:border-slate-400 print:bg-white">
           <p>
             <span className="font-semibold text-slate-900">Summary:</span>{" "}
             {data.summary.sentence}

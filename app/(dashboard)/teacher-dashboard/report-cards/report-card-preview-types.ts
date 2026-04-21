@@ -1,5 +1,7 @@
 export interface ReportCardPreviewData {
   schoolName: string;
+  /** School motto / tagline from settings; shown on PDFs when non-empty. */
+  schoolMotto?: string | null;
   logoUrl: string | null;
   studentName: string;
   className: string;

@@ -67,7 +67,7 @@ export function UpgradeModal({
               {PLAN_ORDER.map((id) => {
                 const p = PLANS[id];
                 const highlight =
-                  id === requiredPlan ? "bg-indigo-50/80 dark:bg-indigo-950/30" : "";
+                  id === requiredPlan ? "bg-[rgb(var(--school-primary-rgb)/0.10)]/80 dark:bg-[rgb(var(--school-primary-rgb)/0.14)]" : "";
                 return (
                   <tr key={id} className={highlight}>
                     <td className="px-3 py-2 font-medium text-slate-900 dark:text-white">
@@ -89,7 +89,7 @@ export function UpgradeModal({
         <div className="mt-5 flex flex-wrap gap-2">
           <Link
             href="/pricing"
-            className="inline-flex flex-1 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 sm:flex-none"
+            className="inline-flex flex-1 items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white hover:brightness-90 sm:flex-none"
             onClick={onClose}
           >
             View pricing

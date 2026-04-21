@@ -10,17 +10,14 @@ import {
   type SchoolCurrencyCode,
 } from "@/lib/currency";
 import { isSchoolLevel, type SchoolLevel } from "@/lib/school-level";
+import type { Database } from "@/types/supabase";
+import type {
+  AccountSettingsState,
+  SchoolSettingsState,
+  TermStructureValue,
+} from "./school-settings-shared";
 
-export interface SchoolSettingsState {
-  error?: string;
-  success?: boolean;
-  /** Set on each successful logo action so clients can react to repeat uploads. */
-  completedAt?: number;
-  /** Public storage URL saved for this upload (client bypasses CDN cache via fetch+blob). */
-  publicUrl?: string | null;
-  /** From `schools.updated_at` after write — use with `?v=` everywhere the logo is shown. */
-  logoVersion?: number;
-}
+type SchoolsUpdate = Database["public"]["Tables"]["schools"]["Update"];
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_EXT = new Set(["png", "jpg", "jpeg", "webp"]);
@@ -339,4 +336,302 @@ export async function updateSchoolLevel(
   revalidatePath("/teacher-dashboard/coordinator");
   revalidatePath("/parent-dashboard/report-card");
   return { success: true };
+}
+
+const HEX_COLOR_RE = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/;
+
+function normalizeOptionalText(raw: FormDataEntryValue | null): string | null {
+  const t = String(raw ?? "").trim();
+  return t === "" ? null : t;
+}
+
+function normalizeOptionalDate(raw: FormDataEntryValue | null): string | null {
+  const t = String(raw ?? "").trim();
+  if (t === "") return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
+}
+
+async function requireSchoolAdminForSchool(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  schoolId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: isAdmin, error: adminErr } = await supabase.rpc(
+    "is_school_admin",
+    { p_school_id: schoolId } as never
+  );
+  if (adminErr || !isAdmin) {
+    return { ok: false, error: "You must be a school admin to change this." };
+  }
+  return { ok: true };
+}
+
+export async function updateSchoolInformation(
+  _prev: SchoolSettingsState,
+  formData: FormData
+): Promise<SchoolSettingsState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
+  }
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) {
+    return { error: "School name is required." };
+  }
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not update school. Check server configuration (service role).",
+    };
+  }
+
+  const payload: SchoolsUpdate = {
+    name,
+    address: normalizeOptionalText(formData.get("address")),
+    city: normalizeOptionalText(formData.get("city")),
+    postal_code: normalizeOptionalText(formData.get("postal_code")),
+    phone: normalizeOptionalText(formData.get("phone")),
+    email: normalizeOptionalText(formData.get("school_email")),
+    registration_number: normalizeOptionalText(
+      formData.get("registration_number")
+    ),
+  };
+
+  const { error } = await admin
+    .from("schools")
+    .update(payload as never)
+    .eq("id", schoolId);
+
+  if (error) {
+    console.error("[updateSchoolInformation]", error);
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/school-settings");
+  return { success: true };
+}
+
+export async function updateSchoolAcademicSettings(
+  _prev: SchoolSettingsState,
+  formData: FormData
+): Promise<SchoolSettingsState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
+  }
+
+  const termStructureRaw = String(
+    formData.get("term_structure") ?? ""
+  ).trim();
+  const term_structure: TermStructureValue =
+    termStructureRaw === "3_terms" ? "3_terms" : "2_terms";
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not update school. Check server configuration (service role).",
+    };
+  }
+
+  const payload: SchoolsUpdate = {
+    current_academic_year: normalizeOptionalText(
+      formData.get("current_academic_year")
+    ),
+    term_structure,
+    term_1_start: normalizeOptionalDate(formData.get("term_1_start")),
+    term_1_end: normalizeOptionalDate(formData.get("term_1_end")),
+    term_2_start: normalizeOptionalDate(formData.get("term_2_start")),
+    term_2_end: normalizeOptionalDate(formData.get("term_2_end")),
+    term_3_start: normalizeOptionalDate(formData.get("term_3_start")),
+    term_3_end: normalizeOptionalDate(formData.get("term_3_end")),
+  };
+
+  if (term_structure === "2_terms") {
+    payload.term_3_start = null;
+    payload.term_3_end = null;
+  }
+
+  const { error } = await admin
+    .from("schools")
+    .update(payload as never)
+    .eq("id", schoolId);
+
+  if (error) {
+    console.error("[updateSchoolAcademicSettings]", error);
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard/school-settings");
+  return { success: true };
+}
+
+export async function updateSchoolBranding(
+  _prev: SchoolSettingsState,
+  formData: FormData
+): Promise<SchoolSettingsState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
+  }
+
+  const motto = normalizeOptionalText(formData.get("motto"));
+  const colorRaw = String(formData.get("primary_color") ?? "").trim();
+  let primary_color: string | null = null;
+  if (colorRaw === "") {
+    primary_color = "#4f46e5";
+  } else if (HEX_COLOR_RE.test(colorRaw)) {
+    primary_color = colorRaw;
+  } else {
+    return {
+      error: "Primary color must be a hex value like #4f46e5 or #rgb.",
+    };
+  }
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not update school. Check server configuration (service role).",
+    };
+  }
+
+  const { error } = await admin
+    .from("schools")
+    .update({ motto, primary_color } as never)
+    .eq("id", schoolId);
+
+  if (error) {
+    console.error("[updateSchoolBranding]", error);
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard/school-settings");
+  return { success: true };
+}
+
+export async function changeAccountPasswordAction(
+  _prev: AccountSettingsState | null,
+  formData: FormData
+): Promise<AccountSettingsState> {
+  const current = String(formData.get("current_password") ?? "");
+  const next = String(formData.get("new_password") ?? "");
+  const confirm = String(formData.get("confirm_password") ?? "");
+
+  if (current.length === 0) {
+    return { ok: false, error: "Enter your current password." };
+  }
+  if (next.length < 8) {
+    return { ok: false, error: "New password must be at least 8 characters." };
+  }
+  if (next !== confirm) {
+    return { ok: false, error: "New passwords do not match." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const { error: signErr } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: current,
+  });
+  if (signErr) {
+    return { ok: false, error: "Current password is incorrect." };
+  }
+
+  const { error: updErr } = await supabase.auth.updateUser({ password: next });
+  if (updErr) {
+    return { ok: false, error: updErr.message };
+  }
+
+  revalidatePath("/dashboard/school-settings");
+  return { ok: true, message: "Password updated." };
+}
+
+export async function changeAccountEmailAction(
+  _prev: AccountSettingsState | null,
+  formData: FormData
+): Promise<AccountSettingsState> {
+  const newEmail = String(formData.get("new_email") ?? "").trim().toLowerCase();
+  if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+    return { ok: false, error: "Enter a valid email address." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  if (user.email?.toLowerCase() === newEmail) {
+    return { ok: false, error: "That is already your email address." };
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  const emailRedirectTo =
+    siteUrl && siteUrl.startsWith("http")
+      ? `${siteUrl.replace(/\/$/, "")}/login`
+      : undefined;
+
+  const { error } = emailRedirectTo
+    ? await supabase.auth.updateUser(
+        { email: newEmail },
+        { emailRedirectTo }
+      )
+    : await supabase.auth.updateUser({ email: newEmail });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/dashboard/school-settings");
+  return {
+    ok: true,
+    message:
+      "Check your inbox to confirm the new email address (link may expire).",
+  };
 }

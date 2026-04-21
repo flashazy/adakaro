@@ -52,6 +52,7 @@ export async function loadTeacherReportCardOptions(): Promise<
       ok: true;
       schoolId: string;
       schoolName: string;
+      schoolMotto: string | null;
       logoUrl: string | null;
       schoolLevel: SchoolLevel;
       teacherName: string;
@@ -191,16 +192,24 @@ export async function loadTeacherReportCardOptions(): Promise<
     "";
   let schoolId = primarySchoolId;
   let schoolName = "";
+  let schoolMotto: string | null = null;
   let logoUrl: string | null = null;
   let schoolLevel: SchoolLevel = normalizeSchoolLevel(undefined);
 
   if (primarySchoolId) {
-    // `school_level` may be missing on older deployments; fall back gracefully.
+    // `school_level` / `motto` may be missing on older deployments; fall back gracefully.
     let res = await admin
       .from("schools")
-      .select("id, name, logo_url, school_level")
+      .select("id, name, logo_url, school_level, motto")
       .eq("id", primarySchoolId)
       .maybeSingle();
+    if (res.error && /column/i.test(res.error.message ?? "")) {
+      res = await admin
+        .from("schools")
+        .select("id, name, logo_url, school_level")
+        .eq("id", primarySchoolId)
+        .maybeSingle();
+    }
     if (res.error && /column.*school_level/i.test(res.error.message ?? "")) {
       res = await admin
         .from("schools")
@@ -213,12 +222,15 @@ export async function loadTeacherReportCardOptions(): Promise<
       name: string;
       logo_url: string | null;
       school_level?: string | null;
+      motto?: string | null;
     } | null;
     if (s) {
       schoolId = s.id;
       schoolName = s.name;
       logoUrl = s.logo_url;
       schoolLevel = normalizeSchoolLevel(s.school_level);
+      const m = (s.motto ?? "").trim();
+      schoolMotto = m || null;
     }
   }
 
@@ -226,6 +238,7 @@ export async function loadTeacherReportCardOptions(): Promise<
     ok: true,
     schoolId,
     schoolName,
+    schoolMotto,
     logoUrl,
     schoolLevel,
     teacherName,

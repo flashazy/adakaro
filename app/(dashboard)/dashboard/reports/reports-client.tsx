@@ -302,7 +302,7 @@ export function ReportsClient({
             onClick={() => setActiveTab(tab.id)}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab.id
-                ? "bg-indigo-600 text-white shadow-sm"
+                ? "bg-school-primary text-white shadow-sm"
                 : "text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
             }`}
           >
@@ -322,7 +322,7 @@ export function ReportsClient({
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             />
           </div>
           <div>
@@ -333,7 +333,7 @@ export function ReportsClient({
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             />
           </div>
           {(dateFrom || dateTo) && (
@@ -621,7 +621,7 @@ function StudentFeesTab({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by student name..."
               aria-label="Search by student name"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
             />
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
@@ -633,7 +633,7 @@ function StudentFeesTab({
                 value={classFilter}
                 onChange={(e) => setClassFilter(e.target.value)}
                 aria-label="Filter by class"
-                className="mt-1 w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-48"
+                className="mt-1 w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-48"
               >
                 <option value="">All classes</option>
                 {sortedClassOptions.map((c) => (
@@ -653,7 +653,7 @@ function StudentFeesTab({
                   setStatusFilter(e.target.value as FeeStatusFilter)
                 }
                 aria-label="Filter by fee status"
-                className="mt-1 w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-48"
+                className="mt-1 w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-48"
               >
                 <option value="all">All students</option>
                 <option value="fully-paid">Fully paid</option>
@@ -805,7 +805,7 @@ function StudentFeesTab({
                     aria-current={item === safePage ? "page" : undefined}
                     className={
                       item === safePage
-                        ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                        ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                         : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                     }
                   >
@@ -921,7 +921,7 @@ function ClassSummaryTab({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by class name..."
               aria-label="Search by class name"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
             />
           </div>
         </div>
@@ -1065,7 +1065,7 @@ function ClassSummaryTab({
                     aria-current={item === safePage ? "page" : undefined}
                     className={
                       item === safePage
-                        ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                        ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                         : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                     }
                   >
@@ -1193,7 +1193,7 @@ function OutstandingTab({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by student name..."
               aria-label="Search by student name"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
             />
           </div>
           <div>
@@ -1204,7 +1204,7 @@ function OutstandingTab({
               value={classFilter}
               onChange={(e) => setClassFilter(e.target.value)}
               aria-label="Filter by class"
-              className="mt-1 w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-48"
+              className="mt-1 w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-48"
             >
               <option value="">All classes</option>
               {sortedClassOptions.map((c) => (
@@ -1361,7 +1361,7 @@ function OutstandingTab({
                     aria-current={item === safePage ? "page" : undefined}
                     className={
                       item === safePage
-                        ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                        ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                         : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                     }
                   >
@@ -1468,8 +1468,8 @@ function MonthlyIncomeTab({
   return (
     <div className="space-y-3">
       {(dateFrom || dateTo) && (
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 dark:border-indigo-900/50 dark:bg-indigo-950/20 print:hidden">
-          <p className="text-sm text-indigo-700 dark:text-indigo-300">
+        <div className="rounded-xl border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.10)] px-4 py-3 dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)] print:hidden">
+          <p className="text-sm text-school-primary dark:text-school-primary">
             Filtered:{" "}
             {dateFrom ? `from ${dateFrom}` : "all time"}
             {dateTo ? ` to ${dateTo}` : " to present"}
@@ -1491,7 +1491,7 @@ function MonthlyIncomeTab({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by month or year..."
               aria-label="Search by month or year"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
             />
           </div>
         </div>
@@ -1617,7 +1617,7 @@ function MonthlyIncomeTab({
                     aria-current={item === safePage ? "page" : undefined}
                     className={
                       item === safePage
-                        ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                        ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                         : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                     }
                   >

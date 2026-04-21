@@ -109,9 +109,9 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="group flex w-full items-start gap-4 rounded-xl border-2 border-indigo-400 bg-indigo-50/80 p-5 text-left shadow-sm transition-all hover:border-indigo-500 hover:bg-indigo-50 hover:shadow-md dark:border-indigo-600 dark:bg-indigo-950/40 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/60"
+        className="group flex w-full items-start gap-4 rounded-xl border-2 border-[rgb(var(--school-primary-rgb)/0.45)] bg-[rgb(var(--school-primary-rgb)/0.10)]/80 p-5 text-left shadow-sm transition-all hover:border-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] hover:shadow-md dark:border-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:hover:border-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.2)]"
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white dark:bg-indigo-500">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-school-primary text-white dark:bg-school-primary">
           <svg
             className="h-5 w-5"
             fill="none"
@@ -127,10 +127,10 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
           </svg>
         </div>
         <div>
-          <p className="text-sm font-semibold text-indigo-900 group-hover:text-indigo-800 dark:text-indigo-100 dark:group-hover:text-white">
+          <p className="text-sm font-semibold text-school-primary group-hover:opacity-90 dark:text-school-primary dark:group-hover:text-white">
             Create School
           </p>
-          <p className="mt-0.5 text-xs text-indigo-800/80 dark:text-indigo-200/80">
+          <p className="mt-0.5 text-xs text-school-primary/80 dark:text-school-primary/80">
             Set up your organisation to unlock classes, students, and fees.
           </p>
         </div>
@@ -199,7 +199,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
                   type="text"
                   required
                   disabled={pending}
-                  className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+                  className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-school-primary dark:focus:ring-school-primary"
                   placeholder="e.g. Greenfield Academy"
                 />
               </div>
@@ -216,7 +216,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
                   name="address"
                   type="text"
                   disabled={pending}
-                  className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+                  className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-school-primary dark:focus:ring-school-primary"
                   placeholder="123 School Road"
                 />
               </div>
@@ -232,7 +232,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
                   id={`${formId}-currency`}
                   required
                   disabled={pending}
-                  className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+                  className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-school-primary dark:focus:ring-school-primary"
                 />
               </div>
 
@@ -249,7 +249,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
                     name="phone"
                     type="tel"
                     disabled={pending}
-                    className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+                    className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-school-primary dark:focus:ring-school-primary"
                     placeholder="+254 700 000 000"
                   />
                 </div>
@@ -265,7 +265,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
                     name="email"
                     type="email"
                     disabled={pending}
-                    className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+                    className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-school-primary dark:focus:ring-school-primary"
                     placeholder="info@school.com"
                   />
                 </div>
@@ -287,7 +287,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/svg+xml"
                   disabled={pending}
-                  className="mt-1.5 block w-full text-sm text-slate-500 file:mr-4 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-60 dark:text-zinc-400 dark:file:bg-indigo-950/50 dark:file:text-indigo-400"
+                  className="mt-1.5 block w-full text-sm text-slate-500 file:mr-4 file:rounded-lg file:border-0 file:bg-[rgb(var(--school-primary-rgb)/0.10)] file:px-4 file:py-2 file:text-sm file:font-medium file:text-school-primary hover:file:bg-[rgb(var(--school-primary-rgb)/0.16)] disabled:opacity-60 dark:text-zinc-400 dark:file:bg-[rgb(var(--school-primary-rgb)/0.15)] dark:file:text-school-primary"
                 />
               </div>
 
@@ -303,7 +303,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {pending ? "Creating…" : "Create school"}
                 </button>

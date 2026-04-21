@@ -43,7 +43,7 @@ export default async function SchoolAdminMessagesPage() {
       <div className="mb-6">
         <Link
           href="/dashboard"
-          className="text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+          className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary dark:hover:opacity-90"
         >
           ← Back to dashboard
         </Link>

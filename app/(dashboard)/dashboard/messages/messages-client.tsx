@@ -115,7 +115,7 @@ export function MessagesClient() {
                         </span>
                       ) : null}
                       {!read ? (
-                        <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-200">
+                        <span className="rounded bg-[rgb(var(--school-primary-rgb)/0.16)] px-2 py-0.5 text-xs font-medium text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.22)] dark:text-school-primary">
                           Unread
                         </span>
                       ) : null}

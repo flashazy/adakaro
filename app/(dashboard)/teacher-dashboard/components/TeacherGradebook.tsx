@@ -1433,7 +1433,7 @@ export function TeacherGradebook({
                                       setEditingMatrixCell(null);
                                     }
                                   }}
-                                  className="w-full min-w-[4.5rem] rounded border border-indigo-400 px-1 py-1 text-center text-sm dark:border-indigo-500 dark:bg-zinc-950"
+                                  className="w-full min-w-[4.5rem] rounded border border-[rgb(var(--school-primary-rgb)/0.45)] px-1 py-1 text-center text-sm dark:border-school-primary dark:bg-zinc-950"
                                 />
                               ) : (
                                 <button
@@ -1630,7 +1630,7 @@ export function TeacherGradebook({
               type="submit"
               disabled={isCreatingAssignment}
               aria-busy={isCreatingAssignment}
-              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+              className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:opacity-60 dark:bg-school-primary dark:hover:brightness-110"
             >
               {isCreatingAssignment ? (
                 <>
@@ -2047,7 +2047,7 @@ export function TeacherGradebook({
                       pageIdx === enterScoresTablePaging.effIdx ? (
                         <span
                           key={pageIdx}
-                          className="inline-flex h-8 min-w-[2rem] cursor-default items-center justify-center rounded-md border border-indigo-600 bg-indigo-50 px-2 text-sm font-semibold tabular-nums text-indigo-900 dark:border-indigo-500 dark:bg-indigo-950/60 dark:text-indigo-100"
+                          className="inline-flex h-8 min-w-[2rem] cursor-default items-center justify-center rounded-md border border-school-primary bg-[rgb(var(--school-primary-rgb)/0.10)] px-2 text-sm font-semibold tabular-nums text-school-primary dark:border-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.20)] dark:text-school-primary"
                           aria-current="page"
                           aria-label={`Page ${pageIdx + 1}`}
                         >
@@ -2089,7 +2089,7 @@ export function TeacherGradebook({
               <button
                 type="submit"
                 disabled={matrixLoading || isSaving}
-                className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-school-primary dark:hover:brightness-110"
               >
                 {isSaving ? (
                   <>

@@ -117,13 +117,13 @@ export function RequestUpgradeQuickAction({
           setTarget(higherPlans[0] ?? "basic");
           setOpen(true);
         }}
-        className="group flex w-full items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:border-indigo-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-indigo-800"
+        className="group flex w-full items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-100 group-disabled:opacity-50 dark:bg-indigo-950/30 dark:text-indigo-400 dark:group-hover:bg-indigo-950/50">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary transition-colors group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)] group-disabled:opacity-50 dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)]">
           {plansIcon}
         </div>
         <div>
-          <p className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400">
+          <p className="text-sm font-semibold text-slate-900 group-hover:text-school-primary dark:text-white dark:group-hover:text-school-primary">
             Request upgrade
           </p>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
@@ -237,7 +237,7 @@ export function RequestUpgradeQuickAction({
                     setPending(false);
                   }
                 }}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {pending ? "Submitting…" : "Submit request"}
               </button>

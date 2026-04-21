@@ -246,7 +246,7 @@ export default function SchoolReactivationPaymentClient({
           </div>
         </dl>
 
-        <p className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm text-indigo-950 dark:border-indigo-900/40 dark:bg-indigo-950/30 dark:text-indigo-100">
+        <p className="mt-6 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.18)] bg-[rgb(var(--school-primary-rgb)/0.12)] px-4 py-3 text-sm text-school-primary dark:border-[rgb(var(--school-primary-rgb)/0.28)] dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary">
           Completing payment through ClickPesa will reactivate your school
           account so staff and families can use the platform again.
         </p>
@@ -272,7 +272,7 @@ export default function SchoolReactivationPaymentClient({
             required
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value)}
-            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none ring-indigo-500 focus:border-indigo-500 focus:ring-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none ring-school-primary focus:border-school-primary focus:ring-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             placeholder="e.g. 50000"
             autoComplete="off"
           />
@@ -289,7 +289,7 @@ export default function SchoolReactivationPaymentClient({
             type="button"
             onClick={handlePay}
             disabled={loading}
-            className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[200px]"
+            className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-school-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[200px]"
           >
             {loading ? (
               <>
@@ -359,12 +359,12 @@ export default function SchoolReactivationPaymentClient({
                 <section
                   className={`rounded-xl border p-4 ${
                     hasBillPay
-                      ? "border-indigo-200 bg-indigo-50/50 dark:border-indigo-900/40 dark:bg-indigo-950/20"
+                      ? "border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.08)] dark:border-[rgb(var(--school-primary-rgb)/0.28)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)]"
                       : "border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/50"
                   }`}
                 >
                   <div className="mb-3 flex items-center gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.16)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:text-school-primary">
                       <svg
                         className="h-5 w-5"
                         fill="none"
@@ -397,13 +397,13 @@ export default function SchoolReactivationPaymentClient({
                   {hasBillPay ? (
                     <>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                        <code className="min-w-0 flex-1 break-all rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-center font-mono text-base font-semibold tracking-wide text-slate-900 dark:border-indigo-900/50 dark:bg-zinc-900 dark:text-white">
+                        <code className="min-w-0 flex-1 break-all rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] bg-white px-3 py-2.5 text-center font-mono text-base font-semibold tracking-wide text-slate-900 dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:bg-zinc-900 dark:text-white">
                           {controlNumber}
                         </code>
                         <button
                           type="button"
                           onClick={copyControlNumber}
-                          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-4 py-2.5 text-sm font-medium text-indigo-700 shadow-sm transition hover:bg-indigo-50 dark:border-indigo-800 dark:bg-zinc-900 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.35)] bg-white px-4 py-2.5 text-sm font-medium text-school-primary shadow-sm transition hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.45)] dark:bg-zinc-900 dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
                         >
                           {copied ? "Copied!" : "Copy"}
                         </button>

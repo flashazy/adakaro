@@ -89,7 +89,7 @@ export function TeacherDashboardHeader({
     return [
       "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
       active
-        ? "bg-indigo-600 text-white dark:bg-indigo-500"
+        ? "bg-school-primary text-white dark:bg-school-primary"
         : "text-slate-600 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
     ].join(" ");
   };
@@ -152,7 +152,7 @@ export function TeacherDashboardHeader({
           />
         ) : schoolInitial ? (
           <span
-            className="flex h-full w-full items-center justify-center bg-indigo-100 text-sm font-bold text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200"
+            className="flex h-full w-full items-center justify-center bg-[rgb(var(--school-primary-rgb)/0.16)] text-sm font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.20)] dark:text-school-primary"
             aria-hidden
           >
             {schoolInitial}
@@ -181,7 +181,7 @@ export function TeacherDashboardHeader({
                   {schoolTitleLine}
                 </p>
                 {primaryAssignmentLabel?.trim() ? (
-                  <p className="mt-0.5 truncate text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                  <p className="mt-0.5 truncate text-sm font-medium text-school-primary dark:text-school-primary">
                     {primaryAssignmentLabel.trim()}
                   </p>
                 ) : null}
@@ -293,7 +293,7 @@ export function TeacherDashboardHeader({
               />
             ) : schoolInitial ? (
               <span
-                className="flex h-full w-full items-center justify-center bg-indigo-100 text-sm font-bold text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200"
+                className="flex h-full w-full items-center justify-center bg-[rgb(var(--school-primary-rgb)/0.16)] text-sm font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.20)] dark:text-school-primary"
                 aria-hidden
               >
                 {schoolInitial}
@@ -310,7 +310,7 @@ export function TeacherDashboardHeader({
               {schoolTitleLine}
             </p>
             {primaryAssignmentLabel?.trim() ? (
-              <p className="mt-0.5 truncate text-sm font-medium text-indigo-700 dark:text-indigo-300">
+              <p className="mt-0.5 truncate text-sm font-medium text-school-primary dark:text-school-primary">
                 {primaryAssignmentLabel.trim()}
               </p>
             ) : null}

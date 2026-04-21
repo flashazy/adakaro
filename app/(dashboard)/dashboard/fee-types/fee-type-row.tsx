@@ -57,20 +57,20 @@ export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
             name="name"
             defaultValue={feeType.name}
             required
-            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
           />
           <input
             name="description"
             defaultValue={feeType.description ?? ""}
             placeholder="Description"
-            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
           />
           <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-zinc-300">
             <input
               name="is_recurring"
               type="checkbox"
               defaultChecked={feeType.is_recurring}
-              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+              className="h-4 w-4 rounded border-slate-300 text-school-primary focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800"
             />
             Recurring
           </label>
@@ -78,7 +78,7 @@ export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
             <button
               type="submit"
               disabled={isPending}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+              className="rounded-lg bg-school-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:brightness-105 disabled:opacity-50"
             >
               {isPending ? "Saving…" : "Save"}
             </button>

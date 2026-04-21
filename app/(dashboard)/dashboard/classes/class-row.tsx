@@ -55,19 +55,19 @@ export function ClassRow({
             name="name"
             defaultValue={cls.name}
             required
-            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
           />
           <input
             name="description"
             defaultValue={cls.description ?? ""}
-            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             placeholder="Description"
           />
           {parentOptions.length > 0 && (
             <select
               name="parent_class_id"
               defaultValue={cls.parent_class_id ?? ""}
-              className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             >
               <option value="">— Top-level class —</option>
               {parentOptions.map((p) => (
@@ -84,7 +84,7 @@ export function ClassRow({
             <button
               type="submit"
               disabled={isPending}
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+              className="rounded-lg bg-school-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:brightness-105 disabled:opacity-50"
             >
               {isPending ? "Saving…" : "Save"}
             </button>
@@ -113,7 +113,7 @@ export function ClassRow({
     <div
       className={`relative px-6 py-4 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:items-center sm:gap-4 ${
         isStream
-          ? "border-l-2 border-indigo-200 bg-slate-50/60 pl-10 dark:border-indigo-500/40 dark:bg-zinc-800/40"
+          ? "border-l-2 border-[rgb(var(--school-primary-rgb)/0.25)] bg-slate-50/60 pl-10 dark:border-[rgb(var(--school-primary-rgb)/0.35)] dark:bg-zinc-800/40"
           : ""
       }`}
     >
@@ -121,7 +121,7 @@ export function ClassRow({
         {isStream && (
           <span
             aria-hidden
-            className="text-xs font-medium text-indigo-500 dark:text-indigo-300"
+            className="text-xs font-medium text-school-primary dark:text-school-primary"
           >
             ↳
           </span>

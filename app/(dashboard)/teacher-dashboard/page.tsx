@@ -351,7 +351,7 @@ export default async function TeacherDashboardPage() {
           <div className="grid grid-cols-1 gap-6 divide-y divide-gray-100 dark:divide-zinc-800/80 sm:grid-cols-3 sm:gap-6 sm:divide-x sm:divide-y-0 sm:divide-gray-100 dark:sm:divide-zinc-800/80">
             <div className="flex flex-col space-y-2 pt-0 pb-6 text-center sm:items-stretch sm:px-2 sm:pb-0 sm:text-left sm:first:pl-0">
               <div className="flex items-center justify-center gap-3 sm:justify-start">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:text-school-primary">
                   <ClipboardCheck className="h-5 w-5" aria-hidden />
                 </span>
                 <p className="text-4xl font-semibold tabular-nums text-slate-900 dark:text-white">
@@ -435,7 +435,7 @@ export default async function TeacherDashboardPage() {
                   <div className="mt-5 flex flex-wrap gap-2 sm:gap-3">
                     <Link
                       href={`/teacher-dashboard/attendance?classId=${item.classId}`}
-                      className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white transition-colors duration-150 hover:bg-indigo-500 sm:flex-none"
+                      className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-school-primary px-4 text-sm font-medium text-white transition-colors duration-150 hover:brightness-105 sm:flex-none"
                     >
                       Take attendance
                     </Link>

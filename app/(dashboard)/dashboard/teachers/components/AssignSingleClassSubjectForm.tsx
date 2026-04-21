@@ -100,7 +100,7 @@ export function AssignSingleClassSubjectForm({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 rounded-lg text-left text-base font-semibold text-slate-900 outline-none ring-offset-2 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-white dark:hover:bg-zinc-800 dark:ring-offset-zinc-900"
+        className="flex w-full items-center gap-2 rounded-lg text-left text-base font-semibold text-slate-900 outline-none ring-offset-2 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-school-primary dark:text-white dark:hover:bg-zinc-800 dark:ring-offset-zinc-900"
       >
         <span className="inline-block w-4 shrink-0 select-none" aria-hidden>
           {expanded ? "▼" : "▶"}

@@ -139,7 +139,7 @@ function PaginationControls({
   const btnIdle =
     "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
   const btnActive =
-    "border-indigo-500 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-600";
+    "border-school-primary bg-school-primary text-white dark:border-school-primary dark:bg-school-primary";
   const btnDisabled =
     "cursor-not-allowed opacity-50";
 
@@ -215,7 +215,7 @@ function SearchBox({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={ariaLabel}
-        className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-8 pr-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+        className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-8 pr-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
       />
     </div>
   );
@@ -434,6 +434,7 @@ function CoordinatorClassCard({
     downloadClassResultSheetPdf(
       {
         schoolName: klass.schoolName,
+        schoolMotto: klass.schoolMotto,
         className: klass.className,
         schoolLevel: klass.schoolLevel,
         termDisplayLabel,
@@ -467,7 +468,7 @@ function CoordinatorClassCard({
           <button
             type="button"
             onClick={() => setShowGenerateModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.10)] px-3 py-1 text-xs font-semibold text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:border-[rgb(var(--school-primary-rgb)/0.35)] dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.22)]"
           >
             <FilePlus2 className="h-3.5 w-3.5" aria-hidden />
             Generate Report Cards
@@ -481,7 +482,7 @@ function CoordinatorClassCard({
                 ? "Create report cards for this class to print a result sheet."
                 : "Download a printable class result sheet (PDF)"
             }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.10)] px-3 py-1 text-xs font-semibold text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.16)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[rgb(var(--school-primary-rgb)/0.35)] dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.22)]"
           >
             <Printer className="h-3.5 w-3.5" aria-hidden />
             Print result
@@ -526,7 +527,7 @@ function CoordinatorClassCard({
               {sortedSubjects.map((s) => (
                 <li
                   key={`${klass.classId}-${s.name}`}
-                  className="rounded-md bg-indigo-50 px-2 py-0.5 text-sm font-medium text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200"
+                  className="rounded-md bg-[rgb(var(--school-primary-rgb)/0.10)] px-2 py-0.5 text-sm font-medium text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.20)] dark:text-school-primary"
                 >
                   {s.name}
                 </li>
@@ -758,7 +759,7 @@ function ReportCardRow({
               <button
                 type="submit"
                 disabled={sharePending}
-                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                className="rounded-lg bg-school-primary px-3 py-1.5 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
               >
                 {sharePending ? "Sending…" : "Send email"}
               </button>
@@ -816,7 +817,7 @@ function ReportCardRow({
               ? "Only approved report cards can be shared."
               : "Email to parent"
           }
-          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] px-3 py-1.5 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
         >
           <Mail className="h-3.5 w-3.5" aria-hidden />
           Share
@@ -906,7 +907,7 @@ function ReportCardPreviewModal({
                   ? "Only approved report cards can be shared."
                   : "Email to parent"
               }
-              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] px-3 py-1.5 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
             >
               <Mail className="h-3.5 w-3.5" aria-hidden />
               Share
@@ -1031,7 +1032,7 @@ function GenerateReportCardsModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500"
+              className="rounded-lg bg-school-primary px-4 py-1.5 text-sm font-semibold text-white hover:brightness-105"
             >
               Close
             </button>
@@ -1055,7 +1056,7 @@ function GenerateReportCardsModal({
               <button
                 type="submit"
                 disabled={pending}
-                className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
+                className="rounded-lg bg-school-primary px-4 py-1.5 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-60"
               >
                 {pending ? "Generating…" : "Generate"}
               </button>

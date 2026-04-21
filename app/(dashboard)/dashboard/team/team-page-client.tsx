@@ -135,7 +135,7 @@ export function TeamPageClient({
                   {" "}
                   <Link
                     href="/pricing"
-                    className="font-medium text-indigo-600 underline-offset-2 hover:underline dark:text-indigo-400"
+                    className="font-medium text-school-primary underline-offset-2 hover:underline dark:text-school-primary"
                   >
                     View pricing
                   </Link>
@@ -148,7 +148,7 @@ export function TeamPageClient({
           type="button"
           onClick={() => setInviteOpen(true)}
           disabled={!canInvite}
-          className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Invite new admin
         </button>
@@ -165,7 +165,7 @@ export function TeamPageClient({
             value={memberSearch}
             onChange={(e) => setMemberSearch(e.target.value)}
             placeholder="Search by name or email..."
-            className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
           />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
@@ -252,7 +252,7 @@ export function TeamPageClient({
                     <td className="px-4 py-3 text-slate-800 dark:text-zinc-200">
                       {m.fullName}
                       {m.isCreator ? (
-                        <span className="ml-2 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                        <span className="ml-2 text-xs font-medium text-school-primary dark:text-school-primary">
                           (creator)
                         </span>
                       ) : null}
@@ -309,7 +309,7 @@ export function TeamPageClient({
                   aria-current={item === safePage ? "page" : undefined}
                   className={
                     item === safePage
-                      ? "rounded-lg border border-indigo-600 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                      ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
                       : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   }
                 >

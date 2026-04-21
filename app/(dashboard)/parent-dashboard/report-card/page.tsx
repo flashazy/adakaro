@@ -82,7 +82,7 @@ export default async function ParentReportCardPage({
       class_id,
       students ( full_name ),
       classes ( name ),
-      schools ( name, logo_url )
+      schools ( name, logo_url, motto )
     `
     )
     .eq("student_id", studentId)
@@ -106,7 +106,7 @@ export default async function ParentReportCardPage({
     class_id: string;
     students: { full_name: string } | null;
     classes: { name: string } | null;
-    schools: { name: string; logo_url: string | null } | null;
+    schools: { name: string; logo_url: string | null; motto: string | null } | null;
   };
 
   if (row.status !== "approved") {
@@ -272,8 +272,10 @@ export default async function ParentReportCardPage({
     else if (st === "late") late += 1;
   }
 
+  const mottoTrim = (row.schools?.motto ?? "").trim();
   const data: ReportCardPreviewData = {
     schoolName: row.schools?.name ?? "School",
+    schoolMotto: mottoTrim ? mottoTrim : null,
     logoUrl: row.schools?.logo_url ?? null,
     studentName: row.students?.full_name ?? "—",
     className: row.classes?.name ?? "—",
