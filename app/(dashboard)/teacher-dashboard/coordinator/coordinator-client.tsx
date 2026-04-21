@@ -428,7 +428,9 @@ function CoordinatorClassCard({
     REPORT_TERM_OPTIONS.find((t) => t.value === term)?.label ?? term;
 
   const handlePrintResult = () => {
-    if (klass.reportCards.length === 0) return;
+    // Full class roster — never use filteredReportCards / visibleReportCards (search + pagination).
+    const allReportCardsForPdf = sortedReportCards;
+    if (allReportCardsForPdf.length === 0) return;
     downloadClassResultSheetPdf(
       {
         schoolName: klass.schoolName,
@@ -438,7 +440,7 @@ function CoordinatorClassCard({
         term,
         academicYear,
         coordinatorName,
-        reportCards: klass.reportCards,
+        reportCards: allReportCardsForPdf,
       },
       safeFileName(`${klass.className}-${academicYear}`)
     );

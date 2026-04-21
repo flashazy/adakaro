@@ -38,6 +38,13 @@ export interface ReportCardPreviewData {
     position: string;
     comment: string;
     /**
+     * Whether at least one major-exam score exists on the row from the
+     * gradebook (April Midterm / June Terminal or term equivalents) **before**
+     * the legacy `scorePercent`-only fallback. Used by NECTA PDF so subjects
+     * with no `teacher_scores` entries show `'X'` instead of a derived grade.
+     */
+    hasMajorExamScore?: boolean;
+    /**
      * Whether this subject contributes to the student's total score.
      * - `true`  → counted (one of the best 7 in secondary mode)
      * - `false` → dropped (extra subject beyond the best 7)

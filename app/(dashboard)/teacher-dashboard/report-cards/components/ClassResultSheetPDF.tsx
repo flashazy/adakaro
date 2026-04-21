@@ -134,16 +134,29 @@ function effectiveSecondaryGradeForNecta(
   return null;
 }
 
-function subjectHasTermScore(
+/**
+ * Grade letter for NECTA when the subject has at least one major-exam
+ * (gradebook) score; otherwise `'X'` (no April/June terminal entries).
+ */
+function nectaSubjectGradeLetterOrX(
+  s: ReportCardPreviewData["subjects"][number]
+): string {
+  if (s.hasMajorExamScore === false) return "X";
+  return effectiveSecondaryGradeForNecta(s) ?? "X";
+}
+
+/** At least one assessed subject with a gradebook midterm/terminal score. */
+function subjectHasScoreForNectaPresence(
   s: ReportCardPreviewData["subjects"][number]
 ): boolean {
+  if (s.hasMajorExamScore === false) return false;
   return effectiveSecondaryGradeForNecta(s) != null;
 }
 
 /** No exam scores in any enrolled subject for this term (NECTA absent candidate). */
 function isFullyAbsentForNecta(preview: ReportCardPreviewData): boolean {
   if (preview.subjects.length === 0) return true;
-  return preview.subjects.every((s) => !subjectHasTermScore(s));
+  return preview.subjects.every((s) => !subjectHasScoreForNectaPresence(s));
 }
 
 function nectaAggtAndDiv(preview: ReportCardPreviewData): {
@@ -168,8 +181,8 @@ function bucketForDivisionSummary(
 }
 
 /**
- * NECTA-style line: every enrolled subject is listed; real grade or `'X'` if
- * absent for that subject. Fully absent candidates get all `'X'`.
+ * NECTA-style line: every enrolled subject is listed; real grade only when
+ * there is a gradebook midterm/terminal score; otherwise `'X'`.
  */
 function buildDetailedSubjectsLine(preview: ReportCardPreviewData): string {
   const sorted = [...preview.subjects].sort((a, b) =>
@@ -179,12 +192,8 @@ function buildDetailedSubjectsLine(preview: ReportCardPreviewData): string {
   const parts: string[] = [];
   for (const s of sorted) {
     const code = subjectNameToNectaCode(s.subject);
-    const g = effectiveSecondaryGradeForNecta(s);
-    if (g) {
-      parts.push(`${code} - '${g}'`);
-    } else {
-      parts.push(`${code} - 'X'`);
-    }
+    const g = nectaSubjectGradeLetterOrX(s);
+    parts.push(`${code} - '${g}'`);
   }
   return parts.join(" ");
 }

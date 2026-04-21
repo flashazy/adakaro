@@ -203,6 +203,8 @@ export function buildSubjectPreviewRows(
     const c = bySub.get(subject);
     let e1 = parseNum(c?.exam1Score ?? null);
     let e2 = parseNum(c?.exam2Score ?? null);
+    /** True only when midterm/terminal (gradebook) scores exist — not legacy `scorePercent` fill. */
+    const hasMajorExamScore = e1 != null || e2 != null;
     if (e1 == null && e2 == null && c?.scorePercent != null) {
       e1 = parseNum(c.scorePercent);
     }
@@ -251,6 +253,7 @@ export function buildSubjectPreviewRows(
       grade,
       position,
       comment: c?.comment?.trim() ?? "",
+      hasMajorExamScore,
       selected,
     };
   });
