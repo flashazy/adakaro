@@ -9,7 +9,6 @@ import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { isSchoolAdminBroadcastAudience } from "@/lib/broadcasts/school-admin-audience";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
-import { getPrimaryTeacherAssignmentLabel } from "@/lib/teacher-assignment-status";
 import { SchoolPrimaryCssVars } from "@/components/school-branding/school-primary-css-vars";
 
 export default async function DashboardGroupLayout({
@@ -46,10 +45,6 @@ export default async function DashboardGroupLayout({
     (!isSchoolAdminOrPlatform && (await checkIsTeacher(supabase, user.id)))
   ) {
     const schoolDisplay = await resolveSchoolDisplay(user.id, supabase);
-    const primaryAssignmentLabel = await getPrimaryTeacherAssignmentLabel(
-      supabase,
-      user.id
-    );
     const { data: teacherDeptRoleRow } = await supabase
       .from("teacher_department_roles")
       .select("id")
@@ -57,6 +52,14 @@ export default async function DashboardGroupLayout({
       .limit(1)
       .maybeSingle();
     const hasDepartmentRole = Boolean(teacherDeptRoleRow);
+    const { data: academicDeptRow } = await supabase
+      .from("teacher_department_roles")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("department", "academic")
+      .limit(1)
+      .maybeSingle();
+    const hasAcademicDepartmentRole = Boolean(academicDeptRow);
     const { data: coordinatorRow } = await supabase
       .from("teacher_coordinators")
       .select("id")
@@ -81,8 +84,8 @@ export default async function DashboardGroupLayout({
             schoolName={schoolDisplay?.name ?? null}
             schoolCurrency={schoolDisplay?.currency ?? null}
             avatarUrl={profileRow?.avatar_url ?? null}
-            primaryAssignmentLabel={primaryAssignmentLabel}
             hasDepartmentRole={hasDepartmentRole}
+            hasAcademicDepartmentRole={hasAcademicDepartmentRole}
             isCoordinator={isCoordinator}
           />
         </div>

@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertSchoolAdminForUser } from "../teachers/actions";
 import { toUppercase } from "@/lib/utils";
+import {
+  resolveSubjectCodeForSave,
+  subjectCodePrefixFromName,
+} from "@/lib/subject-code";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- admin client update typing
 type Db = any;
@@ -236,12 +240,19 @@ export async function createSubjectAction(
     return { ok: false, error: "One or more selected classes are invalid for your school." };
   }
 
+  const resolvedCode = await resolveSubjectCodeForSave(
+    admin,
+    schoolId,
+    name,
+    code
+  );
+
   const { data: inserted, error } = await admin
     .from("subjects")
     .insert({
       school_id: schoolId,
       name,
-      code,
+      code: resolvedCode,
       description,
     } as never)
     .select("id")
@@ -383,11 +394,20 @@ export async function updateSubjectAction(
     return { ok: false, error: "One or more selected classes are invalid for your school." };
   }
 
+  const resolvedCode = await resolveSubjectCodeForSave(
+    admin,
+    schoolId,
+    name,
+    code,
+    new Set(),
+    id
+  );
+
   const { error } = await admin
     .from("subjects")
     .update({
       name,
-      code,
+      code: resolvedCode,
       description,
     } as never)
     .eq("id", id)
@@ -421,18 +441,6 @@ export async function updateSubjectAction(
   revalidatePath("/dashboard/teachers");
   revalidatePath("/teacher-dashboard");
   return { ok: true, message: "Subject updated." };
-}
-
-/** Auto code from name when no bulk prefix is given (mirrors client `generateSubjectCode`). */
-function autoSubjectCode(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return "SUB-101";
-  const firstWord = trimmed.split(/\s+/)[0] ?? "";
-  const letters = firstWord.replace(/[^a-zA-Z]/g, "");
-  if (!letters) return "SUB-101";
-  const upper = letters.toUpperCase();
-  const prefix = upper.length <= 3 ? upper : upper.slice(0, 3);
-  return `${prefix}-101`;
 }
 
 export async function bulkCreateSubjectsAction(
@@ -488,10 +496,22 @@ export async function bulkCreateSubjectsAction(
   let added = 0;
   let skippedDuplicates = 0;
   const failed: string[] = [];
+  const reservedCodes = new Set<string>();
 
   for (let i = 0; i < uniqueNames.length; i++) {
     const name = uniqueNames[i];
-    const code = codePrefix ? `${codePrefix}-${101 + i}` : autoSubjectCode(name);
+    const code = codePrefix
+      ? `${codePrefix}-${101 + i}`
+      : await resolveSubjectCodeForSave(
+          admin,
+          schoolId,
+          name,
+          `${subjectCodePrefixFromName(name)}-101`,
+          reservedCodes
+        );
+    if (!codePrefix) {
+      reservedCodes.add(code);
+    }
 
     const { data: inserted, error } = await admin
       .from("subjects")

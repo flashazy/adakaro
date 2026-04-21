@@ -33,20 +33,18 @@ import {
   STUDENT_LIST_ROW_OPTIONS,
   type StudentListRowOption,
 } from "@/lib/student-list-pagination";
+import {
+  generateSubjectCodeDisplay,
+  parseSubjectCodeNumericSuffix,
+  subjectCodePrefixFromName,
+} from "@/lib/subject-code";
 
-/** Auto code from subject name: first word, ≤3 letters → full word; else first 3 letters + "-101". */
+/** Default auto code from subject name (first 3 letters of name + `-101`). */
 export function generateSubjectCode(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return "SUB-101";
-
-  const firstWord = trimmed.split(/\s+/)[0] ?? "";
-  const letters = firstWord.replace(/[^a-zA-Z]/g, "");
-  if (!letters) return "SUB-101";
-
-  const upper = letters.toUpperCase();
-  const prefix = upper.length <= 3 ? upper : upper.slice(0, 3);
-  return `${prefix}-101`;
+  return generateSubjectCodeDisplay(name);
 }
+
+export { parseSubjectCodeNumericSuffix, subjectCodePrefixFromName };
 
 function applyAutoSubjectCodeIfEmpty(form: HTMLFormElement) {
   const codeInput = form.elements.namedItem("code") as HTMLInputElement | null;
@@ -81,6 +79,136 @@ function flash(state: SubjectActionState | null) {
 interface SubjectsPageClientProps {
   initialRows: SubjectRow[];
   classOptions: { id: string; name: string; parent_class_id: string | null }[];
+}
+
+function EditSubjectModalContent({
+  editing,
+  updateState,
+  updatePending,
+  updateAction,
+  classOptions,
+  onClose,
+}: {
+  editing: SubjectRow;
+  updateState: SubjectActionState | null;
+  updatePending: boolean;
+  updateAction: (payload: FormData) => void;
+  classOptions: SubjectsPageClientProps["classOptions"];
+  onClose: () => void;
+}) {
+  const codeSuffixRef = useRef(
+    parseSubjectCodeNumericSuffix(editing.code ?? "")
+  );
+  const codeTouchedRef = useRef(false);
+  const [editName, setEditName] = useState(editing.name);
+  const [editCode, setEditCode] = useState(
+    () => (editing.code ?? "").trim()
+  );
+
+  useEffect(() => {
+    if (codeTouchedRef.current) return;
+    if (editName === editing.name) return;
+    const prefix = subjectCodePrefixFromName(editName);
+    setEditCode(`${prefix}-${codeSuffixRef.current}`);
+  }, [editName, editing.name]);
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <h3
+          id="edit-subject-title"
+          className="text-lg font-semibold text-slate-900 dark:text-white"
+        >
+          Edit subject
+        </h3>
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--school-primary-rgb)/0.4)] dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+          aria-label="Close dialog"
+        >
+          <X className="h-5 w-5" strokeWidth={2} />
+        </button>
+      </div>
+      <form
+        action={updateAction}
+        className="mt-4 space-y-3"
+        onSubmit={(e) => applyAutoSubjectCodeIfEmpty(e.currentTarget)}
+      >
+        {flash(updateState)}
+        <input type="hidden" name="id" value={editing.id} />
+        <label className="block text-sm">
+          <span className="text-slate-700 dark:text-zinc-300">Name</span>
+          <input
+            name="name"
+            type="text"
+            required
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="text-slate-700 dark:text-zinc-300">
+            Code (optional)
+          </span>
+          <input
+            name="code"
+            type="text"
+            value={editCode}
+            onChange={(e) => {
+              codeTouchedRef.current = true;
+              setEditCode(e.target.value);
+            }}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="text-slate-700 dark:text-zinc-300">
+            Description (optional)
+          </span>
+          <textarea
+            name="description"
+            rows={3}
+            defaultValue={editing.description ?? ""}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+          />
+        </label>
+        <div className="block text-sm">
+          <span className="text-slate-700 dark:text-zinc-300">
+            Assign to classes
+          </span>
+          {classOptions.length === 0 ? (
+            <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+              No classes yet. Add classes first.
+            </p>
+          ) : (
+            <SubjectClassPicker
+              key={editing.id}
+              classOptions={classOptions}
+              defaultSelectedIds={editing.assignedClassIds}
+            />
+          )}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={updatePending}
+            className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
+          >
+            {updatePending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
+    </>
+  );
 }
 
 /** Searchable multi-select with checkboxes; submits `subject_ids` via hidden inputs. */
@@ -976,94 +1104,15 @@ export function SubjectsPageClient({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3">
-              <h3
-                id="edit-subject-title"
-                className="text-lg font-semibold text-slate-900 dark:text-white"
-              >
-                Edit subject
-              </h3>
-              <button
-                type="button"
-                onClick={closeEditModal}
-                className="shrink-0 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--school-primary-rgb)/0.4)] dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
-                aria-label="Close dialog"
-              >
-                <X className="h-5 w-5" strokeWidth={2} />
-              </button>
-            </div>
-            <form
-              action={updateAction}
-              className="mt-4 space-y-3"
-              onSubmit={(e) => applyAutoSubjectCodeIfEmpty(e.currentTarget)}
-            >
-              {flash(updateState)}
-              <input type="hidden" name="id" value={editing.id} />
-              <label className="block text-sm">
-                <span className="text-slate-700 dark:text-zinc-300">Name</span>
-                <input
-                  name="name"
-                  type="text"
-                  required
-                  defaultValue={editing.name}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="text-slate-700 dark:text-zinc-300">
-                  Code (optional)
-                </span>
-                <input
-                  name="code"
-                  type="text"
-                  defaultValue={editing.code ?? ""}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="text-slate-700 dark:text-zinc-300">
-                  Description (optional)
-                </span>
-                <textarea
-                  name="description"
-                  rows={3}
-                  defaultValue={editing.description ?? ""}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                />
-              </label>
-              <div className="block text-sm">
-                <span className="text-slate-700 dark:text-zinc-300">
-                  Assign to classes
-                </span>
-                {classOptions.length === 0 ? (
-                  <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-                    No classes yet. Add classes first.
-                  </p>
-                ) : (
-                  <SubjectClassPicker
-                    key={editing.id}
-                    classOptions={classOptions}
-                    defaultSelectedIds={editing.assignedClassIds}
-                  />
-                )}
-              </div>
-              <div className="flex flex-wrap justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeEditModal}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={updatePending}
-                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
-                >
-                  {updatePending ? "Saving…" : "Save"}
-                </button>
-              </div>
-            </form>
+            <EditSubjectModalContent
+              key={editing.id}
+              editing={editing}
+              updateState={updateState}
+              updatePending={updatePending}
+              updateAction={updateAction}
+              classOptions={classOptions}
+              onClose={closeEditModal}
+            />
           </div>
         </div>
       ) : null}

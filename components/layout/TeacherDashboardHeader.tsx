@@ -6,6 +6,7 @@ import { Building2 } from "lucide-react";
 import { AdakaroLogoMark } from "@/components/brand/AdakaroLogoMark";
 import { signOut } from "@/app/(auth)/actions";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { TeacherAcademicNavDropdown } from "@/components/layout/TeacherAcademicNavDropdown";
 
 function schoolInitials(name: string): string {
   const t = name.trim();
@@ -31,7 +32,6 @@ const NAV = [
   { href: "/teacher-dashboard/attendance", label: "Attendance" },
   { href: "/teacher-dashboard/lesson-plans", label: "Lesson Plans" },
   { href: "/teacher-dashboard/grades", label: "Marks" },
-  { href: "/teacher-dashboard/report-cards", label: "Report Cards" },
 ] as const;
 
 interface TeacherDashboardHeaderProps {
@@ -41,14 +41,14 @@ interface TeacherDashboardHeaderProps {
   schoolLogoVersion?: number | null;
   schoolCurrency?: string | null;
   avatarUrl?: string | null;
-  /** First class/subject assignment, e.g. "Grade 1 – Mathematics". */
-  primaryAssignmentLabel?: string | null;
   /**
-   * True when the teacher has at least one department role assignment
-   * (Academic, Discipline, Health, Finance). Drives the visibility of the
-   * "Student Profiles" nav link.
+   * True when the teacher has at least one department role (e.g. Discipline).
+   * Passed through for layout parity; the Academic dropdown uses
+   * `hasAcademicDepartmentRole` only.
    */
   hasDepartmentRole?: boolean;
+  /** True when the teacher is in the Academic department (performance reports). */
+  hasAcademicDepartmentRole?: boolean;
   /**
    * True when the teacher is assigned as coordinator for one or more classes.
    * Drives the visibility of the "Coordinator" nav link.
@@ -68,8 +68,8 @@ export function TeacherDashboardHeader({
   schoolLogoVersion = null,
   schoolCurrency = null,
   avatarUrl = null,
-  primaryAssignmentLabel = null,
   hasDepartmentRole = false,
+  hasAcademicDepartmentRole = false,
   isCoordinator = false,
 }: TeacherDashboardHeaderProps) {
   const pathname = usePathname();
@@ -180,13 +180,8 @@ export function TeacherDashboardHeader({
                 <p className="truncate text-lg font-semibold leading-tight text-slate-900 dark:text-white sm:text-xl">
                   {schoolTitleLine}
                 </p>
-                {primaryAssignmentLabel?.trim() ? (
-                  <p className="mt-0.5 truncate text-sm font-medium text-school-primary dark:text-school-primary">
-                    {primaryAssignmentLabel.trim()}
-                  </p>
-                ) : null}
-                <p className="mt-0.5 text-sm text-slate-500 dark:text-zinc-400">
-                  Teacher · {fullName}
+                <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                  Teacher: {fullName}
                 </p>
               </div>
             </Link>
@@ -213,6 +208,9 @@ export function TeacherDashboardHeader({
                 {label}
               </Link>
             ))}
+            {hasAcademicDepartmentRole ? (
+              <TeacherAcademicNavDropdown />
+            ) : null}
             <Link
               href="/teacher-dashboard#my-documents"
               onClick={onMyDocumentsNavClick}
@@ -220,14 +218,6 @@ export function TeacherDashboardHeader({
             >
               My Documents
             </Link>
-            {hasDepartmentRole ? (
-              <Link
-                href="/teacher-dashboard/students"
-                className={navLinkClass("/teacher-dashboard/students")}
-              >
-                Student Profiles
-              </Link>
-            ) : null}
             {isCoordinator ? (
               <Link
                 href="/teacher-dashboard/coordinator"
@@ -309,13 +299,8 @@ export function TeacherDashboardHeader({
             <p className="truncate text-base font-semibold text-slate-900 dark:text-white sm:text-lg">
               {schoolTitleLine}
             </p>
-            {primaryAssignmentLabel?.trim() ? (
-              <p className="mt-0.5 truncate text-sm font-medium text-school-primary dark:text-school-primary">
-                {primaryAssignmentLabel.trim()}
-              </p>
-            ) : null}
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-zinc-400">
-              Teacher · {fullName}
+            <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+              Teacher: {fullName}
             </p>
           </div>
         </div>
@@ -329,6 +314,9 @@ export function TeacherDashboardHeader({
               {label}
             </Link>
           ))}
+          {hasAcademicDepartmentRole ? (
+            <TeacherAcademicNavDropdown />
+          ) : null}
           <Link
             href="/teacher-dashboard#my-documents"
             onClick={onMyDocumentsNavClick}
@@ -336,14 +324,6 @@ export function TeacherDashboardHeader({
           >
             My Documents
           </Link>
-          {hasDepartmentRole ? (
-            <Link
-              href="/teacher-dashboard/students"
-              className={navLinkClass("/teacher-dashboard/students")}
-            >
-              Student Profiles
-            </Link>
-          ) : null}
           {isCoordinator ? (
             <Link
               href="/teacher-dashboard/coordinator"

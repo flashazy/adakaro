@@ -12,6 +12,7 @@ import { letterGradeFromPercent } from "../report-cards/report-card-grades";
 import { shareReportCardWithParent } from "../report-cards/actions";
 import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { resolveClassCluster } from "@/lib/class-cluster";
+import { persistAcademicPerformanceReport } from "@/lib/academic-performance-report";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -697,8 +698,22 @@ export async function generateReportCardsForClassAction(
     };
   }
 
+  await persistAcademicPerformanceReport({
+    admin,
+    schoolId: klass.school_id,
+    classId,
+    classIdsForData,
+    className: klass.name,
+    term,
+    academicYear,
+    schoolLevel: coordinatorSchoolLevel,
+    classSubjectNames: subjectList.map((s) => s.name),
+    generatedByUserId: user.id,
+  });
+
   revalidatePath("/teacher-dashboard/coordinator");
   revalidatePath("/teacher-dashboard/report-cards");
+  revalidatePath("/teacher-dashboard/academic-reports");
 
   const messagePrefix = `Generated ${generated} report card${
     generated === 1 ? "" : "s"

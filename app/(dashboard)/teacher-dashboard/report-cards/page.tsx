@@ -11,7 +11,7 @@ import {
 import { ReportCardsPageClient } from "./report-cards-client";
 
 export const metadata = {
-  title: "Report cards — Teacher",
+  title: "Report cards — Coordinator",
 };
 
 export default async function TeacherReportCardsPage() {
@@ -21,6 +21,7 @@ export default async function TeacherReportCardsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
   if (!(await checkIsTeacher(supabase, user.id))) redirect("/dashboard");
+
   await ensureTeacherHasAssignmentsOrRedirect(supabase, user.id);
 
   const options = await loadTeacherReportCardOptions();

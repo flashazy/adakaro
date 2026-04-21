@@ -944,6 +944,28 @@ async function loadClassReportCards(
   return items;
 }
 
+/**
+ * Loads report-card items (with previews) for one coordinator class — used by
+ * analytics and the academic performance report after Generate Report Cards.
+ */
+export async function loadCoordinatorReportCardsForClass(
+  admin: Db,
+  params: {
+    classId: string;
+    classIds: string[];
+    className: string;
+    schoolName: string;
+    schoolMotto: string | null;
+    schoolLogoUrl: string | null;
+    schoolLevel: SchoolLevel;
+    academicYear: string;
+    term: "Term 1" | "Term 2";
+    classSubjectNames: string[];
+  }
+): Promise<CoordinatorReportCardItem[]> {
+  return loadClassReportCards(admin, params);
+}
+
 export async function loadCoordinatorOverview(params: {
   userId: string;
   term: "Term 1" | "Term 2";

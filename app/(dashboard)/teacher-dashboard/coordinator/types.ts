@@ -39,7 +39,7 @@ export interface CoordinatorReportCardItem {
   studentId: string;
   studentName: string;
   parentEmail: string | null;
-  /** Admission / candidate number (CNO on NECTA-style secondary sheet). */
+  /** Admission number (ADN on result sheet PDFs). */
   admissionNumber: string | null;
   /** Student sex for NECTA-style summary rows (F / M). */
   gender: "male" | "female" | null;

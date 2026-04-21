@@ -63,6 +63,16 @@ export default async function CoordinatorDashboardPage({
               Overview of your coordinator classes, subjects taught, major exam
               submission status, and student report cards.
             </p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
+              <Link
+                href="/teacher-dashboard/report-cards"
+                className="font-medium text-school-primary hover:underline dark:text-school-primary"
+              >
+                Report cards workspace
+              </Link>{" "}
+              — enter scores, submit for approval, and manage cards for your
+              classes.
+            </p>
           </div>
           <Link
             href="/teacher-dashboard"

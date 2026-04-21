@@ -55,6 +55,62 @@ export interface Database {
           updated_at?: string;
         };
       };
+      academic_reports: {
+        Row: {
+          id: string;
+          school_id: string;
+          class_id: string;
+          term: string;
+          academic_year: string;
+          report_data: Json;
+          generated_at: string;
+          generated_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          class_id: string;
+          term: string;
+          academic_year: string;
+          report_data?: Json;
+          generated_at?: string;
+          generated_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          school_id?: string;
+          class_id?: string;
+          term?: string;
+          academic_year?: string;
+          report_data?: Json;
+          generated_at?: string;
+          generated_by?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "academic_reports_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "academic_reports_class_id_fkey";
+            columns: ["class_id"];
+            referencedRelation: "classes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "academic_reports_generated_by_fkey";
+            columns: ["generated_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       admin_activity_logs: {
         Row: {
           id: string;
