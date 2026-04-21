@@ -31,10 +31,20 @@ export const SCHOOL_LEVEL_DESCRIPTIONS: Record<SchoolLevel, string> = {
   secondary: `Best ${SECONDARY_BEST_SUBJECT_COUNT} subjects count. Ranking uses total marks.`,
 };
 
+/** Parses DB / API values; trims and is case-insensitive for string inputs. */
+function parseSchoolLevel(value: unknown): SchoolLevel | null {
+  if (value === "primary" || value === "secondary") return value;
+  if (typeof value !== "string") return null;
+  const v = value.trim().toLowerCase();
+  if (v === "primary") return "primary";
+  if (v === "secondary") return "secondary";
+  return null;
+}
+
 export function isSchoolLevel(value: unknown): value is SchoolLevel {
-  return value === "primary" || value === "secondary";
+  return parseSchoolLevel(value) !== null;
 }
 
 export function normalizeSchoolLevel(value: unknown): SchoolLevel {
-  return isSchoolLevel(value) ? value : DEFAULT_SCHOOL_LEVEL;
+  return parseSchoolLevel(value) ?? DEFAULT_SCHOOL_LEVEL;
 }

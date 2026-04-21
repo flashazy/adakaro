@@ -5,7 +5,7 @@ import autoTable from "jspdf-autotable";
 import type { CoordinatorReportCardItem } from "../../coordinator/types";
 import type { ReportCardPreviewData } from "../report-card-preview-types";
 import { gradingScaleDescription } from "@/lib/tanzania-grades";
-import type { SchoolLevel } from "@/lib/school-level";
+import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { ordinalSuffix } from "../report-card-preview-builder";
 import { subjectNameToNectaCode } from "@/lib/necta-subject-code";
 
@@ -537,7 +537,10 @@ export function downloadClassResultSheetPdf(
   input: ClassResultSheetPdfInput,
   filenameSafe: string
 ) {
-  if (input.schoolLevel === "secondary") {
+  // NECTA layout is secondary-only; normalize so stray casing / values never
+  // pick the NECTA branch for primary schools.
+  const level = normalizeSchoolLevel(input.schoolLevel);
+  if (level === "secondary") {
     buildNectaSecondaryPdf(input, filenameSafe);
   } else {
     buildPrimaryClassResultSheetPdf(input, filenameSafe);
