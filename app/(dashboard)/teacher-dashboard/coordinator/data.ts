@@ -630,7 +630,7 @@ async function loadClassReportCards(
   const { data: cards } = await admin
     .from("report_cards")
     .select(
-      "id, class_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id )"
+      "id, class_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id, gender )"
     )
     .in("class_id", params.classIds)
     .eq("term", params.term)
@@ -651,6 +651,7 @@ async function loadClassReportCards(
       parent_email: string | null;
       admission_number: string | null;
       class_id: string;
+      gender: "male" | "female" | null;
     } | null;
   }[];
 
@@ -931,6 +932,8 @@ async function loadClassReportCards(
       studentId: c.student_id,
       studentName: studentRow.fullName,
       parentEmail: studentRow.parentEmail,
+      admissionNumber: c.students?.admission_number ?? null,
+      gender: c.students?.gender ?? null,
       status: c.status,
       preview,
     };

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { GRADEBOOK_MAJOR_EXAM_TYPE_VALUES } from "@/lib/gradebook-major-exams";
+import { downloadClassResultSheetPdf } from "../report-cards/components/ClassResultSheetPDF";
 import {
   downloadBulkReportCardsPdf,
   downloadReportCardPdf,
@@ -306,6 +307,7 @@ export function CoordinatorDashboardClient({
         <CoordinatorClassCard
           key={klass.classId}
           klass={klass}
+          coordinatorName={overview.teacherName}
           term={term}
           academicYear={academicYear}
         />
@@ -316,10 +318,12 @@ export function CoordinatorDashboardClient({
 
 function CoordinatorClassCard({
   klass,
+  coordinatorName,
   term,
   academicYear,
 }: {
   klass: CoordinatorClassOverview;
+  coordinatorName: string;
   term: "Term 1" | "Term 2";
   academicYear: string;
 }) {
@@ -420,41 +424,77 @@ function CoordinatorClassCard({
     );
   };
 
+  const termDisplayLabel =
+    REPORT_TERM_OPTIONS.find((t) => t.value === term)?.label ?? term;
+
+  const handlePrintResult = () => {
+    if (klass.reportCards.length === 0) return;
+    downloadClassResultSheetPdf(
+      {
+        schoolName: klass.schoolName,
+        className: klass.className,
+        schoolLevel: klass.schoolLevel,
+        termDisplayLabel,
+        term,
+        academicYear,
+        coordinatorName,
+        reportCards: klass.reportCards,
+      },
+      safeFileName(`${klass.className}-${academicYear}`)
+    );
+  };
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-6 py-4 dark:border-zinc-800">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-              {klass.className}
-            </h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+            {klass.className}
+          </h2>
+          <div className="mt-1">
             <SchoolLevelBadge level={klass.schoolLevel} />
-            <button
-              type="button"
-              onClick={() => setShowGenerateModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
-            >
-              <FilePlus2 className="h-3.5 w-3.5" aria-hidden />
-              Generate Report Cards
-            </button>
           </div>
-          <p className="mt-0.5 flex items-center gap-1.5 text-sm text-slate-600 dark:text-zinc-400">
+          <p className="mt-2 flex items-center gap-1.5 text-sm text-slate-600 dark:text-zinc-400">
             <Users className="h-4 w-4" aria-hidden />
             {klass.studentCount} active student
             {klass.studentCount === 1 ? "" : "s"} · Academic year{" "}
             {klass.academicYear}
           </p>
         </div>
-        {approvedCards.length > 0 ? (
+        <div className="flex shrink-0 flex-col items-end gap-2">
           <button
             type="button"
-            onClick={handleBulkPrint}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            onClick={() => setShowGenerateModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
           >
-            <Download className="h-4 w-4" aria-hidden />
-            Download all approved
+            <FilePlus2 className="h-3.5 w-3.5" aria-hidden />
+            Generate Report Cards
           </button>
-        ) : null}
+          <button
+            type="button"
+            onClick={handlePrintResult}
+            disabled={klass.reportCards.length === 0}
+            title={
+              klass.reportCards.length === 0
+                ? "Create report cards for this class to print a result sheet."
+                : "Download a printable class result sheet (PDF)"
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-900/40"
+          >
+            <Printer className="h-3.5 w-3.5" aria-hidden />
+            Print result
+          </button>
+          {approvedCards.length > 0 ? (
+            <button
+              type="button"
+              onClick={handleBulkPrint}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              <Download className="h-4 w-4" aria-hidden />
+              Download all approved
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {showGenerateModal ? (
