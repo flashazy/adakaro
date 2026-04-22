@@ -8,38 +8,48 @@ import {
   scoreGradeForAssignment,
 } from "@/lib/gradebook-full-report-compute";
 import { DEFAULT_GRADE_DISPLAY_FORMAT } from "@/lib/grade-display-format";
-import type { GradebookMajorExamTypeValue } from "@/lib/gradebook-major-exams";
-import { resolvedMajorExamKindForDuplicateCheck } from "@/lib/gradebook-major-exams";
 import type {
   ParentMajorExamClassResultOption,
   ParentMajorExamClassResultsPayload,
 } from "@/lib/parent-major-exam-class-results-types";
+import { resolveClassCluster } from "@/lib/class-cluster";
 import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-type Db = ReturnType<typeof createAdminClient>;
-
-const EXAM_SLOT: Record<GradebookMajorExamTypeValue, number> = {
-  April_Midterm: 1,
-  June_Terminal: 2,
-  September_Midterm: 3,
-  December_Annual: 4,
+type AssignmentRow = {
+  id: string;
+  teacher_id: string;
+  subject: string;
+  title: string;
+  max_score: number;
+  academic_year: string;
+  exam_type: string | null;
+  term: string | null;
+  updated_at: string;
 };
 
-function isMajorAssignment(row: {
-  exam_type: string | null;
-  title: string;
-}): boolean {
-  return (
-    resolvedMajorExamKindForDuplicateCheck(row.exam_type, row.title) != null
+/** Stable label for the gradebook `subject` field (empty → "Subject"). */
+function parentClassResultSubjectKey(subject: string | null | undefined): string {
+  const t = (subject ?? "").trim();
+  return t || "Subject";
+}
+
+function hasEnteredScore(
+  rows:
+    | { student_id: string; score: number | null; comments: string | null }[]
+    | undefined
+): boolean {
+  if (!rows?.length) return false;
+  return rows.some(
+    (r) => r.score != null && Number.isFinite(Number(r.score))
   );
 }
 
-function compareMajorAssignments<
+function compareAssignments<
   T extends {
     academic_year: string;
     term: string | null;
-    exam_type: string | null;
+    subject: string;
     title: string;
     updated_at: string;
   },
@@ -50,24 +60,90 @@ function compareMajorAssignments<
   const ta = a.term === "Term 2" ? 2 : 1;
   const tb = b.term === "Term 2" ? 2 : 1;
   if (ta !== tb) return tb - ta;
-  const ka = resolvedMajorExamKindForDuplicateCheck(a.exam_type, a.title);
-  const kb = resolvedMajorExamKindForDuplicateCheck(b.exam_type, b.title);
-  const sa = ka ? EXAM_SLOT[ka] : 0;
-  const sb = kb ? EXAM_SLOT[kb] : 0;
-  if (sa !== sb) return sb - sa;
-  return b.updated_at.localeCompare(a.updated_at);
+  if (a.updated_at !== b.updated_at) {
+    return b.updated_at.localeCompare(a.updated_at);
+  }
+  const sa = (a.subject ?? "").trim();
+  const sb = (b.subject ?? "").trim();
+  if (sa !== sb) {
+    return sa.localeCompare(sb, undefined, { sensitivity: "base" });
+  }
+  return (a.title ?? "")
+    .trim()
+    .localeCompare((b.title ?? "").trim(), undefined, { sensitivity: "base" });
 }
 
 export type { ParentMajorExamClassResultOption, ParentMajorExamClassResultsPayload } from "@/lib/parent-major-exam-class-results-types";
 
 /**
- * Class-level “Full marks” style reports for **major exam** gradebook
- * assignments only (same filters as coordinator major-exam slots).
+ * Distinct gradebook subject names for the class that have at least one
+ * assignment with a recorded score (same data as the full class-results loader).
+ */
+export async function listParentClassResultSubjects(
+  classId: string
+): Promise<string[]> {
+  const admin = createAdminClient();
+  const cluster = await resolveClassCluster(admin, classId);
+  const { data: rawAssign } = await admin
+    .from("teacher_gradebook_assignments")
+    .select("id, subject, title, max_score, academic_year, term, updated_at")
+    .in("class_id", cluster.classIds);
+
+  const allAssign = (rawAssign ?? []) as Pick<
+    AssignmentRow,
+    | "id"
+    | "subject"
+    | "title"
+    | "max_score"
+    | "academic_year"
+    | "term"
+    | "updated_at"
+  >[];
+
+  if (allAssign.length === 0) return [];
+
+  const allAssignmentIds = allAssign.map((m) => m.id);
+  const { data: scoreData } = await admin
+    .from("teacher_scores")
+    .select("assignment_id, student_id, score, comments")
+    .in("assignment_id", allAssignmentIds);
+
+  const scoresByAssign = new Map<
+    string,
+    { student_id: string; score: number | null; comments: string | null }[]
+  >();
+  for (const row of (scoreData ?? []) as {
+    assignment_id: string;
+    student_id: string;
+    score: number | null;
+    comments: string | null;
+  }[]) {
+    const list = scoresByAssign.get(row.assignment_id) ?? [];
+    list.push(row);
+    scoresByAssign.set(row.assignment_id, list);
+  }
+
+  const withScores = allAssign.filter((a) =>
+    hasEnteredScore(scoresByAssign.get(a.id))
+  );
+  const keys = new Set(
+    withScores.map((a) => parentClassResultSubjectKey(a.subject))
+  );
+  return [...keys].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
+}
+
+/**
+ * Class-level “Full marks” style reports for each gradebook assignment (in
+ * the given `subject` only) that has at least one score recorded for the class.
+ * Mirrors teacher Full marks: pick subject, then see assignments for that subject.
  */
 export async function loadParentMajorExamClassResults(
-  admin: Db,
-  classId: string
+  classId: string,
+  subject: string
 ): Promise<ParentMajorExamClassResultsPayload> {
+  const admin = createAdminClient();
   const { data: classRow } = await admin
     .from("classes")
     .select("id, name, school_id")
@@ -100,44 +176,26 @@ export async function loadParentMajorExamClassResults(
     schoolLevelOut = normalizeSchoolLevel(s?.school_level);
   }
 
+  const cluster = await resolveClassCluster(admin, classId);
   const { data: rawAssign } = await admin
     .from("teacher_gradebook_assignments")
     .select(
       "id, teacher_id, class_id, subject, title, max_score, academic_year, exam_type, term, updated_at"
     )
-    .eq("class_id", classId);
+    .in("class_id", cluster.classIds);
 
-  const major = ((rawAssign ?? []) as {
-    id: string;
-    teacher_id: string;
-    subject: string;
-    title: string;
-    max_score: number;
-    academic_year: string;
-    exam_type: string | null;
-    term: string | null;
-    updated_at: string;
-  }[]).filter((r) => isMajorAssignment(r));
+  let allAssign = (rawAssign ?? []) as AssignmentRow[];
 
-  if (major.length === 0) {
+  if (allAssign.length === 0) {
     return { options: [], defaultOptionId: "" };
   }
 
-  major.sort(compareMajorAssignments);
-
-  const teacherIds = [...new Set(major.map((m) => m.teacher_id))];
-  const teacherNameById = new Map<string, string>();
-  if (teacherIds.length > 0) {
-    const { data: profs } = await admin
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", teacherIds);
-    for (const p of (profs ?? []) as {
-      id: string;
-      full_name: string | null;
-    }[]) {
-      teacherNameById.set(p.id, p.full_name?.trim() || "Teacher");
-    }
+  const subj = parentClassResultSubjectKey(subject);
+  allAssign = allAssign.filter(
+    (a) => parentClassResultSubjectKey(a.subject) === subj
+  );
+  if (allAssign.length === 0) {
+    return { options: [], defaultOptionId: "" };
   }
 
   const { data: stuRows } = await admin
@@ -159,11 +217,11 @@ export async function loadParentMajorExamClassResults(
     return { options: [], defaultOptionId: "" };
   }
 
-  const assignmentIds = major.map((m) => m.id);
+  const allAssignmentIds = allAssign.map((m) => m.id);
   const { data: scoreData } = await admin
     .from("teacher_scores")
     .select("assignment_id, student_id, score, comments")
-    .in("assignment_id", assignmentIds);
+    .in("assignment_id", allAssignmentIds);
 
   const scoresByAssign = new Map<
     string,
@@ -180,9 +238,33 @@ export async function loadParentMajorExamClassResults(
     scoresByAssign.set(row.assignment_id, list);
   }
 
+  const withScores = allAssign.filter((a) =>
+    hasEnteredScore(scoresByAssign.get(a.id))
+  );
+  if (withScores.length === 0) {
+    return { options: [], defaultOptionId: "" };
+  }
+
+  withScores.sort(compareAssignments);
+
+  const teacherIds = [...new Set(withScores.map((m) => m.teacher_id))];
+  const teacherNameById = new Map<string, string>();
+  if (teacherIds.length > 0) {
+    const { data: profs } = await admin
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", teacherIds);
+    for (const p of (profs ?? []) as {
+      id: string;
+      full_name: string | null;
+    }[]) {
+      teacherNameById.set(p.id, p.full_name?.trim() || "Teacher");
+    }
+  }
+
   const options: ParentMajorExamClassResultOption[] = [];
 
-  for (const a of major) {
+  for (const a of withScores) {
     const draft: ClassDraft = { [a.id]: {} };
     for (const s of students) {
       draft[a.id]![s.id] = { score: "", remarks: "" };

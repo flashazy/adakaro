@@ -111,9 +111,22 @@ export function ParentAttendanceTabContent({
 }
 
 export function ParentClassResultsTabContent({
+  studentId,
+  classId,
+  classResultSubjects,
   majorExamClassResults,
 }: {
+  studentId: string;
+  classId: string;
+  classResultSubjects: ChildTabData["classResultSubjects"];
   majorExamClassResults: ChildTabData["majorExamClassResults"];
 }) {
-  return <ParentClassResultsTabClient payload={majorExamClassResults} />;
+  return (
+    <ParentClassResultsTabClient
+      studentId={studentId}
+      classId={classId}
+      classResultSubjects={classResultSubjects}
+      initialPayload={majorExamClassResults}
+    />
+  );
 }

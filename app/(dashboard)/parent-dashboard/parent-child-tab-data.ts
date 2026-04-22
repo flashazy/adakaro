@@ -4,7 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ReportCardPreviewData } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-types";
 import type { ParentMajorExamClassResultsPayload } from "@/lib/parent-major-exam-class-results-types";
-import { loadParentMajorExamClassResults } from "./load-parent-major-exam-class-results";
+import {
+  listParentClassResultSubjects,
+  loadParentMajorExamClassResults,
+} from "./load-parent-major-exam-class-results";
 import { buildParentReportCardPreviewData } from "./build-parent-report-card-preview";
 import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
 import {
@@ -39,6 +42,12 @@ export type ChildTabData = {
   attendance: AttendanceRow[];
   /** Major-exam class reports (same stats as teacher “Full marks report”). */
   majorExamClassResults: ParentMajorExamClassResultsPayload;
+  /**
+   * Subjects (gradebook) for the child’s class that have at least one
+   * assignment with recorded scores. Class results are loaded one subject
+   * at a time, like the teacher Full marks report.
+   */
+  classResultSubjects: string[];
 };
 
 /**
@@ -54,6 +63,7 @@ export async function loadParentChildTabData(
     classResultSheets: [],
     attendance: [],
     majorExamClassResults: { options: [], defaultOptionId: "" },
+    classResultSubjects: [],
   });
 
   const byStudent = new Map<string, ChildTabData>();
@@ -215,10 +225,17 @@ export async function loadParentChildTabData(
         studentClassId: s.class_id,
       });
       entry.classResultSheets = periods;
-      entry.majorExamClassResults = await loadParentMajorExamClassResults(
-        admin,
+      const classResultSubjects = await listParentClassResultSubjects(
         s.class_id
       );
+      entry.classResultSubjects = classResultSubjects;
+      entry.majorExamClassResults =
+        classResultSubjects.length > 0
+          ? await loadParentMajorExamClassResults(
+              s.class_id,
+              classResultSubjects[0]!
+            )
+          : { options: [], defaultOptionId: "" };
     }
   }
 

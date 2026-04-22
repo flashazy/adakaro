@@ -622,6 +622,11 @@ export default async function ParentDashboard() {
                           rows={childTab?.attendance ?? []}
                         />
                         <ParentClassResultsTabContent
+                          studentId={student.id}
+                          classId={student.class_id}
+                          classResultSubjects={
+                            childTab?.classResultSubjects ?? []
+                          }
                           majorExamClassResults={
                             childTab?.majorExamClassResults ?? {
                               options: [],

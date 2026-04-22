@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { BarChart3 } from "lucide-react";
 import { passingThresholdPercent } from "@/lib/tanzania-grades";
 import type { ParentMajorExamClassResultsPayload } from "@/lib/parent-major-exam-class-results-types";
 import type { PassRateStats, FailRateStats } from "@/lib/gradebook-full-report-compute";
 import type { SchoolLevel } from "@/lib/school-level";
+import { loadParentClassResultsForSubjectAction } from "./parent-class-results-actions";
 
 function PassRateBlock({
   seg,
@@ -68,13 +77,86 @@ function FailRateBlock({
 }
 
 export function ParentClassResultsTabClient({
-  payload,
+  studentId,
+  classId,
+  classResultSubjects,
+  initialPayload,
 }: {
-  payload: ParentMajorExamClassResultsPayload;
+  studentId: string;
+  classId: string;
+  classResultSubjects: string[];
+  initialPayload: ParentMajorExamClassResultsPayload;
 }) {
   const idBase = useId();
+  const [payload, setPayload] = useState(initialPayload);
+  const [selectedSubject, setSelectedSubject] = useState(
+    () => classResultSubjects[0] ?? ""
+  );
+  const [isPending, startTransition] = useTransition();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const didLogMount = useRef(false);
+
+  useEffect(() => {
+    didLogMount.current = false;
+  }, [studentId, classId]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development" || didLogMount.current) {
+      return;
+    }
+    didLogMount.current = true;
+    // eslint-disable-next-line no-console -- parent Class results debug
+    console.log("[ParentClassResults] mount", {
+      initialPayload,
+      classResultSubjects: [...classResultSubjects],
+      studentId,
+      classId,
+    });
+  }, [classId, classResultSubjects, initialPayload, studentId]);
+
+  useEffect(() => {
+    if (classResultSubjects.length === 0) {
+      setSelectedSubject("");
+    } else {
+      setSelectedSubject(classResultSubjects[0]!);
+    }
+    setPayload(initialPayload);
+    setLoadError(null);
+  }, [studentId, classId, classResultSubjects, initialPayload]);
+
   const { options, defaultOptionId } = payload;
-  const [selectedId, setSelectedId] = useState<string>(defaultOptionId);
+  const [selectedId, setSelectedId] = useState(() =>
+    initialPayload.defaultOptionId ||
+    initialPayload.options[0]?.id ||
+    ""
+  );
+
+  const onPickSubject = useCallback(
+    (subj: string) => {
+      setSelectedSubject(subj);
+      setLoadError(null);
+      startTransition(async () => {
+        const r = await loadParentClassResultsForSubjectAction({
+          studentId,
+          classId,
+          subject: subj,
+        });
+        if (r.ok) {
+          if (process.env.NODE_ENV === "development") {
+            // eslint-disable-next-line no-console -- parent Class results debug
+            console.log(
+              "[ParentClassResults] payload after subject fetch",
+              { subject: subj, payload: r.payload }
+            );
+          }
+          setPayload(r.payload);
+        } else {
+          setLoadError(r.error);
+        }
+      });
+    },
+    [studentId, classId, startTransition]
+  );
 
   useEffect(() => {
     if (options.length === 0) return;
@@ -89,6 +171,28 @@ export function ParentClassResultsTabClient({
     [options, selectedId]
   );
 
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    // eslint-disable-next-line no-console -- parent Class results debug
+    console.log("[ParentClassResults] subjects + selection", {
+      classResultSubjects,
+      optionsCount: options.length,
+      defaultOptionId,
+      selectedSubject,
+      selectedId,
+      selectedAssignment: selected
+        ? { id: selected.id, label: selected.label, title: selected.assignment.title }
+        : null,
+    });
+  }, [
+    classResultSubjects,
+    options.length,
+    defaultOptionId,
+    selectedSubject,
+    selectedId,
+    selected,
+  ]);
+
   const dateLabel = useMemo(
     () =>
       new Intl.DateTimeFormat("en-GB", { dateStyle: "long" }).format(
@@ -97,36 +201,124 @@ export function ParentClassResultsTabClient({
     []
   );
 
-  if (options.length === 0 || !selected) {
+  /** Empty only when the server provided neither subject keys nor assignment options. */
+  const hasAnyClassResultsData =
+    classResultSubjects.length > 0 || options.length > 0;
+
+  if (!hasAnyClassResultsData) {
     return (
       <div className="px-6 py-10 text-center">
         <p className="text-sm text-slate-500 dark:text-zinc-400">
-          No major exam marks yet. When teachers enter April / June / September
-          / December exam scores in Marks, class statistics will appear here.
+          No class results yet. When teachers record scores in Marks for an
+          assignment, statistics for that exam will appear here.
         </p>
       </div>
     );
   }
 
-  const showDropdown = options.length > 1;
+  const showSubjectDropdown = classResultSubjects.length > 1;
+  const showAssignmentDropdown = options.length > 1;
+  const subjectLineLabel =
+    classResultSubjects[0] ?? options[0]?.meta?.subject?.trim() ?? "Subject";
+
+  if (options.length === 0) {
+    return (
+      <div className="space-y-3 px-4 py-4 sm:px-6">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+          <label
+            htmlFor={`${idBase}-subj`}
+            className="shrink-0 text-sm font-medium text-slate-600 dark:text-zinc-300"
+          >
+            Subject
+          </label>
+          {showSubjectDropdown ? (
+            <select
+              id={`${idBase}-subj`}
+              value={selectedSubject}
+              onChange={(e) => onPickSubject(e.target.value)}
+              disabled={isPending}
+              className="w-full max-w-xl rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+              aria-label="Select subject for class results"
+            >
+              {classResultSubjects.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-sm text-slate-800 dark:text-zinc-200">
+              {subjectLineLabel}
+            </span>
+          )}
+        </div>
+        {loadError ? (
+          <p className="text-sm text-rose-600 dark:text-rose-400">{loadError}</p>
+        ) : null}
+        <div className="px-1 py-6 text-center">
+          <p className="text-sm text-slate-500 dark:text-zinc-400">
+            {isPending
+              ? "Loading…"
+              : "No results for this subject yet, or nothing was recorded in Marks for this class."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const sl = selected.schoolLevel;
 
   return (
     <div className="space-y-4 px-4 py-4 sm:px-6">
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-        <label
-          htmlFor={`${idBase}-me`}
-          className="shrink-0 text-sm font-medium text-slate-600 dark:text-zinc-300"
-        >
-          Major exam
-        </label>
-        {showDropdown ? (
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+          <label
+            htmlFor={`${idBase}-subj`}
+            className="shrink-0 text-sm font-medium text-slate-600 dark:text-zinc-300"
+          >
+            Subject
+          </label>
+          {showSubjectDropdown ? (
+            <select
+              id={`${idBase}-subj`}
+              value={selectedSubject}
+              onChange={(e) => onPickSubject(e.target.value)}
+              disabled={isPending}
+              className="w-full max-w-xl rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+              aria-label="Select subject for class results"
+            >
+              {classResultSubjects.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-sm text-slate-800 dark:text-zinc-200">
+              {subjectLineLabel}
+            </span>
+          )}
+        </div>
+        {loadError ? (
+          <p className="text-sm text-rose-600 dark:text-rose-400">
+            {loadError}
+          </p>
+        ) : null}
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+          <label
+            htmlFor={`${idBase}-asg`}
+            className="shrink-0 text-sm font-medium text-slate-600 dark:text-zinc-300"
+          >
+            Assignment
+          </label>
+        {showAssignmentDropdown ? (
           <select
-            id={`${idBase}-me`}
+            id={`${idBase}-asg`}
             value={selected.id}
             onChange={(e) => setSelectedId(e.target.value)}
-            className="w-full max-w-xl rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
-            aria-label="Select major exam report"
+            disabled={isPending}
+            className="w-full max-w-xl rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+            aria-label="Select class assignment report"
           >
             {options.map((o) => (
               <option key={o.id} value={o.id}>
@@ -136,15 +328,16 @@ export function ParentClassResultsTabClient({
           </select>
         ) : (
           <select
-            id={`${idBase}-me`}
+            id={`${idBase}-asg`}
             value={selected.id}
             disabled
             className="w-full max-w-xl cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 opacity-90 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300"
-            aria-label="Major exam report"
+            aria-label="Class assignment report"
           >
             <option value={selected.id}>{selected.label}</option>
           </select>
         )}
+        </div>
       </div>
 
       <div className="max-h-[70vh] overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-950/40 md:max-h-[min(560px,65vh)]">

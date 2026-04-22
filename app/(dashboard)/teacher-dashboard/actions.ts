@@ -90,6 +90,10 @@ async function assertTeacherForClass(
   return { ok: true, schoolId };
 }
 
+/**
+ * Matches how {@link getTeacherMarkingClasses} builds each option’s `subject`
+ * (subjects.name → subject column → "General") — not raw `subject` text alone.
+ */
 async function assertTeacherTeachesSubjectInClass(
   userId: string,
   classId: string,
@@ -99,15 +103,32 @@ async function assertTeacherTeachesSubjectInClass(
   if (!trimmed) return false;
   const admin = createAdminClient();
   const cluster = await resolveClassCluster(admin, classId);
-  const { data } = await admin
+  const { data: rows } = await admin
     .from("teacher_assignments")
-    .select("id")
+    .select(
+      `
+      subject,
+      subjects ( name )
+    `
+    )
     .eq("teacher_id", userId)
-    .in("class_id", cluster.classIds)
-    .eq("subject", trimmed)
-    .limit(1)
-    .maybeSingle();
-  return !!data;
+    .in("class_id", cluster.classIds);
+
+  const list = (rows ?? []) as {
+    subject: string | null;
+    subjects: { name: string } | null;
+  }[];
+
+  for (const r of list) {
+    const display =
+      r.subjects?.name?.trim() ||
+      (r.subject ?? "").trim() ||
+      "General";
+    if (display === trimmed) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function assertTeacherTeachesSubjectIdInClass(
