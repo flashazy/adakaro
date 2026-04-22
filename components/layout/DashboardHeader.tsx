@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
 import { AdakaroLogoMark } from "@/components/brand/AdakaroLogoMark";
-import { signOut } from "@/app/(auth)/actions";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 function schoolInitials(name: string): string {
@@ -189,14 +189,7 @@ export function DashboardHeader({
               {rightActions}
               {userAvatar}
               <ThemeToggle />
-              <form action={signOut}>
-                <button
-                  type="submit"
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  Sign out
-                </button>
-              </form>
+              <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />
             </div>
           </div>
         </div>
@@ -280,14 +273,7 @@ export function DashboardHeader({
             {fullName}
           </p>
           <ThemeToggle />
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              Sign out
-            </button>
-          </form>
+          <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />
         </div>
       </div>
     </header>

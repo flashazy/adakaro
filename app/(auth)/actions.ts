@@ -10,7 +10,39 @@ import type { UserRole } from "@/types/supabase";
 export interface AuthState {
   error?: string;
   success?: string;
+  /**
+   * Login form only: which inputs to show a validation border for.
+   * Distinguishes unknown email (no profile) vs wrong password when the message is generic.
+   */
+  loginFieldHighlight?: { identifier: boolean; password: boolean };
 }
+
+function isInvalidLoginCredentialsMessage(message: string): boolean {
+  const t = message.toLowerCase();
+  if (t.includes("invalid") && t.includes("credential")) return true;
+  if (t.includes("invalid") && t.includes("password")) return true;
+  return false;
+}
+
+/** Used after signIn fails: profile email match implies the account exists, so password was wrong. */
+async function profileExistsByEmail(
+  admin: ReturnType<typeof createAdminClient>,
+  email: string
+): Promise<boolean> {
+  const t = email.trim();
+  if (!t) return false;
+  const variants = Array.from(
+    new Set([t, t.toLowerCase(), t.toUpperCase()].filter((x) => x.length > 0))
+  );
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id")
+    .in("email", variants);
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+export type SignOutState = { error?: string };
 
 /** Internal path only; prevents open redirects. */
 function safeInternalPath(raw: string | null | undefined): string | null {
@@ -20,9 +52,17 @@ function safeInternalPath(raw: string | null | undefined): string | null {
   return t;
 }
 
-export async function signOut() {
+export async function signOut(
+  _prevState: SignOutState,
+  _formData: FormData
+): Promise<SignOutState> {
+  void _prevState;
+  void _formData;
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    return { error: error.message };
+  }
   redirect("/login");
 }
 
@@ -34,13 +74,22 @@ export async function login(
   const password = formData.get("password") as string;
 
   if (!loginRaw || !password) {
-    return { error: "Email or name and password are required." };
+    return {
+      error: "Email or name and password are required.",
+      loginFieldHighlight: {
+        identifier: !String(loginRaw ?? "").trim(),
+        password: !password,
+      },
+    };
   }
 
   const admin = createAdminClient();
   const resolved = await resolveLoginEmailForSignIn(admin, loginRaw);
   if (!resolved.ok) {
-    return { error: resolved.error };
+    return {
+      error: resolved.error,
+      loginFieldHighlight: { identifier: true, password: false },
+    };
   }
   const email = resolved.email;
 
@@ -52,7 +101,20 @@ export async function login(
   });
 
   if (error) {
-    return { error: error.message };
+    const msg = error.message;
+    if (isInvalidLoginCredentialsMessage(msg)) {
+      const exists = await profileExistsByEmail(admin, email);
+      return {
+        error: msg,
+        loginFieldHighlight: exists
+          ? { identifier: false, password: true }
+          : { identifier: true, password: false },
+      };
+    }
+    return {
+      error: msg,
+      loginFieldHighlight: { identifier: true, password: true },
+    };
   }
 
   const user = authData.user;
@@ -126,7 +188,8 @@ export async function signup(
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
   const confirmPassword = formData.get("confirm_password") as string;
-  const phone = (formData.get("phone") as string) || "";
+  const phoneRaw = (formData.get("phone") as string) || "";
+  const phone = phoneRaw.trim();
   const role = (formData.get("role") as UserRole) || "parent";
 
   if (role === "teacher" || role === "super_admin") {
@@ -138,6 +201,10 @@ export async function signup(
 
   if (!fullName || !email || !password) {
     return { error: "Full name, email, and password are required." };
+  }
+
+  if (!phone) {
+    return { error: "Phone number is required." };
   }
 
   if (password.length < 6) {

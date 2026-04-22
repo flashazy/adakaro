@@ -14,20 +14,34 @@ type PasswordInputProps = Omit<
 /**
  * Password field with show/hide toggle — matches auth form input styling.
  */
-export function PasswordInput({ className = "", ...props }: PasswordInputProps) {
+export function PasswordInput({
+  className = "",
+  disabled,
+  ...props
+}: PasswordInputProps) {
   const [visible, setVisible] = useState(false);
 
   return (
     <div className="relative mt-1.5">
       <input
         {...props}
+        disabled={disabled}
         type={visible ? "text" : "password"}
-        className={[inputClassName, className].filter(Boolean).join(" ")}
+        className={[
+          inputClassName,
+          disabled
+            ? "cursor-not-allowed opacity-60"
+            : "",
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
       />
       <button
         type="button"
+        disabled={disabled}
         onClick={() => setVisible((v) => !v)}
-        className="absolute inset-y-0 right-0 flex items-center rounded-r-lg px-2.5 text-slate-500 transition-colors hover:text-slate-800 focus-visible:outline focus-visible:ring-2 focus-visible:ring-school-primary focus-visible:ring-offset-0 dark:text-zinc-400 dark:hover:text-zinc-100"
+        className="absolute inset-y-0 right-0 flex items-center rounded-r-lg px-2.5 text-slate-500 transition-colors hover:text-slate-800 focus-visible:outline focus-visible:ring-2 focus-visible:ring-school-primary focus-visible:ring-offset-0 enabled:hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-100"
         aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
       >

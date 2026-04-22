@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
-import { signOut } from "../actions";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import {
   changeTeacherPasswordAction,
   type ChangePasswordState,
@@ -93,14 +93,10 @@ export function ChangePasswordForm({ nextPath }: { nextPath: string }) {
         <SubmitButton />
       </form>
 
-      <form action={signOut} className="mt-6 text-center">
-        <button
-          type="submit"
-          className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-        >
-          Sign out
-        </button>
-      </form>
+      <SignOutButton
+        formClassName="mt-6 text-center"
+        className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
+      />
     </div>
   );
 }

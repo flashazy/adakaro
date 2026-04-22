@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { login, type AuthState } from "../actions";
 import { PasswordInput } from "@/components/auth/password-input";
+import { cn } from "@/lib/utils";
 
 /** User acknowledged replacing the current browser session with a different account (this tab only). */
 const SESSION_REPLACE_ACK_KEY = "adakaro_confirm_session_replace";
@@ -72,6 +73,12 @@ export function LoginForm() {
   const [showSessionReplaceWarning, setShowSessionReplaceWarning] =
     useState(false);
   const [cancelHrefForBanner, setCancelHrefForBanner] = useState("/dashboard");
+  const [loginId, setLoginId] = useState("");
+  const [passwordValue, setPasswordValue] = useState("");
+  const [clearedIdHighlight, setClearedIdHighlight] = useState(false);
+  const [clearedPasswordHighlight, setClearedPasswordHighlight] =
+    useState(false);
+  const wasActionBusy = useRef(false);
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "";
   const signupHref =
@@ -98,6 +105,36 @@ export function LoginForm() {
       /* ignore */
     }
   }, [state.error]);
+
+  const loginActionBusy = isLoading || isLoginPending || isPending;
+  useEffect(() => {
+    if (wasActionBusy.current && !loginActionBusy && state.error) {
+      setClearedIdHighlight(false);
+      setClearedPasswordHighlight(false);
+    }
+    wasActionBusy.current = loginActionBusy;
+  }, [loginActionBusy, state.error]);
+
+  const textFieldClass = (invalid: boolean) =>
+    cn(
+      "mt-1.5 block w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500",
+      invalid
+        ? "border-red-400 focus:border-red-500/90 focus:ring-red-500/20 dark:border-red-500/60 dark:focus:border-red-500/80"
+        : "border-slate-300 focus:border-school-primary focus:ring-school-primary dark:border-zinc-700 dark:focus:border-school-primary dark:focus:ring-school-primary"
+    );
+
+  const passwordFieldClass = (invalid: boolean) =>
+    invalid
+      ? "border !border-red-400 focus:!border-red-500/90 focus:!ring-red-500/25 dark:!border-red-500/60 dark:focus:!border-red-500/80"
+      : undefined;
+
+  const h = state.loginFieldHighlight;
+  const showIdErr = Boolean(
+    h?.identifier && !clearedIdHighlight && !showSessionReplaceWarning
+  );
+  const showPassErr = Boolean(
+    h?.password && !clearedPasswordHighlight && !showSessionReplaceWarning
+  );
 
   useEffect(() => {
     if (!awaitingLoginActionRef.current) return;
@@ -287,8 +324,13 @@ export function LoginForm() {
             type="text"
             autoComplete="username"
             required
+            value={loginId}
+            onChange={(e) => {
+              setLoginId(e.target.value);
+              setClearedIdHighlight(true);
+            }}
             disabled={showSessionReplaceWarning}
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-school-primary dark:focus:ring-school-primary"
+            className={textFieldClass(showIdErr)}
             placeholder="you@example.com or your full name"
           />
         </div>
@@ -306,7 +348,13 @@ export function LoginForm() {
             autoComplete="current-password"
             required
             minLength={6}
+            value={passwordValue}
+            onChange={(e) => {
+              setPasswordValue(e.target.value);
+              setClearedPasswordHighlight(true);
+            }}
             disabled={showSessionReplaceWarning}
+            className={passwordFieldClass(showPassErr)}
             placeholder="••••••••"
           />
         </div>
