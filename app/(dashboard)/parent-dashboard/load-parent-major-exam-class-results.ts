@@ -28,21 +28,22 @@ type AssignmentRow = {
   updated_at: string;
 };
 
-/** Stable label for the gradebook `subject` field (empty → "Subject"). */
-function parentClassResultSubjectKey(subject: string | null | undefined): string {
+/** Grouping / filter key: trimmed `subject` text column, empty → "Subject". */
+function subjectTextKey(subject: string | null | undefined): string {
   const t = (subject ?? "").trim();
   return t || "Subject";
 }
 
-function hasEnteredScore(
+/**
+ * At least one `teacher_scores` row exists (matches “has a score” when any row
+ * is present, including `score` null — same idea as `LEFT JOIN … ts.id IS NOT NULL`).
+ */
+function hasAnyTeacherScoreRow(
   rows:
     | { student_id: string; score: number | null; comments: string | null }[]
     | undefined
 ): boolean {
-  if (!rows?.length) return false;
-  return rows.some(
-    (r) => r.score != null && Number.isFinite(Number(r.score))
-  );
+  return (rows?.length ?? 0) > 0;
 }
 
 function compareAssignments<
@@ -84,7 +85,7 @@ export async function listParentClassResultSubjects(
 ): Promise<string[]> {
   const admin = createAdminClient();
   const cluster = await resolveClassCluster(admin, classId);
-  const { data: rawAssign } = await admin
+  const { data: rawAssign, error: assignErr } = await admin
     .from("teacher_gradebook_assignments")
     .select("id, subject, title, max_score, academic_year, term, updated_at")
     .in("class_id", cluster.classIds);
@@ -100,35 +101,87 @@ export async function listParentClassResultSubjects(
     | "updated_at"
   >[];
 
-  if (allAssign.length === 0) return [];
+  if (assignErr && process.env.NODE_ENV === "development") {
+    // eslint-disable-next-line no-console
+    console.log("[listParentClassResultSubjects] assignments query error", {
+      classId,
+      clusterClassIds: cluster.classIds,
+      message: assignErr.message,
+    });
+  }
+
+  if (allAssign.length === 0) {
+    if (process.env.NODE_ENV === "development") {
+      // eslint-disable-next-line no-console
+      console.log("[listParentClassResultSubjects] no assignments in cluster", {
+        classId,
+        clusterClassIds: cluster.classIds,
+      });
+    }
+    return [];
+  }
 
   const allAssignmentIds = allAssign.map((m) => m.id);
-  const { data: scoreData } = await admin
+  const { data: scoreData, error: scoreErr } = await admin
     .from("teacher_scores")
-    .select("assignment_id, student_id, score, comments")
+    .select("id, assignment_id, student_id, score, comments")
     .in("assignment_id", allAssignmentIds);
+
+  if (scoreErr && process.env.NODE_ENV === "development") {
+    // eslint-disable-next-line no-console
+    console.log("[listParentClassResultSubjects] teacher_scores query error", {
+      classId,
+      message: scoreErr.message,
+    });
+  }
+
+  const scoreRows = (scoreData ?? []) as {
+    id: string;
+    assignment_id: string;
+    student_id: string;
+    score: number | null;
+    comments: string | null;
+  }[];
+
+  if (process.env.NODE_ENV === "development") {
+    const distinctWithScore = new Set(scoreRows.map((r) => r.assignment_id))
+      .size;
+    // eslint-disable-next-line no-console
+    console.log(
+      "[listParentClassResultSubjects] assignments vs teacher_scores (cluster)",
+      {
+        classId,
+        clusterClassIds: cluster.classIds,
+        teacherGradebookAssignmentCount: allAssign.length,
+        teacherScoresRowCount: scoreRows.length,
+        /** Assignments with ≥1 `teacher_scores` row (satisfies a.id joined where ts.id IS NOT NULL). */
+        assignmentCountWithAtLeastOneScoreRow: distinctWithScore,
+      }
+    );
+  }
 
   const scoresByAssign = new Map<
     string,
     { student_id: string; score: number | null; comments: string | null }[]
   >();
-  for (const row of (scoreData ?? []) as {
-    assignment_id: string;
-    student_id: string;
-    score: number | null;
-    comments: string | null;
-  }[]) {
+  for (const row of scoreRows) {
     const list = scoresByAssign.get(row.assignment_id) ?? [];
     list.push(row);
     scoresByAssign.set(row.assignment_id, list);
   }
 
   const withScores = allAssign.filter((a) =>
-    hasEnteredScore(scoresByAssign.get(a.id))
+    hasAnyTeacherScoreRow(scoresByAssign.get(a.id))
   );
-  const keys = new Set(
-    withScores.map((a) => parentClassResultSubjectKey(a.subject))
-  );
+  if (process.env.NODE_ENV === "development") {
+    // eslint-disable-next-line no-console
+    console.log("[listParentClassResultSubjects] assignments with ≥1 score row", {
+      classId,
+      withScoresCount: withScores.length,
+    });
+  }
+
+  const keys = new Set(withScores.map((a) => subjectTextKey(a.subject)));
   return [...keys].sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: "base" })
   );
@@ -190,9 +243,10 @@ export async function loadParentMajorExamClassResults(
     return { options: [], defaultOptionId: "" };
   }
 
-  const subj = parentClassResultSubjectKey(subject);
+  /** Match the `subject` text column the same way as {@link listParentClassResultSubjects} keys. */
+  const subj = subjectTextKey(subject);
   allAssign = allAssign.filter(
-    (a) => parentClassResultSubjectKey(a.subject) === subj
+    (a) => subjectTextKey(a.subject) === subj
   );
   if (allAssign.length === 0) {
     return { options: [], defaultOptionId: "" };
@@ -239,9 +293,17 @@ export async function loadParentMajorExamClassResults(
   }
 
   const withScores = allAssign.filter((a) =>
-    hasEnteredScore(scoresByAssign.get(a.id))
+    hasAnyTeacherScoreRow(scoresByAssign.get(a.id))
   );
   if (withScores.length === 0) {
+    if (process.env.NODE_ENV === "development") {
+      // eslint-disable-next-line no-console
+      console.log("[loadParentMajorExamClassResults] no score rows for subject", {
+        classId,
+        subject: subj,
+        filteredAssignmentCount: allAssign.length,
+      });
+    }
     return { options: [], defaultOptionId: "" };
   }
 
