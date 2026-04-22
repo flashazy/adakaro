@@ -976,8 +976,8 @@ export async function loadStudentGradebookExamScores(params: {
 
 /**
  * Builds class subject ranks for the parent report card view (admin client;
- * verifies parent_students link). Only approved report cards in the class
- * for the term/year are included.
+ * verifies parent_students link). Report cards in the class for the term/year
+ * with status `pending_review` or `approved` are included.
  */
 export async function loadSubjectPositionsForParentReportCard(params: {
   parentUserId: string;
@@ -1005,7 +1005,7 @@ export async function loadSubjectPositionsForParentReportCard(params: {
     .eq("class_id", params.classId)
     .eq("term", termNorm)
     .eq("academic_year", yearNorm)
-    .eq("status", "approved");
+    .in("status", ["pending_review", "approved"]);
 
   if (!cards?.length) return {};
 
@@ -1120,7 +1120,8 @@ export async function loadSubjectPositionsForParentReportCard(params: {
  * Returns the cohort + class subject list + school_level needed to render
  * the parent-side report card footer (rank + total/avg). Mirrors the access
  * checks used by `loadSubjectPositionsForParentReportCard` so a parent can
- * only see classmates of a student they are linked to.
+ * only see classmates of a student they are linked to. Includes
+ * `pending_review` and `approved` report cards in the class cohort.
  */
 export async function loadParentReportCardCohort(params: {
   parentUserId: string;
@@ -1173,7 +1174,7 @@ export async function loadParentReportCardCohort(params: {
     .eq("class_id", params.classId)
     .eq("term", termNorm)
     .eq("academic_year", yearNorm)
-    .eq("status", "approved");
+    .in("status", ["pending_review", "approved"]);
 
   if (!cards?.length) {
     return { cohort: [], subjects: [], schoolLevel };

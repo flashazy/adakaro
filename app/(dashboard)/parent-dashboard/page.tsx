@@ -5,7 +5,11 @@ import Link from "next/link";
 import type { UserRole } from "@/types/supabase";
 import LinkRequestForm from "./link-request-form";
 import PendingSchoolInvitations from "./pending-school-invitations";
-import ClickPesaPayButton from "@/components/ClickPesaPayButton";
+import { ParentStudentFeesTabContent } from "@/components/parent/parent-student-fees-tab-content";
+import type {
+  ParentFeeBalanceRow,
+  ParentFeePaymentRow,
+} from "@/components/parent/parent-student-fees-tab-content";
 import { FloatingScrollButton } from "@/components/ui/floating-scroll-button";
 import { getSchoolCurrencyById } from "@/lib/dashboard/resolve-school-display";
 import {
@@ -17,34 +21,33 @@ import {
   type SchoolCurrencyCode,
 } from "@/lib/currency";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
+import {
+  loadParentChildTabData,
+  type ChildTabData,
+} from "./parent-child-tab-data";
+import { ParentChildCardTabs } from "./parent-child-card-tabs";
+import {
+  ParentReportCardsTabContent,
+  ParentExamResultsTabContent,
+  ParentAttendanceTabContent,
+  ParentClassResultsTabContent,
+} from "./parent-child-tab-panels";
+import {
+  ParentStudentCardsGroup,
+  ParentStudentCard,
+} from "./parent-student-cards-accordion";
 
 interface StudentWithClass {
   id: string;
   full_name: string;
   admission_number: string | null;
   school_id: string;
+  class_id: string;
   class: { name: string } | null;
 }
 
-interface BalanceRow {
-  student_id: string;
-  fee_structure_id: string;
-  fee_name: string;
-  total_fee: number;
-  total_paid: number;
-  balance: number;
-  due_date: string | null;
-}
-
-interface PaymentRow {
-  id: string;
-  student_id: string;
-  amount: number;
-  payment_method: string | null;
-  payment_date: string;
-  fee_structure: { name: string } | null;
-  receipt: { id: string; receipt_number: string } | null;
-}
+type BalanceRow = ParentFeeBalanceRow;
+type PaymentRow = ParentFeePaymentRow;
 
 interface CurrencyTotalsAgg {
   totalFees: number;
@@ -307,13 +310,14 @@ export default async function ParentDashboard() {
   let students: StudentWithClass[] = [];
   let balances: BalanceRow[] = [];
   let payments: PaymentRow[] = [];
+  let childTabDataById = new Map<string, ChildTabData>();
 
   if (childCount > 0) {
     const [studentsRes, balancesRes, paymentsRes] = await Promise.all([
       orderStudentsByGenderThenName(
         supabase
           .from("students")
-          .select("id, full_name, admission_number, school_id, class:classes(name)")
+          .select("id, full_name, admission_number, school_id, class_id, class:classes(name)")
           .in("id", studentIds)
       ),
       supabase
@@ -325,7 +329,7 @@ export default async function ParentDashboard() {
       supabase
         .from("payments")
         .select(
-          "id, student_id, amount, payment_method, payment_date, fee_structure:fee_structures(name), receipt:receipts(id, receipt_number)"
+          "id, student_id, amount, payment_method, payment_date, reference_number, fee_structure:fee_structures(name), receipt:receipts(id, receipt_number)"
         )
         .in("student_id", studentIds)
         .order("payment_date", { ascending: false })
@@ -335,6 +339,11 @@ export default async function ParentDashboard() {
     students = (studentsRes.data ?? []) as StudentWithClass[];
     balances = (balancesRes.data ?? []) as BalanceRow[];
     payments = (paymentsRes.data ?? []) as PaymentRow[];
+    if (students.length > 0) {
+      childTabDataById = await loadParentChildTabData(
+        students.map((s) => ({ id: s.id, class_id: s.class_id }))
+      );
+    }
   }
 
   const schoolIds = [...new Set(students.map((s) => s.school_id))];
@@ -482,255 +491,149 @@ export default async function ParentDashboard() {
               <LinkRequestForm pendingRequests={pendingRequests} />
             </div>
 
-            {/* Per-student breakdown */}
+            {/* Per-student breakdown (collapsible accordion, one open at a time) */}
             <div className="mt-8 space-y-8">
-              {students.map((student) => {
-                const sBalances = balances.filter(
-                  (b) => b.student_id === student.id
-                );
-                const sPayments = payments.filter(
-                  (p) => p.student_id === student.id
-                );
-                const sTotalFee = sBalances.reduce(
-                  (sum, b) => sum + Number(b.total_fee),
-                  0
-                );
-                const sTotalPaid = sBalances.reduce(
-                  (sum, b) => sum + Number(b.total_paid),
-                  0
-                );
-                const sBalance = sBalances.reduce(
-                  (sum, b) => sum + Number(b.balance),
-                  0
-                );
-                const outstandingFees = sBalances.filter(
-                  (b) => b.balance > 0
-                );
-                const sc = currencyForStudent(student.id);
-                const sCollectionPct =
-                  sTotalFee > 0
-                    ? Math.round((sTotalPaid / sTotalFee) * 100)
-                    : 0;
-                const schoolDisplayName =
-                  schoolNameBySchoolId.get(student.school_id) ?? "School";
+              <ParentStudentCardsGroup>
+                {students.map((student) => {
+                  const sBalances = balances.filter(
+                    (b) => b.student_id === student.id
+                  );
+                  const sPayments = payments.filter(
+                    (p) => p.student_id === student.id
+                  );
+                  const sBalance = sBalances.reduce(
+                    (sum, b) => sum + Number(b.balance),
+                    0
+                  );
+                  const sc = currencyForStudent(student.id);
+                  const schoolDisplayName =
+                    schoolNameBySchoolId.get(student.school_id) ?? "School";
+                  const childTab = childTabDataById.get(student.id);
 
-                return (
-                  <div
-                    key={student.id}
-                    className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 dark:border-zinc-700/90 dark:bg-zinc-900 dark:shadow-lg dark:ring-zinc-700/50"
-                  >
-                    {/* Student header: name + class, then school */}
-                    <div className="border-b border-slate-200 bg-slate-50/50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-800/30">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--school-primary-rgb)/0.16)] text-sm font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary">
-                          {student.full_name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                                {student.full_name}
-                              </h2>
-                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600 dark:text-zinc-400">
-                                {student.class && (
-                                  <span className="inline-flex items-center gap-1">
-                                    <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
-                                    </svg>
-                                    {student.class.name}
-                                  </span>
-                                )}
-                                {student.admission_number && (
-                                  <span className="inline-flex items-center gap-1">
-                                    <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5" />
-                                    </svg>
-                                    {student.admission_number}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="mt-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
-                                {schoolDisplayName}
-                              </p>
+                  return (
+                    <ParentStudentCard
+                      key={student.id}
+                      studentId={student.id}
+                      summary={
+                        <div className="bg-slate-50/50 px-6 py-4 dark:bg-zinc-800/30">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--school-primary-rgb)/0.16)] text-sm font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary">
+                              {student.full_name.charAt(0).toUpperCase()}
                             </div>
-                            {sBalance > 0 && (
-                              <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
-                                {formatCurrency(sBalance, sc)} due
-                              </span>
-                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                                    {student.full_name}
+                                  </h2>
+                                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600 dark:text-zinc-400">
+                                    {student.class && (
+                                      <span className="inline-flex items-center gap-1">
+                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
+                                        </svg>
+                                        {student.class.name}
+                                      </span>
+                                    )}
+                                    {student.admission_number && (
+                                      <span className="inline-flex items-center gap-1">
+                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5" />
+                                        </svg>
+                                        {student.admission_number}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <svg
+                                  className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 dark:text-zinc-500"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth={2}
+                                  stroke="currentColor"
+                                  aria-hidden
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                                </svg>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Fee summary grid */}
-                    <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900/40">
-                      <MiniStat
-                        label="Total Fees"
-                        value={formatCurrency(sTotalFee, sc)}
-                        icon={
-                          <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                          </svg>
-                        }
-                      />
-                      <MiniStat
-                        label="Paid"
-                        value={formatCurrency(sTotalPaid, sc)}
-                        color="emerald"
-                        subtitle={
-                          sTotalFee > 0 ? `${sCollectionPct}% of fees` : undefined
-                        }
-                        icon={
-                          <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                          </svg>
-                        }
-                      />
-                      <MiniStat
-                        label="Balance"
-                        value={formatCurrency(sBalance, sc)}
-                        color={sBalance > 0 ? "amber" : undefined}
-                        icon={
-                          <svg className="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                          </svg>
-                        }
-                      />
-                    </div>
-
-                    {/* Outstanding fees */}
-                    {outstandingFees.length > 0 && (
-                      <div className="border-b border-slate-200 bg-slate-50/40 dark:border-zinc-800 dark:bg-zinc-900/60">
-                        <div className="flex items-center gap-2 border-b border-slate-200/80 px-6 py-3 dark:border-zinc-800">
-                          <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                          </svg>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                            Outstanding fees
-                          </p>
-                        </div>
-                        <div className="divide-y divide-slate-200/80 dark:divide-zinc-800/50">
-                          {outstandingFees.map((b) => (
-                            <div
-                              key={b.fee_structure_id}
-                              className="flex flex-col gap-2 px-6 py-2.5 sm:flex-row sm:items-center sm:justify-between"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm text-slate-900 dark:text-white">
-                                  {b.fee_name}
-                                </p>
-                                <p className="text-xs text-slate-500 dark:text-zinc-400">
-                                  {formatCurrency(Number(b.total_paid), sc)} of{" "}
-                                  {formatCurrency(Number(b.total_fee), sc)} paid
-                                  {b.due_date ? ` · Due ${b.due_date}` : ""}
-                                </p>
-                              </div>
-                              <div className="flex shrink-0 items-center gap-2">
-                                <ClickPesaPayButton
-                                  studentId={student.id}
-                                  feeStructureId={b.fee_structure_id}
-                                  feeName={b.fee_name}
-                                  amount={Number(b.balance)}
-                                  currencyCode={sc}
-                                />
-                                <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
-                                  {formatCurrency(Number(b.balance), sc)}
-                                </span>
-                              </div>
+                      }
+                      headerExpanded={
+                        <div className="bg-slate-50/50 px-6 py-4 dark:bg-zinc-800/30">
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--school-primary-rgb)/0.16)] text-sm font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary">
+                              {student.full_name.charAt(0).toUpperCase()}
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Recent payments */}
-                    {sPayments.length > 0 ? (
-                      <div className="bg-white dark:bg-zinc-900/40">
-                        <div className="flex items-center gap-2 border-b border-slate-200/80 px-6 py-3 dark:border-zinc-800">
-                          <svg className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
-                          </svg>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400/90">
-                            Recent payments
-                          </p>
-                        </div>
-
-                        <div className="divide-y divide-slate-200/80 dark:divide-zinc-800/50">
-                          {sPayments.map((p) => {
-                            const feeStructure = p.fee_structure as {
-                              name: string;
-                            } | null;
-                            const receipt = p.receipt as {
-                              id: string;
-                              receipt_number: string;
-                            } | null;
-
-                            return (
-                              <div
-                                key={p.id}
-                                className="flex items-center gap-3 px-6 py-3"
-                              >
-                                {/* Payment icon */}
-                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/20">
-                                  <svg className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                  </svg>
-                                </div>
-
-                                {/* Payment details */}
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium text-slate-900 dark:text-white">
-                                    {formatCurrency(Number(p.amount), sc)}
-                                    <span className="ml-2 text-xs font-normal text-slate-500 dark:text-zinc-400">
-                                      {feeStructure?.name ?? "Payment"}
-                                    </span>
-                                  </p>
-                                  <p className="text-xs text-slate-500 dark:text-zinc-400">
-                                    {p.payment_date}
-                                    {p.payment_method
-                                      ? ` · ${p.payment_method.replace("_", " ")}`
-                                      : ""}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                                    {student.full_name}
+                                  </h2>
+                                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600 dark:text-zinc-400">
+                                    {student.class && (
+                                      <span className="inline-flex items-center gap-1">
+                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
+                                        </svg>
+                                        {student.class.name}
+                                      </span>
+                                    )}
+                                    {student.admission_number && (
+                                      <span className="inline-flex items-center gap-1">
+                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5" />
+                                        </svg>
+                                        {student.admission_number}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                                    {schoolDisplayName}
                                   </p>
                                 </div>
-
-                                {/* Receipt button */}
-                                {receipt ? (
-                                  <Link
-                                    href={`/parent-dashboard/receipts/${p.id}`}
-                                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                                  >
-                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                                    </svg>
-                                    <span className="hidden sm:inline">
-                                      {receipt.receipt_number}
-                                    </span>
-                                    <span className="sm:hidden">Receipt</span>
-                                  </Link>
-                                ) : (
-                                  <span className="shrink-0 text-xs text-slate-400 dark:text-zinc-500">
-                                    No receipt
+                                {sBalance > 0 && (
+                                  <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
+                                    {formatCurrency(sBalance, sc)} due
                                   </span>
                                 )}
                               </div>
-                            );
-                          })}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="px-6 py-8 text-center">
-                        <svg className="mx-auto h-8 w-8 text-slate-300 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
-                        </svg>
-                        <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-                          No payments recorded yet.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      }
+                    >
+                      <ParentChildCardTabs>
+                        <ParentStudentFeesTabContent
+                          studentId={student.id}
+                          currencyCode={sc}
+                          balances={sBalances}
+                          payments={sPayments}
+                        />
+                        <ParentReportCardsTabContent
+                          rows={childTab?.reportCards ?? []}
+                        />
+                        <ParentExamResultsTabContent
+                          classResultSheets={childTab?.classResultSheets ?? []}
+                        />
+                        <ParentAttendanceTabContent
+                          rows={childTab?.attendance ?? []}
+                        />
+                        <ParentClassResultsTabContent
+                          majorExamClassResults={
+                            childTab?.majorExamClassResults ?? {
+                              options: [],
+                              defaultOptionId: "",
+                            }
+                          }
+                        />
+                      </ParentChildCardTabs>
+                    </ParentStudentCard>
+                  );
+                })}
+              </ParentStudentCardsGroup>
             </div>
           </>
         )}
@@ -831,42 +734,6 @@ function KpiCard({
           {subtitle}
         </p>
       )}
-    </div>
-  );
-}
-
-function MiniStat({
-  label,
-  value,
-  color,
-  subtitle,
-  icon,
-}: {
-  label: string;
-  value: string;
-  color?: "emerald" | "amber";
-  subtitle?: string;
-  icon: React.ReactNode;
-}) {
-  const valueColor =
-    color === "emerald"
-      ? "text-emerald-600 dark:text-emerald-400"
-      : color === "amber"
-        ? "text-amber-600 dark:text-amber-400"
-        : "text-slate-900 dark:text-white";
-
-  return (
-    <div className="px-3 py-3 text-center sm:px-4">
-      <div className="mb-1 flex items-center justify-center gap-1">
-        {icon}
-        <p className="text-xs text-slate-500 dark:text-zinc-400">{label}</p>
-      </div>
-      <p className={`text-sm font-semibold ${valueColor}`}>{value}</p>
-      {subtitle ? (
-        <p className="mt-0.5 text-[11px] leading-tight text-slate-500 dark:text-zinc-500">
-          {subtitle}
-        </p>
-      ) : null}
     </div>
   );
 }

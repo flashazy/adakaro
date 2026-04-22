@@ -10,6 +10,7 @@ import {
 import {
   currentAcademicYear,
   getCurrentAcademicYearAndTerm,
+  parseSubjectEnrollmentTerm,
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
 import {
@@ -35,6 +36,7 @@ import {
   reportAcademicYearToEnrollmentYear,
 } from "@/lib/student-subject-enrollment-queries";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
+import { REPORT_TERM_OPTIONS } from "../report-cards/constants";
 import type {
   CoordinatorClassOverview,
   CoordinatorOverview,
@@ -42,6 +44,8 @@ import type {
   CoordinatorSubjectOverview,
   MajorExamStatus,
 } from "./types";
+import type { ClassResultSheetPdfInput } from "@/lib/class-result-sheet-noticeboard-tables";
+import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
 
 // Re-export shared types/constants so existing consumers of `./data` continue
 // to work. The underlying definitions live in the client-safe `./types`
@@ -623,19 +627,33 @@ async function loadClassReportCards(
     schoolLogoUrl: string | null;
     schoolLevel: SchoolLevel;
     academicYear: string;
-    term: "Term 1" | "Term 2";
+    /** Exact `report_cards.term` value (e.g. Term 1, Term 2). */
+    term: string;
     /** Class-level subject list resolved from `subject_classes`. */
     classSubjectNames: string[];
+    /** When set, only include cards in these workflow states. */
+    statuses?: ReportCardStatus[];
   }
 ): Promise<CoordinatorReportCardItem[]> {
-  const { data: cards } = await admin
+  const termExact = params.term.trim();
+  const gbTerm: "Term 1" | "Term 2" =
+    termExact === "Term 2" ? "Term 2" : "Term 1";
+  const enrollmentTerm: SubjectEnrollmentTerm =
+    parseSubjectEnrollmentTerm(termExact) ??
+    (gbTerm === "Term 2" ? "Term 2" : "Term 1");
+
+  let rcQuery = admin
     .from("report_cards")
     .select(
       "id, class_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id, gender )"
     )
     .in("class_id", params.classIds)
-    .eq("term", params.term)
+    .eq("term", termExact)
     .eq("academic_year", params.academicYear);
+  if (params.statuses && params.statuses.length > 0) {
+    rcQuery = rcQuery.in("status", params.statuses);
+  }
+  const { data: cards } = await rcQuery;
 
   const cardRows = (cards ?? []) as {
     id: string;
@@ -695,7 +713,7 @@ async function loadClassReportCards(
   const gradebookByStudent = await loadGradebookScoresForClass(admin, {
     classIds: params.classIds,
     academicYear: params.academicYear,
-    term: params.term,
+    term: gbTerm,
     studentIds,
   });
   const attendanceByStudent = new Map<
@@ -706,7 +724,7 @@ async function loadClassReportCards(
     attendanceByStudent.set(sid, { present: 0, absent: 0, late: 0 });
   }
 
-  const { start, end } = termDateRange(params.term, params.academicYear);
+  const { start, end } = termDateRange(gbTerm, params.academicYear);
   const { data: attRowsRaw } = await admin
     .from("teacher_attendance")
     .select("student_id, status, attendance_date, subject_id")
@@ -788,7 +806,6 @@ async function loadClassReportCards(
 
   // Per-student subject list: narrow to enrolled subjects when the student has
   // enrolment rows for the period, otherwise show the whole class list.
-  const termParsed = params.term;
   const academicYearInt = reportAcademicYearToEnrollmentYear(
     params.academicYear
   );
@@ -800,7 +817,7 @@ async function loadClassReportCards(
         studentId: c.student_id,
         classId: studentClassId,
         academicYear: academicYearInt,
-        term: termParsed,
+        term: enrollmentTerm,
         teacherSubjectLabels: allSubjectsV0,
       });
       subjectsByStudent.set(
@@ -889,11 +906,11 @@ async function loadClassReportCards(
       focusStudentId: c.student_id,
       schoolLevel: params.schoolLevel,
       studentName: studentRow.fullName,
-      term: params.term,
+      term: termExact,
       academicYear: params.academicYear,
     });
     const subjectRows = buildSubjectPreviewRows(
-      params.term,
+      termExact,
       studentSubjects,
       studentRow,
       positions,
@@ -919,7 +936,7 @@ async function loadClassReportCards(
       logoUrl: params.schoolLogoUrl,
       studentName: studentRow.fullName,
       className: displayClassName,
-      term: params.term,
+      term: termExact,
       academicYear: params.academicYear,
       teacherName:
         (c.teacher_id && teacherNameById.get(c.teacher_id)) || "Teacher",
@@ -953,6 +970,115 @@ async function loadClassReportCards(
   return items;
 }
 
+async function loadSubjectNamesForClassCluster(
+  admin: Db,
+  classIds: string[]
+): Promise<string[]> {
+  if (classIds.length === 0) return [];
+  const { data: scRows } = await admin
+    .from("subject_classes")
+    .select("subject_id, subjects ( id, name )")
+    .in("class_id", classIds);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of (scRows ?? []) as {
+    subject_id: string;
+    subjects: { id: string; name: string } | null;
+  }[]) {
+    const n = r.subjects?.name?.trim();
+    if (!n) continue;
+    const k = n.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(n);
+  }
+  return out.sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
+}
+
+/**
+ * Same subject pipeline as {@link loadClassReportCards}: collapse DB comments,
+ * merge in major-exam scores from the gradebook (`teacher_scores` +
+ * `teacher_gradebook_assignments`), and respect class / enrolment subject lists.
+ * Used by the parent dashboard read-only report card (no new data).
+ */
+export async function mergeReportCardCommentsWithGradebookForParent(params: {
+  reportCardId: string;
+  studentId: string;
+  classId: string;
+  academicYear: string;
+  term: string;
+}): Promise<ReportCardCommentRow[]> {
+  const admin = createAdminClient() as Db;
+  const { reportCardId, studentId, classId, academicYear, term: termRaw } =
+    params;
+  const termTrim = termRaw.trim();
+
+  const cluster = await resolveClassCluster(admin, classId);
+
+  const commentsByCard = await loadClassCommentsByCard(admin, [reportCardId]);
+  const baseComments = collapseCommentsToOnePerSubject(
+    commentsByCard.get(reportCardId) ?? []
+  );
+
+  const { data: stuRow } = await admin
+    .from("students")
+    .select("class_id")
+    .eq("id", studentId)
+    .maybeSingle();
+  const studentClassId =
+    (stuRow as { class_id: string } | null)?.class_id ?? classId;
+
+  const classSubjectNames = await loadSubjectNamesForClassCluster(
+    admin,
+    cluster.classIds
+  );
+
+  const classSubjectSet = new Set<string>();
+  for (const name of classSubjectNames) {
+    const t = name.trim();
+    if (t) classSubjectSet.add(t);
+  }
+  for (const row of baseComments) {
+    const t = row.subject?.trim();
+    if (t) classSubjectSet.add(t);
+  }
+  const allSubjectsV0 = [...classSubjectSet].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
+
+  const enrollmentTerm: SubjectEnrollmentTerm =
+    parseSubjectEnrollmentTerm(termTrim) ?? "Term 1";
+  const academicYearInt = reportAcademicYearToEnrollmentYear(academicYear);
+
+  const enrolled = await getStudentEnrolledSubjects(admin, {
+    studentId,
+    classId: studentClassId,
+    academicYear: academicYearInt,
+    term: enrollmentTerm,
+    teacherSubjectLabels: allSubjectsV0,
+  });
+  const studentSubjects =
+    enrolled.length > 0 ? enrolled : allSubjectsV0;
+
+  const gbTerm: "Term 1" | "Term 2" =
+    termTrim === "Term 2" ? "Term 2" : "Term 1";
+
+  const gradebookByStudent = await loadGradebookScoresForClass(admin, {
+    classIds: cluster.classIds,
+    academicYear,
+    term: gbTerm,
+    studentIds: [studentId],
+  });
+
+  return mergeGradebookScoresIntoComments(
+    baseComments,
+    studentSubjects,
+    gradebookByStudent.get(studentId)
+  );
+}
+
 /**
  * Loads report-card items (with previews) for one coordinator class — used by
  * analytics and the academic performance report after Generate Report Cards.
@@ -968,7 +1094,7 @@ export async function loadCoordinatorReportCardsForClass(
     schoolLogoUrl: string | null;
     schoolLevel: SchoolLevel;
     academicYear: string;
-    term: "Term 1" | "Term 2";
+    term: string;
     classSubjectNames: string[];
   }
 ): Promise<CoordinatorReportCardItem[]> {
@@ -1113,4 +1239,165 @@ export async function loadCoordinatorOverview(params: {
   classes.sort((a, b) => a.className.localeCompare(b.className));
 
   return { teacherName, classes };
+}
+
+/** Class result sheet periods for the parent “Exam results” tab. */
+export type ParentPublishedClassResultPeriod = {
+  id: string;
+  label: string;
+  term: string;
+  academicYear: string;
+  sheet: ClassResultSheetPdfInput;
+};
+
+/**
+ * One noticeboard class result sheet per (term, year) for the student’s class
+ * cluster, using the same `report_cards` + preview pipeline as the coordinator
+ * “Print result” action — includes `pending_review` and `approved` cards
+ * (matches noticeboard timing before head-teacher sign-off).
+ */
+export async function loadParentPublishedClassResultPeriods(
+  admin: Db,
+  params: { studentClassId: string }
+): Promise<ParentPublishedClassResultPeriod[]> {
+  const classId = params.studentClassId;
+  const cluster = await resolveClassCluster(admin, classId);
+  const clusterIds =
+    cluster.isParent && cluster.childClassIds.length > 0
+      ? cluster.classIds
+      : [classId];
+
+  const { data: classRow } = await admin
+    .from("classes")
+    .select("id, name, school_id")
+    .eq("id", classId)
+    .maybeSingle();
+  const cls = classRow as
+    | { id: string; name: string; school_id: string }
+    | null;
+  if (!cls) return [];
+
+  type SchoolRowOut = {
+    name: string;
+    logo_url: string | null;
+    school_level?: string | null;
+    motto?: string | null;
+  };
+  let schoolRow: SchoolRowOut | null = null;
+  {
+    let res = await admin
+      .from("schools")
+      .select("id, name, logo_url, school_level, motto")
+      .eq("id", cls.school_id)
+      .maybeSingle();
+    if (res.error && /column/i.test(res.error.message ?? "")) {
+      res = await admin
+        .from("schools")
+        .select("id, name, logo_url, school_level")
+        .eq("id", cls.school_id)
+        .maybeSingle();
+    }
+    if (res.error && /column.*school_level/i.test(res.error.message ?? "")) {
+      res = await admin
+        .from("schools")
+        .select("id, name, logo_url")
+        .eq("id", cls.school_id)
+        .maybeSingle();
+    }
+    schoolRow = (res.data as SchoolRowOut | null) ?? null;
+  }
+
+  const schoolLevel = normalizeSchoolLevel(schoolRow?.school_level);
+  const mottoTrim = (schoolRow?.motto ?? "").trim();
+
+  const { data: periodRows } = await admin
+    .from("report_cards")
+    .select("term, academic_year")
+    .in("class_id", clusterIds)
+    .in("status", ["pending_review", "approved"]);
+
+  const seen = new Set<string>();
+  const rawPeriods: { term: string; academic_year: string }[] = [];
+  for (const r of (periodRows ?? []) as {
+    term: string;
+    academic_year: string;
+  }[]) {
+    const tr = (r.term ?? "").trim();
+    const yr = (r.academic_year ?? "").trim();
+    const k = `${tr}|||${yr}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    rawPeriods.push({ term: tr, academic_year: yr });
+  }
+  if (rawPeriods.length === 0) return [];
+
+  const sorted = sortParentReportCardsByRecency(rawPeriods);
+  const classSubjectNames = await loadSubjectNamesForClassCluster(
+    admin,
+    clusterIds
+  );
+
+  let coordinatorName: string | null = null;
+  {
+    const { data: coordRow } = await admin
+      .from("teacher_coordinators")
+      .select("teacher_id")
+      .in("class_id", clusterIds)
+      .limit(1)
+      .maybeSingle();
+    const tid = (coordRow as { teacher_id: string } | null)?.teacher_id;
+    if (tid) {
+      const { data: prof } = await admin
+        .from("profiles")
+        .select("full_name")
+        .eq("id", tid)
+        .maybeSingle();
+      coordinatorName =
+        (prof as { full_name: string | null } | null)?.full_name?.trim() || null;
+    }
+  }
+
+  const out: ParentPublishedClassResultPeriod[] = [];
+
+  for (const p of sorted) {
+    const reportCards = await loadClassReportCards(admin, {
+      classId,
+      classIds: clusterIds,
+      className: cls.name,
+      schoolName: schoolRow?.name ?? "School",
+      schoolMotto: mottoTrim ? mottoTrim : null,
+      schoolLogoUrl: schoolRow?.logo_url ?? null,
+      schoolLevel,
+      academicYear: p.academic_year,
+      term: p.term,
+      classSubjectNames,
+      statuses: ["pending_review", "approved"],
+    });
+    if (reportCards.length === 0) continue;
+
+    const termDisplayLabel =
+      REPORT_TERM_OPTIONS.find((t) => t.value === p.term)?.label ?? p.term;
+
+    const sheet: ClassResultSheetPdfInput = {
+      schoolName: schoolRow?.name ?? "School",
+      schoolMotto: mottoTrim ? mottoTrim : null,
+      className: cls.name,
+      schoolLevel,
+      termDisplayLabel,
+      term: p.term,
+      academicYear: p.academic_year,
+      coordinatorName,
+      reportCards,
+    };
+
+    out.push({
+      id: `${p.term}|||${p.academic_year}`,
+      label: `${p.term} ${p.academic_year}`.replace(/\s+/g, " ").trim(),
+      term: p.term,
+      academicYear: p.academic_year,
+      sheet,
+    });
+  }
+
+  return out;
 }
