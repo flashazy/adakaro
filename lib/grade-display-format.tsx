@@ -3,46 +3,31 @@
 /**
  * Shared "score display format" toggle.
  *
- * Teachers can choose how a numeric score appears wherever it shows up in the
- * Marks page and Report Cards page. The underlying calculations never change —
- * only the rendered string. The chosen format persists across reloads via
- * `localStorage` so each teacher's preference sticks.
+ * Pure formatting (how a cell’s score string is built) lives in
+ * `grade-marks-label-format.ts` so server code (e.g. full marks report math)
+ * does not import this client file.
  *
- * Three formats are supported:
- *   - "percentage" — e.g. "82% (A)" on the Marks page, "82%" on report cards
- *   - "marks"      — e.g. "41/50 (A)"        / "41/50"
- *   - "both"       — e.g. "41/50 - 82% (A)"  / "41/50 (82%)"
- *
- * Default is "percentage" so existing screens look identical until the teacher
- * opts in to a different display.
+ * three formats: percentage, marks, both — see `grade-marks-label-format.ts`
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getMaxScore } from "@/lib/tanzania-grades";
-import type { SchoolLevel } from "@/lib/school-level";
+import {
+  type GradeDisplayFormat,
+  DEFAULT_GRADE_DISPLAY_FORMAT,
+  isGradeDisplayFormat,
+} from "./grade-marks-label-format";
 
-export type GradeDisplayFormat = "percentage" | "marks" | "both";
-
-export const DEFAULT_GRADE_DISPLAY_FORMAT: GradeDisplayFormat = "percentage";
+export {
+  type GradeDisplayFormat,
+  DEFAULT_GRADE_DISPLAY_FORMAT,
+  isGradeDisplayFormat,
+  formatMarksCellLabel,
+  formatReportCardCellLabel,
+} from "./grade-marks-label-format";
 
 /** localStorage key — namespaced to avoid clashing with anything else. */
 export const GRADE_DISPLAY_FORMAT_STORAGE_KEY = "adakaro:grade-display-format";
-
-const VALID_VALUES: readonly GradeDisplayFormat[] = [
-  "percentage",
-  "marks",
-  "both",
-] as const;
-
-export function isGradeDisplayFormat(
-  value: unknown
-): value is GradeDisplayFormat {
-  return (
-    typeof value === "string" &&
-    (VALID_VALUES as readonly string[]).includes(value)
-  );
-}
 
 function safeReadFromStorage(): GradeDisplayFormat {
   if (typeof window === "undefined") return DEFAULT_GRADE_DISPLAY_FORMAT;
@@ -180,98 +165,4 @@ export function GradeDisplayFormatToggle({
       </div>
     </div>
   );
-}
-
-/* -------------------------------------------------------------------------- */
-/*                              Number formatting                             */
-/* -------------------------------------------------------------------------- */
-
-function trimTrailingZero(n: number): string {
-  // Up to 1 decimal, but drop ".0" so integers look clean ("41" not "41.0").
-  const rounded = Math.round(n * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-}
-
-function formatPercentLabel(percent: number | null): string {
-  if (percent == null || !Number.isFinite(percent)) return "—";
-  return `${trimTrailingZero(percent)}%`;
-}
-
-function formatMarksLabel(score: number | null, maxScore: number): string {
-  if (score == null || !Number.isFinite(score) || maxScore <= 0) return "—";
-  return `${trimTrailingZero(score)}/${trimTrailingZero(maxScore)}`;
-}
-
-/**
- * Render a single Marks-page cell value (matrix or single-assignment table).
- * The letter grade is appended in parentheses when supplied. Examples with
- * letter "A":
- *   percentage → "82% (A)"
- *   marks      → "41/50 (A)"
- *   both       → "41/50 - 82% (A)"
- */
-export function formatMarksCellLabel(params: {
-  score: number | null;
-  maxScore: number;
-  percent: number | null;
-  letter?: string | null;
-  format: GradeDisplayFormat;
-}): string {
-  const { score, maxScore, percent, letter, format } = params;
-  const noScore =
-    score == null ||
-    !Number.isFinite(score) ||
-    percent == null ||
-    !Number.isFinite(percent);
-  if (noScore) return "—";
-
-  const pctLabel = formatPercentLabel(percent);
-  const marksLabel = formatMarksLabel(score, maxScore);
-  const tail = letter && letter !== "—" ? ` (${letter})` : "";
-
-  switch (format) {
-    case "marks":
-      return `${marksLabel}${tail}`;
-    case "both":
-      return `${marksLabel} - ${pctLabel}${tail}`;
-    case "percentage":
-    default:
-      return `${pctLabel}${tail}`;
-  }
-}
-
-/**
- * Render a single Report-Cards subject cell value. No letter grade appended
- * (the report card has its own dedicated "Grade" column). Examples:
- *   percentage → "82%"
- *   marks      → "41/50"
- *   both       → "41/50 (82%)"
- *
- * Report-card storage only persists percentages, so when the teacher picks
- * "marks" or "both" we synthesize the marks fraction from the school's
- * standard max score (50 for primary, 100 for secondary). That keeps the
- * display consistent with the Marks page grading scale.
- */
-export function formatReportCardCellLabel(params: {
-  percent: number | null;
-  format: GradeDisplayFormat;
-  schoolLevel: SchoolLevel | null | undefined;
-}): string {
-  const { percent, format, schoolLevel } = params;
-  if (percent == null || !Number.isFinite(percent)) return "—";
-
-  const max = getMaxScore(schoolLevel ?? "secondary");
-  const pctLabel = formatPercentLabel(percent);
-  const synthesizedScore = (percent / 100) * max;
-  const marksLabel = formatMarksLabel(synthesizedScore, max);
-
-  switch (format) {
-    case "marks":
-      return marksLabel;
-    case "both":
-      return `${marksLabel} (${pctLabel})`;
-    case "percentage":
-    default:
-      return pctLabel;
-  }
 }

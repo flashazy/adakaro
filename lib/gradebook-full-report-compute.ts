@@ -13,7 +13,7 @@ import {
   DEFAULT_GRADE_DISPLAY_FORMAT,
   formatMarksCellLabel,
   type GradeDisplayFormat,
-} from "@/lib/grade-display-format";
+} from "@/lib/grade-marks-label-format";
 
 export type ClassDraft = Record<
   string,

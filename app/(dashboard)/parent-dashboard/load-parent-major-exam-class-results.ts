@@ -7,7 +7,7 @@ import {
   computeReportStatsForAssignment,
   scoreGradeForAssignment,
 } from "@/lib/gradebook-full-report-compute";
-import { DEFAULT_GRADE_DISPLAY_FORMAT } from "@/lib/grade-display-format";
+import { DEFAULT_GRADE_DISPLAY_FORMAT } from "@/lib/grade-marks-label-format";
 import type {
   ParentMajorExamClassResultOption,
   ParentMajorExamClassResultsPayload,
