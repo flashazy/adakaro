@@ -14,6 +14,7 @@ export interface RequestData {
   id: string;
   parentName: string;
   parentEmail: string | null;
+  parentPhone: string | null;
   admissionNumber: string;
   matchedStudentId: string | null;
   createdAt: string;
@@ -110,7 +111,7 @@ export default function RequestRow({
     return (
       <tbody className="border-b border-slate-100 dark:border-zinc-800/50">
         <tr>
-          <td colSpan={6} className="px-6 py-4">
+          <td colSpan={7} className="px-6 py-4">
             <div className="flex items-center gap-3">
               <svg
                 className="h-5 w-5 shrink-0 text-emerald-500"
@@ -152,6 +153,15 @@ export default function RequestRow({
           {request.parentEmail ? (
             <p className="truncate text-xs text-slate-500 dark:text-zinc-400">
               {request.parentEmail}
+            </p>
+          ) : (
+            <span className="text-xs text-slate-400 dark:text-zinc-500">—</span>
+          )}
+        </td>
+        <td className="max-w-[8rem] whitespace-nowrap px-6 py-3">
+          {request.parentPhone?.trim() ? (
+            <p className="text-xs text-slate-600 dark:text-zinc-300">
+              {request.parentPhone.trim()}
             </p>
           ) : (
             <span className="text-xs text-slate-400 dark:text-zinc-500">—</span>
@@ -255,7 +265,7 @@ export default function RequestRow({
 
       {action === "approving" && (
         <tr className="bg-slate-50/80 dark:bg-zinc-800/25">
-          <td colSpan={6} className="px-6 py-4">
+          <td colSpan={7} className="px-6 py-4">
             <p className="mb-2 text-xs font-medium text-slate-700 dark:text-zinc-300">
               Select the student to link to this parent:
             </p>

@@ -61,24 +61,31 @@ export default async function ParentRequestsPage() {
   }[];
 
   const parentIds = [...new Set(typedRequests.map((r) => r.parent_id))];
-  let parentMap: Record<string, { full_name: string; email: string | null }> =
-    {};
+  let parentMap: Record<
+    string,
+    { full_name: string; email: string | null; phone: string | null }
+  > = {};
   let profilesError: unknown = null;
   if (parentIds.length > 0) {
     try {
       const admin = createAdminClient();
       const { data: parents, error } = await admin
         .from("profiles")
-        .select("id, full_name, email")
+        .select("id, full_name, email, phone")
         .in("id", parentIds);
       profilesError = error;
       const typedParents = (parents ?? []) as {
         id: string;
         full_name: string;
         email: string | null;
+        phone: string | null;
       }[];
       for (const p of typedParents) {
-        parentMap[p.id] = { full_name: p.full_name, email: p.email };
+        parentMap[p.id] = {
+          full_name: p.full_name,
+          email: p.email,
+          phone: p.phone,
+        };
       }
     } catch (e) {
       profilesError = e instanceof Error ? e : new Error(String(e));
@@ -101,6 +108,7 @@ export default async function ParentRequestsPage() {
       id: r.id,
       parentName: parent?.full_name ?? "Unknown",
       parentEmail: parent?.email ?? null,
+      parentPhone: parent?.phone ?? null,
       admissionNumber: r.admission_number,
       matchedStudentId: r.student_id,
       createdAt: r.created_at,
@@ -162,13 +170,12 @@ export default async function ParentRequestsPage() {
             Dashboard
           </BackButton>
           <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
-          <span className="text-slate-600 dark:text-zinc-300">
-            Parent Links
-          </span>
-          <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
-          <span className="font-medium text-slate-900 dark:text-white">
-            Pending Approvals
-          </span>
+          <BackButton
+            href="/dashboard/parent-links/approved"
+            className="border-0 bg-transparent p-0 shadow-none ring-0 text-slate-600 transition-colors hover:text-school-primary dark:text-zinc-300 dark:hover:opacity-90"
+          >
+            Approved Connections
+          </BackButton>
         </nav>
         {fetchError ? (
           <QueryErrorBanner

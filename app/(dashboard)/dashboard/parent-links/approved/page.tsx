@@ -306,13 +306,12 @@ export default async function ApprovedConnectionsPage() {
             Dashboard
           </BackButton>
           <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
-          <span className="text-slate-600 dark:text-zinc-300">
-            Parent Links
-          </span>
-          <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
-          <span className="font-medium text-slate-900 dark:text-white">
-            Approved Connections
-          </span>
+          <BackButton
+            href="/dashboard/parent-requests"
+            className="border-0 bg-transparent p-0 shadow-none ring-0 text-slate-600 transition-colors hover:text-school-primary dark:text-zinc-300 dark:hover:opacity-90"
+          >
+            Pending Approvals
+          </BackButton>
         </nav>
         {fetchError ? (
           <QueryErrorBanner

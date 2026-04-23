@@ -48,6 +48,7 @@ function requestMatchesSearch(
   const hay = [
     request.parentName,
     request.parentEmail ?? "",
+    request.parentPhone ?? "",
     sn,
     cn,
     request.admissionNumber,
@@ -208,6 +209,9 @@ export function PendingApprovalsTable({
                   </th>
                   <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                     Email
+                  </th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                    Phone
                   </th>
                   <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
                     Student

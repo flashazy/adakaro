@@ -92,7 +92,7 @@ const NAV_LINKS = [
   {
     href: "/dashboard/parent-links/approved",
     title: "Approved Connections",
-    desc: "Link parents to students.",
+    desc: "View and manage parent-student connections",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
@@ -344,24 +344,38 @@ export default async function AdminDashboard() {
   const studentIds = typedSchoolStudents.map((s) => s.id);
 
   // Fetch dashboard aggregates in parallel (profile + school name already loaded above)
-  const [studentsRes, classesRes, paymentsRes, balancesRes] = await Promise.all([
-    supabase
-      .from("students")
-      .select("id", { count: "exact", head: true })
-      .eq("school_id", schoolId!),
-    supabase
-      .from("classes")
-      .select("id", { count: "exact", head: true })
-      .eq("school_id", schoolId!),
-    supabase
-      .from("payments")
-      .select("amount, payment_date")
-      .in("student_id", studentIds.length > 0 ? studentIds : [""]),
-    supabase
-      .from("student_fee_balances")
-      .select("total_fee, total_paid, balance")
-      .in("student_id", studentIds.length > 0 ? studentIds : [""]),
-  ]);
+  const [studentsRes, classesRes, paymentsRes, balancesRes, pendingParentRpc] =
+    await Promise.all([
+      supabase
+        .from("students")
+        .select("id", { count: "exact", head: true })
+        .eq("school_id", schoolId!),
+      supabase
+        .from("classes")
+        .select("id", { count: "exact", head: true })
+        .eq("school_id", schoolId!),
+      supabase
+        .from("payments")
+        .select("amount, payment_date")
+        .in("student_id", studentIds.length > 0 ? studentIds : [""]),
+      supabase
+        .from("student_fee_balances")
+        .select("total_fee, total_paid, balance")
+        .in("student_id", studentIds.length > 0 ? studentIds : [""]),
+      supabase.rpc("get_pending_parent_link_requests_for_admin"),
+    ]);
+
+  let pendingParentLinkCount = 0;
+  if (pendingParentRpc.error) {
+    const fallback = await supabase
+      .from("parent_link_requests")
+      .select("id")
+      .eq("status", "pending");
+    pendingParentLinkCount = (fallback.data ?? []).length;
+  } else {
+    const rows = pendingParentRpc.data as unknown[] | null;
+    pendingParentLinkCount = rows?.length ?? 0;
+  }
 
   const schoolCurrency = normalizeSchoolCurrency(schoolCurrencyRaw);
   const totalStudents = studentsRes.count ?? 0;
@@ -489,25 +503,47 @@ export default async function AdminDashboard() {
             Quick Actions
           </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {NAV_LINKS.map((link) => (
-              <AdminQuickActionLink
-                key={link.href}
-                href={link.href}
-                className="group flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary transition-colors group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)]">
-                  {link.icon}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900 group-hover:text-school-primary dark:text-white dark:group-hover:text-school-primary">
-                    {link.title}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-                    {link.desc}
-                  </p>
-                </div>
-              </AdminQuickActionLink>
-            ))}
+            {NAV_LINKS.map((link) => {
+              const isPendingLink =
+                link.href === "/dashboard/parent-links/pending";
+              const showPendingBadge = isPendingLink && pendingParentLinkCount > 0;
+              return (
+                <AdminQuickActionLink
+                  key={link.href}
+                  href={link.href}
+                  className="group flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
+                >
+                  <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary transition-colors group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)]">
+                    {link.icon}
+                    {showPendingBadge ? (
+                      <span
+                        className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-600 px-1 text-[0.65rem] font-bold leading-none text-white dark:border-zinc-900"
+                        title={
+                          pendingParentLinkCount === 1
+                            ? "1 request awaiting review"
+                            : `${pendingParentLinkCount} requests awaiting review`
+                        }
+                        aria-label={
+                          pendingParentLinkCount === 1
+                            ? "1 request awaiting review"
+                            : `${pendingParentLinkCount} requests awaiting review`
+                        }
+                      >
+                        {pendingParentLinkCount > 99 ? "99+" : pendingParentLinkCount}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900 group-hover:text-school-primary dark:text-white dark:group-hover:text-school-primary">
+                      {link.title}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                      {link.desc}
+                    </p>
+                  </div>
+                </AdminQuickActionLink>
+              );
+            })}
             <RequestUpgradeQuickAction
               schoolId={schoolId!}
               currentPlan={currentSchoolPlan}

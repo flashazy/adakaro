@@ -59,6 +59,7 @@ export async function approveRequest(
       return { error: parsed.error ?? "Could not approve request." };
     }
 
+    revalidatePath("/dashboard");
     revalidatePath("/dashboard/parent-requests");
     revalidatePath("/dashboard/parent-links/pending");
     return { success: "Request approved. Parent has been linked." };
@@ -91,6 +92,7 @@ export async function rejectRequest(
       return { error: parsed.error ?? "Could not reject request." };
     }
 
+    revalidatePath("/dashboard");
     revalidatePath("/dashboard/parent-requests");
     revalidatePath("/dashboard/parent-links/pending");
     return { success: "Request rejected." };
