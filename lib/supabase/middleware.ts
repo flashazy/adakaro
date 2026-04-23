@@ -43,6 +43,7 @@ export async function updateSession(request: NextRequest) {
     !isAuthCallback &&
     (pathname.startsWith("/login") ||
       pathname.startsWith("/signup") ||
+      pathname.startsWith("/forgot-password") ||
       pathname.startsWith("/auth"));
 
   const isAdminRoute = pathname.startsWith("/dashboard");
@@ -208,6 +209,35 @@ export async function updateSession(request: NextRequest) {
             "next",
             `${pathname}${request.nextUrl.search || ""}`
           );
+          return NextResponse.redirect(url);
+        }
+      }
+    }
+
+    if (role === "parent") {
+      const { data: prRec } = await supabase
+        .from("profiles")
+        .select("recovery_reset_required")
+        .eq("id", user.id)
+        .maybeSingle();
+      const needPasswordReset =
+        (prRec as { recovery_reset_required?: boolean } | null)
+          ?.recovery_reset_required === true;
+      if (needPasswordReset) {
+        const isResetPasswordPage = pathname.startsWith("/reset-password");
+        const isAuthApi = pathname.startsWith("/api/auth");
+        if (!isResetPasswordPage && !isAuthApi) {
+          if (pathname.startsWith("/api/")) {
+            return NextResponse.json(
+              {
+                error:
+                  "Set a new password in account recovery before continuing.",
+              },
+              { status: 403 }
+            );
+          }
+          const url = request.nextUrl.clone();
+          url.pathname = "/reset-password";
           return NextResponse.redirect(url);
         }
       }

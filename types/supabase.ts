@@ -30,6 +30,7 @@ export interface Database {
           role: UserRole;
           avatar_url: string | null;
           password_changed: boolean;
+          recovery_reset_required: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -41,6 +42,7 @@ export interface Database {
           role?: UserRole;
           avatar_url?: string | null;
           password_changed?: boolean;
+          recovery_reset_required?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -52,7 +54,53 @@ export interface Database {
           role?: UserRole;
           avatar_url?: string | null;
           password_changed?: boolean;
+          recovery_reset_required?: boolean;
           updated_at?: string;
+        };
+      };
+      password_reset_codes: {
+        Row: {
+          id: string;
+          parent_id: string;
+          admission_number: string;
+          phone: string;
+          code: string;
+          expires_at: string;
+          used_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          parent_id: string;
+          admission_number: string;
+          phone: string;
+          code: string;
+          expires_at: string;
+          used_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          admission_number?: string;
+          phone?: string;
+          code?: string;
+          expires_at?: string;
+          used_at?: string | null;
+        };
+      };
+      parent_recovery_rate_events: {
+        Row: {
+          id: string;
+          ip: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          ip: string;
+          created_at?: string;
+        };
+        Update: {
+          ip?: string;
+          created_at?: string;
         };
       };
       academic_reports: {

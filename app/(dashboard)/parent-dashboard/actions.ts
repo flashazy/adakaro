@@ -11,6 +11,8 @@ function normalizeEmail(raw: string): string {
 export interface LinkRequestState {
   error?: string;
   success?: string;
+  /** Shown as Sonner toast only (e.g. max parent slots) — not inline form error. */
+  toastError?: string;
 }
 
 export async function submitLinkRequest(
@@ -66,6 +68,24 @@ export async function submitLinkRequest(
     }
 
     const { student_id, school_id } = resultTyped[0];
+
+    const admin = createAdminClient();
+    const { count: approvedParentCount, error: countErr } = await admin
+      .from("parent_students")
+      .select("id", { count: "exact", head: true })
+      .eq("student_id", student_id);
+
+    if (countErr) {
+      console.error("[submitLinkRequest] parent_students count", countErr);
+      return { error: "Something went wrong. Please try again." };
+    }
+
+    if ((approvedParentCount ?? 0) >= 2) {
+      return {
+        toastError:
+          "This student already has the maximum of 2 connected parents. No additional requests can be sent.",
+      };
+    }
 
     // Check if a pending request already exists for this parent + student
     const { data: existing } = await supabase

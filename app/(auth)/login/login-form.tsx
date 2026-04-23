@@ -365,6 +365,15 @@ export function LoginForm() {
         />
       </form>
 
+      <p className="mt-4 text-center text-sm text-slate-500 dark:text-zinc-400">
+        <Link
+          href={next && next.startsWith("/") ? `/forgot-password?next=${encodeURIComponent(next)}` : "/forgot-password"}
+          className="font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
+        >
+          Forgot login details?
+        </Link>
+      </p>
+
       <p className="mt-6 text-center text-sm text-slate-500 dark:text-zinc-400">
         Don&apos;t have an account?{" "}
         <Link

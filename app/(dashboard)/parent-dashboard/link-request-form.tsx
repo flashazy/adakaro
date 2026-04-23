@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useTransition, useState } from "react";
+import { useActionState, useEffect, useTransition, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   submitLinkRequest,
   cancelPendingLinkRequest,
@@ -60,6 +61,12 @@ export default function LinkRequestForm({
     submitLinkRequest,
     {}
   );
+
+  useEffect(() => {
+    if (state.toastError) {
+      toast.error(state.toastError, { duration: 8000 });
+    }
+  }, [state.toastError]);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
