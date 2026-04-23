@@ -159,7 +159,10 @@ export async function login(
     redirect("/super-admin");
   }
 
-  if (role === "teacher" && passwordChanged === false) {
+  if (
+    (role === "teacher" || role === "admin") &&
+    passwordChanged === false
+  ) {
     const q =
       next && next.startsWith("/") && !next.startsWith("//")
         ? `?next=${encodeURIComponent(next)}`

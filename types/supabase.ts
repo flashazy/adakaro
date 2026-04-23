@@ -382,6 +382,8 @@ export interface Database {
           user_id: string;
           role: UserRole;
           created_at: string;
+          promoted_from_teacher_at: string | null;
+          created_by: string | null;
         };
         Insert: {
           id?: string;
@@ -389,9 +391,13 @@ export interface Database {
           user_id: string;
           role?: UserRole;
           created_at?: string;
+          promoted_from_teacher_at?: string | null;
+          created_by?: string | null;
         };
         Update: {
           role?: UserRole;
+          promoted_from_teacher_at?: string | null;
+          created_by?: string | null;
         };
       };
       school_invitations: {
@@ -1842,6 +1848,10 @@ export interface Database {
       };
       is_school_admin: {
         Args: { p_school_id: string };
+        Returns: boolean;
+      };
+      user_has_school_admin_membership: {
+        Args: Record<string, never>;
         Returns: boolean;
       };
       user_school_ids: {

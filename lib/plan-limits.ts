@@ -118,7 +118,7 @@ export async function checkStudentLimit(
   };
 }
 
-/** Admin seats = admin members + pending (non-expired) invitations. */
+/** Admin seats = current admin members only (school_members.role = admin). */
 export async function checkAdminLimit(
   supabase: SupabaseClient<Database>,
   schoolId: string
@@ -134,16 +134,7 @@ export async function checkAdminLimit(
     .eq("school_id", schoolId)
     .eq("role", "admin");
 
-  const { count: pendingCount, error: pendErr } = await supabase
-    .from("school_invitations")
-    .select("*", { count: "exact", head: true })
-    .eq("school_id", schoolId)
-    .eq("status", "pending")
-    .gt("expires_at", new Date().toISOString());
-
-  const admins = adminErr ? 0 : adminCount ?? 0;
-  const pending = pendErr ? 0 : pendingCount ?? 0;
-  const current = admins + pending;
+  const current = adminErr ? 0 : adminCount ?? 0;
 
   if (limit == null) {
     return { allowed: true, current, limit: null };

@@ -5,6 +5,10 @@ import type { Database } from "@/types/supabase";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+/** Supabase client `.update()` resolves to `never` without full generated Relationships. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Db = any;
+
 export const dynamic = "force-dynamic";
 
 function isRlsOrPermissionError(err: {
@@ -133,6 +137,111 @@ export async function POST(request: NextRequest) {
       return jsonWithSessionCookies(
         { error: "The school creator cannot be removed from the team." },
         403
+      );
+    }
+
+    type AdminMemberPeek = {
+      promoted_from_teacher_at: string | null;
+      created_by: string | null;
+    };
+
+    let targetRow: AdminMemberPeek | null = null;
+    try {
+      const adminPeek = createAdminClient();
+      const peek = await adminPeek
+        .from("school_members")
+        .select("promoted_from_teacher_at, created_by")
+        .eq("school_id", schoolId)
+        .eq("user_id", targetUserId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (!peek.error && peek.data) {
+        targetRow = peek.data as AdminMemberPeek;
+      }
+    } catch (e) {
+      console.error("[remove-admin] admin peek threw", e);
+    }
+    if (!targetRow) {
+      const peek = await supabase
+        .from("school_members")
+        .select("promoted_from_teacher_at, created_by")
+        .eq("school_id", schoolId)
+        .eq("user_id", targetUserId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (!peek.error && peek.data) {
+        targetRow = peek.data as AdminMemberPeek;
+      }
+    }
+
+    if (!targetRow) {
+      return jsonWithSessionCookies(
+        {
+          error:
+            "That user is not an administrator for this school (or they were already updated).",
+        },
+        400
+      );
+    }
+
+    const viewerMayRemove =
+      user.id === createdBy ||
+      (targetRow.created_by != null && targetRow.created_by === user.id);
+
+    if (!viewerMayRemove) {
+      return jsonWithSessionCookies(
+        {
+          error:
+            "Only the school owner or the administrator who added this member can remove them.",
+        },
+        403
+      );
+    }
+
+    const isPromotedFromTeacher = Boolean(targetRow.promoted_from_teacher_at);
+
+    if (isPromotedFromTeacher) {
+      const demotePayload: Database["public"]["Tables"]["school_members"]["Update"] =
+        {
+          role: "teacher",
+          promoted_from_teacher_at: null,
+          created_by: null,
+        };
+
+      const { error: demErrUser } = await (supabase as Db)
+        .from("school_members")
+        .update(demotePayload)
+        .eq("school_id", schoolId)
+        .eq("user_id", targetUserId)
+        .eq("role", "admin");
+
+      if (!demErrUser) {
+        return jsonWithSessionCookies({ ok: true }, 200);
+      }
+
+      let demErr = demErrUser;
+      if (isRlsOrPermissionError(demErr)) {
+        try {
+          const admin = createAdminClient();
+          const { error: demErrAdmin } = await (admin as Db)
+            .from("school_members")
+            .update(demotePayload)
+            .eq("school_id", schoolId)
+            .eq("user_id", targetUserId)
+            .eq("role", "admin");
+          demErr = demErrAdmin ?? demErr;
+          if (!demErrAdmin) {
+            return jsonWithSessionCookies({ ok: true }, 200);
+          }
+        } catch (e) {
+          console.error("[remove-admin] service-role demote threw", e);
+        }
+      }
+
+      console.error("[remove-admin] demote failed", demErr);
+      return jsonWithSessionCookies(
+        { error: demErr.message || "Could not update that member." },
+        500
       );
     }
 

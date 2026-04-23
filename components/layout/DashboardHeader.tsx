@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
 import { AdakaroLogoMark } from "@/components/brand/AdakaroLogoMark";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRoleToggle";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 function schoolInitials(name: string): string {
@@ -47,6 +48,8 @@ interface DashboardHeaderProps {
   schoolCurrency?: string | null;
   /** Profile avatar URL when set. */
   avatarUrl?: string | null;
+  /** Teacher + school admin: switch between admin and teacher dashboards. */
+  showDashboardRoleToggle?: boolean;
 }
 
 export function DashboardHeader({
@@ -58,6 +61,7 @@ export function DashboardHeader({
   schoolName = null,
   schoolCurrency = null,
   avatarUrl = null,
+  showDashboardRoleToggle = false,
 }: DashboardHeaderProps) {
   const pathname = usePathname();
   const isParent = pathname.startsWith("/parent-dashboard");
@@ -187,6 +191,7 @@ export function DashboardHeader({
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0 sm:gap-3">
               {rightActions}
+              <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
               {userAvatar}
               <ThemeToggle />
               <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />

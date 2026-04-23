@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { InviteAdminModal } from "./invite-modal";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
+import {
+  createSchoolAdminAccountAction,
+  promoteTeacherToAdminAction,
+  type TeamAdminActionState,
+} from "./actions";
 import { RemoveAdminButton } from "./remove-admin-button";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import {
@@ -21,14 +27,45 @@ export interface TeamMemberRow {
   /** Pre-formatted on the server so SSR and client markup match (hydration-safe). */
   joinedAtLabel: string;
   isCreator: boolean;
+  promotedFromTeacher: boolean;
+  /** School owner always; others only when they added this admin. */
+  canRemove: boolean;
+  /** Tooltip when Remove is disabled; null when enabled. */
+  removeDisabledTooltip: string | null;
 }
 
-export interface PendingInviteRow {
-  id: string;
-  invited_email: string;
-  expires_at: string;
-  /** Pre-formatted on the server (hydration-safe). */
-  expiresAtLabel: string;
+function flashTeam(state: TeamAdminActionState | null) {
+  if (!state) return null;
+  if (state.ok && state.message) {
+    return (
+      <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+        {state.message}
+      </p>
+    );
+  }
+  if (!state.ok) {
+    return (
+      <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-200">
+        {state.error}
+      </p>
+    );
+  }
+  return null;
+}
+
+/** Title-case each space-delimited segment while preserving spacing. */
+function formatFullNameInput(raw: string): string {
+  return raw
+    .split(/( +)/)
+    .map((segment) => {
+      if (/^\s+$/.test(segment)) return segment;
+      if (segment.length === 0) return segment;
+      return (
+        segment.charAt(0).toLocaleUpperCase() +
+        segment.slice(1).toLocaleLowerCase()
+      );
+    })
+    .join("");
 }
 
 interface TeamPageClientProps {
@@ -37,11 +74,10 @@ interface TeamPageClientProps {
   adminCount: number;
   /** null = unlimited (e.g. enterprise). */
   maxAdmins: number | null;
-  pendingInviteCount: number;
   usedSlots: number;
-  canInvite: boolean;
-  pendingInvites: PendingInviteRow[];
-  /** Show pricing link when invite is blocked by plan. */
+  canAddAdmin: boolean;
+  teachersForPromote: { userId: string; fullName: string }[];
+  /** Show pricing link when adding admins is blocked by plan. */
   showUpgradeLink?: boolean;
 }
 
@@ -50,16 +86,29 @@ export function TeamPageClient({
   planLabel,
   adminCount,
   maxAdmins,
-  pendingInviteCount,
   usedSlots,
-  canInvite,
-  pendingInvites,
+  canAddAdmin,
+  teachersForPromote,
   showUpgradeLink = false,
 }: TeamPageClientProps) {
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const router = useRouter();
   const [memberSearch, setMemberSearch] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [promoteDropdownOpen, setPromoteDropdownOpen] = useState(false);
+  const [promoteTeacherSearch, setPromoteTeacherSearch] = useState("");
+  const [promoteSelectedUserId, setPromoteSelectedUserId] = useState("");
+  const promoteComboboxRef = useRef<HTMLDivElement>(null);
+
+  const [createState, createAction, createPending] = useActionState(
+    createSchoolAdminAccountAction,
+    null as TeamAdminActionState | null
+  );
+  const [promoteState, promoteAction, promotePending] = useActionState(
+    promoteTeacherToAdminAction,
+    null as TeamAdminActionState | null
+  );
 
   useEffect(() => {
     const stored = parseStudentListRowsPerPage(
@@ -68,14 +117,21 @@ export function TeamPageClient({
     if (stored != null) setRowsPerPage(stored);
   }, []);
 
+  useEffect(() => {
+    if (createState?.ok || promoteState?.ok) {
+      router.refresh();
+    }
+  }, [createState?.ok, promoteState?.ok, router]);
+
   const filteredMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase();
     if (!q) return members;
-    return members.filter(
-      (m) =>
-        m.fullName.toLowerCase().includes(q) ||
-        (m.email?.toLowerCase().includes(q) ?? false)
-    );
+    return members.filter((m) => {
+      if (m.fullName.toLowerCase().includes(q)) return true;
+      if (m.email && m.email.toLowerCase().includes(q)) return true;
+      if (!m.email && "no email".includes(q)) return true;
+      return false;
+    });
   }, [members, memberSearch]);
 
   useEffect(() => {
@@ -103,32 +159,320 @@ export function TeamPageClient({
   const showingTo =
     totalFiltered === 0 ? 0 : Math.min(start + rowsPerPage, totalFiltered);
 
-  const atAdminCap =
-    maxAdmins != null && usedSlots >= maxAdmins;
+  const atAdminCap = maxAdmins != null && usedSlots >= maxAdmins;
 
   const seatSummary =
     maxAdmins == null
       ? `${adminCount} admin seat${adminCount === 1 ? "" : "s"} (unlimited)`
       : `${adminCount}/${maxAdmins} admin seat${maxAdmins === 1 ? "" : "s"} filled`;
 
+  const promoteOptions = useMemo(
+    () =>
+      [...teachersForPromote].sort((a, b) =>
+        a.fullName.localeCompare(b.fullName, undefined, {
+          sensitivity: "base",
+        })
+      ),
+    [teachersForPromote]
+  );
+
+  const promoteComboDisabled =
+    !canAddAdmin || promotePending || promoteOptions.length === 0;
+
+  const filteredPromoteTeachers = useMemo(() => {
+    const q = promoteTeacherSearch.trim().toLowerCase();
+    if (!q) return promoteOptions;
+    return promoteOptions.filter((t) =>
+      t.fullName.toLowerCase().includes(q)
+    );
+  }, [promoteOptions, promoteTeacherSearch]);
+
+  const promoteSelectedLabel = useMemo(() => {
+    if (!promoteSelectedUserId) return "";
+    return (
+      promoteOptions.find((t) => t.userId === promoteSelectedUserId)?.fullName ??
+      ""
+    );
+  }, [promoteOptions, promoteSelectedUserId]);
+
+  useEffect(() => {
+    if (
+      promoteSelectedUserId &&
+      !promoteOptions.some((t) => t.userId === promoteSelectedUserId)
+    ) {
+      setPromoteSelectedUserId("");
+    }
+  }, [promoteOptions, promoteSelectedUserId]);
+
+  useEffect(() => {
+    if (!promoteDropdownOpen) return;
+    function handlePointerDown(e: MouseEvent | PointerEvent) {
+      const el = promoteComboboxRef.current;
+      if (!el?.contains(e.target as Node)) {
+        setPromoteDropdownOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [promoteDropdownOpen]);
+
   return (
-    <>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-8">
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+          Create admin account
+        </h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+          Full name and temporary password (at least 8 characters). They must
+          change the password on first login, same as teachers.
+        </p>
+        {flashTeam(createState)}
+        <form
+          action={createAction}
+          className="mt-4 space-y-4"
+          onSubmit={(e) => {
+            const form = e.currentTarget;
+            const nameInput = form.elements.namedItem(
+              "full_name"
+            ) as HTMLInputElement | null;
+            if (nameInput) {
+              nameInput.value = formatFullNameInput(nameInput.value.trim());
+            }
+          }}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="team-create-full-name"
+                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+              >
+                Full name <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="team-create-full-name"
+                name="full_name"
+                required
+                minLength={2}
+                autoComplete="name"
+                disabled={!canAddAdmin || createPending}
+                onBlur={(e) => {
+                  e.target.value = formatFullNameInput(e.target.value.trim());
+                }}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                placeholder="e.g. Jane Smith"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="team-create-password"
+                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+              >
+                Temporary password <span className="text-red-600">*</span>
+              </label>
+              <div className="relative mt-1">
+                <input
+                  id="team-create-password"
+                  name="password"
+                  type={showCreatePassword ? "text" : "password"}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  disabled={!canAddAdmin || createPending}
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-11 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                  placeholder="At least 8 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCreatePassword((s) => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+                  aria-label={
+                    showCreatePassword ? "Hide password" : "Show password"
+                  }
+                >
+                  {showCreatePassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <button
+              type="submit"
+              disabled={!canAddAdmin || createPending}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {createPending ? (
+                <>
+                  <Loader2
+                    className="h-4 w-4 shrink-0 animate-spin"
+                    aria-hidden
+                  />
+                  Creating…
+                </>
+              ) : (
+                "Create admin account"
+              )}
+            </button>
+            {!canAddAdmin && atAdminCap ? (
+              <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
+                Upgrade your plan to add more administrators.
+                {showUpgradeLink ? (
+                  <>
+                    {" "}
+                    <Link
+                      href="/pricing"
+                      className="font-medium text-school-primary underline-offset-2 hover:underline dark:text-school-primary"
+                    >
+                      View pricing
+                    </Link>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+          </div>
+        </form>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+          Promote existing teacher to admin
+        </h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+          The teacher keeps their teaching access and can switch between teacher
+          and admin views from the header when signed in.
+        </p>
+        {flashTeam(promoteState)}
+        <form action={promoteAction} className="mt-4 flex flex-wrap items-end gap-3">
+          <div
+            ref={promoteComboboxRef}
+            className="relative w-full min-w-[280px] max-w-md flex-1"
+          >
+            <label
+              htmlFor="team-promote-teacher-trigger"
+              className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+            >
+              Teacher
+            </label>
+            <input
+              type="hidden"
+              name="teacher_user_id"
+              value={promoteSelectedUserId}
+              required={promoteOptions.length > 0 && canAddAdmin}
+              readOnly
+              aria-hidden
+            />
+            <button
+              id="team-promote-teacher-trigger"
+              type="button"
+              disabled={promoteComboDisabled}
+              aria-expanded={promoteDropdownOpen}
+              aria-haspopup="listbox"
+              onClick={() => {
+                if (promoteComboDisabled) return;
+                setPromoteDropdownOpen((o) => !o);
+              }}
+              className="mt-1 flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            >
+              <span
+                className={
+                  promoteSelectedLabel
+                    ? "text-slate-900 dark:text-white"
+                    : "text-slate-500 dark:text-zinc-500"
+                }
+              >
+                {promoteOptions.length === 0
+                  ? "No teachers available"
+                  : promoteSelectedLabel || "Select a teacher…"}
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-zinc-400 ${
+                  promoteDropdownOpen ? "rotate-180" : ""
+                }`}
+                aria-hidden
+              />
+            </button>
+            {promoteDropdownOpen && !promoteComboDisabled ? (
+              <div
+                className="absolute left-0 right-0 z-50 mt-1 flex w-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+                role="listbox"
+              >
+                <label htmlFor="team-promote-teacher-search" className="sr-only">
+                  Search teachers by name
+                </label>
+                <input
+                  id="team-promote-teacher-search"
+                  type="search"
+                  value={promoteTeacherSearch}
+                  onChange={(e) => setPromoteTeacherSearch(e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  autoComplete="off"
+                  placeholder="Search by name…"
+                  className="w-full border-b border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-inset focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                />
+                <ul
+                  className="max-h-[200px] overflow-y-auto py-1"
+                  aria-label="Teachers"
+                >
+                  {filteredPromoteTeachers.length === 0 ? (
+                    <li className="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                      No teachers match your search.
+                    </li>
+                  ) : (
+                    filteredPromoteTeachers.map((t) => (
+                      <li key={t.userId}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={promoteSelectedUserId === t.userId}
+                          onClick={() => {
+                            setPromoteSelectedUserId(t.userId);
+                            setPromoteDropdownOpen(false);
+                          }}
+                          className="flex w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-50 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          {t.fullName}
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="submit"
+            disabled={
+              promoteComboDisabled ||
+              (canAddAdmin &&
+                promoteOptions.length > 0 &&
+                !promoteSelectedUserId)
+            }
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {promotePending ? (
+              <>
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                Promoting…
+              </>
+            ) : (
+              "Promote to admin"
+            )}
+          </button>
+        </form>
+      </section>
+
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-600 dark:text-zinc-400">
           <span className="font-semibold text-slate-800 dark:text-zinc-200">
             {planLabel}:
           </span>{" "}
-          {seatSummary}
-          {pendingInviteCount > 0 ? (
-            <>
-              {" "}
-              · {pendingInviteCount} pending invitation
-              {pendingInviteCount === 1 ? "" : "s"}
-            </>
-          ) : null}
-          .{" "}
+          {seatSummary}.
           {atAdminCap ? (
             <>
+              {" "}
               Upgrade your plan to add more admins.
               {showUpgradeLink ? (
                 <>
@@ -144,18 +488,13 @@ export function TeamPageClient({
             </>
           ) : null}
         </p>
-        <button
-          type="button"
-          onClick={() => setInviteOpen(true)}
-          disabled={!canInvite}
-          className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Invite new admin
-        </button>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Current administrators
+          </h3>
           <label htmlFor="team-members-search" className="sr-only">
             Search by name or email
           </label>
@@ -164,17 +503,17 @@ export function TeamPageClient({
             type="search"
             value={memberSearch}
             onChange={(e) => setMemberSearch(e.target.value)}
-            placeholder="Search by name or email..."
-            className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            placeholder="Search by name or email…"
+            className="mt-2 w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
           />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
           <p className="min-w-0 text-sm text-slate-600 dark:text-zinc-400">
             {totalFiltered === 0 ? (
               members.length === 0 ? (
-                "No team members yet."
+                "No administrators yet."
               ) : (
-                "No team members match your search."
+                "No administrators match your search."
               )
             ) : (
               <>
@@ -186,7 +525,7 @@ export function TeamPageClient({
                 <span className="font-medium text-slate-900 dark:text-white">
                   {totalFiltered}
                 </span>{" "}
-                team member{totalFiltered !== 1 ? "s" : ""}
+                administrator{totalFiltered !== 1 ? "s" : ""}
               </>
             )}
           </p>
@@ -249,16 +588,25 @@ export function TeamPageClient({
               ) : (
                 pageSlice.map((m) => (
                   <tr key={m.membershipId}>
-                    <td className="px-4 py-3 text-slate-800 dark:text-zinc-200">
-                      {m.fullName}
-                      {m.isCreator ? (
-                        <span className="ml-2 text-xs font-medium text-school-primary dark:text-school-primary">
-                          (creator)
-                        </span>
-                      ) : null}
+                    <td className="px-4 py-3 align-top text-slate-800 dark:text-zinc-200">
+                      <div className="flex flex-col gap-1.5">
+                        <span>{m.fullName}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {m.isCreator ? (
+                            <span className="inline-flex rounded-full bg-school-primary/15 px-2 py-0.5 text-xs font-medium text-school-primary dark:bg-school-primary/20 dark:text-school-primary">
+                              Creator
+                            </span>
+                          ) : null}
+                          {m.promotedFromTeacher ? (
+                            <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
+                              Promoted from teacher
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-zinc-400">
-                      {m.email ?? "—"}
+                      {m.email ?? "No email"}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-zinc-400">
                       Admin
@@ -270,7 +618,13 @@ export function TeamPageClient({
                       <RemoveAdminButton
                         userId={m.userId}
                         label={m.fullName}
-                        disabled={m.isCreator}
+                        disabled={!m.canRemove}
+                        disabledTitle={
+                          !m.canRemove
+                            ? (m.removeDisabledTooltip ?? undefined)
+                            : undefined
+                        }
+                        promotedFromTeacher={m.promotedFromTeacher}
                       />
                     </td>
                   </tr>
@@ -328,39 +682,6 @@ export function TeamPageClient({
           </nav>
         ) : null}
       </div>
-
-      {pendingInvites.length > 0 ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Pending invitations
-          </h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-            Invitees are notified when they sign in to Adakaro; we do not send
-            emails for invitations yet.
-          </p>
-          <ul className="mt-3 divide-y divide-slate-100 text-sm dark:divide-zinc-800">
-            {pendingInvites.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-wrap items-center justify-between gap-2 py-2"
-              >
-                <span className="font-medium text-slate-800 dark:text-zinc-200">
-                  {r.invited_email}
-                </span>
-                <span className="text-xs text-slate-500 dark:text-zinc-400">
-                  Expires {r.expiresAtLabel}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <InviteAdminModal
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        onInvited={() => window.location.reload()}
-      />
-    </>
+    </div>
   );
 }

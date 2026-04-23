@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
 import { AdakaroLogoMark } from "@/components/brand/AdakaroLogoMark";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRoleToggle";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { TeacherAcademicNavDropdown } from "@/components/layout/TeacherAcademicNavDropdown";
 
@@ -54,6 +55,8 @@ interface TeacherDashboardHeaderProps {
    * Drives the visibility of the "Coordinator" nav link.
    */
   isCoordinator?: boolean;
+  /** Teacher also has school admin membership — show admin/teacher switch. */
+  showDashboardRoleToggle?: boolean;
 }
 
 function schoolLogoSrcWithCacheBust(url: string, version: number): string {
@@ -71,6 +74,7 @@ export function TeacherDashboardHeader({
   hasDepartmentRole = false,
   hasAcademicDepartmentRole = false,
   isCoordinator = false,
+  showDashboardRoleToggle = false,
 }: TeacherDashboardHeaderProps) {
   const pathname = usePathname();
   const schoolTitleLine =
@@ -186,6 +190,7 @@ export function TeacherDashboardHeader({
               </div>
             </Link>
             <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0 sm:gap-3">
+              <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
               {userAvatar}
               <ThemeToggle />
               <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />
@@ -243,6 +248,7 @@ export function TeacherDashboardHeader({
             Adakaro
           </Link>
           <div className="flex flex-wrap items-center gap-2">
+            <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
             {userAvatar}
             <ThemeToggle />
             <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />

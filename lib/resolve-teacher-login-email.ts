@@ -31,7 +31,7 @@ export async function resolveLoginEmailForSignIn(
   const { data, error } = await admin
     .from("profiles")
     .select("id, email, full_name")
-    .eq("role", "teacher");
+    .in("role", ["teacher", "admin"]);
 
   if (error) {
     return {
@@ -57,14 +57,14 @@ export async function resolveLoginEmailForSignIn(
     return {
       ok: false,
       error:
-        "No teacher account matches that name. Check spelling or sign in with email.",
+        "No school account matches that name. Check spelling or sign in with email.",
     };
   }
   if (matches.length > 1) {
     return {
       ok: false,
       error:
-        "More than one teacher matches that name. Please sign in with the email address on your account, or ask your school administrator.",
+        "More than one account matches that name. Please sign in with the email address on your account, or ask your school administrator.",
     };
   }
   return { ok: true, email: matches[0].email!.trim() };

@@ -7,23 +7,28 @@ interface RemoveAdminButtonProps {
   userId: string;
   label: string;
   disabled?: boolean;
+  /** Native tooltip when `disabled` (wraps control so hover works). */
+  disabledTitle?: string;
+  /** When true, user returns to teacher membership instead of being removed. */
+  promotedFromTeacher?: boolean;
 }
 
 export function RemoveAdminButton({
   userId,
   label,
   disabled,
+  disabledTitle,
+  promotedFromTeacher = false,
 }: RemoveAdminButtonProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
   async function handleRemove() {
     if (pending || disabled) return;
-    if (
-      !confirm(
-        `Remove ${label} from the school team? They will lose admin access.`
-      )
-    ) {
+    const message = promotedFromTeacher
+      ? `Remove admin access from ${label}? They will go back to teacher-only access for this school.`
+      : `Remove ${label} from the school team? They will lose admin access.`;
+    if (!confirm(message)) {
       return;
     }
 
@@ -48,7 +53,7 @@ export function RemoveAdminButton({
     }
   }
 
-  return (
+  const btn = (
     <button
       type="button"
       onClick={handleRemove}
@@ -58,4 +63,14 @@ export function RemoveAdminButton({
       {pending ? "Removing…" : "Remove"}
     </button>
   );
+
+  if ((disabled || pending) && disabledTitle) {
+    return (
+      <span className="inline-flex" title={disabledTitle}>
+        {btn}
+      </span>
+    );
+  }
+
+  return btn;
 }

@@ -45,11 +45,17 @@ export async function changeTeacherPasswordAction(
     password_changed: boolean | null;
   } | null;
 
-  if (pr?.role !== "teacher") {
-    return { ok: false, error: "Only teachers use this password setup page." };
+  if (pr?.role !== "teacher" && pr?.role !== "admin") {
+    return {
+      ok: false,
+      error: "This password setup page is not available for your account.",
+    };
   }
 
   if (pr?.password_changed !== false) {
+    if (pr?.role === "admin") {
+      redirect("/dashboard");
+    }
     redirect("/teacher-dashboard");
   }
 
@@ -75,6 +81,9 @@ export async function changeTeacherPasswordAction(
 
   if (nextRaw.startsWith("/") && !nextRaw.startsWith("//")) {
     redirect(nextRaw);
+  }
+  if (pr?.role === "admin") {
+    redirect("/dashboard");
   }
   redirect("/teacher-dashboard");
 }

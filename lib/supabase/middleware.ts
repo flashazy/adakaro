@@ -181,7 +181,7 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    if (role === "teacher") {
+    if (role === "teacher" || role === "admin") {
       const { data: profPw } = await supabase
         .from("profiles")
         .select("password_changed")
@@ -277,8 +277,21 @@ export async function updateSession(request: NextRequest) {
         !financeDeptErr && financeDeptRow != null;
     }
 
-    const isTeacherAllowedAdminRoute =
+    let isTeacherAllowedAdminRoute =
       isTeacherStudentProfileRoute || isTeacherFinanceReceiptRoute;
+
+    if (
+      !isTeacherAllowedAdminRoute &&
+      isAdminRoute &&
+      role === "teacher" &&
+      request.cookies.get("school_dashboard_mode")?.value === "admin"
+    ) {
+      const { data: hasAdminMembership, error: dualErr } =
+        await supabase.rpc("user_has_school_admin_membership", {} as never);
+      if (!dualErr && hasAdminMembership === true) {
+        isTeacherAllowedAdminRoute = true;
+      }
+    }
 
     // Enforce role-based access on protected routes.
     if (

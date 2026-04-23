@@ -11,6 +11,11 @@ import {
 import { formatShortLocaleDate } from "@/lib/format-date";
 import { normalizePlanId, planDisplayName } from "@/lib/plans";
 import { effectiveAdminLimit } from "@/lib/plan-limits";
+import {
+  canRemoveSchoolTeamAdmin,
+  resolveTeamAdminDisplayEmail,
+} from "@/lib/team-member-email";
+import { fetchSchoolTeacherMembersForTeachersPage } from "../teachers/actions";
 import { TeamPageClient, type TeamMemberRow } from "./team-page-client";
 
 export const dynamic = "force-dynamic";
@@ -111,6 +116,35 @@ async function fetchSchoolRowForTeam(
   return null;
 }
 
+/** Auth `user.email` (e.g. after a user changes email) for comparing to `profiles.email`. */
+async function fetchAuthEmailsForUserIds(
+  userIds: string[]
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (userIds.length === 0) return map;
+  if (!normalizeServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+    return map;
+  }
+  try {
+    const admin = createAdminClient();
+    await Promise.all(
+      userIds.map(async (uid) => {
+        try {
+          const { data, error } = await admin.auth.admin.getUserById(uid);
+          if (!error && data?.user?.email) {
+            map.set(uid, data.user.email);
+          }
+        } catch {
+          /* ignore per user */
+        }
+      })
+    );
+  } catch {
+    /* service role unavailable */
+  }
+  return map;
+}
+
 export default async function TeamPage() {
   const supabase = await createClient();
   const {
@@ -184,12 +218,16 @@ export default async function TeamPage() {
     user_id: string;
     role: string;
     created_at: string;
+    promoted_from_teacher_at: string | null;
+    created_by: string | null;
   };
 
   let membersRaw: MemberDbRow[] = [];
   const userMemRes = await supabase
     .from("school_members")
-    .select("id, user_id, role, created_at")
+    .select(
+      "id, user_id, role, created_at, promoted_from_teacher_at, created_by"
+    )
     .eq("school_id", schoolId)
     .eq("role", "admin")
     .order("created_at", { ascending: true });
@@ -205,7 +243,9 @@ export default async function TeamPage() {
       const admin = createAdminClient();
       const adminMem = await admin
         .from("school_members")
-        .select("id, user_id, role, created_at")
+        .select(
+          "id, user_id, role, created_at, promoted_from_teacher_at, created_by"
+        )
         .eq("school_id", schoolId)
         .eq("role", "admin")
         .order("created_at", { ascending: true });
@@ -265,71 +305,54 @@ export default async function TeamPage() {
 
   const profilesById = new Map(profileRows.map((p) => [p.id, p]));
 
+  const authEmailByUserId = await fetchAuthEmailsForUserIds(userIds);
+
+  const schoolCreatorId = schoolRow.created_by.trim();
+
   const members: TeamMemberRow[] = membersRaw.map((m) => {
     const p = profilesById.get(m.user_id);
+    const profileEmail = p?.email ?? null;
+    const authEmail = authEmailByUserId.get(m.user_id) ?? null;
+    const emailDisplay = resolveTeamAdminDisplayEmail(authEmail, profileEmail);
+
+    const canRemove = canRemoveSchoolTeamAdmin({
+      viewerUserId: user.id,
+      schoolCreatorUserId: schoolCreatorId,
+      targetUserId: m.user_id,
+      membershipCreatedBy: m.created_by,
+    });
+
+    const removeDisabledTooltip = canRemove
+      ? null
+      : m.user_id === schoolCreatorId
+        ? "The school owner cannot be removed from the team."
+        : "Only the admin who created this account can remove them.";
+
     return {
       membershipId: m.id,
       userId: m.user_id,
       fullName: p?.full_name ?? "Unknown",
-      email: p?.email ?? null,
+      email: emailDisplay,
       joinedAt: m.created_at,
       joinedAtLabel: formatShortLocaleDate(m.created_at),
-      isCreator: m.user_id === schoolRow.created_by,
+      isCreator:
+        Boolean(schoolCreatorId) && m.user_id === schoolCreatorId,
+      promotedFromTeacher: Boolean(m.promoted_from_teacher_at),
+      canRemove,
+      removeDisabledTooltip,
     };
   });
 
   const adminCount = members.length;
 
-  const invRes = await supabase
-    .from("school_invitations")
-    .select("id, invited_email, expires_at", { count: "exact" })
-    .eq("school_id", schoolId)
-    .eq("status", "pending")
-    .gt("expires_at", new Date().toISOString())
-    .order("created_at", { ascending: false });
+  const usedSlots = adminCount;
+  const canInvite = maxAdmins == null ? true : usedSlots < maxAdmins;
 
-  let pendingRows = invRes.data;
-  let pendingCount = invRes.count;
-
-  if (
-    invRes.error &&
-    normalizeServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
-  ) {
-    try {
-      const admin = createAdminClient();
-      const adminInv = await admin
-        .from("school_invitations")
-        .select("id, invited_email, expires_at", { count: "exact" })
-        .eq("school_id", schoolId)
-        .eq("status", "pending")
-        .gt("expires_at", new Date().toISOString())
-        .order("created_at", { ascending: false });
-      if (!adminInv.error) {
-        pendingRows = adminInv.data;
-        pendingCount = adminInv.count;
-      }
-    } catch {
-      /* keep invRes */
-    }
-  }
-
-  const pendingInvites =
-    (pendingRows ?? []) as {
-      id: string;
-      invited_email: string;
-      expires_at: string;
-    }[];
-
-  const pendingInviteCount = pendingCount ?? pendingInvites.length;
-  const usedSlots = adminCount + pendingInviteCount;
-  const canInvite =
-    maxAdmins == null ? true : usedSlots < maxAdmins;
-
-  const pendingInvitesForClient = pendingInvites.map((r) => ({
-    id: r.id,
-    invited_email: r.invited_email,
-    expires_at: r.expires_at,
-    expiresAtLabel: formatShortLocaleDate(r.expires_at),
+  const teacherRows =
+    await fetchSchoolTeacherMembersForTeachersPage(schoolId);
+  const teachersForPromote = teacherRows.map((t) => ({
+    userId: t.user_id,
+    fullName: (t.profileFullName ?? "").trim() || "Teacher",
   }));
 
   return (
@@ -359,10 +382,9 @@ export default async function TeamPage() {
           planLabel={planDisplayName(plan)}
           adminCount={adminCount}
           maxAdmins={maxAdmins}
-          pendingInviteCount={pendingInviteCount}
           usedSlots={usedSlots}
-          canInvite={canInvite}
-          pendingInvites={pendingInvitesForClient}
+          canAddAdmin={canInvite}
+          teachersForPromote={teachersForPromote}
           showUpgradeLink={!canInvite}
         />
       </main>

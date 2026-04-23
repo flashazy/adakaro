@@ -31,11 +31,14 @@ export default async function ChangePasswordPage({
     password_changed: boolean | null;
   } | null;
 
-  if (pr?.role !== "teacher") {
+  if (pr?.role !== "teacher" && pr?.role !== "admin") {
     redirect("/dashboard");
   }
 
   if (pr?.password_changed !== false) {
+    if (pr?.role === "admin") {
+      redirect("/dashboard");
+    }
     redirect("/teacher-dashboard");
   }
 
@@ -44,7 +47,9 @@ export default async function ChangePasswordPage({
   const nextPath =
     nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
-      : "/teacher-dashboard";
+      : pr?.role === "admin"
+        ? "/dashboard"
+        : "/teacher-dashboard";
 
   return <ChangePasswordForm nextPath={nextPath} />;
 }

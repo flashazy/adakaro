@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -39,13 +40,41 @@ export default async function DashboardGroupLayout({
   } | null;
   const fullName = getDisplayName(user, profileRow?.full_name ?? null);
 
+  const schoolDisplayForLayout = await resolveSchoolDisplay(user.id, supabase);
+  const schoolIdForDual = schoolDisplayForLayout?.schoolId ?? null;
+  const cookieStore = await cookies();
+  const dashboardModeCookie = cookieStore.get("school_dashboard_mode")?.value;
+
+  let dualSchoolDashboard = false;
+  if (profileRow?.role === "teacher" && schoolIdForDual) {
+    try {
+      const ac = createAdminClient();
+      const { data: adminMem } = await ac
+        .from("school_members")
+        .select("id")
+        .eq("school_id", schoolIdForDual)
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      dualSchoolDashboard = Boolean(adminMem);
+    } catch {
+      dualSchoolDashboard = false;
+    }
+  }
+
   const isSchoolAdminOrPlatform =
     profileRow?.role === "admin" || profileRow?.role === "super_admin";
-  if (
+  const isTeacherUser =
     profileRow?.role === "teacher" ||
-    (!isSchoolAdminOrPlatform && (await checkIsTeacher(supabase, user.id)))
-  ) {
-    const schoolDisplay = await resolveSchoolDisplay(user.id, supabase);
+    (!isSchoolAdminOrPlatform && (await checkIsTeacher(supabase, user.id)));
+
+  const useAdminShellForDualTeacher =
+    isTeacherUser &&
+    dualSchoolDashboard &&
+    dashboardModeCookie === "admin";
+
+  if (isTeacherUser && !useAdminShellForDualTeacher) {
+    const schoolDisplay = schoolDisplayForLayout;
     const { data: teacherDeptRoleRow } = await supabase
       .from("teacher_department_roles")
       .select("id")
@@ -88,6 +117,7 @@ export default async function DashboardGroupLayout({
             hasDepartmentRole={hasDepartmentRole}
             hasAcademicDepartmentRole={hasAcademicDepartmentRole}
             isCoordinator={isCoordinator}
+            showDashboardRoleToggle={dualSchoolDashboard}
           />
         </div>
         <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:bg-white">
@@ -109,7 +139,7 @@ export default async function DashboardGroupLayout({
     isSuperAdmin
   );
 
-  const schoolDisplay = await resolveSchoolDisplay(user.id, supabase);
+  const schoolDisplay = schoolDisplayForLayout;
 
   let hasParentStudents = false;
   const parentLinks = await supabase
@@ -152,6 +182,9 @@ export default async function DashboardGroupLayout({
           schoolName={schoolDisplay?.name ?? null}
           schoolCurrency={schoolDisplay?.currency ?? null}
           avatarUrl={profileRow?.avatar_url ?? null}
+          showDashboardRoleToggle={
+            dualSchoolDashboard && profileRow?.role === "teacher"
+          }
         />
       </div>
       <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:bg-white">
