@@ -86,7 +86,7 @@ export async function loadParentAttendanceForStudent(
     const { data: attRows, error: attErr } = await supabase
       .from("teacher_attendance")
       .select(
-        "id, student_id, attendance_date, status, subject_id, created_at, subjects ( name )"
+        "id, student_id, attendance_date, status, subject_id, created_at, updated_at, subjects ( name )"
       )
       .eq("student_id", studentId)
       .order("attendance_date", { ascending: false })
@@ -99,6 +99,7 @@ export async function loadParentAttendanceForStudent(
       status: "present" | "absent" | "late";
       subject_id: string | null;
       created_at: string;
+      updated_at: string | null;
       subjects: { name: string } | null;
     }[];
     return rows.map((a) => {
@@ -107,13 +108,17 @@ export async function loadParentAttendanceForStudent(
         : a.subject_id
           ? "Subject"
           : "Class (general)";
+      const recordedAt =
+        a.updated_at && a.updated_at.trim().length > 0
+          ? a.updated_at
+          : a.created_at ?? null;
       return {
         id: a.id,
         attendance_date: a.attendance_date,
         status: a.status,
         subjectName,
         subject_id: a.subject_id,
-        recordedAt: a.created_at ?? null,
+        recordedAt,
       };
     });
   } catch {

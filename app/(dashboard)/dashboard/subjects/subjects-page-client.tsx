@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
+import { BackButton } from "@/components/dashboard/back-button";
 import { useRouter } from "next/navigation";
 import { Search, X } from "lucide-react";
 import {
@@ -663,12 +664,12 @@ export function SubjectsPageClient({
   return (
     <div className="space-y-10">
       <div>
-        <Link
+        <BackButton
           href="/dashboard"
           className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
         >
           ← Back to dashboard
-        </Link>
+        </BackButton>
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">

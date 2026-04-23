@@ -9,7 +9,7 @@ import {
 import { PrintButton } from "./print-button";
 import { ReceiptWatchdogTracker } from "./receipt-watchdog-tracker";
 import "./receipt-print.css";
-import Link from "next/link";
+import { BackButton } from "@/components/dashboard/back-button";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { Building2 } from "lucide-react";
 import {
@@ -347,12 +347,12 @@ export default async function ReceiptPage({ params }: PageProps) {
           <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
             Payment Receipt
           </h1>
-          <Link
+          <BackButton
             href={backHref}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Back
-          </Link>
+          </BackButton>
         </div>
       </header>
 

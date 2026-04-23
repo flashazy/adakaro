@@ -11,6 +11,9 @@ import {
   loadParentClassResultSheets,
   loadParentReportCardsForStudent,
 } from "./parent-child-tab-loaders";
+import { loadParentSubjectResultsUnread } from "./parent-subject-results-unread";
+import type { SubjectResultsUnreadState } from "@/lib/parent-subject-results-unread-types";
+import { initialEmptySubjectResultsUnread } from "@/lib/parent-subject-results-unread-types";
 
 export type ChildTabData = {
   reportCards: any[];
@@ -18,6 +21,7 @@ export type ChildTabData = {
   attendance: any[];
   majorExamClassResults: any;
   classResultSubjects: string[];
+  subjectResultsUnread: SubjectResultsUnreadState;
 };
 
 function emptyTabData(): ChildTabData {
@@ -27,6 +31,7 @@ function emptyTabData(): ChildTabData {
     attendance: [],
     majorExamClassResults: { options: [], defaultOptionId: "" },
     classResultSubjects: [],
+    subjectResultsUnread: initialEmptySubjectResultsUnread(),
   };
 }
 
@@ -135,11 +140,27 @@ export async function loadParentChildTabData(
       majorExamClassResults = { options: [], defaultOptionId: "" };
     }
 
+    let subjectResultsUnread: SubjectResultsUnreadState =
+      initialEmptySubjectResultsUnread();
+    if (admin) {
+      try {
+        subjectResultsUnread = await loadParentSubjectResultsUnread(
+          supabase,
+          parentUserId,
+          studentId,
+          classId
+        );
+      } catch {
+        subjectResultsUnread = initialEmptySubjectResultsUnread();
+      }
+    }
+
     entry.reportCards = reportCards;
     entry.classResultSheets = classResultSheets;
     entry.attendance = attendance;
     entry.classResultSubjects = classResultSubjects;
     entry.majorExamClassResults = majorExamClassResults;
+    entry.subjectResultsUnread = subjectResultsUnread;
   }
 
   return byStudent;

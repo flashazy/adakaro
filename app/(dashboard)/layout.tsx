@@ -10,6 +10,7 @@ import { isSchoolAdminBroadcastAudience } from "@/lib/broadcasts/school-admin-au
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { SchoolPrimaryCssVars } from "@/components/school-branding/school-primary-css-vars";
+import { DashboardFeedbackProvider } from "@/components/dashboard/dashboard-feedback-provider";
 
 export default async function DashboardGroupLayout({
   children,
@@ -158,8 +159,10 @@ export default async function DashboardGroupLayout({
           id="page-content"
           className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
         >
-          <BroadcastBanner showBroadcasts={showSchoolAdminBroadcasts} />
-          {children}
+          <DashboardFeedbackProvider>
+            <BroadcastBanner showBroadcasts={showSchoolAdminBroadcasts} />
+            {children}
+          </DashboardFeedbackProvider>
         </div>
       </div>
     </>

@@ -5,8 +5,8 @@ import { describeSupabaseError } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddClassForm } from "./add-class-form";
 import { ClassesList } from "./classes-list";
-import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { BackButton } from "@/components/dashboard/back-button";
 
 export default async function ClassesPage() {
   const supabase = await createClient();
@@ -95,12 +95,12 @@ export default async function ClassesPage() {
               Manage your school&apos;s classes and grades.
             </p>
           </div>
-          <Link
+          <BackButton
             href="/dashboard"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Back
-          </Link>
+          </BackButton>
         </div>
       </header>
 

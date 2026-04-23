@@ -15,6 +15,7 @@ import type {
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { subjectTextKey } from "@/lib/subject-text-key";
 
 type AssignmentRow = {
   id: string;
@@ -28,11 +29,7 @@ type AssignmentRow = {
   updated_at: string;
 };
 
-/** Grouping / filter key: trimmed `subject` text column, empty → "Subject". */
-function subjectTextKey(subject: string | null | undefined): string {
-  const t = (subject ?? "").trim();
-  return t || "Subject";
-}
+export { subjectTextKey } from "@/lib/subject-text-key";
 
 /**
  * At least one `teacher_scores` row exists (matches “has a score” when any row

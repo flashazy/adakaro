@@ -1,7 +1,12 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  showAdminErrorToast,
+  showAdminSuccessToast,
+} from "@/components/dashboard/dashboard-feedback-provider";
 import { createClient } from "@/lib/supabase/client";
 import {
   normalizePlanId,
@@ -117,7 +122,7 @@ export function RequestUpgradeQuickAction({
           setTarget(higherPlans[0] ?? "basic");
           setOpen(true);
         }}
-        className="group flex w-full items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
+        className="group flex w-full touch-manipulation items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
       >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary transition-colors group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)] group-disabled:opacity-50 dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)]">
           {plansIcon}
@@ -201,9 +206,10 @@ export function RequestUpgradeQuickAction({
                 disabled={pending || success || !effectiveSchoolId}
                 onClick={async () => {
                   if (!effectiveSchoolId) {
-                    setMsg(
-                      "No school ID found. Refresh the page or complete school setup."
-                    );
+                    const errText =
+                      "No school ID found. Refresh the page or complete school setup.";
+                    setMsg(errText);
+                    showAdminErrorToast(errText);
                     return;
                   }
                   setPending(true);
@@ -224,22 +230,44 @@ export function RequestUpgradeQuickAction({
                       error?: string;
                     };
                     if (!res.ok) {
-                      setMsg(body.error || "Request failed.");
+                      const errText = body.error || "Request failed.";
+                      setMsg(errText);
+                      showAdminErrorToast(errText);
                       return;
                     }
                     setSuccess(true);
+                    showAdminSuccessToast(
+                      "Request submitted. A platform admin will review it shortly."
+                    );
                     window.setTimeout(() => {
                       setOpen(false);
                       setSuccess(false);
                       router.refresh();
                     }, 1800);
+                  } catch (e) {
+                    const errText =
+                      e instanceof Error
+                        ? e.message
+                        : "Network error — could not reach the server.";
+                    setMsg(errText);
+                    showAdminErrorToast(errText);
                   } finally {
                     setPending(false);
                   }
                 }}
-                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {pending ? "Submitting…" : "Submit request"}
+                {pending ? (
+                  <>
+                    <Loader2
+                      className="h-4 w-4 shrink-0 animate-spin"
+                      aria-hidden
+                    />
+                    Loading…
+                  </>
+                ) : (
+                  "Submit request"
+                )}
               </button>
             </div>
           </div>

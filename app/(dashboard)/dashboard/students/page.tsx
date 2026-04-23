@@ -14,8 +14,8 @@ import { QueryErrorBanner } from "../query-error-banner";
 import { AddStudentForm } from "./add-student-form";
 import StudentImportModal from "./components/student-import-modal";
 import { StudentList } from "./student-list";
-import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { BackButton } from "@/components/dashboard/back-button";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 
 /** DB migration not applied yet — do not block the whole page. */
@@ -153,12 +153,12 @@ export default async function StudentsPage() {
               Manage enrolment and student records.
             </p>
           </div>
-          <Link
+          <BackButton
             href="/dashboard"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Back
-          </Link>
+          </BackButton>
         </div>
       </header>
 

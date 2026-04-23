@@ -20,6 +20,7 @@ import {
   getStudentsForSubject,
 } from "@/lib/student-subject-enrollment-queries";
 import { resolveClassCluster } from "@/lib/class-cluster";
+import { resolveSchoolDisplayTimezone } from "@/lib/school-timezone";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -278,7 +279,10 @@ export async function loadAttendanceData(
   const byStudent: Record<string, AttendanceStatus> = {};
   const idsWithAttendanceOnDate = new Set<string>();
   for (const r of rows ?? []) {
-    const row = r as { student_id: string; status: AttendanceStatus };
+    const row = r as {
+      student_id: string;
+      status: AttendanceStatus;
+    };
     byStudent[row.student_id] = row.status;
     idsWithAttendanceOnDate.add(row.student_id);
   }
@@ -434,7 +438,7 @@ export async function saveAttendanceAction(input: {
   const studentIds = uniqueRecords.map((r) => r.studentId);
   const { data: existingRows, error: existingErr } = await admin
     .from("teacher_attendance")
-    .select("student_id, status")
+    .select("id, student_id, status")
     .eq("teacher_id", user.id)
     .eq("class_id", input.classId)
     .eq("attendance_date", dateOnly)
@@ -453,20 +457,38 @@ export async function saveAttendanceAction(input: {
     };
   }
 
-  const statusByStudent = new Map(
-    ((existingRows ?? []) as { student_id: string; status: string }[]).map(
-      (row) => [row.student_id, String(row.status).trim().toLowerCase()] as const
-    )
-  );
-
   const normStatus = (s: string) => s.trim().toLowerCase();
-  const changedRecords = uniqueRecords.filter((r) => {
-    const prev = statusByStudent.get(r.studentId);
-    if (prev === undefined) return true;
-    return normStatus(prev) !== normStatus(r.status);
-  });
 
-  if (changedRecords.length === 0) {
+  type ExistingAttendanceRow = {
+    id: string;
+    student_id: string;
+    status: string;
+  };
+  const existingByStudent = new Map<
+    string,
+    { id: string; statusNorm: string }
+  >();
+  for (const row of (existingRows ?? []) as ExistingAttendanceRow[]) {
+    existingByStudent.set(row.student_id, {
+      id: row.id,
+      statusNorm: normStatus(row.status),
+    });
+  }
+
+  const toInsert: typeof uniqueRecords = [];
+  const toUpdate: { id: string; status: AttendanceStatus }[] = [];
+
+  for (const r of uniqueRecords) {
+    const ex = existingByStudent.get(r.studentId);
+    const nextNorm = normStatus(r.status);
+    if (!ex) {
+      toInsert.push(r);
+    } else if (ex.statusNorm !== nextNorm) {
+      toUpdate.push({ id: ex.id, status: r.status });
+    }
+  }
+
+  if (toInsert.length === 0 && toUpdate.length === 0) {
     console.log("[saveAttendanceAction] no status changes, skipping write", {
       classId: input.classId,
       date: dateOnly,
@@ -478,7 +500,17 @@ export async function saveAttendanceAction(input: {
     return { ok: true as const };
   }
 
-  const attendanceRecords = changedRecords.map((r) => ({
+  console.log("[saveAttendanceAction] insert / update only where status changed", {
+    classId: input.classId,
+    date: dateOnly,
+    subjectId,
+    scopeKey,
+    recordCount: uniqueRecords.length,
+    insertCount: toInsert.length,
+    updateCount: toUpdate.length,
+  });
+
+  const insertPayload = toInsert.map((r) => ({
     teacher_id: user.id,
     school_id: schoolId,
     class_id: input.classId,
@@ -489,51 +521,64 @@ export async function saveAttendanceAction(input: {
     attendance_scope_key: scopeKey,
   }));
 
-  console.log("[saveAttendanceAction] batch upsert", {
-    classId: input.classId,
-    date: dateOnly,
-    subjectId,
-    scopeKey,
-    recordCount: uniqueRecords.length,
-    upsertCount: attendanceRecords.length,
-  });
-
-  const { error } = await (admin as Db).from("teacher_attendance").upsert(
-    attendanceRecords,
-    {
-      onConflict:
-        "teacher_id,class_id,student_id,attendance_date,attendance_scope_key",
-      ignoreDuplicates: false,
+  if (insertPayload.length > 0) {
+    const { error: insertError } = await (admin as Db)
+      .from("teacher_attendance")
+      .insert(insertPayload);
+    if (insertError) {
+      console.error("[saveAttendanceAction] batch insert failed", {
+        message: insertError.message,
+        code: insertError.code,
+        details: insertError.details,
+        hint: insertError.hint,
+      });
+      const code = insertError.code ?? "";
+      const raw = `${insertError.message} ${(insertError as { details?: string }).details ?? ""}`;
+      let userMessage = insertError.message;
+      if (
+        code === "23505" &&
+        raw.includes("teacher_attendance_unique_record")
+      ) {
+        userMessage =
+          "This student already has attendance saved today under another subject. Your school database needs a one-time update so each subject can keep its own attendance. Please ask your administrator to apply the latest Supabase migrations, then try again.";
+      } else if (code === "23505") {
+        userMessage =
+          "Could not save this attendance because it conflicts with existing data. Refresh the page and try again. If it keeps happening, contact your administrator.";
+      } else if (code === "42501" || /permission denied/i.test(insertError.message)) {
+        userMessage =
+          "You do not have permission to save attendance for this class. Contact your school administrator if this persists.";
+      } else if (/violates foreign key/i.test(insertError.message)) {
+        userMessage =
+          "A student or class reference is no longer valid. Refresh the page and try again.";
+      }
+      return { ok: false, error: userMessage };
     }
-  );
+  }
 
-  if (error) {
-    console.error("[saveAttendanceAction] batch upsert failed", {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-    });
-    const code = error.code ?? "";
-    const raw = `${error.message} ${(error as { details?: string }).details ?? ""}`;
-    let userMessage = error.message;
-    if (
-      code === "23505" &&
-      raw.includes("teacher_attendance_unique_record")
-    ) {
-      userMessage =
-        "This student already has attendance saved today under another subject. Your school database needs a one-time update so each subject can keep its own attendance. Please ask your administrator to apply the latest Supabase migrations, then try again.";
-    } else if (code === "23505") {
-      userMessage =
-        "Could not save this attendance because it conflicts with existing data. Refresh the page and try again. If it keeps happening, contact your administrator.";
-    } else if (code === "42501" || /permission denied/i.test(error.message)) {
-      userMessage =
-        "You do not have permission to save attendance for this class. Contact your school administrator if this persists.";
-    } else if (/violates foreign key/i.test(error.message)) {
-      userMessage =
-        "A student or class reference is no longer valid. Refresh the page and try again.";
+  if (toUpdate.length > 0) {
+    const updateOutcomes = await Promise.all(
+      toUpdate.map((u) =>
+        (admin as Db)
+          .from("teacher_attendance")
+          .update({ status: u.status })
+          .eq("id", u.id)
+      )
+    );
+    const failed = updateOutcomes.find((o) => o.error);
+    if (failed?.error) {
+      const err = failed.error;
+      console.error("[saveAttendanceAction] status update failed", {
+        message: err.message,
+        code: err.code,
+      });
+      const code = err.code ?? "";
+      let userMessage = err.message;
+      if (code === "42501" || /permission denied/i.test(err.message)) {
+        userMessage =
+          "You do not have permission to save attendance for this class. Contact your school administrator if this persists.";
+      }
+      return { ok: false, error: userMessage };
     }
-    return { ok: false, error: userMessage };
   }
 
   revalidatePath("/teacher-dashboard");
@@ -542,7 +587,8 @@ export async function saveAttendanceAction(input: {
     classId: input.classId,
     date: dateOnly,
     subjectId,
-    savedCount: attendanceRecords.length,
+    inserted: toInsert.length,
+    updated: toUpdate.length,
   });
   return { ok: true as const };
 }
@@ -568,7 +614,7 @@ export async function loadAttendanceHistory(
 
   let histQuery = admin
     .from("teacher_attendance")
-    .select("attendance_date, status, student_id")
+    .select("attendance_date, status, student_id, created_at, updated_at")
     .eq("teacher_id", user.id)
     .eq("class_id", classId)
     .order("attendance_date", { ascending: false })
@@ -586,13 +632,40 @@ export async function loadAttendanceHistory(
     return { ok: false as const, error: histError.message };
   }
 
+  const { data: schoolTzRow } = await admin
+    .from("schools")
+    .select("timezone")
+    .eq("id", gate.schoolId)
+    .maybeSingle();
+  const displayTimeZone = resolveSchoolDisplayTimezone(
+    (schoolTzRow as { timezone: string | null } | null)?.timezone
+  );
+
   type Row = {
     attendance_date: string;
     status: string;
     student_id: string;
+    created_at: string;
+    updated_at: string | null;
   };
 
   const list = (rows ?? []) as Row[];
+
+  /** Latest modification instant among all rows for each calendar date (class + subject scope). */
+  const lastModifiedIsoByDate: Record<string, string> = {};
+  for (const r of list) {
+    const d = r.attendance_date;
+    const iso =
+      r.updated_at && String(r.updated_at).trim().length > 0
+        ? String(r.updated_at)
+        : r.created_at;
+    const ms = new Date(iso).getTime();
+    if (Number.isNaN(ms)) continue;
+    const prev = lastModifiedIsoByDate[d];
+    if (!prev || ms > new Date(prev).getTime()) {
+      lastModifiedIsoByDate[d] = iso;
+    }
+  }
   const ids = [...new Set(list.map((r) => r.student_id))];
   const nameById = new Map<string, string>();
   if (ids.length > 0) {
@@ -634,6 +707,12 @@ export async function loadAttendanceHistory(
     rowCount: list.length,
   });
 
+  const lastModifiedForDates: Record<string, string> = {};
+  for (const d of dates) {
+    const iso = lastModifiedIsoByDate[d];
+    if (iso) lastModifiedForDates[d] = iso;
+  }
+
   return {
     ok: true as const,
     dates,
@@ -641,6 +720,8 @@ export async function loadAttendanceHistory(
       string,
       { attendance_date: string; status: string; student_id: string; student_name: string }[]
     >,
+    lastModifiedIsoByDate: lastModifiedForDates,
+    displayTimeZone,
   };
 }
 

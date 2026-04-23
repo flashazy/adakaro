@@ -1,7 +1,8 @@
 import type { ChildTabData } from "./parent-child-tab-data";
 import { ParentReportCardsTabClient } from "./parent-report-cards-tab-client";
 import { ParentClassResultSheetsTabClient } from "./parent-class-result-sheets-tab-client";
-import { ParentClassResultsTabClient } from "./parent-class-results-tab-client";
+import { DEFAULT_SCHOOL_DISPLAY_TIMEZONE } from "@/lib/school-timezone";
+export { ParentClassResultsTabContent } from "./parent-class-results-tab-content-client";
 
 function NoData() {
   return (
@@ -41,20 +42,24 @@ function statusLabel(status: ChildTabData["attendance"][number]["status"]) {
   }
 }
 
-function formatRecordedTime(iso: string | null) {
+function formatRecordedTime(iso: string | null, timeZone: string) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString(undefined, {
+  return new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit",
-  });
+    hour12: true,
+    timeZone,
+  }).format(d);
 }
 
 export function ParentAttendanceTabContent({
   rows,
+  attendanceTimeZone = DEFAULT_SCHOOL_DISPLAY_TIMEZONE,
 }: {
   rows: ChildTabData["attendance"];
+  attendanceTimeZone?: string;
 }) {
   if (rows.length === 0) {
     return (
@@ -100,7 +105,7 @@ export function ParentAttendanceTabContent({
                 {statusLabel(a.status)}
               </td>
               <td className="py-2.5 align-top tabular-nums text-slate-500 dark:text-zinc-500">
-                {formatRecordedTime(a.recordedAt)}
+                {formatRecordedTime(a.recordedAt, attendanceTimeZone)}
               </td>
             </tr>
           ))}
@@ -110,23 +115,3 @@ export function ParentAttendanceTabContent({
   );
 }
 
-export function ParentClassResultsTabContent({
-  studentId,
-  classId,
-  classResultSubjects,
-  majorExamClassResults,
-}: {
-  studentId: string;
-  classId: string;
-  classResultSubjects: ChildTabData["classResultSubjects"];
-  majorExamClassResults: ChildTabData["majorExamClassResults"];
-}) {
-  return (
-    <ParentClassResultsTabClient
-      studentId={studentId}
-      classId={classId}
-      classResultSubjects={classResultSubjects}
-      initialPayload={majorExamClassResults}
-    />
-  );
-}

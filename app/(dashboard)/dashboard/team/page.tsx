@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { BackButton } from "@/components/dashboard/back-button";
 import { createClient } from "@/lib/supabase/server";
 import { parseSchoolDashboardRpc } from "@/lib/dashboard/parse-school-dashboard-rpc";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
@@ -344,12 +344,12 @@ export default async function TeamPage() {
               Manage administrators who can access this school
             </p>
           </div>
-          <Link
+          <BackButton
             href="/dashboard"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Back
-          </Link>
+          </BackButton>
         </div>
       </header>
 

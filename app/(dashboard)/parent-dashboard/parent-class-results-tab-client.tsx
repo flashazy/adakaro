@@ -8,13 +8,19 @@ import {
   useRef,
   useState,
   useTransition,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 import { BarChart3 } from "lucide-react";
 import { passingThresholdPercent } from "@/lib/tanzania-grades";
 import type { ParentMajorExamClassResultsPayload } from "@/lib/parent-major-exam-class-results-types";
 import type { PassRateStats, FailRateStats } from "@/lib/gradebook-full-report-compute";
 import type { SchoolLevel } from "@/lib/school-level";
+import { subjectTextKey } from "@/lib/subject-text-key";
+import type { SubjectResultsUnreadState } from "@/lib/parent-subject-results-unread-types";
+import { markSubjectResultAssignmentViewed } from "@/lib/parent-subject-results-unread-types";
 import { loadParentClassResultsForSubjectAction } from "./parent-class-results-actions";
+import { recordParentSubjectResultViewedAction } from "./parent-subject-results-view-actions";
 
 function PassRateBlock({
   seg,
@@ -81,11 +87,17 @@ export function ParentClassResultsTabClient({
   classId,
   classResultSubjects,
   initialPayload,
+  subjectResultsUnread,
+  onSubjectResultsUnreadChange,
 }: {
   studentId: string;
   classId: string;
   classResultSubjects: string[];
   initialPayload: ParentMajorExamClassResultsPayload;
+  subjectResultsUnread: SubjectResultsUnreadState;
+  onSubjectResultsUnreadChange: Dispatch<
+    SetStateAction<SubjectResultsUnreadState>
+  >;
 }) {
   const idBase = useId();
   const [payload, setPayload] = useState(initialPayload);
@@ -105,7 +117,7 @@ export function ParentClassResultsTabClient({
       return;
     }
     didLogMount.current = true;
-    // eslint-disable-next-line no-console -- parent Class results debug
+    // eslint-disable-next-line no-console -- parent Subject results debug
     console.log("[ParentClassResults] mount", {
       initialPayload,
       classResultSubjects: [...classResultSubjects],
@@ -143,7 +155,7 @@ export function ParentClassResultsTabClient({
         });
         if (r.ok) {
           if (process.env.NODE_ENV === "development") {
-            // eslint-disable-next-line no-console -- parent Class results debug
+            // eslint-disable-next-line no-console -- parent Subject results debug
             console.log(
               "[ParentClassResults] payload after subject fetch",
               { subject: subj, payload: r.payload }
@@ -171,9 +183,42 @@ export function ParentClassResultsTabClient({
     [options, selectedId]
   );
 
+  const selectedAssignmentId = selected?.assignment?.id ?? null;
+
+  useEffect(() => {
+    if (isPending) return;
+    if (!selectedAssignmentId) return;
+    if (subjectResultsUnread.byAssignmentUnviewed[selectedAssignmentId] !== true) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const r = await recordParentSubjectResultViewedAction({
+        studentId,
+        classId,
+        assignmentId: selectedAssignmentId,
+      });
+      if (cancelled || !r.ok) return;
+      onSubjectResultsUnreadChange((prev) =>
+        markSubjectResultAssignmentViewed(prev, selectedAssignmentId)
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isPending,
+    classId,
+    studentId,
+    selectedAssignmentId,
+    subjectResultsUnread,
+    onSubjectResultsUnreadChange,
+  ]);
+
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
-    // eslint-disable-next-line no-console -- parent Class results debug
+    // eslint-disable-next-line no-console -- parent Subject results debug
     console.log("[ParentClassResults] subjects + selection", {
       classResultSubjects,
       optionsCount: options.length,
@@ -221,6 +266,26 @@ export function ParentClassResultsTabClient({
   const subjectLineLabel =
     classResultSubjects[0] ?? options[0]?.meta?.subject?.trim() ?? "Subject";
 
+  const subjectOptionLine = (s: string) => {
+    const dot =
+      subjectResultsUnread.bySubjectHasUnviewed[subjectTextKey(s)] === true
+        ? "🔵 "
+        : "";
+    return `${dot}${s}`;
+  };
+
+  const assignmentOptionLine = (o: (typeof options)[0]) => {
+    const isNew = subjectResultsUnread.byAssignmentUnviewed[o.assignment.id] === true;
+    return `${isNew ? "🆕 " : ""}${o.label}`;
+  };
+
+  const singleSubjectUnreadDot =
+    subjectResultsUnread.bySubjectHasUnviewed[
+      subjectTextKey(classResultSubjects[0] ?? selectedSubject)
+    ] === true
+      ? "🔵 "
+      : "";
+
   if (options.length === 0) {
     return (
       <div className="space-y-3 px-4 py-4 sm:px-6">
@@ -242,12 +307,13 @@ export function ParentClassResultsTabClient({
             >
               {classResultSubjects.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {subjectOptionLine(s)}
                 </option>
               ))}
             </select>
           ) : (
             <span className="text-sm text-slate-800 dark:text-zinc-200">
+              {singleSubjectUnreadDot}
               {subjectLineLabel}
             </span>
           )}
@@ -289,12 +355,13 @@ export function ParentClassResultsTabClient({
             >
               {classResultSubjects.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {subjectOptionLine(s)}
                 </option>
               ))}
             </select>
           ) : (
             <span className="text-sm text-slate-800 dark:text-zinc-200">
+              {singleSubjectUnreadDot}
               {subjectLineLabel}
             </span>
           )}
@@ -322,7 +389,7 @@ export function ParentClassResultsTabClient({
           >
             {options.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.label}
+                {assignmentOptionLine(o)}
               </option>
             ))}
           </select>
@@ -334,7 +401,9 @@ export function ParentClassResultsTabClient({
             className="w-full max-w-xl cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 opacity-90 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300"
             aria-label="Class assignment report"
           >
-            <option value={selected.id}>{selected.label}</option>
+            <option value={selected.id}>
+              {assignmentOptionLine(selected)}
+            </option>
           </select>
         )}
         </div>

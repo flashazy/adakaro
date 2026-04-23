@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { BackButton } from "@/components/dashboard/back-button";
 import { isSchoolAdminBroadcastAudience } from "@/lib/broadcasts/school-admin-audience";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { MessagesClient } from "./messages-client";
@@ -41,12 +41,12 @@ export default async function SchoolAdminMessagesPage() {
   return (
     <div>
       <div className="mb-6">
-        <Link
+        <BackButton
           href="/dashboard"
           className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary dark:hover:opacity-90"
         >
           ← Back to dashboard
-        </Link>
+        </BackButton>
       </div>
       <header className="mb-8">
         <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">

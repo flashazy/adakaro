@@ -288,6 +288,7 @@ export interface Database {
           term_2_end: string | null;
           term_3_start: string | null;
           term_3_end: string | null;
+          timezone: string | null;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -321,6 +322,7 @@ export interface Database {
           term_2_end?: string | null;
           term_3_start?: string | null;
           term_3_end?: string | null;
+          timezone?: string | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -353,6 +355,7 @@ export interface Database {
           term_2_end?: string | null;
           term_3_start?: string | null;
           term_3_end?: string | null;
+          timezone?: string | null;
           updated_at?: string;
         };
       };
@@ -1135,6 +1138,26 @@ export interface Database {
         Update: {
           parent_id?: string;
           student_id?: string;
+        };
+      };
+      parent_viewed_results: {
+        Row: {
+          parent_id: string;
+          student_id: string;
+          subject: string;
+          assignment_id: string;
+          viewed_at: string;
+        };
+        Insert: {
+          parent_id: string;
+          student_id: string;
+          subject: string;
+          assignment_id: string;
+          viewed_at?: string;
+        };
+        Update: {
+          subject?: string;
+          viewed_at?: string;
         };
       };
       parent_link_requests: {

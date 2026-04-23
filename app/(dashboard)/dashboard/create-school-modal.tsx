@@ -1,8 +1,10 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useId, useState } from "react";
 import { SchoolCurrencySelect } from "@/components/SchoolCurrencySelect";
+import { showAdminErrorToast } from "@/components/dashboard/dashboard-feedback-provider";
 
 interface CreateSchoolModalProps {
   /** When false, modal cannot open (user already has a school). */
@@ -56,7 +58,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
           const preview = raw.slice(0, 280);
           const msg = `Invalid response (${res.status}). ${preview}`;
           setError(msg);
-          window.alert(msg);
+          showAdminErrorToast(msg);
           return;
         }
       }
@@ -71,14 +73,14 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
         const msg =
           parts.join("\n") || `Request failed with status ${res.status}`;
         setError(msg);
-        window.alert(msg);
+        showAdminErrorToast(msg);
         return;
       }
 
       if (!body.school_id && !body.ok) {
         const msg = "Unexpected success response (missing school_id).";
         setError(msg);
-        window.alert(msg);
+        showAdminErrorToast(msg);
         return;
       }
 
@@ -94,7 +96,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
           ? e.message
           : "Network error — could not reach the server.";
       setError(msg);
-      window.alert(msg);
+      showAdminErrorToast(msg);
     } finally {
       setPending(false);
     }
@@ -109,7 +111,7 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="group flex w-full items-start gap-4 rounded-xl border-2 border-[rgb(var(--school-primary-rgb)/0.45)] bg-[rgb(var(--school-primary-rgb)/0.10)]/80 p-5 text-left shadow-sm transition-all hover:border-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] hover:shadow-md dark:border-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:hover:border-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.2)]"
+        className="group flex w-full touch-manipulation items-start gap-4 rounded-xl border-2 border-[rgb(var(--school-primary-rgb)/0.45)] bg-[rgb(var(--school-primary-rgb)/0.10)]/80 p-5 text-left shadow-sm transition-all hover:border-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] hover:shadow-md active:scale-[0.98] dark:border-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:hover:border-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.2)]"
       >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-school-primary text-white dark:bg-school-primary">
           <svg
@@ -303,9 +305,19 @@ export function CreateSchoolModal({ enabled }: CreateSchoolModalProps) {
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {pending ? "Creating…" : "Create school"}
+                  {pending ? (
+                    <>
+                      <Loader2
+                        className="h-4 w-4 shrink-0 animate-spin"
+                        aria-hidden
+                      />
+                      Saving…
+                    </>
+                  ) : (
+                    "Create school"
+                  )}
                 </button>
               </div>
             </form>

@@ -5,7 +5,7 @@ import { describeSupabaseError } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddFeeTypeForm } from "./add-fee-type-form";
 import { FeeTypesList } from "./fee-types-list";
-import Link from "next/link";
+import { BackButton } from "@/components/dashboard/back-button";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
 export default async function FeeTypesPage() {
@@ -52,12 +52,12 @@ export default async function FeeTypesPage() {
               Define the categories of fees your school charges.
             </p>
           </div>
-          <Link
+          <BackButton
             href="/dashboard"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Back
-          </Link>
+          </BackButton>
         </div>
       </header>
 

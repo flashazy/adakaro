@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackButton } from "@/components/dashboard/back-button";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -324,12 +324,12 @@ export default async function StudentProfilePage({
               {typedStudent.class?.name ? ` · ${typedStudent.class.name}` : ""}
             </p>
           </div>
-          <Link
+          <BackButton
             href="/dashboard/students"
             className="inline-flex w-fit items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             ← Back to students
-          </Link>
+          </BackButton>
         </div>
       </header>
 

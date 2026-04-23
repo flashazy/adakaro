@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { AdminQuickActionLink } from "@/components/dashboard/admin-quick-action-link";
 import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { getDisplayName } from "@/lib/display-name";
@@ -489,7 +490,7 @@ export default async function AdminDashboard() {
           </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {NAV_LINKS.map((link) => (
-              <Link
+              <AdminQuickActionLink
                 key={link.href}
                 href={link.href}
                 className="group flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
@@ -505,7 +506,7 @@ export default async function AdminDashboard() {
                     {link.desc}
                   </p>
                 </div>
-              </Link>
+              </AdminQuickActionLink>
             ))}
             <RequestUpgradeQuickAction
               schoolId={schoolId!}

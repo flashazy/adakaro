@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
+import { BackButton } from "@/components/dashboard/back-button";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
@@ -285,12 +285,12 @@ export default async function ApprovedConnectionsPage() {
               </p>
             </div>
           </div>
-          <Link
+          <BackButton
             href="/dashboard"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Dashboard
-          </Link>
+          </BackButton>
         </div>
       </header>
 
@@ -299,12 +299,12 @@ export default async function ApprovedConnectionsPage() {
           className="text-xs text-slate-500 dark:text-zinc-400"
           aria-label="Breadcrumb"
         >
-          <Link
+          <BackButton
             href="/dashboard"
-            className="text-slate-600 transition-colors hover:text-school-primary dark:text-zinc-300 dark:hover:opacity-90"
+            className="border-0 bg-transparent p-0 shadow-none ring-0 text-slate-600 transition-colors hover:text-school-primary dark:text-zinc-300 dark:hover:opacity-90"
           >
             Dashboard
-          </Link>
+          </BackButton>
           <span className="mx-1.5 text-slate-400 dark:text-zinc-600">/</span>
           <span className="text-slate-600 dark:text-zinc-300">
             Parent Links

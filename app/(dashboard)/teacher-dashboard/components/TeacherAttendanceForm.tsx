@@ -9,6 +9,10 @@ import {
   loadAttendanceHistory,
   saveAttendanceAction,
 } from "../actions";
+import {
+  DEFAULT_SCHOOL_DISPLAY_TIMEZONE,
+  formatDateTimeInSchoolZone,
+} from "@/lib/school-timezone";
 import type { TeacherClassOption } from "../data";
 
 type Status = "present" | "absent" | "late";
@@ -151,6 +155,12 @@ export function TeacherAttendanceForm({
     () => new Set()
   );
   const [hasChanges, setHasChanges] = useState(false);
+  /** Per attendance_date: max(updated_at, else created_at) among all rows for that day (ISO). */
+  const [historyLastModifiedIsoByDate, setHistoryLastModifiedIsoByDate] =
+    useState<Record<string, string>>({});
+  const [historyDisplayTimeZone, setHistoryDisplayTimeZone] = useState(
+    DEFAULT_SCHOOL_DISPLAY_TIMEZONE
+  );
 
   const uniqueClasses = useMemo(
     () => [...new Map(options.map((o) => [o.classId, o])).values()],
@@ -236,6 +246,8 @@ export function TeacherAttendanceForm({
       setLoadError(res.error);
       setStudents([]);
       setStatusByStudent({});
+      setHistoryLastModifiedIsoByDate({});
+      setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
       setHasChanges(false);
       return;
     }
@@ -254,6 +266,10 @@ export function TeacherAttendanceForm({
     if (hist.ok) {
       setHistoryDates(hist.dates);
       setHistoryByDate(hist.byDate);
+      setHistoryLastModifiedIsoByDate(hist.lastModifiedIsoByDate ?? {});
+      setHistoryDisplayTimeZone(
+        hist.displayTimeZone ?? DEFAULT_SCHOOL_DISPLAY_TIMEZONE
+      );
     } else {
       console.error(
         "[TeacherAttendanceForm] loadAttendanceHistory failed",
@@ -261,6 +277,8 @@ export function TeacherAttendanceForm({
       );
       setHistoryDates([]);
       setHistoryByDate({});
+      setHistoryLastModifiedIsoByDate({});
+      setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
     }
   }, [
     classId,
@@ -790,14 +808,16 @@ export function TeacherAttendanceForm({
                         currentStatus === "late" && "bg-yellow-50"
                       )}
                     >
-                      <span className="inline-flex flex-wrap items-center gap-y-1 font-medium text-gray-900 dark:text-white">
-                        {s.full_name}
-                        {frequentAbsenteeIds.has(s.id) ? (
-                          <span className="ml-2 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                            Frequent Absentee
-                          </span>
-                        ) : null}
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="inline-flex flex-wrap items-center gap-y-1 font-medium text-gray-900 dark:text-white">
+                          {s.full_name}
+                          {frequentAbsenteeIds.has(s.id) ? (
+                            <span className="ml-2 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                              Frequent Absentee
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
                       {viewMode === "symbol"
                         ? renderSymbolButtons(s.id, currentStatus)
                         : renderTextButtons(s.id, currentStatus)}
@@ -883,13 +903,17 @@ export function TeacherAttendanceForm({
                         const rows = historyByDate[d] ?? [];
                         const { present, absent, late } =
                           countAttendanceRollup(rows);
+                        const lastModLabel = formatDateTimeInSchoolZone(
+                          historyLastModifiedIsoByDate[d],
+                          historyDisplayTimeZone
+                        );
                         return (
                           <div
                             key={d}
                             className="flex items-center justify-between gap-3 py-2 text-sm"
                           >
                             <span className="font-medium text-slate-800 dark:text-zinc-200">
-                              {formatDisplayDate(d)}
+                              {lastModLabel ?? formatDisplayDate(d)}
                             </span>
                             <span className="text-right text-slate-600 dark:text-zinc-400">
                               <span className="text-green-600 dark:text-green-400">

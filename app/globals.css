@@ -238,3 +238,24 @@ body {
     animation: none;
   }
 }
+
+/* Admin dashboard: top navigation progress segment */
+@keyframes dashboard-nav-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+.dashboard-nav-indeterminate {
+  animation: dashboard-nav-indeterminate 1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-nav-indeterminate {
+    animation: none;
+    transform: translateX(0);
+    width: 100%;
+    opacity: 0.85;
+  }
+}

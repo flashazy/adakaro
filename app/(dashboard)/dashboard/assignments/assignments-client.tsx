@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { BackButton } from "@/components/dashboard/back-button";
 import { useRouter } from "next/navigation";
 import {
   AssignTeacherModal,
@@ -222,12 +222,12 @@ export function AssignmentsPageClient({
   return (
     <div className="space-y-6">
       <div>
-        <Link
+        <BackButton
           href="/dashboard"
           className="text-sm font-medium text-slate-600 hover:text-slate-900"
         >
           ← Back to dashboard
-        </Link>
+        </BackButton>
       </div>
 
       <div>

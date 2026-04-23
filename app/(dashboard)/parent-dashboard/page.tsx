@@ -20,11 +20,16 @@ import {
   sortCurrencyCodes,
   type SchoolCurrencyCode,
 } from "@/lib/currency";
+import {
+  DEFAULT_SCHOOL_DISPLAY_TIMEZONE,
+  resolveSchoolDisplayTimezone,
+} from "@/lib/school-timezone";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 import {
   loadParentChildTabData,
   type ChildTabData,
 } from "./parent-child-tab-data";
+import { initialEmptySubjectResultsUnread } from "@/lib/parent-subject-results-unread-types";
 import { ParentChildCardTabs } from "./parent-child-card-tabs";
 import {
   ParentReportCardsTabContent,
@@ -55,34 +60,41 @@ interface CurrencyTotalsAgg {
   totalBalance: number;
 }
 
-/** Batch-read school name + currency via service role (avoids RLS issues on `schools`). */
+/** Batch-read school name + currency + display timezone via service role (avoids RLS issues on `schools`). */
 async function loadParentSchoolCurrencies(
   schoolIds: string[]
 ): Promise<{
   currencyBySchoolId: Map<string, SchoolCurrencyCode>;
   schoolNameBySchoolId: Map<string, string>;
+  schoolTimezoneBySchoolId: Map<string, string>;
 }> {
   const currencyBySchoolId = new Map<string, SchoolCurrencyCode>();
   const schoolNameBySchoolId = new Map<string, string>();
+  const schoolTimezoneBySchoolId = new Map<string, string>();
   if (schoolIds.length === 0) {
-    return { currencyBySchoolId, schoolNameBySchoolId };
+    return { currencyBySchoolId, schoolNameBySchoolId, schoolTimezoneBySchoolId };
   }
 
   try {
     const admin = createAdminClient();
     const { data: rows } = await admin
       .from("schools")
-      .select("id, name, currency")
+      .select("id, name, currency, timezone")
       .in("id", schoolIds);
     for (const row of rows ?? []) {
       const r = row as {
         id: string;
         name: string | null;
         currency: string | null;
+        timezone: string | null;
       };
       currencyBySchoolId.set(r.id, normalizeSchoolCurrency(r.currency));
       const n = r.name?.trim();
       schoolNameBySchoolId.set(r.id, n && n.length > 0 ? n : "School");
+      schoolTimezoneBySchoolId.set(
+        r.id,
+        resolveSchoolDisplayTimezone(r.timezone)
+      );
     }
   } catch {
     /* no service role */
@@ -96,9 +108,12 @@ async function loadParentSchoolCurrencies(
     if (!schoolNameBySchoolId.has(sid)) {
       schoolNameBySchoolId.set(sid, "School");
     }
+    if (!schoolTimezoneBySchoolId.has(sid)) {
+      schoolTimezoneBySchoolId.set(sid, DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
+    }
   }
 
-  return { currencyBySchoolId, schoolNameBySchoolId };
+  return { currencyBySchoolId, schoolNameBySchoolId, schoolTimezoneBySchoolId };
 }
 
 function aggregateBalancesByCurrency(
@@ -347,7 +362,7 @@ export default async function ParentDashboard() {
   }
 
   const schoolIds = [...new Set(students.map((s) => s.school_id))];
-  const { currencyBySchoolId, schoolNameBySchoolId } =
+  const { currencyBySchoolId, schoolNameBySchoolId, schoolTimezoneBySchoolId } =
     await loadParentSchoolCurrencies(schoolIds);
 
   function currencyForStudent(studentId: string): string {
@@ -605,21 +620,18 @@ export default async function ParentDashboard() {
                         </div>
                       }
                     >
-                      <ParentChildCardTabs>
-                        <ParentStudentFeesTabContent
-                          studentId={student.id}
-                          currencyCode={sc}
-                          balances={sBalances}
-                          payments={sPayments}
-                        />
-                        <ParentReportCardsTabContent
-                          rows={childTab?.reportCards ?? []}
-                        />
-                        <ParentExamResultsTabContent
-                          classResultSheets={childTab?.classResultSheets ?? []}
-                        />
+                      <ParentChildCardTabs
+                        initialSubjectResultsUnread={
+                          childTab?.subjectResultsUnread ??
+                          initialEmptySubjectResultsUnread()
+                        }
+                      >
                         <ParentAttendanceTabContent
                           rows={childTab?.attendance ?? []}
+                          attendanceTimeZone={
+                            schoolTimezoneBySchoolId.get(student.school_id) ??
+                            DEFAULT_SCHOOL_DISPLAY_TIMEZONE
+                          }
                         />
                         <ParentClassResultsTabContent
                           studentId={student.id}
@@ -633,6 +645,18 @@ export default async function ParentDashboard() {
                               defaultOptionId: "",
                             }
                           }
+                        />
+                        <ParentExamResultsTabContent
+                          classResultSheets={childTab?.classResultSheets ?? []}
+                        />
+                        <ParentReportCardsTabContent
+                          rows={childTab?.reportCards ?? []}
+                        />
+                        <ParentStudentFeesTabContent
+                          studentId={student.id}
+                          currencyCode={sc}
+                          balances={sBalances}
+                          payments={sPayments}
                         />
                       </ParentChildCardTabs>
                     </ParentStudentCard>
