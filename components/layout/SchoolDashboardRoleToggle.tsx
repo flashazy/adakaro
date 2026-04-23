@@ -12,7 +12,8 @@ function setDashboardModeCookie(mode: "admin" | "teacher") {
 
 /**
  * Lets users who are both school admin and teacher switch between dashboards.
- * Parent layout passes `enabled` when the user has school_members.role = admin and profile teacher.
+ * Parent layout passes `enabled` for profile teacher when the current school
+ * has school_members with role admin or promoted_from_teacher_at set.
  */
 export function SchoolDashboardRoleToggle({
   enabled = false,

@@ -49,14 +49,21 @@ export default async function DashboardGroupLayout({
   if (profileRow?.role === "teacher" && schoolIdForDual) {
     try {
       const ac = createAdminClient();
-      const { data: adminMem } = await ac
+      const { data: mem } = await ac
         .from("school_members")
-        .select("id")
+        .select("id, role, promoted_from_teacher_at")
         .eq("school_id", schoolIdForDual)
         .eq("user_id", user.id)
-        .eq("role", "admin")
         .maybeSingle();
-      dualSchoolDashboard = Boolean(adminMem);
+      const row = mem as {
+        id: string;
+        role: string;
+        promoted_from_teacher_at: string | null;
+      } | null;
+      dualSchoolDashboard = Boolean(
+        row &&
+          (row.role === "admin" || row.promoted_from_teacher_at != null)
+      );
     } catch {
       dualSchoolDashboard = false;
     }

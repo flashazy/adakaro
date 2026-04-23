@@ -18,6 +18,11 @@ type DashboardFeedbackContextValue = {
 const DashboardFeedbackContext =
   createContext<DashboardFeedbackContextValue | null>(null);
 
+/** When no provider (e.g. some layout branches), avoid crashing — navigation feedback is skipped. */
+const noopDashboardFeedback: DashboardFeedbackContextValue = {
+  startNavigation: () => {},
+};
+
 export function useOptionalDashboardFeedback() {
   return useContext(DashboardFeedbackContext);
 }
@@ -25,9 +30,12 @@ export function useOptionalDashboardFeedback() {
 export function useDashboardFeedback() {
   const ctx = useContext(DashboardFeedbackContext);
   if (!ctx) {
-    throw new Error(
-      "useDashboardFeedback must be used within DashboardFeedbackProvider"
-    );
+    if (process.env.NODE_ENV === "development") {
+      console.warn(
+        "[DashboardFeedback] Provider missing; navigation indeterminate bar disabled for this tree."
+      );
+    }
+    return noopDashboardFeedback;
   }
   return ctx;
 }
