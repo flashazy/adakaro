@@ -81,6 +81,7 @@ export function LoginForm() {
   const wasActionBusy = useRef(false);
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "";
+  const paramError = searchParams.get("error");
   const signupHref =
     next && next.startsWith("/")
       ? `/signup?next=${encodeURIComponent(next)}`
@@ -305,11 +306,19 @@ export function LoginForm() {
           </div>
         )}
 
-        {state.error && (
+        {paramError && !state.error ? (
+          <div
+            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+            role="alert"
+          >
+            {paramError}
+          </div>
+        ) : null}
+        {state.error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-400">
             {state.error}
           </div>
-        )}
+        ) : null}
 
         <div>
           <label

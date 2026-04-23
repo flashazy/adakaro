@@ -13,6 +13,7 @@ import type { TeacherActionState, TeacherDepartment } from "./types";
 import { ManageDepartmentRolesModal } from "./components/ManageDepartmentRolesModal";
 import { AssignCoordinatorModal } from "./components/AssignCoordinatorModal";
 import { BulkAddTeachersModal } from "./components/BulkAddTeachersModal";
+import { ResetTeacherPasswordModal } from "./components/ResetTeacherPasswordModal";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import {
   DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY,
@@ -122,6 +123,11 @@ export function TeachersPageClient({
     name: string;
     initial: string[];
   } | null>(null);
+  const [resetPasswordModal, setResetPasswordModal] = useState<{
+    userId: string;
+    name: string;
+  } | null>(null);
+  const [resetPasswordModalKey, setResetPasswordModalKey] = useState(0);
 
   const [addState, addAction, addPending] = useActionState(
     addTeacherAction,
@@ -510,6 +516,19 @@ export function TeachersPageClient({
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResetPasswordModal({
+                              userId: t.userId,
+                              name: t.fullName,
+                            });
+                            setResetPasswordModalKey((k) => k + 1);
+                          }}
+                          className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-950/50"
+                        >
+                          Reset password
+                        </button>
                         <form action={removeTeacherAction}>
                           <input
                             type="hidden"
@@ -667,6 +686,16 @@ export function TeachersPageClient({
         open={bulkAddOpen}
         onClose={() => setBulkAddOpen(false)}
       />
+
+      {resetPasswordModal ? (
+        <ResetTeacherPasswordModal
+          key={`${resetPasswordModal.userId}-${resetPasswordModalKey}`}
+          open
+          onClose={() => setResetPasswordModal(null)}
+          teacherUserId={resetPasswordModal.userId}
+          teacherName={resetPasswordModal.name}
+        />
+      ) : null}
     </div>
   );
 }

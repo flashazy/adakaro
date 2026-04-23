@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { TEACHER_TEMP_EXPIRED_ERROR } from "@/lib/teacher-temp-password-constants";
 import type { Database } from "@/types/supabase";
 
 export async function updateSession(request: NextRequest) {
@@ -185,12 +186,34 @@ export async function updateSession(request: NextRequest) {
     if (role === "teacher" || role === "admin") {
       const { data: profPw } = await supabase
         .from("profiles")
-        .select("password_changed")
+        .select(
+          "password_changed, password_forced_reset, teacher_temp_password_expires_at"
+        )
         .eq("id", user.id)
         .maybeSingle();
+      const pw = profPw as {
+        password_changed?: boolean;
+        password_forced_reset?: boolean;
+        teacher_temp_password_expires_at?: string | null;
+      } | null;
+
+      if (
+        role === "teacher" &&
+        pw?.password_forced_reset === true &&
+        pw.teacher_temp_password_expires_at &&
+        new Date(pw.teacher_temp_password_expires_at).getTime() <= Date.now()
+      ) {
+        await supabase.auth.signOut();
+        const url = request.nextUrl.clone();
+        url.pathname = "/login";
+        url.searchParams.set("error", TEACHER_TEMP_EXPIRED_ERROR);
+        return NextResponse.redirect(url);
+      }
+
       const mustChange =
-        (profPw as { password_changed?: boolean } | null)?.password_changed ===
-        false;
+        (role === "teacher" || role === "admin") &&
+        (pw?.password_changed === false ||
+          (role === "teacher" && pw?.password_forced_reset === true));
       if (mustChange) {
         const isChangePasswordPage = pathname.startsWith("/change-password");
         const isAuthApi = pathname.startsWith("/api/auth");

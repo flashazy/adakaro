@@ -36,13 +36,14 @@ export async function changeTeacherPasswordAction(
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("role, password_changed")
+    .select("role, password_changed, password_forced_reset")
     .eq("id", user.id)
     .maybeSingle();
 
   const pr = profileRow as {
     role: string;
     password_changed: boolean | null;
+    password_forced_reset: boolean;
   } | null;
 
   if (pr?.role !== "teacher" && pr?.role !== "admin") {
@@ -52,11 +53,18 @@ export async function changeTeacherPasswordAction(
     };
   }
 
-  if (pr?.password_changed !== false) {
-    if (pr?.role === "admin") {
+  if (pr?.role === "admin") {
+    if (pr.password_changed !== false) {
       redirect("/dashboard");
     }
-    redirect("/teacher-dashboard");
+  } else if (pr?.role === "teacher") {
+    const must =
+      pr.password_changed === false || pr.password_forced_reset === true;
+    if (!must) {
+      redirect("/teacher-dashboard");
+    }
+  } else {
+    redirect("/dashboard");
   }
 
   const { error: authErr } = await supabase.auth.updateUser({ password });
@@ -67,7 +75,13 @@ export async function changeTeacherPasswordAction(
   type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
   const { error: profErr } = await (supabase as Db)
     .from("profiles")
-    .update({ password_changed: true } satisfies ProfileUpdate)
+    .update(
+      {
+        password_changed: true,
+        password_forced_reset: false,
+        teacher_temp_password_expires_at: null,
+      } satisfies ProfileUpdate
+    )
     .eq("id", user.id);
 
   if (profErr) {

@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveLoginEmailForSignIn } from "@/lib/resolve-teacher-login-email";
+import { blockLoginIfTeacherTempPasswordExpired } from "@/lib/teacher-temp-password-expiry";
 import type { UserRole } from "@/types/supabase";
 
 export interface AuthState {
@@ -118,15 +119,28 @@ export async function login(
   }
 
   const user = authData.user;
+  const expiredBlock = await blockLoginIfTeacherTempPasswordExpired(
+    supabase,
+    user.id
+  );
+  if (expiredBlock) {
+    return {
+      error: expiredBlock,
+      loginFieldHighlight: { identifier: false, password: true },
+    };
+  }
+
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("role, password_changed")
+    .select("role, password_changed, password_forced_reset")
     .eq("id", user.id)
     .maybeSingle();
 
   const profileRole = (profileRow as { role: UserRole } | null)?.role;
   const passwordChanged = (profileRow as { password_changed?: boolean } | null)
     ?.password_changed;
+  const passwordForcedReset = (profileRow as { password_forced_reset?: boolean } | null)
+    ?.password_forced_reset;
 
   const role: UserRole =
     profileRole === "admin" ||
@@ -159,10 +173,12 @@ export async function login(
     redirect("/super-admin");
   }
 
-  if (
-    (role === "teacher" || role === "admin") &&
-    passwordChanged === false
-  ) {
+  const teacherMustChangePassword =
+    role === "teacher" &&
+    (passwordChanged === false || passwordForcedReset === true);
+  const adminMustChangePassword =
+    role === "admin" && passwordChanged === false;
+  if (teacherMustChangePassword || adminMustChangePassword) {
     const q =
       next && next.startsWith("/") && !next.startsWith("//")
         ? `?next=${encodeURIComponent(next)}`

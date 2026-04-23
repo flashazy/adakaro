@@ -9,6 +9,11 @@ export type TeacherActionState =
   | { ok: true; message?: string }
   | { ok: false; error: string };
 
+export type ResetTeacherPasswordState =
+  | { ok: true; tempPassword: string }
+  | { ok: false; error: string }
+  | null;
+
 export interface SchoolTeacherMemberRow {
   id: string;
   user_id: string;

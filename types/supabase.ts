@@ -31,6 +31,8 @@ export interface Database {
           avatar_url: string | null;
           password_changed: boolean;
           recovery_reset_required: boolean;
+          password_forced_reset: boolean;
+          teacher_temp_password_expires_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -43,6 +45,8 @@ export interface Database {
           avatar_url?: string | null;
           password_changed?: boolean;
           recovery_reset_required?: boolean;
+          password_forced_reset?: boolean;
+          teacher_temp_password_expires_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -55,7 +59,28 @@ export interface Database {
           avatar_url?: string | null;
           password_changed?: boolean;
           recovery_reset_required?: boolean;
+          password_forced_reset?: boolean;
+          teacher_temp_password_expires_at?: string | null;
           updated_at?: string;
+        };
+      };
+      password_reset_logs: {
+        Row: {
+          id: string;
+          admin_id: string | null;
+          teacher_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          admin_id?: string | null;
+          teacher_id: string;
+          created_at?: string;
+        };
+        Update: {
+          admin_id?: string | null;
+          teacher_id?: string;
+          created_at?: string;
         };
       };
       password_reset_codes: {

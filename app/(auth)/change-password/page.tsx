@@ -22,24 +22,30 @@ export default async function ChangePasswordPage({
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("role, password_changed")
+    .select("role, password_changed, password_forced_reset")
     .eq("id", user.id)
     .maybeSingle();
 
   const pr = profileRow as {
     role: string;
     password_changed: boolean | null;
+    password_forced_reset: boolean;
   } | null;
 
   if (pr?.role !== "teacher" && pr?.role !== "admin") {
     redirect("/dashboard");
   }
 
-  if (pr?.password_changed !== false) {
-    if (pr?.role === "admin") {
+  if (pr?.role === "admin") {
+    if (pr.password_changed !== false) {
       redirect("/dashboard");
     }
-    redirect("/teacher-dashboard");
+  } else {
+    const mustChange =
+      pr.password_changed === false || pr.password_forced_reset === true;
+    if (!mustChange) {
+      redirect("/teacher-dashboard");
+    }
   }
 
   const sp = await searchParams;

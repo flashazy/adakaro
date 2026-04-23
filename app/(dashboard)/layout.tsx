@@ -12,6 +12,7 @@ import { checkIsSuperAdmin } from "@/lib/super-admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { SchoolPrimaryCssVars } from "@/components/school-branding/school-primary-css-vars";
 import { DashboardFeedbackProvider } from "@/components/dashboard/dashboard-feedback-provider";
+import { invalidateExpiredTeacherTempPasswordIfNeeded } from "@/lib/teacher-temp-password-expiry";
 
 export default async function DashboardGroupLayout({
   children,
@@ -26,6 +27,8 @@ export default async function DashboardGroupLayout({
   if (!user) {
     redirect("/login");
   }
+
+  await invalidateExpiredTeacherTempPasswordIfNeeded(user.id);
 
   const { data: profile } = await supabase
     .from("profiles")

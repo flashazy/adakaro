@@ -7,9 +7,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeTeacherDisplayName } from "@/lib/teacher-display-name";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import type { Database } from "@/types/supabase";
+import { generateTeacherTempPassword } from "@/lib/generate-teacher-temp-password";
 import {
   TEACHER_DEPARTMENTS,
   type SchoolTeacherMemberRow,
+  type ResetTeacherPasswordState,
   type TeacherActionState,
   type TeacherDepartment,
 } from "./types";
@@ -1558,4 +1560,109 @@ export async function removeTeacherFromSchoolAction(
   revalidatePath("/dashboard/teachers");
   revalidatePath("/dashboard/subjects");
   return { ok: true, message: "Teacher removed from your school." };
+}
+
+/**
+ * School admin: set a new temporary password for a teacher; teacher must
+ * change it on next login. Does not create an admin session as the teacher.
+ */
+export async function resetTeacherPasswordByAdminAction(
+  _prev: ResetTeacherPasswordState,
+  formData: FormData
+): Promise<ResetTeacherPasswordState> {
+  void _prev;
+  const teacherUserId = String(formData.get("teacher_user_id") ?? "").trim();
+  if (!teacherUserId) {
+    return { ok: false, error: "Missing teacher." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { ok: false, error: "Unauthorized." };
+  }
+
+  const schoolId = await getSchoolIdForUserWithAdmin(user.id);
+  if (!schoolId) {
+    return { ok: false, error: "No school found for your account." };
+  }
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return {
+      ok: false,
+      error: "Only school administrators can reset teacher passwords.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: mem } = await admin
+    .from("school_members")
+    .select("role")
+    .eq("school_id", schoolId)
+    .eq("user_id", teacherUserId)
+    .maybeSingle();
+
+  if ((mem as { role: string } | null)?.role !== "teacher") {
+    return {
+      ok: false,
+      error: "That person is not a teacher at your school.",
+    };
+  }
+
+  const { data: target } = await admin
+    .from("profiles")
+    .select("role, email, full_name")
+    .eq("id", teacherUserId)
+    .maybeSingle();
+  const tp = target as { role: string; email: string | null; full_name: string } | null;
+  if (tp?.role !== "teacher") {
+    return { ok: false, error: "Only teacher accounts can receive this reset." };
+  }
+
+  const tempPassword = generateTeacherTempPassword();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  const { error: updAuthErr } = await admin.auth.admin.updateUserById(teacherUserId, {
+    password: tempPassword,
+  });
+  if (updAuthErr) {
+    return {
+      ok: false,
+      error: updAuthErr.message || "Could not set the temporary password.",
+    };
+  }
+
+  const { error: profErr } = await (admin as Db)
+    .from("profiles")
+    .update(
+      {
+        password_changed: false,
+        password_forced_reset: true,
+        teacher_temp_password_expires_at: expiresAt,
+      } as ProfileUpdate
+    )
+    .eq("id", teacherUserId);
+
+  if (profErr) {
+    return {
+      ok: false,
+      error: profErr.message || "Could not update the teacher profile.",
+    };
+  }
+
+  const { error: logErr } = await (admin as Db)
+    .from("password_reset_logs")
+    .insert({ admin_id: user.id, teacher_id: teacherUserId });
+
+  if (logErr) {
+    console.error("[resetTeacherPassword] log insert", logErr);
+  }
+
+  revalidatePath("/dashboard/teachers");
+  return { ok: true, tempPassword };
 }
