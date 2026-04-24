@@ -17,12 +17,13 @@ export default async function ResetPasswordPage() {
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("role, recovery_reset_required")
+    .select("role, recovery_reset_required, password_forced_reset")
     .eq("id", user.id)
     .maybeSingle();
   const pr = profileRow as {
     role: string;
     recovery_reset_required: boolean;
+    password_forced_reset: boolean;
   } | null;
 
   if (pr?.role !== "parent") {
@@ -30,7 +31,10 @@ export default async function ResetPasswordPage() {
     if (pr?.role === "teacher") redirect("/teacher-dashboard");
     redirect("/parent-dashboard");
   }
-  if (!pr?.recovery_reset_required) {
+  if (
+    !pr?.recovery_reset_required &&
+    pr?.password_forced_reset !== true
+  ) {
     redirect("/parent-dashboard");
   }
 

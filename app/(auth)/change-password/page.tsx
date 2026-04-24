@@ -32,20 +32,21 @@ export default async function ChangePasswordPage({
     password_forced_reset: boolean;
   } | null;
 
-  if (pr?.role !== "teacher" && pr?.role !== "admin") {
+  if (pr?.role === "super_admin") {
+    redirect("/super-admin");
+  }
+  if (pr?.role === "admin") {
     redirect("/dashboard");
   }
 
-  if (pr?.role === "admin") {
-    if (pr.password_changed !== false) {
-      redirect("/dashboard");
-    }
-  } else {
-    const mustChange =
-      pr.password_changed === false || pr.password_forced_reset === true;
-    if (!mustChange) {
-      redirect("/teacher-dashboard");
-    }
+  if (pr?.role !== "teacher") {
+    redirect("/dashboard");
+  }
+
+  const mustChange =
+    pr.password_changed === false || pr.password_forced_reset === true;
+  if (!mustChange) {
+    redirect("/teacher-dashboard");
   }
 
   const sp = await searchParams;
@@ -53,9 +54,7 @@ export default async function ChangePasswordPage({
   const nextPath =
     nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
-      : pr?.role === "admin"
-        ? "/dashboard"
-        : "/teacher-dashboard";
+      : "/teacher-dashboard";
 
   return <ChangePasswordForm nextPath={nextPath} />;
 }

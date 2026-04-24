@@ -14,6 +14,7 @@ import {
   type SchoolLevel,
 } from "@/lib/school-level";
 import { getMaxScore } from "@/lib/tanzania-grades";
+import { formatAcademicReportSummary } from "@/lib/reportFormatter";
 
 /** Draft fields needed to align report card preview with the editor. */
 export interface ReportCardExamDraftOverlay {
@@ -474,6 +475,9 @@ export function computeReportCardStudentSummary(args: {
   }
   const focus = scored.find((x) => x.studentId === focusStudentId);
   const focusScore = focus?.score ?? 0;
+  const focusAggregate = aggregateRankingScore(focusPairs, schoolLevel);
+  const hasScoredSubjects =
+    focusAggregate != null && Number.isFinite(focusAggregate);
   const focusPicked = pickContributingPairs(focusPairs, schoolLevel);
 
   // Only surface the per-subject indicator when something was actually dropped
@@ -528,6 +532,7 @@ export function computeReportCardStudentSummary(args: {
     totalScore,
     averagePercent,
     division,
+    hasScoredSubjects,
   });
 
   return {
@@ -563,6 +568,8 @@ export function buildReportCardFooterSentence(args: {
    * sentence when present; primary schools should pass `null`/omit it.
    */
   division?: ReportCardDivision | null;
+  /** True when the focus student has at least one scored subject contributing to the total. */
+  hasScoredSubjects: boolean;
 }): string | null {
   const {
     studentName,
@@ -573,22 +580,19 @@ export function buildReportCardFooterSentence(args: {
     totalStudents,
     totalScore,
     division,
+    hasScoredSubjects,
   } = args;
   if (rank == null || totalStudents <= 0) return null;
   if (totalScore == null) return null;
-  const name = (studentName ?? "").trim() || "This student";
-  const rankText = ordinalSuffix(rank);
-  const yr = (academicYear ?? "").trim();
-  const termText = (term ?? "").trim();
-  // Both primary and secondary now read out a total marks figure for
-  // consistency. The level note below the sentence (rendered separately by
-  // the preview/PDF) explains what was summed.
-  let sentence = `${name} achieved position ${rankText} out of ${totalStudents} students, attaining a total score of ${totalScore} marks in the ${termText} ${yr} examinations.`;
-  if (schoolLevel === "secondary" && division) {
-    // Show both the Division label and the underlying points so parents and
-    // students can see exactly how close they are to the next Division band.
-    const pointsText = division.totalPoints === 1 ? "1 point" : `${division.totalPoints} points`;
-    sentence += ` Division: ${division.label} (${pointsText})`;
-  }
-  return sentence;
+  return formatAcademicReportSummary({
+    studentName,
+    term,
+    academicYear,
+    schoolLevel,
+    rank,
+    totalStudents,
+    totalScore,
+    division: division ?? null,
+    hasScoredSubjects,
+  });
 }

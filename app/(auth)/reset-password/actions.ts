@@ -38,7 +38,7 @@ export async function parentResetPasswordAction(
 
   const { data: profileRow, error: profReadErr } = await supabase
     .from("profiles")
-    .select("role, recovery_reset_required")
+    .select("role, recovery_reset_required, password_forced_reset")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -48,12 +48,16 @@ export async function parentResetPasswordAction(
   const pr = profileRow as {
     role: string;
     recovery_reset_required: boolean;
+    password_forced_reset: boolean;
   } | null;
 
   if (pr?.role !== "parent") {
     return { error: "This page is for parent accounts only." };
   }
-  if (!pr?.recovery_reset_required) {
+  if (
+    !pr?.recovery_reset_required &&
+    pr?.password_forced_reset !== true
+  ) {
     redirect("/parent-dashboard");
   }
 
@@ -66,6 +70,7 @@ export async function parentResetPasswordAction(
     .from("profiles")
     .update({
       recovery_reset_required: false,
+      password_forced_reset: false,
       password_changed: true,
     } satisfies Database["public"]["Tables"]["profiles"]["Update"])
     .eq("id", user.id);

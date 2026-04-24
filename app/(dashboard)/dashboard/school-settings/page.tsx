@@ -11,6 +11,7 @@ import { normalizeSchoolLevel } from "@/lib/school-level";
 import { SchoolCurrencyForm } from "./school-currency-form";
 import { SchoolAdmissionPrefixForm } from "./school-admission-prefix-form";
 import { SchoolLogoForm } from "./school-logo-form";
+import { SchoolStampForm } from "./school-stamp-form";
 import { SchoolLevelForm } from "./school-level-form";
 import { SchoolInformationForm } from "./school-information-form";
 import { SchoolAcademicSettingsForm } from "./school-academic-settings-form";
@@ -37,6 +38,7 @@ export default async function SchoolSettingsPage() {
     currency: string | null;
     admission_prefix: string | null;
     logo_url: string | null;
+    school_stamp_url?: string | null;
     updated_at: string;
     school_level?: string | null;
     address?: string | null;
@@ -60,11 +62,11 @@ export default async function SchoolSettingsPage() {
   // `school_level` (migration 00086) and extended settings (00088) may not exist
   // on older deployments; fall back to smaller column sets so the page loads.
   const extendedCols =
-    "name, currency, admission_prefix, logo_url, updated_at, school_level, address, city, postal_code, phone, email, registration_number, motto, primary_color, current_academic_year, term_structure, term_1_start, term_1_end, term_2_start, term_2_end, term_3_start, term_3_end";
+    "name, currency, admission_prefix, logo_url, school_stamp_url, updated_at, school_level, address, city, postal_code, phone, email, registration_number, motto, primary_color, current_academic_year, term_structure, term_1_start, term_1_end, term_2_start, term_2_end, term_3_start, term_3_end";
   const fullCols =
-    "name, currency, admission_prefix, logo_url, updated_at, school_level";
+    "name, currency, admission_prefix, logo_url, school_stamp_url, updated_at, school_level";
   const baseCols =
-    "name, currency, admission_prefix, logo_url, updated_at";
+    "name, currency, admission_prefix, logo_url, school_stamp_url, updated_at";
   let schoolRes = await supabase
     .from("schools")
     .select(extendedCols)
@@ -115,6 +117,8 @@ export default async function SchoolSettingsPage() {
     fetched?.updated_at != null
       ? logoVersionFromRow(fetched.updated_at)
       : display.logo_version;
+  const stampUrl =
+    (fetched?.school_stamp_url?.trim() || null) ?? null;
 
   return (
     <>
@@ -222,6 +226,20 @@ export default async function SchoolSettingsPage() {
             initialLogoVersion={logoVersion}
           />
         </SchoolSettingsCollapsibleSection>
+
+        {isSchoolAdmin ? (
+          <SchoolSettingsCollapsibleSection
+            sectionId="school-stamp"
+            title="School stamp"
+            defaultOpen
+            description="Official round seal or stamp for documents."
+          >
+            <SchoolStampForm
+              initialStampUrl={stampUrl}
+              initialStampVersion={logoVersion}
+            />
+          </SchoolSettingsCollapsibleSection>
+        ) : null}
 
         <SchoolSettingsCollapsibleSection
           sectionId="school-level"

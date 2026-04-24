@@ -344,6 +344,7 @@ export interface Database {
           motto: string | null;
           primary_color: string | null;
           logo_url: string | null;
+          school_stamp_url: string | null;
           currency: string;
           plan: string;
           status: SchoolStatus;
@@ -378,6 +379,7 @@ export interface Database {
           motto?: string | null;
           primary_color?: string | null;
           logo_url?: string | null;
+          school_stamp_url?: string | null;
           currency?: string;
           plan?: string;
           status?: SchoolStatus;
@@ -411,6 +413,7 @@ export interface Database {
           motto?: string | null;
           primary_color?: string | null;
           logo_url?: string | null;
+          school_stamp_url?: string | null;
           currency?: string;
           plan?: string;
           status?: SchoolStatus;
@@ -551,6 +554,42 @@ export interface Database {
           name?: string;
           description?: string | null;
           parent_class_id?: string | null;
+          updated_at?: string;
+        };
+      };
+      class_report_settings: {
+        Row: {
+          id: string;
+          class_id: string;
+          term: string;
+          academic_year: number;
+          closing_date: string | null;
+          opening_date: string | null;
+          coordinator_message: string | null;
+          required_items: string[] | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          class_id: string;
+          term: string;
+          academic_year: number;
+          closing_date?: string | null;
+          opening_date?: string | null;
+          coordinator_message?: string | null;
+          required_items?: string[] | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          closing_date?: string | null;
+          opening_date?: string | null;
+          coordinator_message?: string | null;
+          required_items?: string[] | null;
+          created_by?: string | null;
           updated_at?: string;
         };
       };

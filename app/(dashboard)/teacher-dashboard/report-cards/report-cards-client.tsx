@@ -15,6 +15,7 @@ import {
   upsertReportCardComment,
 } from "./actions";
 import {
+  fetchReportCardSupplementaryForClassTeachers,
   getReportCardSubjectsForStudent,
   getSubjectsForClass,
 } from "./queries-actions";
@@ -31,7 +32,10 @@ import type {
   TeacherClassOption,
 } from "./report-card-types";
 import { ReportCardPreview } from "./components/ReportCardPreview";
-import type { ReportCardPreviewData } from "./report-card-preview-types";
+import type {
+  ReportCardPreviewData,
+  ReportCardSupplementaryPreviewSlice,
+} from "./report-card-preview-types";
 import {
   buildSubjectPreviewRows,
   computeClassSubjectPositions,
@@ -227,6 +231,7 @@ function toPreviewData(args: {
   schoolName: string;
   schoolMotto?: string | null;
   logoUrl: string | null;
+  schoolStampUrl?: string | null;
   schoolLevel: SchoolLevel;
   className: string;
   teacherName: string;
@@ -267,6 +272,7 @@ function toPreviewData(args: {
     schoolName: args.schoolName,
     schoolMotto: mottoTrim ? mottoTrim : null,
     logoUrl: args.logoUrl,
+    schoolStampUrl: args.schoolStampUrl?.trim() || null,
     studentName: args.student.fullName,
     className: args.className,
     term: args.term,
@@ -297,6 +303,7 @@ export function ReportCardsPageClient({
   schoolMotto,
   schoolLevel,
   logoUrl,
+  schoolStampUrl,
   teacherName,
   classes,
   pendingForAdmin,
@@ -307,6 +314,7 @@ export function ReportCardsPageClient({
   schoolMotto: string | null;
   schoolLevel: SchoolLevel;
   logoUrl: string | null;
+  schoolStampUrl: string | null;
   teacherName: string;
   classes: TeacherClassOption[];
   pendingForAdmin: PendingReportCardRow[];
@@ -339,6 +347,9 @@ export function ReportCardsPageClient({
   /** Subjects shown for the selected student (enrolment-filtered when data exists). */
   const [displaySubjects, setDisplaySubjects] = useState<string[]>([]);
   const [students, setStudents] = useState<StudentReportRow[]>([]);
+  const [supplementaryByStudentId, setSupplementaryByStudentId] = useState<
+    Record<string, ReportCardSupplementaryPreviewSlice>
+  >({});
   const [attendanceByStudent, setAttendanceByStudent] = useState<
     Record<string, { present: number; absent: number; late: number }>
   >({});
@@ -462,6 +473,7 @@ export function ReportCardsPageClient({
     clearAutosaveTimers();
     setLoading(true);
     try {
+      setSupplementaryByStudentId({});
       const subs = await getSubjectsForClass(classId);
       setSubjects(subs);
       const res = await reloadStudentsReportData(
@@ -473,12 +485,21 @@ export function ReportCardsPageClient({
       if (!res.ok) {
         toast.error(res.error);
         setStudents([]);
+        setSupplementaryByStudentId({});
         setSubjectFilterOptions([]);
         setReportSubjectFilterId("");
         return;
       }
       setSubjectFilterOptions(res.subjectFilterOptions);
       setStudents(res.students);
+      const sup = await fetchReportCardSupplementaryForClassTeachers({
+        classId,
+        schoolId,
+        term,
+        academicYear,
+        studentIds: res.students.map((s) => s.studentId),
+      });
+      setSupplementaryByStudentId(sup);
       setAttendanceByStudent(res.attendanceByStudent);
       const d: Record<string, Record<string, DraftRow>> = {};
       for (const s of res.students) {
@@ -497,7 +518,14 @@ export function ReportCardsPageClient({
     } finally {
       setLoading(false);
     }
-  }, [classId, term, academicYear, reportSubjectFilterId, clearAutosaveTimers]);
+  }, [
+    classId,
+    term,
+    academicYear,
+    reportSubjectFilterId,
+    clearAutosaveTimers,
+    schoolId,
+  ]);
 
   useEffect(() => {
     void load();
@@ -723,10 +751,11 @@ export function ReportCardsPageClient({
       drafts[selectedStudent.studentId],
       { restrictOutputToSubjects: true, schoolLevel }
     );
-    return toPreviewData({
+    const base = toPreviewData({
       schoolName,
       schoolMotto,
       logoUrl,
+      schoolStampUrl,
       schoolLevel,
       className: selectedClass.className,
       teacherName,
@@ -743,6 +772,9 @@ export function ReportCardsPageClient({
       positionBySubject: positionBySubjectForPreview,
       cohort: studentsMergedForPreview,
     });
+    const extra =
+      supplementaryByStudentId[selectedStudent.studentId] ?? undefined;
+    return extra ? { ...base, ...extra } : base;
   }, [
     selectedStudent,
     selectedClass,
@@ -750,6 +782,7 @@ export function ReportCardsPageClient({
     schoolMotto,
     schoolLevel,
     logoUrl,
+    schoolStampUrl,
     teacherName,
     term,
     academicYear,
@@ -758,6 +791,7 @@ export function ReportCardsPageClient({
     drafts,
     attendanceByStudent,
     positionBySubjectForPreview,
+    supplementaryByStudentId,
   ]);
 
   const saveSubject = useCallback(
@@ -1239,7 +1273,9 @@ export function ReportCardsPageClient({
                     .replace(/[^\w\s-]/g, "")
                     .replace(/\s+/g, "-")
                     .slice(0, 40);
-                  downloadReportCardPdf(previewData, safe);
+                  void (async () => {
+                    await downloadReportCardPdf(previewData, safe);
+                  })();
                 }}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900"
               >
@@ -1666,10 +1702,11 @@ export function ReportCardsPageClient({
                   subjectList,
                   s.studentId
                 );
-                return toPreviewData({
+                const basePdf = toPreviewData({
                   schoolName,
                   schoolMotto,
                   logoUrl,
+                  schoolStampUrl,
                   schoolLevel,
                   className: selectedClass!.className,
                   teacherName,
@@ -1686,12 +1723,14 @@ export function ReportCardsPageClient({
                   positionBySubject: positions,
                   cohort: allMerged,
                 });
+                const extra = supplementaryByStudentId[s.studentId];
+                return extra ? { ...basePdf, ...extra } : basePdf;
               });
               const safe = selectedClass!.className
                 .replace(/[^\w\s-]/g, "")
                 .replace(/\s+/g, "-")
                 .slice(0, 30);
-              downloadBulkReportCardsPdf(items, safe);
+              await downloadBulkReportCardsPdf(items, safe);
             })();
           }}
           className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900"

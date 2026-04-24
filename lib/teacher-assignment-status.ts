@@ -33,6 +33,39 @@ export async function hasTeacherAssignments(
   return (count ?? 0) > 0;
 }
 
+/** True when the teacher is a class coordinator (report cards workspace allows this path). */
+export async function hasTeacherCoordinatorRole(
+  _supabase: SupabaseClient<Database>,
+  userId: string
+): Promise<boolean> {
+  const admin = createAdminClient();
+  const { count, error } = await admin
+    .from("teacher_coordinators")
+    .select("id", { count: "exact", head: true })
+    .eq("teacher_id", userId);
+
+  if (error) return false;
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Some routes allow teachers with class assignments **or** class coordinators
+ * when no leaf `teacher_assignments` row exists. The report-cards list page
+ * now redirects; callers may still use this guard for other flows.
+ */
+export async function ensureReportCardsPageAccessOrRedirect(
+  supabase: SupabaseClient<Database>,
+  userId: string
+): Promise<void> {
+  const [hasTa, hasCoord] = await Promise.all([
+    hasTeacherAssignments(supabase, userId),
+    hasTeacherCoordinatorRole(supabase, userId),
+  ]);
+  if (!hasTa && !hasCoord) {
+    redirect("/teacher-dashboard");
+  }
+}
+
 export interface TeacherLockedContactInfo {
   schoolName: string;
   adminName: string;

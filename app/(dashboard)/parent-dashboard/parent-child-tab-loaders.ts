@@ -17,7 +17,7 @@ export async function loadParentReportCardsForStudent(
       .from("report_cards")
       .select("id, student_id, term, academic_year, status")
       .eq("student_id", params.studentId)
-      .in("status", ["pending_review", "approved"])
+      .eq("status", "approved")
       .order("academic_year", { ascending: false })
       .limit(200);
     if (qErr) return [];

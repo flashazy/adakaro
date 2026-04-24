@@ -262,7 +262,11 @@ export async function loadAcademicReportLiveSupplement(
 
   const [{ data: classRow }, { data: schoolRow }] = await Promise.all([
     admin.from("classes").select("name").eq("id", classId).maybeSingle(),
-    admin.from("schools").select("name, motto, logo_url, school_level").eq("id", schoolId).maybeSingle(),
+    admin
+      .from("schools")
+      .select("name, motto, logo_url, school_stamp_url, school_level")
+      .eq("id", schoolId)
+      .maybeSingle(),
   ]);
 
   const className =
@@ -271,12 +275,14 @@ export async function loadAcademicReportLiveSupplement(
     name: string;
     motto?: string | null;
     logo_url: string | null;
+    school_stamp_url?: string | null;
     school_level?: string | null;
   } | null;
   const schoolName = sr?.name?.trim() || "School";
   const mottoRaw = sr?.motto != null ? String(sr.motto).trim() : "";
   const motto = mottoRaw.length > 0 ? mottoRaw : null;
   const logoUrl = sr?.logo_url ?? null;
+  const stampUrl = sr?.school_stamp_url?.trim() || null;
   const schoolLevel =
     normalizeSchoolLevel(sr?.school_level) ?? normalizeSchoolLevel(data.school_level) ?? "primary";
 
@@ -289,6 +295,7 @@ export async function loadAcademicReportLiveSupplement(
     schoolName,
     schoolMotto: motto,
     schoolLogoUrl: logoUrl,
+    schoolStampUrl: stampUrl,
     schoolLevel,
     classSubjectNames,
   };

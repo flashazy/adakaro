@@ -62,6 +62,15 @@ export interface CoordinatorClassOverview {
   studentCount: number;
   subjects: CoordinatorSubjectOverview[];
   reportCards: CoordinatorReportCardItem[];
+  /**
+   * Active students in the class (cluster) with the report card for this
+   * term/year when it exists.
+   */
+  classRoster: {
+    studentId: string;
+    fullName: string;
+    item: CoordinatorReportCardItem | null;
+  }[];
 }
 
 export interface CoordinatorOverview {

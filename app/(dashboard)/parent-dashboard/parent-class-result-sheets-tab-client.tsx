@@ -16,8 +16,8 @@ function NoData() {
   return (
     <div className="px-6 py-10 text-center">
       <p className="text-sm text-slate-500 dark:text-zinc-400">
-        No class result sheet yet. When report cards for this class are submitted
-        for review or approved, the full class sheet will appear here (same as the
+        No class result sheet yet. When report cards for this class are released
+        to parents (approved), the full class sheet will appear here (same as the
         noticeboard printout).
       </p>
     </div>

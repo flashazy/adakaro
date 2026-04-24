@@ -187,52 +187,60 @@ export async function updateSession(request: NextRequest) {
       const { data: profPw } = await supabase
         .from("profiles")
         .select(
-          "password_changed, password_forced_reset, teacher_temp_password_expires_at"
+          "role, password_changed, password_forced_reset, teacher_temp_password_expires_at"
         )
         .eq("id", user.id)
         .maybeSingle();
       const pw = profPw as {
+        role?: string;
         password_changed?: boolean;
         password_forced_reset?: boolean;
         teacher_temp_password_expires_at?: string | null;
       } | null;
 
-      if (
-        role === "teacher" &&
-        pw?.password_forced_reset === true &&
-        pw.teacher_temp_password_expires_at &&
-        new Date(pw.teacher_temp_password_expires_at).getTime() <= Date.now()
-      ) {
-        await supabase.auth.signOut();
-        const url = request.nextUrl.clone();
-        url.pathname = "/login";
-        url.searchParams.set("error", TEACHER_TEMP_EXPIRED_ERROR);
-        return NextResponse.redirect(url);
-      }
+      const dbRole = (pw?.role ?? "").toLowerCase().trim();
+      /** `role` can be "teacher" when a school admin is also in `is_teacher()`; trust `profiles.role` for password rules. */
+      const isSchoolAdminInProfile = dbRole === "admin";
+      const isTeacherInProfile =
+        dbRole === "teacher" || (dbRole === "" && role === "teacher");
 
-      const mustChange =
-        (role === "teacher" || role === "admin") &&
-        (pw?.password_changed === false ||
-          (role === "teacher" && pw?.password_forced_reset === true));
-      if (mustChange) {
-        const isChangePasswordPage = pathname.startsWith("/change-password");
-        const isAuthApi = pathname.startsWith("/api/auth");
-        if (!isChangePasswordPage && !isAuthApi) {
-          if (pathname.startsWith("/api/")) {
-            return NextResponse.json(
-              {
-                error: "You must change your password before continuing.",
-              },
-              { status: 403 }
-            );
-          }
+      if (isSchoolAdminInProfile) {
+        // Never apply teacher temp-password or forced /change-password flows to school admins.
+      } else if (isTeacherInProfile) {
+        if (
+          pw?.password_forced_reset === true &&
+          pw.teacher_temp_password_expires_at &&
+          new Date(pw.teacher_temp_password_expires_at).getTime() <= Date.now()
+        ) {
+          await supabase.auth.signOut();
           const url = request.nextUrl.clone();
-          url.pathname = "/change-password";
-          url.searchParams.set(
-            "next",
-            `${pathname}${request.nextUrl.search || ""}`
-          );
+          url.pathname = "/login";
+          url.searchParams.set("error", TEACHER_TEMP_EXPIRED_ERROR);
           return NextResponse.redirect(url);
+        }
+
+        const mustChange =
+          pw?.password_changed === false || pw?.password_forced_reset === true;
+        if (mustChange) {
+          const isChangePasswordPage = pathname.startsWith("/change-password");
+          const isAuthApi = pathname.startsWith("/api/auth");
+          if (!isChangePasswordPage && !isAuthApi) {
+            if (pathname.startsWith("/api/")) {
+              return NextResponse.json(
+                {
+                  error: "You must change your password before continuing.",
+                },
+                { status: 403 }
+              );
+            }
+            const url = request.nextUrl.clone();
+            url.pathname = "/change-password";
+            url.searchParams.set(
+              "next",
+              `${pathname}${request.nextUrl.search || ""}`
+            );
+            return NextResponse.redirect(url);
+          }
         }
       }
     }
@@ -240,12 +248,15 @@ export async function updateSession(request: NextRequest) {
     if (role === "parent") {
       const { data: prRec } = await supabase
         .from("profiles")
-        .select("recovery_reset_required")
+        .select("recovery_reset_required, password_forced_reset")
         .eq("id", user.id)
         .maybeSingle();
+      const r = prRec as {
+        recovery_reset_required?: boolean;
+        password_forced_reset?: boolean;
+      } | null;
       const needPasswordReset =
-        (prRec as { recovery_reset_required?: boolean } | null)
-          ?.recovery_reset_required === true;
+        r?.recovery_reset_required === true || r?.password_forced_reset === true;
       if (needPasswordReset) {
         const isResetPasswordPage = pathname.startsWith("/reset-password");
         const isAuthApi = pathname.startsWith("/api/auth");

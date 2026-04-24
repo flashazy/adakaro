@@ -23,7 +23,10 @@ import {
   type SchoolLevel,
 } from "@/lib/school-level";
 import { resolveClassCluster } from "@/lib/class-cluster";
-import type { ReportCardPreviewData } from "../report-cards/report-card-preview-types";
+import type {
+  ReportCardPreviewData,
+  ReportCardSupplementaryPreviewSlice,
+} from "../report-cards/report-card-preview-types";
 import type {
   ReportCardCommentRow,
   ReportCardStatus,
@@ -46,6 +49,10 @@ import type {
 } from "./types";
 import type { ClassResultSheetPdfInput } from "@/lib/class-result-sheet-noticeboard-tables";
 import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
+import {
+  loadReportCardSupplementaryBatch,
+  mergeSupplementaryForPreview,
+} from "@/lib/report-card-supplementary";
 
 // Re-export shared types/constants so existing consumers of `./data` continue
 // to work. The underlying definitions live in the client-safe `./types`
@@ -188,95 +195,6 @@ async function resolveSubjectsForClass(
     name: s.name,
     examStatus: emptyExamStatusMap(),
   }));
-}
-
-async function attachExamStatuses(
-  admin: Db,
-  classIds: string[],
-  academicYear: string,
-  subjects: CoordinatorSubjectOverview[],
-  rosterSize: number
-) {
-  if (subjects.length === 0) return;
-
-  const { data: gbRowsRaw } = await admin
-    .from("teacher_gradebook_assignments")
-    .select("id, title, exam_type, subject, academic_year")
-    .in("class_id", classIds);
-
-  const gbRows = ((gbRowsRaw ?? []) as {
-    id: string;
-    title: string;
-    exam_type: string | null;
-    subject: string;
-    academic_year: string | null;
-  }[]).filter((r) => {
-    const yr = (r.academic_year ?? "").trim();
-    return !yr || yr === academicYear;
-  });
-
-  const assignmentsBySubjectExam = new Map<
-    string,
-    { assignmentId: string }[]
-  >();
-  const subjectNameLowerIndex = new Map(
-    subjects.map((s, i) => [s.name.trim().toLowerCase(), i] as const)
-  );
-
-  const assignmentIds: string[] = [];
-
-  for (const r of gbRows) {
-    const examType =
-      parseGradebookExamType(r.exam_type) ??
-      inferMajorExamTypeFromTitle(r.title);
-    if (!examType) continue;
-    const subjIdx = subjectNameLowerIndex.get(r.subject.trim().toLowerCase());
-    if (subjIdx == null) continue;
-    const subjName = subjects[subjIdx].name;
-    const key = `${subjName}\0${examType}`;
-    const list = assignmentsBySubjectExam.get(key) ?? [];
-    list.push({ assignmentId: r.id });
-    assignmentsBySubjectExam.set(key, list);
-    assignmentIds.push(r.id);
-  }
-
-  const scoredStudentsByAssignment = new Map<string, Set<string>>();
-  if (assignmentIds.length > 0) {
-    const { data: scoreRows } = await admin
-      .from("teacher_scores")
-      .select("assignment_id, student_id, score")
-      .in("assignment_id", assignmentIds);
-    for (const r of (scoreRows ?? []) as {
-      assignment_id: string;
-      student_id: string;
-      score: unknown;
-    }[]) {
-      if (parseNumeric(r.score) == null) continue;
-      const set =
-        scoredStudentsByAssignment.get(r.assignment_id) ?? new Set<string>();
-      set.add(r.student_id);
-      scoredStudentsByAssignment.set(r.assignment_id, set);
-    }
-  }
-
-  for (const subject of subjects) {
-    for (const examType of GRADEBOOK_MAJOR_EXAM_TYPE_VALUES) {
-      const key = `${subject.name}\0${examType}`;
-      const list = assignmentsBySubjectExam.get(key);
-      if (!list?.length) continue;
-      const scored = new Set<string>();
-      for (const { assignmentId } of list) {
-        const set = scoredStudentsByAssignment.get(assignmentId);
-        if (!set) continue;
-        for (const sid of set) scored.add(sid);
-      }
-      subject.examStatus[examType] = {
-        state: "created",
-        studentsScored: scored.size,
-        rosterSize,
-      };
-    }
-  }
 }
 
 async function loadClassCommentsByCard(
@@ -625,6 +543,7 @@ async function loadClassReportCards(
     schoolName: string;
     schoolMotto: string | null;
     schoolLogoUrl: string | null;
+    schoolStampUrl: string | null;
     schoolLevel: SchoolLevel;
     academicYear: string;
     /** Exact `report_cards.term` value (e.g. Term 1, Term 2). */
@@ -645,7 +564,7 @@ async function loadClassReportCards(
   let rcQuery = admin
     .from("report_cards")
     .select(
-      "id, class_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id, gender )"
+      "id, class_id, school_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id, gender )"
     )
     .in("class_id", params.classIds)
     .eq("term", termExact)
@@ -658,6 +577,7 @@ async function loadClassReportCards(
   const cardRows = (cards ?? []) as {
     id: string;
     class_id: string;
+    school_id: string;
     status: ReportCardStatus;
     student_id: string;
     term: string;
@@ -869,6 +789,34 @@ async function loadClassReportCards(
     );
   });
 
+  const supplementaryByStudentId = new Map<
+    string,
+    ReportCardSupplementaryPreviewSlice
+  >();
+  const schoolIdForSupplementary = cardRows[0]?.school_id;
+  if (schoolIdForSupplementary) {
+    try {
+      const { shared, feeByStudentId } = await loadReportCardSupplementaryBatch(
+        admin,
+        {
+          settingsClassId: params.classId,
+          schoolId: schoolIdForSupplementary,
+          term: termExact,
+          academicYear: params.academicYear,
+          studentIds,
+        }
+      );
+      for (const sid of studentIds) {
+        supplementaryByStudentId.set(
+          sid,
+          mergeSupplementaryForPreview(shared, feeByStudentId.get(sid) ?? null)
+        );
+      }
+    } catch {
+      // Missing migration or transient DB error — keep academic block intact.
+    }
+  }
+
   const items: CoordinatorReportCardItem[] = cardsSorted.map((c) => {
     const studentSubjects = subjectsByStudent.get(c.student_id) ?? allSubjects;
 
@@ -934,6 +882,7 @@ async function loadClassReportCards(
       schoolName: params.schoolName,
       schoolMotto: params.schoolMotto,
       logoUrl: params.schoolLogoUrl,
+      schoolStampUrl: params.schoolStampUrl,
       studentName: studentRow.fullName,
       className: displayClassName,
       term: termExact,
@@ -953,6 +902,7 @@ async function loadClassReportCards(
         daysInTermLabel: `${start} – ${end}`,
       },
       summary,
+      ...(supplementaryByStudentId.get(c.student_id) ?? {}),
     };
 
     return {
@@ -1092,6 +1042,7 @@ export async function loadCoordinatorReportCardsForClass(
     schoolName: string;
     schoolMotto: string | null;
     schoolLogoUrl: string | null;
+    schoolStampUrl: string | null;
     schoolLevel: SchoolLevel;
     academicYear: string;
     term: string;
@@ -1144,6 +1095,7 @@ export async function loadCoordinatorOverview(params: {
         id: string;
         name: string;
         logo_url: string | null;
+        school_stamp_url?: string | null;
         school_level?: string | null;
         motto?: string | null;
       }[]
@@ -1151,7 +1103,7 @@ export async function loadCoordinatorOverview(params: {
   {
     let res = await admin
       .from("schools")
-      .select("id, name, logo_url, school_level, motto")
+      .select("id, name, logo_url, school_level, motto, school_stamp_url")
       .in("id", schoolIds);
     if (res.error && /column/i.test(res.error.message ?? "")) {
       res = await admin
@@ -1199,13 +1151,6 @@ export async function loadCoordinatorOverview(params: {
       .eq("status", "active");
 
     const subjects = await resolveSubjectsForClass(admin, clusterIds);
-    await attachExamStatuses(
-      admin,
-      clusterIds,
-      academicYear,
-      subjects,
-      studentCount ?? 0
-    );
 
     const mottoTrim = (school?.motto ?? "").trim();
     const reportCards = await loadClassReportCards(admin, {
@@ -1215,10 +1160,32 @@ export async function loadCoordinatorOverview(params: {
       schoolName: school?.name ?? "School",
       schoolMotto: mottoTrim ? mottoTrim : null,
       schoolLogoUrl: school?.logo_url ?? null,
+      schoolStampUrl: school?.school_stamp_url?.trim() || null,
       schoolLevel,
       academicYear,
       term: params.term,
       classSubjectNames: subjects.map((s) => s.name),
+    });
+
+    const { data: rosterRows } = await admin
+      .from("students")
+      .select("id, full_name")
+      .in("class_id", clusterIds)
+      .eq("status", "active")
+      .order("full_name", { ascending: true });
+
+    const itemByStudent = new Map(
+      reportCards.map((r) => [r.studentId, r] as const)
+    );
+    const classRoster = (
+      (rosterRows ?? []) as { id: string; full_name: string | null }[]
+    ).map((s) => {
+      const fullName = (s.full_name ?? "").trim() || "Student";
+      return {
+        studentId: s.id,
+        fullName,
+        item: itemByStudent.get(s.id) ?? null,
+      };
     });
 
     classes.push({
@@ -1233,6 +1200,7 @@ export async function loadCoordinatorOverview(params: {
       studentCount: studentCount ?? 0,
       subjects,
       reportCards,
+      classRoster,
     });
   }
 
@@ -1253,8 +1221,7 @@ export type ParentPublishedClassResultPeriod = {
 /**
  * One noticeboard class result sheet per (term, year) for the student’s class
  * cluster, using the same `report_cards` + preview pipeline as the coordinator
- * “Print result” action — includes `pending_review` and `approved` cards
- * (matches noticeboard timing before head-teacher sign-off).
+ * “Print result” action — includes only `approved` (parent-visible) cards.
  */
 export async function loadParentPublishedClassResultPeriods(
   admin: Db,
@@ -1280,6 +1247,7 @@ export async function loadParentPublishedClassResultPeriods(
   type SchoolRowOut = {
     name: string;
     logo_url: string | null;
+    school_stamp_url?: string | null;
     school_level?: string | null;
     motto?: string | null;
   };
@@ -1287,7 +1255,7 @@ export async function loadParentPublishedClassResultPeriods(
   {
     let res = await admin
       .from("schools")
-      .select("id, name, logo_url, school_level, motto")
+      .select("id, name, logo_url, school_level, motto, school_stamp_url")
       .eq("id", cls.school_id)
       .maybeSingle();
     if (res.error && /column/i.test(res.error.message ?? "")) {
@@ -1314,7 +1282,7 @@ export async function loadParentPublishedClassResultPeriods(
     .from("report_cards")
     .select("term, academic_year")
     .in("class_id", clusterIds)
-    .in("status", ["pending_review", "approved"]);
+    .eq("status", "approved");
 
   const seen = new Set<string>();
   const rawPeriods: { term: string; academic_year: string }[] = [];
@@ -1367,11 +1335,12 @@ export async function loadParentPublishedClassResultPeriods(
       schoolName: schoolRow?.name ?? "School",
       schoolMotto: mottoTrim ? mottoTrim : null,
       schoolLogoUrl: schoolRow?.logo_url ?? null,
+      schoolStampUrl: schoolRow?.school_stamp_url?.trim() || null,
       schoolLevel,
       academicYear: p.academic_year,
       term: p.term,
       classSubjectNames,
-      statuses: ["pending_review", "approved"],
+      statuses: ["approved"],
     });
     if (reportCards.length === 0) continue;
 

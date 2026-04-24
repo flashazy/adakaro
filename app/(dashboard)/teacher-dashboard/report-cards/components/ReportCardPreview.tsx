@@ -13,6 +13,14 @@ import {
   type GradeDisplayFormat,
 } from "@/lib/grade-display-format";
 import type { SchoolLevel } from "@/lib/school-level";
+import { formatCurrency } from "@/lib/currency";
+import {
+  formatCoordinatorMessage,
+  formatDateRange,
+  formatFeeBalanceReminder,
+  formatItems,
+  formatAttendance,
+} from "@/lib/reportFormatter";
 
 export type { ReportCardPreviewData } from "../report-card-preview-types";
 
@@ -115,6 +123,17 @@ export function ReportCardPreview({
   // the total (e.g. secondary student with >7 subjects). For everyone else
   // every subject already counts so the column would just be visual noise.
   const showSelectedColumn = data.subjects.some((r) => r.selected !== null);
+
+  const formattedNextTermItems =
+    data.requiredNextTermItems && data.requiredNextTermItems.length > 0
+      ? formatItems(data.requiredNextTermItems)
+      : "";
+
+  const attendancePresentDays = data.attendance.present + data.attendance.late;
+  const attendanceText = formatAttendance(
+    attendancePresentDays,
+    data.attendance.absent
+  );
 
   return (
     <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm print:shadow-none print:border-slate-300">
@@ -325,6 +344,98 @@ export function ReportCardPreview({
         ) : null}
       </section>
 
+      {data.schoolCalendar ||
+      data.feeStatement ||
+      data.coordinatorMessage ||
+      formattedNextTermItems ? (
+      <div className="mt-6 space-y-6">
+      {data.schoolCalendar ? (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <h3 className="mb-2 text-sm font-semibold text-gray-800">
+            📅 School Calendar
+          </h3>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">
+            {formatDateRange(
+              data.schoolCalendar.closingDateLabel,
+              data.schoolCalendar.openingDateLabel
+            )}
+          </p>
+        </div>
+      ) : null}
+
+      {data.feeStatement ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-800">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
+            💰 Fee Statement
+          </h2>
+          <ul className="mt-2 list-inside list-disc space-y-1 text-slate-800">
+            <li>
+              Total fees this term:{" "}
+              <span className="font-semibold tabular-nums">
+                {formatCurrency(
+                  data.feeStatement.totalFees,
+                  data.feeStatement.currencyCode
+                )}
+              </span>
+            </li>
+            <li>
+              Amount paid:{" "}
+              <span className="font-semibold tabular-nums">
+                {formatCurrency(
+                  data.feeStatement.amountPaid,
+                  data.feeStatement.currencyCode
+                )}
+              </span>
+            </li>
+            <li>
+              Balance due:{" "}
+              <span className="font-semibold tabular-nums">
+                {formatCurrency(
+                  data.feeStatement.balanceDue,
+                  data.feeStatement.currencyCode
+                )}
+              </span>
+            </li>
+          </ul>
+          {data.feeStatement.balanceDue > 0 ? (
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-950">
+              {formatFeeBalanceReminder(
+                data.feeStatement.balanceDue,
+                data.feeStatement.currencyCode
+              )}
+            </p>
+          ) : (
+            <p className="mt-3 text-sm font-medium text-emerald-800">
+              Fee balance: Paid in full. Thank you!
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {data.coordinatorMessage ? (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <h3 className="mb-2 text-sm font-semibold text-gray-800">
+            💬 Coordinator&apos;s Message
+          </h3>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">
+            {formatCoordinatorMessage(data.coordinatorMessage)}
+          </p>
+        </div>
+      ) : null}
+
+      {formattedNextTermItems ? (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <h3 className="mb-2 text-sm font-semibold text-gray-800">
+            📦 Items for Next Term
+          </h3>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">
+            {formattedNextTermItems}
+          </p>
+        </div>
+      ) : null}
+      </div>
+      ) : null}
+
       {/*
         The summary (position, total score, school-level note) is the
         coordinator's final word on the card. We hide it from the teacher
@@ -347,31 +458,16 @@ export function ReportCardPreview({
         </section>
       ) : null}
 
-      <section className="mt-6 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
-          Attendance ({data.attendance.daysInTermLabel})
-        </h2>
-        <p className="mt-2 text-sm text-slate-800">
-          Days present (incl. late):{" "}
-          <span className="font-semibold tabular-nums">
-            {data.attendance.present + data.attendance.late}
-          </span>
-          {" · "}
-          Absent:{" "}
-          <span className="font-semibold tabular-nums">
-            {data.attendance.absent}
-          </span>
-          {data.attendance.late > 0 ? (
-            <>
-              {" · "}
-              Late marks:{" "}
-              <span className="font-semibold tabular-nums">
-                {data.attendance.late}
-              </span>
-            </>
-          ) : null}
-        </p>
-      </section>
+      {attendanceText ? (
+        <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <h3 className="mb-2 text-sm font-semibold text-gray-800">
+            📊 Attendance ({data.attendance.daysInTermLabel})
+          </h3>
+          <p className="text-sm leading-relaxed text-gray-700">
+            {attendanceText}
+          </p>
+        </div>
+      ) : null}
 
       <section className="mt-8 grid gap-8 border-t border-slate-200 pt-6 sm:grid-cols-3">
         <div>
@@ -385,8 +481,23 @@ export function ReportCardPreview({
           <p className="text-xs font-semibold uppercase text-slate-600">
             Head teacher
           </p>
-          <div className="mt-8 border-b border-slate-400" />
-          <p className="mt-1 text-xs text-slate-500">Signature</p>
+          <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="border-b border-slate-400" />
+              <p className="mt-1 text-xs text-slate-500">Signature</p>
+            </div>
+            {data.schoolStampUrl?.trim() ? (
+              <div className="shrink-0 self-end sm:mb-0">
+                <img
+                  src={data.schoolStampUrl.trim()}
+                  alt=""
+                  className="h-20 w-20 max-h-[100px] max-w-[100px] object-contain"
+                  width={100}
+                  height={100}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
         <div>
           <p className="text-xs font-semibold uppercase text-slate-600">

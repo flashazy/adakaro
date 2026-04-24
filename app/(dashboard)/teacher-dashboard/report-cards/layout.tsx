@@ -3,8 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 
 /**
- * Report card score entry and approval are restricted to teachers assigned as
- * class coordinators (see Coordinator dashboard). Regular teachers are redirected.
+ * Authenticated class coordinators can hit legacy `/teacher-dashboard/report-cards`
+ * URLs; the page itself redirects to the Coordinator dashboard. Non-coordinators
+ * are sent back to the teacher home.
  */
 export default async function TeacherReportCardsLayout({
   children,

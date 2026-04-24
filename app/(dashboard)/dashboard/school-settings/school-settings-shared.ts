@@ -12,6 +12,8 @@ export interface SchoolSettingsState {
   publicUrl?: string | null;
   /** From `schools.updated_at` after write — use with `?v=` everywhere the logo is shown. */
   logoVersion?: number;
+  /** Busts cache for school stamp image after `schools` row update. */
+  stampVersion?: number;
 }
 
 export type TermStructureValue = "2_terms" | "3_terms";

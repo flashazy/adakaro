@@ -39,6 +39,8 @@ export interface SchoolSettingsCollapsibleSectionProps {
   title: string;
   description: ReactNode;
   children: ReactNode;
+  /** When true, start expanded; localStorage can still open other sections. */
+  defaultOpen?: boolean;
 }
 
 export function SchoolSettingsCollapsibleSection({
@@ -46,16 +48,18 @@ export function SchoolSettingsCollapsibleSection({
   title,
   description,
   children,
+  defaultOpen = false,
 }: SchoolSettingsCollapsibleSectionProps) {
   const reactId = useId().replace(/:/g, "");
   const headingId = `${sectionId}-heading-${reactId}`;
   const panelId = `${sectionId}-panel-${reactId}`;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
 
   useEffect(() => {
+    if (defaultOpen) return;
     const map = readExpandedMap();
     if (map[sectionId]) setOpen(true);
-  }, [sectionId]);
+  }, [sectionId, defaultOpen]);
 
   const toggle = useCallback(() => {
     setOpen((prev) => {

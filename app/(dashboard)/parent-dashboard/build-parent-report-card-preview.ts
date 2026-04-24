@@ -13,15 +13,19 @@ import {
 import { normalizeSchoolLevel } from "@/lib/school-level";
 import type { ReportCardPreviewData } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-types";
 import type {
-  ReportCardCommentRow,
   ReportCardStatus,
   StudentReportRow,
 } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-types";
 import { termDateRange } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-dates";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
 import { mergeReportCardCommentsWithGradebookForParent } from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
+import { resolveClassCluster } from "@/lib/class-cluster";
+import {
+  loadReportCardSupplementaryBatch,
+  mergeSupplementaryForPreview,
+} from "@/lib/report-card-supplementary";
 
-const PARENT_VISIBLE: ReportCardStatus[] = ["pending_review", "approved"];
+const PARENT_VISIBLE: ReportCardStatus[] = ["approved"];
 
 function isParentVisibleStatus(s: string): s is ReportCardStatus {
   return (PARENT_VISIBLE as string[]).includes(s);
@@ -69,7 +73,7 @@ async function loadTeacherLineForParentReport(
 
 /**
  * Builds the same {@link ReportCardPreview} payload the coordinator page uses,
- * for a parent linked to the student. Allows pending_review and approved.
+ * for a parent linked to the student. Only `approved` (released by coordinator / school).
  */
 export async function buildParentReportCardPreviewData(
   supabase: SupabaseClient,
@@ -111,13 +115,14 @@ export async function buildParentReportCardPreviewData(
       term,
       academic_year,
       class_id,
+      school_id,
       teacher_id,
       submitted_at,
       updated_at,
       approved_at,
       students ( full_name ),
       classes ( name ),
-      schools ( name, logo_url, motto )
+      schools ( name, logo_url, motto, school_stamp_url )
     `
     )
     .eq("student_id", params.studentId)
@@ -135,13 +140,19 @@ export async function buildParentReportCardPreviewData(
     term: string;
     academic_year: string;
     class_id: string;
+    school_id: string;
     teacher_id: string;
     submitted_at: string | null;
     updated_at: string;
     approved_at: string | null;
     students: { full_name: string } | null;
     classes: { name: string } | null;
-    schools: { name: string; logo_url: string | null; motto: string | null } | null;
+    schools: {
+      name: string;
+      logo_url: string | null;
+      motto: string | null;
+      school_stamp_url: string | null;
+    } | null;
   };
 
   if (!isParentVisibleStatus(row.status)) {
@@ -256,10 +267,11 @@ export async function buildParentReportCardPreviewData(
   }).format(new Date(issuedAt));
 
   const mottoTrim = (row.schools?.motto ?? "").trim();
-  const data: ReportCardPreviewData = {
+  let data: ReportCardPreviewData = {
     schoolName: row.schools?.name ?? "School",
     schoolMotto: mottoTrim ? mottoTrim : null,
     logoUrl: row.schools?.logo_url ?? null,
+    schoolStampUrl: row.schools?.school_stamp_url?.trim() || null,
     studentName: row.students?.full_name ?? "—",
     className: row.classes?.name ?? "—",
     term: row.term,
@@ -277,6 +289,30 @@ export async function buildParentReportCardPreviewData(
     },
     summary,
   };
+
+  try {
+    const admin = createAdminClient();
+    const cluster = await resolveClassCluster(admin, row.class_id);
+    const { shared, feeByStudentId } = await loadReportCardSupplementaryBatch(
+      admin,
+      {
+        settingsClassId: cluster.rootClassId,
+        schoolId: row.school_id,
+        term: row.term,
+        academicYear: row.academic_year,
+        studentIds: [params.studentId],
+      }
+    );
+    data = {
+      ...data,
+      ...mergeSupplementaryForPreview(
+        shared,
+        feeByStudentId.get(params.studentId) ?? null
+      ),
+    };
+  } catch {
+    // Keep card without supplementary blocks if settings table is unavailable.
+  }
 
   return {
     ok: true,

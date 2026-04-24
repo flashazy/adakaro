@@ -6,8 +6,74 @@ import { reportCardExamColumnTitles } from "../report-card-preview-builder";
 import type { ReportCardPreviewData } from "../report-card-preview-types";
 import { gradingScaleDescription } from "@/lib/tanzania-grades";
 import { drawPdfSchoolMottoCentered } from "./report-card-pdf-motto";
+import { formatCurrency } from "@/lib/currency";
+import {
+  formatCoordinatorMessage,
+  formatDateRange,
+  formatFeeBalanceReminder,
+  formatItemsForPdf,
+  formatAttendance,
+} from "@/lib/reportFormatter";
 
-function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
+const STAMP_MAX_MM = 26; // ~100px at 96dpi
+
+function addReportCardStamp(
+  doc: jsPDF,
+  dataUrl: string,
+  xRight: number,
+  yTop: number
+): void {
+  const ip = (doc as unknown as {
+    getImageProperties: (d: string) => { width: number; height: number; fileType?: string };
+  }).getImageProperties(dataUrl);
+  const ar = ip.width / ip.height;
+  let w = STAMP_MAX_MM;
+  let h = w / ar;
+  if (h > STAMP_MAX_MM) {
+    h = STAMP_MAX_MM;
+    w = h * ar;
+  }
+  const x = xRight - w;
+  const raw = (ip.fileType || "PNG").toUpperCase();
+  const format =
+    raw === "JPG" || raw === "JPEG" ? "JPEG" : raw === "WEBP" ? "WEBP" : "PNG";
+  doc.addImage(dataUrl, format, x, yTop, w, h);
+}
+
+/**
+ * Load stamp from public URL for jsPDF (avoids tainting canvas; works with CORS public buckets).
+ */
+export async function reportCardStampDataUrl(
+  publicUrl: string | null | undefined
+): Promise<string | null> {
+  const u = (publicUrl ?? "").trim();
+  if (!u) return null;
+  try {
+    const r = await fetch(u, { mode: "cors", cache: "no-store" });
+    if (!r.ok) return null;
+    const blob = await r.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () =>
+        resolve(
+          typeof reader.result === "string" && reader.result.length > 0
+            ? reader.result
+            : null
+        );
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function buildPdf(
+  doc: jsPDF,
+  data: ReportCardPreviewData,
+  margin: number,
+  stampDataUrl: string | null
+) {
   let y = margin;
   const pageW = doc.internal.pageSize.getWidth();
   const examHead = reportCardExamColumnTitles(data.term);
@@ -142,8 +208,99 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
   }
   y += 4;
 
+  const usableW = pageW - margin * 2;
+
+  if (data.schoolCalendar) {
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("School Calendar", margin, y);
+    y += 5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const calText = formatDateRange(
+      data.schoolCalendar.closingDateLabel,
+      data.schoolCalendar.openingDateLabel
+    );
+    const calLines = doc.splitTextToSize(calText, usableW);
+    doc.text(calLines, margin, y);
+    y += calLines.length * 4 + 4;
+  }
+
+  if (data.feeStatement) {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Fee Statement", margin, y);
+    y += 5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const fs = data.feeStatement;
+    doc.text(
+      `Total fees this term: ${formatCurrency(fs.totalFees, fs.currencyCode)}`,
+      margin,
+      y
+    );
+    y += 4;
+    doc.text(
+      `Amount paid: ${formatCurrency(fs.amountPaid, fs.currencyCode)}`,
+      margin,
+      y
+    );
+    y += 4;
+    doc.text(
+      `Balance due: ${formatCurrency(fs.balanceDue, fs.currencyCode)}`,
+      margin,
+      y
+    );
+    y += 4;
+    if (fs.balanceDue > 0) {
+      doc.setTextColor(160, 90, 0);
+      const warn = doc.splitTextToSize(
+        formatFeeBalanceReminder(fs.balanceDue, fs.currencyCode),
+        usableW
+      );
+      doc.text(warn, margin, y);
+      y += warn.length * 4 + 2;
+      doc.setTextColor(0, 0, 0);
+    } else {
+      doc.setTextColor(4, 120, 87);
+      doc.text("Fee balance: Paid in full. Thank you!", margin, y);
+      y += 6;
+      doc.setTextColor(0, 0, 0);
+    }
+    y += 4;
+  }
+
+  if (data.coordinatorMessage) {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Coordinator's Message", margin, y);
+    y += 5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const msgFormatted = formatCoordinatorMessage(data.coordinatorMessage);
+    const msgLines = doc.splitTextToSize(msgFormatted, usableW);
+    doc.text(msgLines, margin, y);
+    y += msgLines.length * 4 + 4;
+  }
+
+  if (data.requiredNextTermItems && data.requiredNextTermItems.length > 0) {
+    const itemsFormatted = formatItemsForPdf(data.requiredNextTermItems);
+    if (itemsFormatted) {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Items for Next Term", margin, y);
+      y += 5;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      const itemLines = doc.splitTextToSize(itemsFormatted, usableW);
+      doc.text(itemLines, margin, y);
+      y += itemLines.length * 4 + 4;
+    }
+  }
+
   if (data.summary?.sentence) {
-    const usable = pageW - margin * 2;
+    const usable = usableW;
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
@@ -166,46 +323,82 @@ function buildPdf(doc: jsPDF, data: ReportCardPreviewData, margin: number) {
     doc.setFontSize(10);
   }
 
+  const presentDays = data.attendance.present + data.attendance.late;
+  const attendanceSentence = formatAttendance(
+    presentDays,
+    data.attendance.absent
+  );
+  if (attendanceSentence) {
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(
+      `Attendance (${data.attendance.daysInTermLabel})`,
+      margin,
+      y
+    );
+    y += 5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const attendanceLines = doc.splitTextToSize(attendanceSentence, usableW);
+    doc.text(attendanceLines, margin, y);
+    y += attendanceLines.length * 4 + 4;
+  }
+
+  const sigBlockStartY = y;
+  const pageW2 = doc.internal.pageSize.getWidth();
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(10);
-  doc.text(`Attendance (${data.attendance.daysInTermLabel})`, margin, y);
-  y += 5;
-  doc.text(
-    `Present (incl. late): ${data.attendance.present + data.attendance.late}  Absent: ${data.attendance.absent}  Late: ${data.attendance.late}`,
-    margin,
-    y
-  );
-  y += 12;
-  doc.text(
-    `${data.teacherIsCoordinator ? "Class Coordinator" : "Class teacher"}: ___________________________`,
-    margin,
-    y
-  );
+  doc.setFont("helvetica", "normal");
+  const line1 = `${data.teacherIsCoordinator ? "Class Coordinator" : "Class teacher"}: ___________________________`;
+  const line2 = "Head teacher: ___________________________";
+  const line3 = "Parent / guardian: ___________________________";
+  doc.text(line1, margin, y);
   y += 10;
-  doc.text("Head teacher: ___________________________", margin, y);
+  doc.text(line2, margin, y);
   y += 10;
-  doc.text("Parent / guardian: ___________________________", margin, y);
+  doc.text(line3, margin, y);
+  if (stampDataUrl) {
+    try {
+      const stampY = Math.max(margin, sigBlockStartY - 2);
+      addReportCardStamp(
+        doc,
+        stampDataUrl,
+        pageW2 - margin,
+        stampY
+      );
+    } catch {
+      /* keep signatures if image fails */
+    }
+  }
 }
 
-export function downloadReportCardPdf(
+export async function downloadReportCardPdf(
   data: ReportCardPreviewData,
   filenameSafe: string
 ) {
+  const stampDataUrl = await reportCardStampDataUrl(data.schoolStampUrl);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const margin = 14;
-  buildPdf(doc, data, margin);
+  buildPdf(doc, data, margin, stampDataUrl);
   doc.save(`report-card-${filenameSafe}.pdf`);
 }
 
-export function downloadBulkReportCardsPdf(
+export async function downloadBulkReportCardsPdf(
   items: ReportCardPreviewData[],
   filenameSafe: string
 ) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const margin = 14;
-  items.forEach((data, i) => {
+  const cache = new Map<string, string | null>();
+  for (let i = 0; i < items.length; i++) {
     if (i > 0) doc.addPage();
-    buildPdf(doc, data, margin);
-  });
+    const d = items[i]!;
+    const key = d.schoolStampUrl?.trim() || "";
+    if (!cache.has(key)) {
+      cache.set(key, await reportCardStampDataUrl(d.schoolStampUrl));
+    }
+    buildPdf(doc, d, margin, cache.get(key) ?? null);
+  }
   doc.save(`report-cards-${filenameSafe}.pdf`);
 }

@@ -125,6 +125,159 @@ export async function shareCoordinatorReportCardAction(
   return { ok: true, message: "Report card emailed to parent." };
 }
 
+export type CoordinatorSubmitReviewState =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+/**
+ * Coordinator moves a report card from draft or changes_requested to
+ * `pending_review` (same workflow as the legacy teacher workspace, without
+ * requiring the row’s `teacher_id` to match the caller).
+ */
+export async function submitCoordinatorReportCardForReviewAction(
+  _prev: CoordinatorSubmitReviewState | null,
+  formData: FormData
+): Promise<CoordinatorSubmitReviewState> {
+  const reportCardId = String(formData.get("report_card_id") ?? "").trim();
+  if (!reportCardId) {
+    return { ok: false, error: "Missing report card reference." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const admin = createAdminClient() as AdminDb;
+  const { data: rc } = await admin
+    .from("report_cards")
+    .select("id, class_id, status")
+    .eq("id", reportCardId)
+    .maybeSingle();
+
+  const cardRow = rc as {
+    id: string;
+    class_id: string;
+    status: string;
+  } | null;
+  if (!cardRow) return { ok: false, error: "Report card not found." };
+
+  const { data: coord } = await admin
+    .from("teacher_coordinators")
+    .select("id")
+    .eq("teacher_id", user.id)
+    .eq("class_id", cardRow.class_id)
+    .maybeSingle();
+  if (!coord) {
+    return {
+      ok: false,
+      error: "You are not the coordinator for this class.",
+    };
+  }
+
+  if (
+    cardRow.status !== "draft" &&
+    cardRow.status !== "changes_requested"
+  ) {
+    return {
+      ok: false,
+      error: "Only draft or changes-requested report cards can be submitted.",
+    };
+  }
+
+  const { error } = await admin
+    .from("report_cards")
+    .update({
+      status: "pending_review",
+      submitted_at: new Date().toISOString(),
+    })
+    .eq("id", reportCardId)
+    .in("status", ["draft", "changes_requested"]);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/teacher-dashboard/coordinator");
+  revalidatePath("/teacher-dashboard/report-cards");
+  return { ok: true, message: "Submitted for head teacher review." };
+}
+
+// ---------------------------------------------------------------------------
+// Approve all pending_review cards in a class (so parents can view)
+// ---------------------------------------------------------------------------
+
+export type CoordinatorSendToParentsState =
+  | { ok: true; sentCount: number }
+  | { ok: false; error: string };
+
+/**
+ * Sets `status` to `approved` for all `pending_review` report cards in the
+ * class cluster and term + academic year. Does not modify `submitted_at` or
+ * any other column (besides RLS / trigger-driven `updated_at` if present).
+ */
+export async function sendCoordinatorClassReportCardsToParentsAction(
+  _prev: CoordinatorSendToParentsState | null,
+  formData: FormData
+): Promise<CoordinatorSendToParentsState> {
+  const classId = String(formData.get("class_id") ?? "").trim();
+  const termRaw = String(formData.get("term") ?? "").trim();
+  const academicYear = String(formData.get("academic_year") ?? "").trim();
+
+  if (!classId) return { ok: false, error: "Missing class reference." };
+  const term: "Term 1" | "Term 2" = termRaw === "Term 2" ? "Term 2" : "Term 1";
+  if (!/^\d{4}$/.test(academicYear)) {
+    return { ok: false, error: "Invalid academic year." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const admin = createAdminClient() as AdminDb;
+
+  const { data: coordRow } = await admin
+    .from("teacher_coordinators")
+    .select("id")
+    .eq("teacher_id", user.id)
+    .eq("class_id", classId)
+    .maybeSingle();
+  if (!coordRow) {
+    return { ok: false, error: "You are not the coordinator for this class." };
+  }
+
+  const cluster = await resolveClassCluster(admin, classId);
+  const classIds = cluster.classIds;
+
+  const { data: updatedRows, error } = await admin
+    .from("report_cards")
+    .update({ status: "approved" })
+    .in("class_id", classIds)
+    .eq("term", term)
+    .eq("academic_year", academicYear)
+    .eq("status", "pending_review")
+    .select("id");
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  const sentCount = (updatedRows ?? []).length;
+  if (sentCount === 0) {
+    return {
+      ok: false,
+      error:
+        "No report cards are ready to send. Submit them for head teacher review first.",
+    };
+  }
+
+  revalidatePath("/teacher-dashboard/coordinator");
+  revalidatePath("/teacher-dashboard/report-cards");
+  revalidatePath("/parent-dashboard");
+  return { ok: true, sentCount };
+}
+
 // ---------------------------------------------------------------------------
 // Bulk report card generation for a coordinator class
 // ---------------------------------------------------------------------------
@@ -132,18 +285,21 @@ export async function shareCoordinatorReportCardAction(
 /**
  * Result shape surfaced to the UI by `generateReportCardsForClassAction`.
  *
- * `ok: true` carries counts the UI uses to render a success toast. `studentsMissingAllScores`
- * is a soft warning: those students still get an (empty-scored) report card so the teacher
- * can fill it in later.
+ * `ok: true` includes `subjectsWithNoExamSetup` when the gradebook is missing
+ * this term’s exam assignments for some (but not all) subjects. Generation
+ * still completes; the UI should warn. `studentsMissingAllScores` is a soft
+ * notice for students with no scores in any subject.
  */
 export type CoordinatorGenerateState =
   | {
       ok: true;
       message: string;
       className: string;
+      studentCount: number;
       generated: number;
       skipped: number;
       studentsMissingAllScores: number;
+      subjectsWithNoExamSetup: string[];
     }
   | { ok: false; error: string };
 
@@ -302,6 +458,14 @@ export async function generateReportCardsForClassAction(
     a.name.localeCompare(b.name)
   );
 
+  if (subjectList.length === 0) {
+    return {
+      ok: false,
+      error:
+        "No subjects are assigned to this class. Add subjects in school settings, then try again.",
+    };
+  }
+
   // 5. Look up which students already have a report card for (term, academic_year).
   //    We no longer skip them outright — existing cards still get their position
   //    + teacher comments backfilled in step 8b so the coordinator's "Generate
@@ -365,6 +529,24 @@ export async function generateReportCardsForClassAction(
     list.push({ assignmentId: r.id, subject: canonicalName, maxScore: max });
     bucket[examType] = list;
     assignmentsBySubjectExam.set(subjectKey, bucket);
+  }
+
+  const subjectsWithNoExamSetup: string[] = [];
+  for (const subj of subjectList) {
+    const sk = normalizeSubjectKey(subj.name);
+    const bucket = assignmentsBySubjectExam.get(sk);
+    const hasE1 = (bucket?.[wanted.exam1]?.length ?? 0) > 0;
+    const hasE2 = (bucket?.[wanted.exam2]?.length ?? 0) > 0;
+    if (!hasE1 && !hasE2) {
+      subjectsWithNoExamSetup.push(subj.name);
+    }
+  }
+  if (subjectsWithNoExamSetup.length === subjectList.length) {
+    return {
+      ok: false,
+      error:
+        "No exam scores are set up in the gradebook for any subject for this term. Add the correct exam assignments, then try again.",
+    };
   }
 
   // 7. Pull all relevant teacher_scores in a single query
@@ -683,10 +865,8 @@ export async function generateReportCardsForClassAction(
     }
   }
 
-  // `skipped` retains its old contract — number of students who already had a
-  // report card before this run — but they're no longer "skipped" entirely;
-  // their position + comment columns get refreshed in place. Surface that as a
-  // separate suffix so coordinators understand both happened.
+  // `skipped` in the return value counts existing cards that had their rows
+  // refreshed in place.
   const skipped = refreshed;
 
   // Any DB error for an individual student is surfaced but we still revalidate and
@@ -715,46 +895,22 @@ export async function generateReportCardsForClassAction(
   revalidatePath("/teacher-dashboard/report-cards");
   revalidatePath("/teacher-dashboard/academic-reports");
 
-  const messagePrefix = `Generated ${generated} report card${
-    generated === 1 ? "" : "s"
-  } for ${klass.name}`;
-  const suffixParts: string[] = [];
-  if (refreshed > 0) {
-    suffixParts.push(
-      `updated scores and positions on ${refreshed} existing card${
-        refreshed === 1 ? "" : "s"
-      }`
-    );
-  }
-  if (studentsMissingAllScores > 0) {
-    suffixParts.push(
-      `${studentsMissingAllScores} ${
-        studentsMissingAllScores === 1 ? "has" : "have"
-      } no exam scores yet`
-    );
-  }
-  // If the per-student write paths recorded errors but at least one card still
-  // landed, surface the first few so the coordinator notices instead of seeing
-  // a falsely cheerful "refreshed N cards" message.
+  let message = `Report cards generated for ${studentRows.length} students.`;
   if (errors.length > 0) {
-    suffixParts.push(
-      `${errors.length} write error${errors.length === 1 ? "" : "s"} (${errors
-        .slice(0, 2)
-        .join("; ")})`
-    );
+    message += ` Some updates could not be completed (${errors.length} error${
+      errors.length === 1 ? "" : "s"
+    }).`;
   }
-  const message =
-    suffixParts.length > 0
-      ? `${messagePrefix} — ${suffixParts.join("; ")}.`
-      : `${messagePrefix}.`;
 
   return {
     ok: true,
     message,
     className: klass.name,
+    studentCount: studentRows.length,
     generated,
     skipped,
     studentsMissingAllScores,
+    subjectsWithNoExamSetup,
   };
 }
 

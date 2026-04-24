@@ -10,8 +10,7 @@ type Row = ChildTabData["reportCards"][number];
 function formatReportCardOptionLabel(r: Row): string {
   const t = r.term.trim();
   const y = r.academic_year.trim();
-  const base = `${t} ${y}`.replace(/\s+/g, " ").trim();
-  return r.status === "pending_review" ? `${base} (pending review)` : base;
+  return `${t} ${y}`.replace(/\s+/g, " ").trim();
 }
 
 export function ParentReportCardsTabClient({ rows }: { rows: Row[] }) {

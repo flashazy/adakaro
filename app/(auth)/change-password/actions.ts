@@ -46,25 +46,24 @@ export async function changeTeacherPasswordAction(
     password_forced_reset: boolean;
   } | null;
 
-  if (pr?.role !== "teacher" && pr?.role !== "admin") {
+  if (pr?.role === "super_admin") {
+    redirect("/super-admin");
+  }
+  if (pr?.role === "admin") {
+    redirect("/dashboard");
+  }
+
+  if (pr?.role !== "teacher") {
     return {
       ok: false,
       error: "This password setup page is not available for your account.",
     };
   }
 
-  if (pr?.role === "admin") {
-    if (pr.password_changed !== false) {
-      redirect("/dashboard");
-    }
-  } else if (pr?.role === "teacher") {
-    const must =
-      pr.password_changed === false || pr.password_forced_reset === true;
-    if (!must) {
-      redirect("/teacher-dashboard");
-    }
-  } else {
-    redirect("/dashboard");
+  const must =
+    pr.password_changed === false || pr.password_forced_reset === true;
+  if (!must) {
+    redirect("/teacher-dashboard");
   }
 
   const { error: authErr } = await supabase.auth.updateUser({ password });
@@ -95,9 +94,6 @@ export async function changeTeacherPasswordAction(
 
   if (nextRaw.startsWith("/") && !nextRaw.startsWith("//")) {
     redirect(nextRaw);
-  }
-  if (pr?.role === "admin") {
-    redirect("/dashboard");
   }
   redirect("/teacher-dashboard");
 }

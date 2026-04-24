@@ -132,15 +132,20 @@ export async function login(
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("role, password_changed, password_forced_reset")
+    .select("role, password_changed, password_forced_reset, recovery_reset_required")
     .eq("id", user.id)
     .maybeSingle();
 
-  const profileRole = (profileRow as { role: UserRole } | null)?.role;
-  const passwordChanged = (profileRow as { password_changed?: boolean } | null)
-    ?.password_changed;
-  const passwordForcedReset = (profileRow as { password_forced_reset?: boolean } | null)
-    ?.password_forced_reset;
+  const profileRowTyped = profileRow as {
+    role: UserRole;
+    password_changed?: boolean;
+    password_forced_reset?: boolean;
+    recovery_reset_required?: boolean;
+  } | null;
+  const profileRole = profileRowTyped?.role;
+  const passwordChanged = profileRowTyped?.password_changed;
+  const passwordForcedReset = profileRowTyped?.password_forced_reset;
+  const recoveryResetRequired = profileRowTyped?.recovery_reset_required;
 
   const role: UserRole =
     profileRole === "admin" ||
@@ -173,18 +178,23 @@ export async function login(
     redirect("/super-admin");
   }
 
-  const teacherMustChangePassword =
+  if (
     role === "teacher" &&
-    (passwordChanged === false || passwordForcedReset === true);
-  const adminMustChangePassword =
-    role === "admin" && passwordChanged === false;
-  if (teacherMustChangePassword || adminMustChangePassword) {
+    (passwordChanged === false || passwordForcedReset === true)
+  ) {
     const q =
       next && next.startsWith("/") && !next.startsWith("//")
         ? `?next=${encodeURIComponent(next)}`
         : "";
     redirect(`/change-password${q}`);
   }
+  if (
+    role === "parent" &&
+    (recoveryResetRequired === true || passwordForcedReset === true)
+  ) {
+    redirect("/reset-password");
+  }
+  // School admins: never require /change-password; middleware also skips forced reset for `profiles.role = admin`.
 
   if (next) {
     redirect(next);

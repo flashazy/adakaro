@@ -3,6 +3,8 @@ export interface ReportCardPreviewData {
   /** School motto / tagline from settings; shown on PDFs when non-empty. */
   schoolMotto?: string | null;
   logoUrl: string | null;
+  /** Public URL of official school stamp; shown near signatures when set. */
+  schoolStampUrl: string | null;
   studentName: string;
   className: string;
   term: string;
@@ -67,7 +69,44 @@ export interface ReportCardPreviewData {
    * schools surface total marks of the best 7 subjects.
    */
   summary?: ReportCardSummary | null;
+  /**
+   * Shown after subject results when a coordinator saved dates for this
+   * class/term/year. Omitted when there is no settings row.
+   */
+  schoolCalendar?: ReportCardSchoolCalendarSection | null;
+  /**
+   * Aggregated from `student_fee_balances` for this student and report period.
+   * Omitted when no matching fee rows exist.
+   */
+  feeStatement?: ReportCardFeeStatementSection | null;
+  /** Non-empty message from class report settings; line breaks preserved. */
+  coordinatorMessage?: string | null;
+  /** Non-empty list from class report settings. */
+  requiredNextTermItems?: string[] | null;
 }
+
+/** Saved class report settings for this card's term (dates may be null → TBA). */
+export interface ReportCardSchoolCalendarSection {
+  closingDateLabel: string;
+  openingDateLabel: string;
+}
+
+/** Mirrors `student_fee_balances` totals for the report period (no new maths). */
+export interface ReportCardFeeStatementSection {
+  currencyCode: string;
+  totalFees: number;
+  amountPaid: number;
+  balanceDue: number;
+}
+
+/** Calendar, fees, coordinator note, and next-term list shown below subject results. */
+export type ReportCardSupplementaryPreviewSlice = Pick<
+  ReportCardPreviewData,
+  | "schoolCalendar"
+  | "feeStatement"
+  | "coordinatorMessage"
+  | "requiredNextTermItems"
+>;
 
 export interface ReportCardSummary {
   /** "primary" or "secondary"; controls phrasing in the footer line. */

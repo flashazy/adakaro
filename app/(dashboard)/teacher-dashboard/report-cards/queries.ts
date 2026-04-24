@@ -47,6 +47,133 @@ export { termDateRange } from "./report-card-dates";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
+const NO_ASSIGNMENTS_MSG =
+  "No class assignments found. Ask your administrator to assign classes.";
+
+/**
+ * Coordinators may have no `teacher_assignments` on leaf classes (e.g. only a
+ * parent container row, or scores entered by other teachers). Build class
+ * options from `teacher_coordinators` so the report cards page can load.
+ */
+async function loadCoordinatorFallbackReportCardOptions(
+  admin: Db,
+  userId: string,
+  teacherName: string
+): Promise<
+  | {
+      ok: true;
+      schoolId: string;
+      schoolName: string;
+      schoolMotto: string | null;
+      logoUrl: string | null;
+      schoolStampUrl: string | null;
+      schoolLevel: SchoolLevel;
+      teacherName: string;
+      classes: TeacherClassOption[];
+    }
+  | { ok: false; error: string }
+> {
+  const { data: coordRows, error } = await admin
+    .from("teacher_coordinators")
+    .select("class_id, school_id")
+    .eq("teacher_id", userId);
+
+  if (error || !coordRows?.length) {
+    return { ok: false, error: NO_ASSIGNMENTS_MSG };
+  }
+
+  const coords = coordRows as { class_id: string; school_id: string }[];
+  const classIds = [...new Set(coords.map((r) => r.class_id))];
+
+  const { data: classRows } = await admin
+    .from("classes")
+    .select("id, name, school_id")
+    .in("id", classIds);
+
+  const nameById = new Map<string, string>();
+  const schoolByClass = new Map<string, string>();
+  for (const c of (classRows ?? []) as {
+    id: string;
+    name: string;
+    school_id: string;
+  }[]) {
+    nameById.set(c.id, c.name);
+    schoolByClass.set(c.id, c.school_id);
+  }
+
+  const cy = new Date().getFullYear();
+  const defaultYears = [String(cy - 1), String(cy), String(cy + 1)];
+
+  const classes: TeacherClassOption[] = classIds.map((classId) => ({
+    classId,
+    className: nameById.get(classId) ?? "Class",
+    academicYears: [...defaultYears],
+    isCoordinator: true,
+  }));
+  classes.sort((a, b) => a.className.localeCompare(b.className));
+
+  const primarySchoolId =
+    schoolByClass.get(classIds[0] ?? "") ?? coords[0]?.school_id ?? "";
+
+  let schoolId = primarySchoolId;
+  let schoolName = "";
+  let schoolMotto: string | null = null;
+  let logoUrl: string | null = null;
+  let schoolStampUrl: string | null = null;
+  let schoolLevel: SchoolLevel = normalizeSchoolLevel(undefined);
+
+  if (primarySchoolId) {
+    let res = await admin
+      .from("schools")
+      .select("id, name, logo_url, school_level, motto, school_stamp_url")
+      .eq("id", primarySchoolId)
+      .maybeSingle();
+    if (res.error && /column/i.test(res.error.message ?? "")) {
+      res = await admin
+        .from("schools")
+        .select("id, name, logo_url, school_level")
+        .eq("id", primarySchoolId)
+        .maybeSingle();
+    }
+    if (res.error && /column.*school_level/i.test(res.error.message ?? "")) {
+      res = await admin
+        .from("schools")
+        .select("id, name, logo_url")
+        .eq("id", primarySchoolId)
+        .maybeSingle();
+    }
+    const s = res.data as {
+      id: string;
+      name: string;
+      logo_url: string | null;
+      school_level?: string | null;
+      motto?: string | null;
+      school_stamp_url?: string | null;
+    } | null;
+    if (s) {
+      schoolId = s.id;
+      schoolName = s.name;
+      logoUrl = s.logo_url;
+      schoolStampUrl = s.school_stamp_url?.trim() || null;
+      schoolLevel = normalizeSchoolLevel(s.school_level);
+      const m = (s.motto ?? "").trim();
+      schoolMotto = m || null;
+    }
+  }
+
+  return {
+    ok: true,
+    schoolId,
+    schoolName,
+    schoolMotto,
+    logoUrl,
+    schoolStampUrl,
+    schoolLevel,
+    teacherName,
+    classes,
+  };
+}
+
 export async function loadTeacherReportCardOptions(): Promise<
   | {
       ok: true;
@@ -54,6 +181,7 @@ export async function loadTeacherReportCardOptions(): Promise<
       schoolName: string;
       schoolMotto: string | null;
       logoUrl: string | null;
+      schoolStampUrl: string | null;
       schoolLevel: SchoolLevel;
       teacherName: string;
       classes: TeacherClassOption[];
@@ -93,10 +221,15 @@ export async function loadTeacherReportCardOptions(): Promise<
     .eq("teacher_id", user.id);
 
   if (error || !assignments?.length) {
+    const fallback = await loadCoordinatorFallbackReportCardOptions(
+      admin,
+      user.id,
+      teacherName
+    );
+    if (fallback.ok) return fallback;
     return {
       ok: false,
-      error:
-        "No class assignments found. Ask your administrator to assign classes.",
+      error: error?.message ?? NO_ASSIGNMENTS_MSG,
     };
   }
 
@@ -118,11 +251,13 @@ export async function loadTeacherReportCardOptions(): Promise<
   const leafRows = rows.filter((r) => !parentClassIds.has(r.class_id));
 
   if (!leafRows.length) {
-    return {
-      ok: false,
-      error:
-        "No class assignments found. Ask your administrator to assign classes.",
-    };
+    const fallback = await loadCoordinatorFallbackReportCardOptions(
+      admin,
+      user.id,
+      teacherName
+    );
+    if (fallback.ok) return fallback;
+    return { ok: false, error: NO_ASSIGNMENTS_MSG };
   }
 
   const classIds = [...new Set(leafRows.map((r) => r.class_id))];
@@ -194,13 +329,14 @@ export async function loadTeacherReportCardOptions(): Promise<
   let schoolName = "";
   let schoolMotto: string | null = null;
   let logoUrl: string | null = null;
+  let schoolStampUrl: string | null = null;
   let schoolLevel: SchoolLevel = normalizeSchoolLevel(undefined);
 
   if (primarySchoolId) {
     // `school_level` / `motto` may be missing on older deployments; fall back gracefully.
     let res = await admin
       .from("schools")
-      .select("id, name, logo_url, school_level, motto")
+      .select("id, name, logo_url, school_level, motto, school_stamp_url")
       .eq("id", primarySchoolId)
       .maybeSingle();
     if (res.error && /column/i.test(res.error.message ?? "")) {
@@ -223,11 +359,13 @@ export async function loadTeacherReportCardOptions(): Promise<
       logo_url: string | null;
       school_level?: string | null;
       motto?: string | null;
+      school_stamp_url?: string | null;
     } | null;
     if (s) {
       schoolId = s.id;
       schoolName = s.name;
       logoUrl = s.logo_url;
+      schoolStampUrl = s.school_stamp_url?.trim() || null;
       schoolLevel = normalizeSchoolLevel(s.school_level);
       const m = (s.motto ?? "").trim();
       schoolMotto = m || null;
@@ -240,6 +378,7 @@ export async function loadTeacherReportCardOptions(): Promise<
     schoolName,
     schoolMotto,
     logoUrl,
+    schoolStampUrl,
     schoolLevel,
     teacherName,
     classes,
@@ -977,7 +1116,7 @@ export async function loadStudentGradebookExamScores(params: {
 /**
  * Builds class subject ranks for the parent report card view (admin client;
  * verifies parent_students link). Report cards in the class for the term/year
- * with status `pending_review` or `approved` are included.
+ * with status `approved` are included.
  */
 export async function loadSubjectPositionsForParentReportCard(params: {
   parentUserId: string;
@@ -1005,7 +1144,7 @@ export async function loadSubjectPositionsForParentReportCard(params: {
     .eq("class_id", params.classId)
     .eq("term", termNorm)
     .eq("academic_year", yearNorm)
-    .in("status", ["pending_review", "approved"]);
+    .eq("status", "approved");
 
   if (!cards?.length) return {};
 
@@ -1121,7 +1260,7 @@ export async function loadSubjectPositionsForParentReportCard(params: {
  * the parent-side report card footer (rank + total/avg). Mirrors the access
  * checks used by `loadSubjectPositionsForParentReportCard` so a parent can
  * only see classmates of a student they are linked to. Includes
- * `pending_review` and `approved` report cards in the class cohort.
+ * `approved` report cards in the class cohort.
  */
 export async function loadParentReportCardCohort(params: {
   parentUserId: string;
@@ -1174,7 +1313,7 @@ export async function loadParentReportCardCohort(params: {
     .eq("class_id", params.classId)
     .eq("term", termNorm)
     .eq("academic_year", yearNorm)
-    .in("status", ["pending_review", "approved"]);
+    .eq("status", "approved");
 
   if (!cards?.length) {
     return { cohort: [], subjects: [], schoolLevel };

@@ -135,7 +135,7 @@ export default async function DashboardGroupLayout({
             id="page-content"
             className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
           >
-            {children}
+            <DashboardFeedbackProvider>{children}</DashboardFeedbackProvider>
           </div>
         </div>
       </>

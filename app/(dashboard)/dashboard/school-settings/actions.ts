@@ -221,6 +221,226 @@ export async function removeSchoolLogo(
   };
 }
 
+const MAX_STAMP_BYTES = 2 * 1024 * 1024;
+const ALLOWED_STAMP_EXT = new Set(["png", "jpg", "jpeg", "webp"]);
+const ALLOWED_STAMP_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+
+function storagePathFromSchoolAssetsPublicUrl(publicUrl: string): string | null {
+  try {
+    const u = new URL(publicUrl);
+    const parts = u.pathname.split("/").filter(Boolean);
+    const idx = parts.indexOf("school-assets");
+    if (idx === -1) return null;
+    return parts.slice(idx + 1).join("/") || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function uploadSchoolStamp(
+  _prev: SchoolSettingsState,
+  formData: FormData
+): Promise<SchoolSettingsState> {
+  const raw = formData.get("stamp");
+  if (raw == null) {
+    return {
+      error:
+        "No file was included. Choose an image (PNG, JPG, or WebP, up to 2 MB). If the problem continues, refresh the page and try again.",
+    };
+  }
+  if (typeof raw === "string") {
+    return {
+      error:
+        "The file did not upload correctly. Try choosing the image again. Allowed types: PNG, JPG, WebP; max 2 MB.",
+    };
+  }
+  const file = raw;
+  if (!(file instanceof File) || file.size === 0) {
+    return {
+      error:
+        "The file was empty or unreadable. Choose a PNG, JPG, or WebP (max 2 MB).",
+    };
+  }
+  if (file.size > MAX_STAMP_BYTES) {
+    return { error: "Stamp must be 2 MB or smaller." };
+  }
+  const fromName = file.name.includes(".")
+    ? file.name.split(".").pop()?.toLowerCase() ?? ""
+    : "";
+  let ext =
+    fromName && ALLOWED_STAMP_EXT.has(fromName)
+      ? fromName
+      : file.type === "image/png"
+        ? "png"
+        : file.type === "image/webp"
+          ? "webp"
+          : file.type === "image/jpeg"
+            ? "jpg"
+            : "";
+  if (ext === "jpeg") ext = "jpg";
+  if (!ext || !ALLOWED_STAMP_EXT.has(ext)) {
+    return { error: "Use a PNG, JPG, JPEG, or WebP image." };
+  }
+  if (file.type && !ALLOWED_STAMP_MIME.has(file.type)) {
+    return { error: "Use a PNG, JPG, JPEG, or WebP image." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
+  }
+
+  const path = `schools/${schoolId}/stamp.${ext}`;
+  const { error: uploadError } = await supabase.storage
+    .from("school-assets")
+    .upload(path, file, { upsert: true, contentType: file.type || undefined });
+
+  if (uploadError) {
+    return { error: uploadError.message || "Could not upload stamp." };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("school-assets").getPublicUrl(path);
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not save stamp URL. Check server configuration (service role).",
+    };
+  }
+
+  const { data: updatedSchool, error: updateError } = await admin
+    .from("schools")
+    .update({ school_stamp_url: publicUrl } as never)
+    .eq("id", schoolId)
+    .select("updated_at")
+    .maybeSingle();
+
+  if (updateError) {
+    return { error: updateError.message };
+  }
+
+  const stampVersion = logoVersionFromRow(
+    (updatedSchool as { updated_at: string } | null)?.updated_at
+  );
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/school-settings");
+  revalidatePath("/teacher-dashboard");
+  revalidatePath("/teacher-dashboard/report-cards");
+  revalidatePath("/teacher-dashboard/coordinator");
+  revalidatePath("/parent-dashboard/report-card");
+  return {
+    success: true,
+    completedAt: stampVersion,
+    publicUrl,
+    stampVersion,
+  };
+}
+
+export async function removeSchoolStamp(
+  _prev: SchoolSettingsState,
+  _formData: FormData
+): Promise<SchoolSettingsState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
+  }
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not update school. Check server configuration (service role).",
+    };
+  }
+
+  const { data: row } = await admin
+    .from("schools")
+    .select("school_stamp_url")
+    .eq("id", schoolId)
+    .maybeSingle();
+
+  const stampUrl = (
+    row as { school_stamp_url: string | null } | null
+  )?.school_stamp_url?.trim();
+
+  if (stampUrl) {
+    const storagePath = storagePathFromSchoolAssetsPublicUrl(stampUrl);
+    if (storagePath) {
+      await supabase.storage.from("school-assets").remove([storagePath]);
+    } else {
+      const { data: listed } = await supabase.storage
+        .from("school-assets")
+        .list(`schools/${schoolId}`);
+      const names = (listed ?? [])
+        .map((o) => o.name)
+        .filter((n) => /^stamp\./i.test(n));
+      if (names.length > 0) {
+        await supabase.storage
+          .from("school-assets")
+          .remove(names.map((n) => `schools/${schoolId}/${n}`));
+      }
+    }
+  }
+
+  const { data: updatedSchool, error: updateError } = await admin
+    .from("schools")
+    .update({ school_stamp_url: null } as never)
+    .eq("id", schoolId)
+    .select("updated_at")
+    .maybeSingle();
+
+  if (updateError) {
+    return { error: updateError.message };
+  }
+
+  const stampVersion = logoVersionFromRow(
+    (updatedSchool as { updated_at: string } | null)?.updated_at
+  );
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/school-settings");
+  revalidatePath("/teacher-dashboard");
+  revalidatePath("/teacher-dashboard/report-cards");
+  revalidatePath("/teacher-dashboard/coordinator");
+  revalidatePath("/parent-dashboard/report-card");
+  return {
+    success: true,
+    completedAt: stampVersion,
+    publicUrl: null,
+    stampVersion,
+  };
+}
+
 export async function updateSchoolCurrency(
   _prev: SchoolSettingsState,
   formData: FormData
