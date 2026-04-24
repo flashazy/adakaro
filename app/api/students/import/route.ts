@@ -11,10 +11,19 @@ import {
   parseOptionalEnrollmentDate,
   todayIsoLocal,
 } from "@/lib/enrollment-date";
+import { getCurrentAcademicYearAndTerm } from "@/lib/student-subject-enrollment";
+import {
+  buildStudentDuplicateLookups,
+  makeCompositeKey,
+  makeNameClassKey,
+  normalizePhoneDigits,
+  type StudentDuplicateLookups,
+} from "@/lib/student-import-duplicates";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_ROWS = 500;
 const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_SUBJECTS_PER_ROW = 15;
 
 const REQUIRED_HEADER_FIELDS = [
   "full_name",
@@ -37,10 +46,21 @@ export interface ValidatedImportRow {
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
+  /** Raw subjects cell for re-validation on import (empty = use all class subjects). */
+  subjects_cell: string;
   status: "valid" | "warning" | "error";
+  /** Blocking issues other than strict subject validation (class, gender, email, etc.). */
   errors: string[];
+  /** When subjects are validated strictly: invalid / not-in-class subject names (blocks import unless skip). */
+  subject_errors: string[];
   warnings: string[];
   resolved_class_id: string | null;
+  /** When true, import enrolls the student in every subject linked to their class. */
+  enroll_all_class_subjects: boolean;
+  /** Subject IDs to enrol when `enroll_all_class_subjects` is false (CSV listed subjects). */
+  resolved_subject_ids: string[];
+  /** True when row is blocked (or warned) solely due to duplicate-detection rules. */
+  duplicate_row: boolean;
 }
 
 function parseCsv(content: string): string[][] {
@@ -111,6 +131,7 @@ function normalizeHeader(h: string): string {
 function mapHeaderRow(headerCells: string[]): {
   requiredIdx: number[];
   enrollmentDateIdx: number | null;
+  subjectsIdx: number | null;
 } | null {
   const norm = headerCells.map(normalizeHeader);
   const requiredIdx: number[] = [];
@@ -120,32 +141,70 @@ function mapHeaderRow(headerCells: string[]): {
     requiredIdx.push(pos);
   }
   const ed = norm.indexOf("enrollment_date");
-  return { requiredIdx, enrollmentDateIdx: ed === -1 ? null : ed };
+  const sj = norm.indexOf("subjects");
+  return {
+    requiredIdx,
+    enrollmentDateIdx: ed === -1 ? null : ed,
+    subjectsIdx: sj === -1 ? null : sj,
+  };
 }
 
-/** Empty cell defaults to male with a warning; invalid values are errors. */
+/** Gender must be exactly male or female (CSV column is required). */
 function parseGenderCell(raw: string): {
   gender: "male" | "female" | null;
   genderWarnings: string[];
   genderErrors: string[];
 } {
   const g = raw.trim().toLowerCase();
-  if (g === "") {
-    return {
-      gender: "male",
-      genderWarnings: ["gender was empty; defaulted to male."],
-      genderErrors: [],
-    };
-  }
   if (g === "male" || g === "female") {
     return { gender: g, genderWarnings: [], genderErrors: [] };
   }
   return {
     gender: null,
     genderWarnings: [],
-    genderErrors: ["gender must be male or female."],
+    genderErrors: ["Gender is required. Must be 'male' or 'female'."],
   };
 }
+
+/** If provided, require enough digits for a plausible phone number. */
+function validateParentPhone(phone: string | null): string | null {
+  if (phone == null || phone.trim() === "") return null;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 8) {
+    return "parent_phone does not look like a valid phone number.";
+  }
+  return null;
+}
+
+/**
+ * Split comma-separated subject names; trim segments; cap at MAX_SUBJECTS_PER_ROW.
+ */
+function parseSubjectNamesFromCell(
+  raw: string,
+  warningsOut: string[]
+): string[] {
+  const trimmed = raw.trim();
+  if (trimmed === "") return [];
+  const parts = trimmed
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
+  if (parts.length > MAX_SUBJECTS_PER_ROW) {
+    warningsOut.push(
+      `Only the first ${MAX_SUBJECTS_PER_ROW} subjects are used; extra names were ignored.`
+    );
+    return parts.slice(0, MAX_SUBJECTS_PER_ROW);
+  }
+  return parts;
+}
+
+/** Used when the name is unknown at the school or not linked to the student's class. */
+function subjectValidationError(subjectName: string, classLabel: string): string {
+  return `Subject '${subjectName}' not found in class '${classLabel}'. Please check subject names or add subject to class.`;
+}
+
+const MSG_DUP_COMPOSITE =
+  "Student already exists with same name, class, and parent phone";
 
 function validateOneDataRow(
   line: number,
@@ -157,13 +216,20 @@ function validateOneDataRow(
   parent_name: string | null,
   parent_email: string | null,
   parent_phone: string | null,
+  subjects_cell: string,
   classNameToId: Map<string, string>,
   sortedClassNames: string[],
   defaultClassId: string | null,
-  existingAdmissions: Set<string>,
-  admissionFirstLine: Map<string, number>
+  duplicateLookups: StudentDuplicateLookups,
+  admissionFirstLine: Map<string, number>,
+  compositeFirstLineInFile: Map<string, number>,
+  subjectNameToId: Map<string, string>,
+  classIdToAllowedSubjectIds: Map<string, Set<string>>,
+  options?: { subjectsStrict?: boolean }
 ): ValidatedImportRow {
+  const subjectsStrict = options?.subjectsStrict ?? true;
   const errors: string[] = [];
+  const subject_errors: string[] = [];
   const warnings: string[] = [];
 
   const {
@@ -186,11 +252,16 @@ function validateOneDataRow(
   const cn = classNameTrimmed === "" ? null : classNameTrimmed;
 
   if (!full_name.trim()) {
-    errors.push("full_name is required.");
+    errors.push("Missing full name.");
   }
 
   if (parent_email != null && !EMAIL_RE.test(parent_email)) {
     errors.push("parent_email is not a valid email address.");
+  }
+
+  const phoneErr = validateParentPhone(parent_phone);
+  if (phoneErr) {
+    errors.push(phoneErr);
   }
 
   if (admission_number != null) {
@@ -203,8 +274,10 @@ function validateOneDataRow(
     } else {
       admissionFirstLine.set(key, line);
     }
-    if (existingAdmissions.has(key)) {
-      errors.push("This admission number already exists for your school.");
+    if (duplicateLookups.admissionLowerSet.has(key)) {
+      errors.push(
+        `Student already exists with admission number: ${admission_number.trim()}`
+      );
     }
   } else {
     warnings.push(
@@ -226,16 +299,115 @@ function validateOneDataRow(
     if (id) {
       resolved_class_id = id;
     } else {
-      resolved_class_id = defaultClassId;
-      const defName = sortedClassNames[0] ?? "";
+      errors.push(`Class "${cn}" not found.`);
+    }
+  }
+
+  let enroll_all_class_subjects = true;
+  let resolved_subject_ids: string[] = [];
+
+  const defaultClassName = sortedClassNames[0] ?? "this class";
+  const classLabelForSubjects =
+    cn ?? defaultClassName;
+
+  const hasValidPhone =
+    !phoneErr &&
+    parent_phone != null &&
+    normalizePhoneDigits(parent_phone).length >= 8;
+
+  const resolvedClassNameForDup = cn ?? sortedClassNames[0] ?? "";
+  let compKeyForFile: string | null = null;
+  let duplicateCompositeBlocked = false;
+  if (errors.length === 0 && resolved_class_id && hasValidPhone) {
+    compKeyForFile = makeCompositeKey(
+      full_name.trim(),
+      resolvedClassNameForDup,
+      parent_phone
+    );
+    if (compKeyForFile) {
+      const inDbComposite =
+        admission_number == null &&
+        duplicateLookups.compositeExactSet.has(compKeyForFile);
+      const prevLine = compositeFirstLineInFile.get(compKeyForFile);
+      if (inDbComposite) {
+        errors.push(MSG_DUP_COMPOSITE);
+        duplicateCompositeBlocked = true;
+      } else if (prevLine != null) {
+        errors.push(MSG_DUP_COMPOSITE);
+        duplicateCompositeBlocked = true;
+      }
+    }
+  }
+
+  if (
+    errors.length === 0 &&
+    resolved_class_id &&
+    hasValidPhone &&
+    !duplicateCompositeBlocked &&
+    parent_phone != null
+  ) {
+    const ncKey = makeNameClassKey(full_name.trim(), resolvedClassNameForDup);
+    const csvDigits = normalizePhoneDigits(parent_phone);
+    const phones = duplicateLookups.nameClassToPhones.get(ncKey);
+    if (phones && phones.size > 0 && !phones.has(csvDigits)) {
       warnings.push(
-        `Class "${cn}" not found (exact match required); assigned to "${defName}".`
+        "Student with same name and class exists but with different parent phone. Review if this is a duplicate."
       );
     }
   }
 
+  if (errors.length === 0 && resolved_class_id) {
+    const allowed =
+      classIdToAllowedSubjectIds.get(resolved_class_id) ?? new Set();
+    const subjectParseWarnings: string[] = [];
+    const requested = parseSubjectNamesFromCell(
+      subjects_cell,
+      subjectParseWarnings
+    );
+    warnings.push(...subjectParseWarnings);
+
+    if (subjects_cell.trim() !== "") {
+      enroll_all_class_subjects = false;
+      let skippedInvalidCount = 0;
+      for (const name of requested) {
+        const sid = subjectNameToId.get(name);
+        if (!sid) {
+          if (subjectsStrict) {
+            subject_errors.push(subjectValidationError(name, classLabelForSubjects));
+          } else {
+            skippedInvalidCount += 1;
+          }
+          continue;
+        }
+        if (!allowed.has(sid)) {
+          if (subjectsStrict) {
+            subject_errors.push(subjectValidationError(name, classLabelForSubjects));
+          } else {
+            skippedInvalidCount += 1;
+          }
+          continue;
+        }
+        if (!resolved_subject_ids.includes(sid)) {
+          resolved_subject_ids.push(sid);
+        }
+      }
+      if (!subjectsStrict && skippedInvalidCount > 0) {
+        warnings.push(
+          `${skippedInvalidCount} listed subject name(s) were skipped (not found or not assigned to this class).`
+        );
+      }
+    } else {
+      enroll_all_class_subjects = true;
+      resolved_subject_ids = [];
+    }
+  }
+
+  const hardBlocked = errors.length > 0;
+  const subjectBlocked = subjectsStrict && subject_errors.length > 0;
+  const rowImportBlocked = hardBlocked || subjectBlocked;
+
   let status: ValidatedImportRow["status"];
-  if (errors.length > 0) {
+  if (rowImportBlocked) {
     status = "error";
   } else if (warnings.length > 0) {
     status = "warning";
@@ -243,20 +415,40 @@ function validateOneDataRow(
     status = "valid";
   }
 
+  const duplicate_row = errors.some(
+    (e) =>
+      e.startsWith("Student already exists with admission number:") ||
+      e === MSG_DUP_COMPOSITE ||
+      e.startsWith("Duplicate admission_number in file")
+  );
+
+  if (
+    (status === "valid" || status === "warning") &&
+    compKeyForFile &&
+    !duplicateCompositeBlocked
+  ) {
+    compositeFirstLineInFile.set(compKeyForFile, line);
+  }
+
   return {
     line,
     full_name: full_name.trim(),
     admission_number,
     class_name: cn,
-    gender: errors.length > 0 ? null : parsedGender,
+    gender: hardBlocked ? null : parsedGender,
     enrollment_date,
     parent_name,
     parent_email,
     parent_phone,
+    subjects_cell: subjects_cell.trim(),
     status,
     errors,
+    subject_errors,
     warnings,
-    resolved_class_id: errors.length > 0 ? null : resolved_class_id,
+    resolved_class_id: hardBlocked ? null : resolved_class_id,
+    enroll_all_class_subjects: hardBlocked ? true : enroll_all_class_subjects,
+    resolved_subject_ids: hardBlocked ? [] : resolved_subject_ids,
+    duplicate_row,
   };
 }
 
@@ -265,7 +457,9 @@ function validateAndBuildRows(
   classNameToId: Map<string, string>,
   sortedClassNames: string[],
   defaultClassId: string | null,
-  existingAdmissions: Set<string>
+  duplicateLookups: StudentDuplicateLookups,
+  subjectNameToId: Map<string, string>,
+  classIdToAllowedSubjectIds: Map<string, Set<string>>
 ): ValidatedImportRow[] {
   if (grid.length === 0) return [];
 
@@ -282,18 +476,24 @@ function validateAndBuildRows(
         parent_name: null,
         parent_email: null,
         parent_phone: null,
+        subjects_cell: "",
         status: "error",
         errors: [
-          `Header must include columns: ${REQUIRED_HEADER_FIELDS.join(", ")} (order may vary). Optional: enrollment_date (YYYY-MM-DD).`,
+          `Header must include columns: ${REQUIRED_HEADER_FIELDS.join(", ")} (order may vary). Optional: enrollment_date (2026-04-24, 24/04/2026, or 24-04-2026; blank = today), subjects (comma-separated names).`,
         ],
+        subject_errors: [],
         warnings: [],
         resolved_class_id: null,
+        enroll_all_class_subjects: true,
+        resolved_subject_ids: [],
+        duplicate_row: false,
       },
     ];
   }
 
   const dataRows = grid.slice(1);
   const admissionFirstLine = new Map<string, number>();
+  const compositeFirstLineInFile = new Map<string, number>();
   const hi = headerIdx.requiredIdx;
 
   const out: ValidatedImportRow[] = [];
@@ -312,6 +512,10 @@ function validateAndBuildRows(
       headerIdx.enrollmentDateIdx != null
         ? (cells[headerIdx.enrollmentDateIdx] ?? "").trim()
         : "";
+    const subjects_cell =
+      headerIdx.subjectsIdx != null
+        ? (cells[headerIdx.subjectsIdx] ?? "").trim()
+        : "";
 
     const admission_number = admission_raw === "" ? null : admission_raw;
     const parent_name = parent_name_raw === "" ? null : parent_name_raw;
@@ -329,11 +533,16 @@ function validateAndBuildRows(
         parent_name,
         parent_email,
         parent_phone,
+        subjects_cell,
         classNameToId,
         sortedClassNames,
         defaultClassId,
-        existingAdmissions,
-        admissionFirstLine
+        duplicateLookups,
+        admissionFirstLine,
+        compositeFirstLineInFile,
+        subjectNameToId,
+        classIdToAllowedSubjectIds,
+        { subjectsStrict: true }
       )
     );
   }
@@ -352,14 +561,20 @@ function validateImportRows(
     parent_name: string | null;
     parent_email: string | null;
     parent_phone: string | null;
+    subjects_cell?: string;
   }[],
   classNameToId: Map<string, string>,
   sortedClassNames: string[],
   defaultClassId: string | null,
-  existingAdmissions: Set<string>
+  duplicateLookups: StudentDuplicateLookups,
+  subjectNameToId: Map<string, string>,
+  classIdToAllowedSubjectIds: Map<string, Set<string>>,
+  skipInvalidSubjects?: boolean
 ): ValidatedImportRow[] {
   const admissionFirstLine = new Map<string, number>();
+  const compositeFirstLineInFile = new Map<string, number>();
   const sorted = [...incoming].sort((a, b) => a.line - b.line);
+  const subjectsStrict = !skipInvalidSubjects;
   return sorted.map((row) =>
     validateOneDataRow(
       row.line,
@@ -371,11 +586,16 @@ function validateImportRows(
       row.parent_name,
       row.parent_email,
       row.parent_phone,
+      row.subjects_cell ?? "",
       classNameToId,
       sortedClassNames,
       defaultClassId,
-      existingAdmissions,
-      admissionFirstLine
+      duplicateLookups,
+      admissionFirstLine,
+      compositeFirstLineInFile,
+      subjectNameToId,
+      classIdToAllowedSubjectIds,
+      { subjectsStrict }
     )
   );
 }
@@ -384,6 +604,7 @@ type ImportBody =
   | { action: "validate"; csv: string }
   | {
       action: "import";
+      skip_invalid_subjects?: boolean;
       rows: {
         line: number;
         full_name: string;
@@ -394,8 +615,88 @@ type ImportBody =
         parent_name: string | null;
         parent_email: string | null;
         parent_phone: string | null;
+        subjects_cell?: string;
       }[];
     };
+
+async function insertStudentSubjectEnrollmentsForImport(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  params: {
+    studentId: string;
+    classId: string;
+    enrollAllClassSubjects: boolean;
+    explicitSubjectIds: string[];
+    enrollmentDateIso: string;
+  }
+): Promise<string[]> {
+  const warn: string[] = [];
+  const { academicYear, term } = getCurrentAcademicYearAndTerm();
+  let subjectIds: string[] = [];
+
+  if (params.enrollAllClassSubjects) {
+    const { data: linkRows, error: linkErr } = await supabase
+      .from("subject_classes")
+      .select("subject_id")
+      .eq("class_id", params.classId);
+    if (linkErr) {
+      warn.push(`Subject enrolment skipped: ${linkErr.message}`);
+      return warn;
+    }
+    subjectIds = [
+      ...new Set(
+        (linkRows ?? []).map((r) => (r as { subject_id: string }).subject_id)
+      ),
+    ];
+  } else {
+    subjectIds = [...new Set(params.explicitSubjectIds.filter(Boolean))];
+  }
+
+  if (subjectIds.length === 0) {
+    return warn;
+  }
+
+  const { data: allowedRows, error: allowErr } = await supabase
+    .from("subject_classes")
+    .select("subject_id")
+    .eq("class_id", params.classId)
+    .in("subject_id", subjectIds);
+
+  if (allowErr) {
+    warn.push(`Subject enrolment skipped: ${allowErr.message}`);
+    return warn;
+  }
+  const allowed = new Set(
+    (allowedRows ?? []).map((r) => (r as { subject_id: string }).subject_id)
+  );
+  const filtered = subjectIds.filter((id) => allowed.has(id));
+  if (filtered.length < subjectIds.length) {
+    warn.push(
+      "Some subjects were not linked to this class; enrolment was adjusted."
+    );
+  }
+  if (filtered.length === 0) {
+    return warn;
+  }
+
+  const from = params.enrollmentDateIso;
+  const rows = filtered.map((subject_id) => ({
+    student_id: params.studentId,
+    subject_id,
+    class_id: params.classId,
+    academic_year: academicYear,
+    term,
+    enrolled_from: from,
+  }));
+
+  const { error: insErr } = await supabase
+    .from("student_subject_enrollment")
+    .insert(rows as never);
+
+  if (insErr) {
+    warn.push(`Subject enrolment failed: ${insErr.message}`);
+  }
+  return warn;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -464,22 +765,68 @@ export async function POST(request: NextRequest) {
     const classes = (classRows ?? []) as { id: string; name: string }[];
     const sortedClassNames = classes.map((c) => c.name);
     const classNameToId = new Map(classes.map((c) => [c.name, c.id]));
+    const classIdToName = new Map(classes.map((c) => [c.id, c.name]));
     const defaultClassId = classes[0]?.id ?? null;
 
     const { data: existingStudents, error: stuErr } = await supabase
       .from("students")
-      .select("admission_number")
+      .select("admission_number, full_name, parent_phone, class_id")
       .eq("school_id", schoolId);
 
     if (stuErr) {
       return NextResponse.json({ error: stuErr.message }, { status: 500 });
     }
 
-    const existingAdmissions = new Set<string>();
-    for (const s of existingStudents ?? []) {
-      const a = (s as { admission_number: string | null }).admission_number;
-      if (a != null && String(a).trim() !== "") {
-        existingAdmissions.add(String(a).trim().toLowerCase());
+    const duplicateLookups = buildStudentDuplicateLookups(
+      (existingStudents ?? []) as {
+        admission_number: string | null;
+        full_name: string;
+        parent_phone: string | null;
+        class_id: string;
+      }[],
+      classIdToName
+    );
+
+    const { data: subjectRows, error: subjectsError } = await supabase
+      .from("subjects")
+      .select("id, name")
+      .eq("school_id", schoolId)
+      .order("name");
+
+    if (subjectsError) {
+      return NextResponse.json(
+        { error: subjectsError.message },
+        { status: 500 }
+      );
+    }
+
+    const subjectNameToId = new Map<string, string>();
+    for (const s of subjectRows ?? []) {
+      const row = s as { id: string; name: string };
+      const name = (row.name ?? "").trim();
+      if (!name) continue;
+      if (!subjectNameToId.has(name)) {
+        subjectNameToId.set(name, row.id);
+      }
+    }
+
+    const classIds = classes.map((c) => c.id);
+    const classIdToAllowedSubjectIds = new Map<string, Set<string>>();
+    for (const cid of classIds) {
+      classIdToAllowedSubjectIds.set(cid, new Set());
+    }
+    if (classIds.length > 0) {
+      const { data: scRows, error: scErr } = await supabase
+        .from("subject_classes")
+        .select("class_id, subject_id")
+        .in("class_id", classIds);
+
+      if (scErr) {
+        return NextResponse.json({ error: scErr.message }, { status: 500 });
+      }
+      for (const r of scRows ?? []) {
+        const row = r as { class_id: string; subject_id: string };
+        classIdToAllowedSubjectIds.get(row.class_id)?.add(row.subject_id);
       }
     }
 
@@ -525,11 +872,13 @@ export async function POST(request: NextRequest) {
         classNameToId,
         sortedClassNames,
         defaultClassId,
-        existingAdmissions
+        duplicateLookups,
+        subjectNameToId,
+        classIdToAllowedSubjectIds
       );
 
       const needsAutoAdmission = rows.some(
-        (r) => r.admission_number == null && r.status !== "error"
+        (r) => r.admission_number == null && r.errors.length === 0
       );
       if (needsAutoAdmission && !schoolAdmissionPrefix) {
         return NextResponse.json(
@@ -544,11 +893,36 @@ export async function POST(request: NextRequest) {
       const validCount = rows.filter((r) => r.status === "valid").length;
       const warnCount = rows.filter((r) => r.status === "warning").length;
       const errCount = rows.filter((r) => r.status === "error").length;
+      const readyToImport = validCount + warnCount;
+      const rowsWithSubjectErrors = rows.filter(
+        (r) => r.subject_errors.length > 0
+      ).length;
+      const allRowsDuplicateOnly =
+        rows.length > 0 &&
+        rows.every(
+          (r) =>
+            r.status === "error" &&
+            r.duplicate_row &&
+            r.subject_errors.length === 0 &&
+            r.errors.every(
+              (e) =>
+                e.startsWith("Student already exists with admission number:") ||
+                e === MSG_DUP_COMPOSITE ||
+                e.startsWith("Duplicate admission_number in file")
+            )
+        );
 
       return NextResponse.json({
         rows,
         preview: rows.slice(0, 10),
-        summary: { valid: validCount, warnings: warnCount, errors: errCount },
+        summary: {
+          valid: validCount,
+          warnings: warnCount,
+          errors: errCount,
+          ready_to_import: readyToImport,
+          rows_with_subject_errors: rowsWithSubjectErrors,
+          all_rows_duplicate_only: allRowsDuplicateOnly,
+        },
       });
     }
 
@@ -567,12 +941,16 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const skipInvalidSubjects = Boolean(body.skip_invalid_subjects);
       const validated = validateImportRows(
         incoming,
         classNameToId,
         sortedClassNames,
         defaultClassId,
-        existingAdmissions
+        duplicateLookups,
+        subjectNameToId,
+        classIdToAllowedSubjectIds,
+        skipInvalidSubjects
       );
 
       const needsAutoAdmissionImport = validated.some(
@@ -600,13 +978,21 @@ export async function POST(request: NextRequest) {
       type InsertRow = Database["public"]["Tables"]["students"]["Insert"];
       const successLines: number[] = [];
       const warningImports: { line: number; warnings: string[] }[] = [];
-      const insertErrors: { line: number; message: string }[] = [];
-      const admissionsAfterInsert = new Set(existingAdmissions);
+      const insertErrors: { line: number; full_name: string; message: string }[] =
+        [];
+      const duplicateSkips: {
+        line: number;
+        full_name: string;
+        reason: string;
+      }[] = [];
+      const admissionsAfterInsert = new Set(duplicateLookups.admissionLowerSet);
+      const batchCompositeSet = new Set(duplicateLookups.compositeExactSet);
 
       for (const r of toInsert) {
         if (!r.resolved_class_id) {
           insertErrors.push({
             line: r.line,
+            full_name: r.full_name,
             message: "Missing class assignment.",
           });
           continue;
@@ -622,6 +1008,7 @@ export async function POST(request: NextRequest) {
           } catch (e) {
             insertErrors.push({
               line: r.line,
+              full_name: r.full_name,
               message:
                 e instanceof Error
                   ? e.message
@@ -631,11 +1018,29 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        const resolvedClassName =
+          classIdToName.get(r.resolved_class_id) ?? "";
+        const compKey = makeCompositeKey(
+          r.full_name,
+          resolvedClassName,
+          r.parent_phone
+        );
+
         const k = admissionToUse.toLowerCase();
         if (admissionsAfterInsert.has(k)) {
-          insertErrors.push({
+          duplicateSkips.push({
             line: r.line,
-            message: "Duplicate admission number (database).",
+            full_name: r.full_name,
+            reason: `Student already exists with admission number: ${admissionToUse}`,
+          });
+          continue;
+        }
+
+        if (compKey && batchCompositeSet.has(compKey)) {
+          duplicateSkips.push({
+            line: r.line,
+            full_name: r.full_name,
+            reason: MSG_DUP_COMPOSITE,
           });
           continue;
         }
@@ -643,8 +1048,18 @@ export async function POST(request: NextRequest) {
         if (remaining <= 0) {
           insertErrors.push({
             line: r.line,
+            full_name: r.full_name,
             message:
               "Plan student limit reached. Upgrade to add more students.",
+          });
+          continue;
+        }
+
+        if (r.gender !== "male" && r.gender !== "female") {
+          insertErrors.push({
+            line: r.line,
+            full_name: r.full_name,
+            message: "Gender is required. Must be 'male' or 'female'.",
           });
           continue;
         }
@@ -654,45 +1069,116 @@ export async function POST(request: NextRequest) {
           class_id: r.resolved_class_id,
           full_name: r.full_name,
           admission_number: admissionToUse,
-          gender: r.gender ?? "male",
+          gender: r.gender,
           enrollment_date: r.enrollment_date ?? todayIsoLocal(),
           parent_email: r.parent_email,
           parent_name: r.parent_name,
           parent_phone: r.parent_phone,
         };
 
-        const { error: insErr } = await supabase.from("students").insert(row as never);
+        const { data: insertedStudent, error: insErr } = await supabase
+          .from("students")
+          .insert(row as never)
+          .select("id")
+          .single();
 
         if (insErr) {
           if (insErr.code === "23505") {
-            insertErrors.push({
+            duplicateSkips.push({
               line: r.line,
-              message: "Duplicate admission number (database).",
+              full_name: r.full_name,
+              reason: `Student already exists with admission number: ${admissionToUse}`,
             });
           } else {
-            insertErrors.push({ line: r.line, message: insErr.message });
+            insertErrors.push({
+              line: r.line,
+              full_name: r.full_name,
+              message: insErr.message,
+            });
           }
           continue;
         }
 
-        admissionsAfterInsert.add(admissionToUse.toLowerCase());
-        remaining -= 1;
-        successLines.push(r.line);
-        if (r.warnings.length > 0) {
+        const newStudentId = (insertedStudent as { id: string } | null)?.id;
+        if (newStudentId && r.resolved_class_id) {
+          const enrWarns = await insertStudentSubjectEnrollmentsForImport(
+            supabase,
+            {
+              studentId: newStudentId,
+              classId: r.resolved_class_id,
+              enrollAllClassSubjects: r.enroll_all_class_subjects,
+              explicitSubjectIds: r.resolved_subject_ids,
+              enrollmentDateIso: r.enrollment_date ?? todayIsoLocal(),
+            }
+          );
+          const mergedWarnings = [...r.warnings, ...enrWarns];
+          if (mergedWarnings.length > 0) {
+            warningImports.push({
+              line: r.line,
+              warnings: mergedWarnings,
+            });
+          }
+        } else if (r.warnings.length > 0) {
           warningImports.push({ line: r.line, warnings: [...r.warnings] });
         }
+
+        admissionsAfterInsert.add(admissionToUse.toLowerCase());
+        if (compKey) {
+          batchCompositeSet.add(compKey);
+        }
+        remaining -= 1;
+        successLines.push(r.line);
       }
 
-      const skippedWithReasons = [
-        ...skipped.map((r) => ({
-          line: r.line,
-          reasons: r.errors,
-        })),
+      const validationSkippedDetails = skipped.map((r) => ({
+        line: r.line,
+        full_name: r.full_name,
+        reasons: [...r.errors, ...r.subject_errors],
+      }));
+
+      const otherSkippedDetails = [
+        ...validationSkippedDetails,
         ...insertErrors.map((e) => ({
           line: e.line,
+          full_name: e.full_name,
           reasons: [e.message],
         })),
       ];
+
+      const skippedWithReasons = [
+        ...duplicateSkips.map((d) => ({
+          line: d.line,
+          full_name: d.full_name,
+          reasons: [d.reason],
+        })),
+        ...otherSkippedDetails.map((s) => ({
+          line: s.line,
+          full_name: s.full_name,
+          reasons: s.reasons,
+        })),
+      ];
+
+      const partialDupPhrase =
+        "Student with same name and class exists but with different parent phone";
+      const warningPossibleDuplicates = warningImports
+        .map((w) => {
+          const dupMsgs = w.warnings.filter((m) => m.includes(partialDupPhrase));
+          if (dupMsgs.length === 0) return null;
+          const row = validated.find((vr) => vr.line === w.line);
+          return {
+            line: w.line,
+            full_name: row?.full_name ?? "",
+            messages: dupMsgs,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x != null);
+
+      const noNewStudentsAllDuplicates =
+        successLines.length === 0 &&
+        duplicateSkips.length > 0 &&
+        duplicateSkips.length === toInsert.length &&
+        insertErrors.length === 0 &&
+        skipped.length === 0;
 
       if (successLines.length > 0) {
         revalidatePath("/dashboard/students");
@@ -711,9 +1197,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         imported: successLines.length,
         importedWithWarnings: warningImports,
+        duplicate_skipped: duplicateSkips,
+        other_skipped_details: otherSkippedDetails,
+        warning_possible_duplicates: warningPossibleDuplicates,
         skipped: skippedWithReasons.length,
         skippedDetails: skippedWithReasons,
         successLines,
+        no_new_students_all_duplicates: noNewStudentsAllDuplicates,
       });
     }
 

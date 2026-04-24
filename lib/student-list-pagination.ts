@@ -57,6 +57,26 @@ export const TEAM_MEMBERS_ROWS_STORAGE_KEY =
 export const TEACHER_ASSIGNMENTS_ROWS_STORAGE_KEY =
   "adakaro:teacherAssignments:rowsPerPage";
 
+/** Coordinator dashboard · report cards roster (subset of student list options). */
+export const COORDINATOR_REPORT_CARDS_ROW_OPTIONS = [5, 10, 25, 50] as const;
+
+export type CoordinatorReportCardsRowOption =
+  (typeof COORDINATOR_REPORT_CARDS_ROW_OPTIONS)[number];
+
+export const COORDINATOR_REPORT_CARDS_ROWS_STORAGE_KEY =
+  "adakaro:coordinatorDashboard:reportCards:rowsPerPage";
+
+export function parseCoordinatorReportCardsRowsPerPage(
+  raw: string | null
+): CoordinatorReportCardsRowOption | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return (COORDINATOR_REPORT_CARDS_ROW_OPTIONS as readonly number[]).includes(n)
+    ? (n as CoordinatorReportCardsRowOption)
+    : null;
+}
+
 export function parseStudentListRowsPerPage(
   raw: string | null
 ): StudentListRowOption | null {

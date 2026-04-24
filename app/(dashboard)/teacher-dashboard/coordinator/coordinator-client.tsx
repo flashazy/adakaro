@@ -34,6 +34,13 @@ import {
   SCHOOL_LEVEL_LABELS,
   type SchoolLevel,
 } from "@/lib/school-level";
+import {
+  COORDINATOR_REPORT_CARDS_ROW_OPTIONS,
+  COORDINATOR_REPORT_CARDS_ROWS_STORAGE_KEY,
+  parseCoordinatorReportCardsRowsPerPage,
+  type CoordinatorReportCardsRowOption,
+} from "@/lib/student-list-pagination";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 
 function SchoolLevelBadge({ level }: { level: SchoolLevel }) {
   const isSecondary = level === "secondary";
@@ -54,7 +61,8 @@ function SchoolLevelBadge({ level }: { level: SchoolLevel }) {
   );
 }
 
-function StatusBadgeWithIcon({
+/** Coordinator roster: Approved (green), Pending (yellow), Not generated (gray). */
+function CoordinatorReportCardStatusBadge({
   status,
 }: {
   status: ReportCardStatus | "none";
@@ -66,42 +74,18 @@ function StatusBadgeWithIcon({
       </span>
     );
   }
-  const config: Record<
-    ReportCardStatus,
-    { icon: string; className: string; label: string }
-  > = {
-    approved: {
-      icon: "✅",
-      className:
-        "border border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/50 dark:text-emerald-100",
-      label: "Approved",
-    },
-    pending_review: {
-      icon: "⏳",
-      className:
-        "border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-100",
-      label: "Pending review",
-    },
-    draft: {
-      icon: "📝",
-      className:
-        "border border-slate-200 bg-slate-100 text-slate-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200",
-      label: "Draft",
-    },
-    changes_requested: {
-      icon: "🔄",
-      className:
-        "border border-orange-200 bg-orange-50 text-orange-900 dark:border-orange-800/50 dark:bg-orange-950/40 dark:text-orange-100",
-      label: "Changes requested",
-    },
-  };
-  const c = config[status];
+  if (status === "approved") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/50 dark:text-emerald-100">
+        <span aria-hidden>✅</span>
+        Approved
+      </span>
+    );
+  }
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${c.className}`}
-    >
-      <span aria-hidden>{c.icon}</span>
-      {c.label}
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-100">
+      <span aria-hidden>⏳</span>
+      Pending
     </span>
   );
 }
@@ -301,6 +285,330 @@ export function CoordinatorDashboardClient({
           includeStats={overview.classes.length > 1}
         />
       ))}
+    </div>
+  );
+}
+
+function CoordinatorReportCardsRosterTable({
+  classRoster,
+  className,
+  academicYear,
+  onOpenGenerate,
+  onPreview,
+  pdfLoadingId,
+  setPdfLoadingId,
+  submitReviewAction,
+}: {
+  classRoster: CoordinatorClassOverview["classRoster"];
+  className: string;
+  academicYear: string;
+  onOpenGenerate: () => void;
+  onPreview: (item: CoordinatorReportCardItem) => void;
+  pdfLoadingId: string | null;
+  setPdfLoadingId: (id: string | null) => void;
+  submitReviewAction: (formData: FormData) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] =
+    useState<CoordinatorReportCardsRowOption>(5);
+
+  useEffect(() => {
+    const stored = parseCoordinatorReportCardsRowsPerPage(
+      typeof window !== "undefined"
+        ? localStorage.getItem(COORDINATOR_REPORT_CARDS_ROWS_STORAGE_KEY)
+        : null
+    );
+    if (stored != null) setRowsPerPage(stored);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return classRoster;
+    return classRoster.filter((row) =>
+      row.fullName.toLowerCase().includes(q)
+    );
+  }, [classRoster, query]);
+
+  const totalFiltered = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const pageSlice = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filtered.slice(start, start + rowsPerPage);
+  }, [filtered, currentPage, rowsPerPage]);
+
+  const isFiltered = query.trim() !== "";
+  const rangeStart =
+    totalFiltered === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
+  const rangeEnd =
+    totalFiltered === 0
+      ? 0
+      : Math.min(currentPage * rowsPerPage, totalFiltered);
+
+  const pageNumbers = useMemo(
+    () => getCompactPaginationItems(currentPage, totalPages),
+    [currentPage, totalPages]
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative min-w-0 flex-1 sm:max-w-xl">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search students by name..."
+            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pl-3 pr-10 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary sm:w-64 sm:flex-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            aria-label="Search students by name"
+          />
+          <svg
+            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+            aria-hidden
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+            />
+          </svg>
+        </div>
+        <label className="flex w-full items-center gap-2 sm:w-auto">
+          <span className="shrink-0 text-sm text-gray-500 dark:text-zinc-400">
+            Rows per page:
+          </span>
+          <select
+            value={rowsPerPage}
+            onChange={(e) => {
+              const n = Number(e.target.value) as CoordinatorReportCardsRowOption;
+              setRowsPerPage(n);
+              setCurrentPage(1);
+              try {
+                localStorage.setItem(
+                  COORDINATOR_REPORT_CARDS_ROWS_STORAGE_KEY,
+                  String(n)
+                );
+              } catch {
+                /* ignore */
+              }
+            }}
+            className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:w-auto"
+          >
+            {COORDINATOR_REPORT_CARDS_ROW_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <p className="text-sm text-slate-500 dark:text-zinc-400">
+        Showing{" "}
+        <span className="font-medium text-slate-900 dark:text-white">
+          {rangeStart}–{rangeEnd}
+        </span>{" "}
+        of{" "}
+        <span className="font-medium text-slate-900 dark:text-white">
+          {totalFiltered}
+        </span>{" "}
+        student{totalFiltered !== 1 ? "s" : ""}
+        {isFiltered ? (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            className="ml-2 text-school-primary hover:opacity-90 dark:text-school-primary dark:hover:opacity-90"
+          >
+            Clear search
+          </button>
+        ) : null}
+      </p>
+
+      {totalFiltered > 0 ? (
+        <>
+          <div className="overflow-x-auto rounded-b-2xl border border-slate-200 dark:border-zinc-700">
+            <table className="w-full min-w-[36rem] border-collapse text-left text-sm sm:min-w-[40rem]">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/90 dark:border-zinc-600 dark:bg-zinc-800/80">
+                  <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                    Student
+                  </th>
+                  <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                    Status
+                  </th>
+                  <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageSlice.map((row) => (
+                  <tr
+                    key={row.studentId}
+                    className="border-b border-slate-100 bg-white transition hover:bg-slate-50/90 dark:border-zinc-800 dark:bg-zinc-900/40 dark:hover:bg-zinc-800/60"
+                  >
+                    <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-white">
+                      {row.fullName}
+                    </td>
+                    <td className="px-4 py-3.5 align-middle">
+                      {row.item ? (
+                        <CoordinatorReportCardStatusBadge
+                          status={row.item.status}
+                        />
+                      ) : (
+                        <CoordinatorReportCardStatusBadge status="none" />
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {row.item ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => onPreview(row.item!)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
+                            >
+                              <Eye className="h-3.5 w-3.5" aria-hidden />
+                              Preview
+                            </button>
+                            <button
+                              type="button"
+                              disabled={pdfLoadingId === row.item!.reportCardId}
+                              onClick={() => {
+                                const id = row.item!.reportCardId;
+                                setPdfLoadingId(id);
+                                void (async () => {
+                                  try {
+                                    await downloadReportCardPdf(
+                                      row.item!.preview,
+                                      safeFileName(
+                                        `${row.item!.studentName}-${className}-${academicYear}`
+                                      )
+                                    );
+                                  } catch {
+                                    toast.error("Could not generate PDF.");
+                                  } finally {
+                                    setPdfLoadingId(null);
+                                  }
+                                })();
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-80 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
+                            >
+                              {pdfLoadingId === row.item!.reportCardId ? (
+                                <Loader2
+                                  className="h-3.5 w-3.5 shrink-0 animate-spin"
+                                  aria-hidden
+                                />
+                              ) : (
+                                <Printer className="h-3.5 w-3.5" aria-hidden />
+                              )}
+                              Download PDF
+                            </button>
+                            {row.item.status === "draft" ||
+                            row.item.status === "changes_requested" ? (
+                              <form
+                                action={submitReviewAction}
+                                className="inline"
+                              >
+                                <input
+                                  type="hidden"
+                                  name="report_card_id"
+                                  value={row.item.reportCardId}
+                                />
+                                <SubmitForApprovalButton />
+                              </form>
+                            ) : null}
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={onOpenGenerate}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
+                          >
+                            Generate to create a card
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Previous
+              </button>
+              <div className="flex flex-wrap items-center justify-center gap-1">
+                {pageNumbers.map((item, idx) =>
+                  item === "ellipsis" ? (
+                    <span
+                      key={`e-${idx}`}
+                      className="px-2 text-sm text-slate-400 dark:text-zinc-500"
+                    >
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCurrentPage(item)}
+                      className={`min-w-[2.25rem] rounded-md border px-3 py-1 text-sm dark:border-zinc-600 ${
+                        currentPage === item
+                          ? "border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-600"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-gray-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage >= totalPages}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center dark:border-zinc-700 dark:bg-zinc-900">
+          <p className="text-sm text-slate-500 dark:text-zinc-400">
+            {isFiltered
+              ? "No students match your search."
+              : "No students in this roster."}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -507,108 +815,17 @@ function CoordinatorClassCard({
               </span>
             </button>
             {viewRosterOpen ? (
-              <div className="overflow-x-auto rounded-b-2xl border border-slate-200 dark:border-zinc-700">
-                <table className="w-full min-w-[36rem] border-collapse text-left text-sm sm:min-w-[40rem]">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/90 dark:border-zinc-600 dark:bg-zinc-800/80">
-                      <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                        Student
-                      </th>
-                      <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                        Status
-                      </th>
-                      <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {klass.classRoster.map((row) => (
-                      <tr
-                        key={row.studentId}
-                        className="border-b border-slate-100 bg-white transition hover:bg-slate-50/90 dark:border-zinc-800 dark:bg-zinc-900/40 dark:hover:bg-zinc-800/60"
-                      >
-                        <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-white">
-                          {row.fullName}
-                        </td>
-                        <td className="px-4 py-3.5 align-middle">
-                          {row.item ? (
-                            <StatusBadgeWithIcon status={row.item.status} />
-                          ) : (
-                            <StatusBadgeWithIcon status="none" />
-                          )}
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {row.item ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewItem(row.item!)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
-                                >
-                                  <Eye className="h-3.5 w-3.5" aria-hidden />
-                                  Preview
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={pdfLoadingId === row.item!.reportCardId}
-                                  onClick={() => {
-                                    const id = row.item!.reportCardId;
-                                    setPdfLoadingId(id);
-                                    void (async () => {
-                                      try {
-                                        await downloadReportCardPdf(
-                                          row.item!.preview,
-                                          safeFileName(
-                                            `${row.item!.studentName}-${klass.className}-${academicYear}`
-                                          )
-                                        );
-                                      } catch {
-                                        toast.error("Could not generate PDF.");
-                                      } finally {
-                                        setPdfLoadingId(null);
-                                      }
-                                    })();
-                                  }}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-80 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
-                                >
-                                  {pdfLoadingId === row.item!.reportCardId ? (
-                                    <Loader2
-                                      className="h-3.5 w-3.5 shrink-0 animate-spin"
-                                      aria-hidden
-                                    />
-                                  ) : (
-                                    <Printer className="h-3.5 w-3.5" aria-hidden />
-                                  )}
-                                  Download PDF
-                                </button>
-                                {row.item.status === "draft" ||
-                                row.item.status === "changes_requested" ? (
-                                  <form
-                                    action={submitReviewAction}
-                                    className="inline"
-                                  >
-                                    <input
-                                      type="hidden"
-                                      name="report_card_id"
-                                      value={row.item.reportCardId}
-                                    />
-                                    <SubmitForApprovalButton />
-                                  </form>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span className="text-xs text-slate-400 dark:text-zinc-500">
-                                Generate to create a card
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="rounded-b-2xl border border-t-0 border-slate-200 bg-white px-3 pb-4 pt-3 dark:border-zinc-700 dark:bg-zinc-900/40 sm:px-4">
+                <CoordinatorReportCardsRosterTable
+                  classRoster={klass.classRoster}
+                  className={klass.className}
+                  academicYear={academicYear}
+                  onOpenGenerate={() => setShowGenerateModal(true)}
+                  onPreview={setPreviewItem}
+                  pdfLoadingId={pdfLoadingId}
+                  setPdfLoadingId={setPdfLoadingId}
+                  submitReviewAction={submitReviewAction}
+                />
               </div>
             ) : null}
           </div>
