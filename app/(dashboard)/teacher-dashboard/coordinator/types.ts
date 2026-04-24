@@ -75,5 +75,9 @@ export interface CoordinatorClassOverview {
 
 export interface CoordinatorOverview {
   teacherName: string;
+  /** Current user's coordinator signature (report cards); null if unset. */
+  coordinatorSignatureUrl: string | null;
+  /** Cache-bust version from `profiles.updated_at` after signature writes. */
+  coordinatorSignatureVersion: number;
   classes: CoordinatorClassOverview[];
 }

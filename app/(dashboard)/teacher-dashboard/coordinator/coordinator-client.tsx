@@ -27,6 +27,7 @@ import {
   type CoordinatorSendToParentsState,
   type CoordinatorSubmitReviewState,
 } from "./actions";
+import { CoordinatorMySignatureCard } from "./coordinator-my-signature-card";
 import {
   SECONDARY_BEST_SUBJECT_COUNT,
   SCHOOL_LEVEL_DESCRIPTIONS,
@@ -219,6 +220,10 @@ export function CoordinatorDashboardClient({
   term,
   academicYear,
 }: CoordinatorDashboardClientProps) {
+  const {
+    coordinatorSignatureUrl,
+    coordinatorSignatureVersion,
+  } = overview;
   const router = useRouter();
   const feedback = useOptionalDashboardFeedback();
 
@@ -280,6 +285,11 @@ export function CoordinatorDashboardClient({
           </select>
         </label>
       </div>
+
+      <CoordinatorMySignatureCard
+        initialUrl={coordinatorSignatureUrl}
+        initialVersion={coordinatorSignatureVersion}
+      />
 
       {overview.classes.map((klass) => (
         <CoordinatorClassCard

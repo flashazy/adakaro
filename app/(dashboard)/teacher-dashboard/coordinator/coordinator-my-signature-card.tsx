@@ -1,12 +1,22 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, startTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  startTransition,
+} from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { removeSchoolStamp, uploadSchoolStamp } from "./actions";
-import type { SchoolSettingsState } from "./school-settings-shared";
+import {
+  removeCoordinatorSignature,
+  uploadCoordinatorSignature,
+  type CoordinatorSignatureState,
+} from "./coordinator-signature-actions";
+import { SignatureCropper } from "@/components/SignatureCropper";
 import { getImageSoftUploadWarningsFromFile } from "@/lib/image-upload-warnings";
 
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -18,7 +28,7 @@ function stripUrlQuery(url: string): string {
   return i === -1 ? url : url.slice(0, i);
 }
 
-function RemoveStampButton({ disabled }: { disabled: boolean }) {
+function RemoveCoordinatorSigButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -26,23 +36,22 @@ function RemoveStampButton({ disabled }: { disabled: boolean }) {
       disabled={pending || disabled}
       className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800/80 dark:text-red-300 dark:hover:bg-red-950/40"
     >
-      {pending ? "Removing…" : "Remove stamp"}
+      {pending ? "Removing…" : "Remove signature"}
     </button>
   );
 }
 
-const initialState: SchoolSettingsState = {};
+const initialState: CoordinatorSignatureState = {};
 
-export function SchoolStampForm({
-  initialStampUrl,
-  initialStampVersion,
+export function CoordinatorMySignatureCard({
+  initialUrl,
+  initialVersion,
 }: {
-  initialStampUrl: string | null;
-  initialStampVersion: number;
+  initialUrl: string | null;
+  initialVersion: number;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
   const [cacheBust, setCacheBust] = useState(0);
   const lastToastU = useRef(0);
@@ -51,27 +60,47 @@ export function SchoolStampForm({
   const lastErrR = useRef<string | null>(null);
 
   const [uploadState, uploadAction, isUploadPending] = useActionState(
-    uploadSchoolStamp,
+    uploadCoordinatorSignature,
     initialState
   );
   const [removeState, removeAction] = useActionState(
-    removeSchoolStamp,
+    removeCoordinatorSignature,
     initialState
   );
+  const [cropSession, setCropSession] = useState<{
+    url: string;
+    file: File;
+  } | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
+  function closeCropper() {
+    setCropSession((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+  }
+
+  async function uploadCroppedOrOriginal(file: File) {
+    const warnings = await getImageSoftUploadWarningsFromFile(file);
+    for (const msg of warnings) {
+      toast.warning(msg);
+    }
+    const formData = new FormData();
+    formData.set("coordinator_signature", file);
+    startTransition(() => {
+      uploadAction(formData);
+    });
+  }
 
   useEffect(() => {
     if (uploadState.success) {
-      const t = uploadState.stampVersion ?? uploadState.completedAt ?? 0;
+      const t =
+        uploadState.coordinatorSignatureVersion ??
+        uploadState.completedAt ??
+        0;
       if (t !== lastToastU.current) {
         lastToastU.current = t;
         lastErrU.current = null;
-        toast.success("School stamp saved.");
+        toast.success("Coordinator signature saved.");
       }
     } else if (uploadState.error) {
       if (uploadState.error !== lastErrU.current) {
@@ -79,15 +108,23 @@ export function SchoolStampForm({
         toast.error(uploadState.error);
       }
     }
-  }, [uploadState.success, uploadState.error, uploadState.stampVersion, uploadState.completedAt]);
+  }, [
+    uploadState.success,
+    uploadState.error,
+    uploadState.coordinatorSignatureVersion,
+    uploadState.completedAt,
+  ]);
 
   useEffect(() => {
     if (removeState.success) {
-      const t = removeState.stampVersion ?? removeState.completedAt ?? 0;
+      const t =
+        removeState.coordinatorSignatureVersion ??
+        removeState.completedAt ??
+        0;
       if (t !== lastToastR.current) {
         lastToastR.current = t;
         lastErrR.current = null;
-        toast.success("School stamp removed.");
+        toast.success("Coordinator signature removed.");
       }
     } else if (removeState.error) {
       if (removeState.error !== lastErrR.current) {
@@ -95,23 +132,24 @@ export function SchoolStampForm({
         toast.error(removeState.error);
       }
     }
-  }, [removeState.success, removeState.error, removeState.stampVersion, removeState.completedAt]);
+  }, [
+    removeState.success,
+    removeState.error,
+    removeState.coordinatorSignatureVersion,
+    removeState.completedAt,
+  ]);
 
   useEffect(() => {
     if (!uploadState.success && !removeState.success) return;
     const t =
-      uploadState.stampVersion ??
-      removeState.stampVersion ??
+      uploadState.coordinatorSignatureVersion ??
+      removeState.coordinatorSignatureVersion ??
       uploadState.completedAt ??
       removeState.completedAt ??
       Date.now();
     startTransition(() => {
       setCacheBust(t);
       setPickError(null);
-      setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
     });
     if (fileRef.current) fileRef.current.value = "";
     router.refresh();
@@ -120,33 +158,32 @@ export function SchoolStampForm({
     removeState.success,
     uploadState.completedAt,
     removeState.completedAt,
-    uploadState.stampVersion,
-    removeState.stampVersion,
+    uploadState.coordinatorSignatureVersion,
+    removeState.coordinatorSignatureVersion,
     router,
   ]);
 
-  const serverStampUrl =
+  const serverUrl =
     removeState.success && !uploadState.success
       ? null
-      : (initialStampUrl?.trim() ?? null);
+      : (initialUrl?.trim() ?? null);
 
   const versionForServer =
-    uploadState.success && uploadState.stampVersion != null
-      ? uploadState.stampVersion
+    uploadState.success && uploadState.coordinatorSignatureVersion != null
+      ? uploadState.coordinatorSignatureVersion
       : removeState.success && !uploadState.success
         ? null
-        : initialStampVersion;
+        : initialVersion;
 
   const effectiveUrl =
     uploadState.success && uploadState.publicUrl?.trim()
       ? uploadState.publicUrl.trim()
-      : serverStampUrl;
+      : serverUrl;
 
-  const displayUrl = previewUrl
-    ? previewUrl
-    : effectiveUrl != null &&
-        versionForServer != null &&
-        Number.isFinite(versionForServer)
+  const displayUrl =
+    effectiveUrl != null &&
+    versionForServer != null &&
+    Number.isFinite(versionForServer)
       ? `${stripUrlQuery(effectiveUrl)}?v=${versionForServer}`
       : effectiveUrl != null
         ? `${stripUrlQuery(effectiveUrl)}?v=${cacheBust}`
@@ -158,18 +195,14 @@ export function SchoolStampForm({
     fileRef.current?.click();
   }
 
-  async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(null);
-      }
       return;
     }
     if (file.size > MAX_BYTES) {
       setPickError(
-        "File is too large. School stamps can be at most 2 MB. Choose a smaller file or export at lower resolution."
+        "File is too large. Signatures can be at most 2 MB. Choose a smaller file."
       );
       e.target.value = "";
       return;
@@ -187,39 +220,46 @@ export function SchoolStampForm({
       return;
     }
     setPickError(null);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(file));
-
-    const warnings = await getImageSoftUploadWarningsFromFile(file);
-    for (const msg of warnings) {
-      toast.warning(msg);
-    }
-
-    const formData = new FormData();
-    formData.set("stamp", file);
-    startTransition(() => {
-      uploadAction(formData);
-    });
+    setCropSession({ url: URL.createObjectURL(file), file });
+    e.target.value = "";
   }
 
-  const hasServerStamp = Boolean(serverStampUrl) && !previewUrl;
-  const canRemove = hasServerStamp;
+  const hasServer = Boolean(serverUrl);
+  const canRemove = hasServer;
   const pickLabel = isUploadPending
     ? "Uploading…"
-    : hasServerStamp
+    : hasServer
       ? "Replace"
-      : "Upload stamp";
+      : "Upload signature";
   const busy = isUploadPending;
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/80 dark:shadow-zinc-950/30">
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:shadow-zinc-950/30">
+      {cropSession ? (
+        <SignatureCropper
+          isOpen
+          imageUrl={cropSession.url}
+          originalFile={cropSession.file}
+          onCancel={closeCropper}
+          onConfirm={(croppedFile) => {
+            closeCropper();
+            uploadCroppedOrOriginal(croppedFile);
+          }}
+          onUseOriginal={() => {
+            const f = cropSession.file;
+            closeCropper();
+            uploadCroppedOrOriginal(f);
+          }}
+        />
+      ) : null}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-            School stamp
-          </h3>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+            📝 My Signature
+          </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-            Official round seal or stamp for documents.
+            Upload your official signature to appear on report cards for classes
+            you coordinate.
           </p>
         </div>
 
@@ -230,19 +270,17 @@ export function SchoolStampForm({
         ) : null}
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-          <div className="flex h-[100px] w-[100px] max-h-[100px] max-w-[100px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-zinc-600 dark:bg-zinc-800/80">
+          <div className="flex h-12 min-h-12 w-full max-w-[180px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-zinc-600 dark:bg-zinc-800/80">
             {displayUrl ? (
               <img
-                key={`${displayUrl}-${uploadState.stampVersion ?? uploadState.completedAt ?? 0}-${removeState.stampVersion ?? removeState.completedAt ?? 0}-${cacheBust}`}
+                key={`${displayUrl}-${cacheBust}`}
                 src={displayUrl}
                 alt=""
-                width={100}
-                height={100}
-                className="max-h-full max-w-full object-contain"
+                className="max-h-12 max-w-[180px] object-contain [print-color-adjust:exact]"
               />
             ) : (
-              <span className="px-2 text-center text-sm text-slate-500 dark:text-zinc-500">
-                No stamp
+              <span className="px-3 text-center text-sm text-slate-500 dark:text-zinc-500">
+                No signature uploaded
               </span>
             )}
           </div>
@@ -251,7 +289,7 @@ export function SchoolStampForm({
             <input
               ref={fileRef}
               type="file"
-              name="stamp"
+              name="coordinator_signature"
               accept={ACCEPT}
               className="hidden"
               onChange={onFileChange}
@@ -272,26 +310,15 @@ export function SchoolStampForm({
               {pickLabel}
             </button>
             <form action={removeAction} className="inline">
-              <RemoveStampButton disabled={!canRemove} />
+              <RemoveCoordinatorSigButton disabled={!canRemove} />
             </form>
           </div>
         </div>
 
-        <div className="space-y-2 border-t border-slate-100 pt-4 dark:border-zinc-800">
-          <p className="text-sm text-slate-600 dark:text-zinc-400">
-            Upload your official school stamp. Appears on report cards and
-            receipts. The image uploads as soon as you select it.
-          </p>
-          <p className="text-xs text-slate-500 dark:text-zinc-500">
-            PNG, JPG, JPEG, or WebP · max 2 MB
-          </p>
-          {isUploadPending ? (
-            <p className="text-xs text-slate-500 dark:text-zinc-500">
-              Uploading to storage and saving the link to your school…
-            </p>
-          ) : null}
-        </div>
+        <p className="text-xs text-slate-500 dark:text-zinc-500">
+          PNG, JPG, JPEG, or WebP · max 2 MB · crop after you choose a file
+        </p>
       </div>
-    </div>
+    </section>
   );
 }

@@ -261,6 +261,7 @@ export default async function ReceiptPage({ params }: PageProps) {
   let currencyCode = DEFAULT_SCHOOL_CURRENCY;
   let schoolName = "School";
   let schoolLogoUrl: string | null = null;
+  let schoolStampUrl: string | null = null;
 
   if (student?.school_id) {
     const displayMatches =
@@ -275,7 +276,7 @@ export default async function ReceiptPage({ params }: PageProps) {
 
     const { data: schoolRow } = await supabase
       .from("schools")
-      .select("currency, name, logo_url")
+      .select("currency, name, logo_url, school_stamp_url")
       .eq("id", student.school_id)
       .maybeSingle();
 
@@ -283,6 +284,7 @@ export default async function ReceiptPage({ params }: PageProps) {
       currency: string | null;
       name: string | null;
       logo_url: string | null;
+      school_stamp_url: string | null;
     } | null;
 
     if ((!displayMatches || schoolName === "School") && row?.name?.trim()) {
@@ -290,6 +292,9 @@ export default async function ReceiptPage({ params }: PageProps) {
     }
     if (!schoolLogoUrl && row?.logo_url?.trim()) {
       schoolLogoUrl = row.logo_url.trim();
+    }
+    if (row?.school_stamp_url?.trim()) {
+      schoolStampUrl = row.school_stamp_url.trim();
     }
 
     let raw: string | null = null;
@@ -475,11 +480,30 @@ export default async function ReceiptPage({ params }: PageProps) {
               ) : null}
             </div>
 
-            <p className="mt-8 border-t border-dashed border-gray-300 pt-6 text-center text-[10px] italic leading-relaxed text-gray-400 dark:border-zinc-600 dark:text-zinc-500 print:border-gray-300">
-              This is a computer-generated receipt. No signature is required.
-              <br />
-              Generated via Adakaro Web App.
-            </p>
+            <div className="mt-8 border-t border-dashed border-gray-300 pt-6 dark:border-zinc-600 print:border-gray-300">
+              <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+                <p className="min-w-0 flex-1 text-center text-[10px] italic leading-relaxed text-gray-400 sm:text-left dark:text-zinc-500">
+                  This is a computer-generated receipt. No signature is
+                  required.
+                  <br />
+                  Generated via Adakaro Web App.
+                </p>
+                {schoolStampUrl ? (
+                  <div
+                    className="flex shrink-0 justify-center sm:justify-end"
+                    aria-hidden
+                  >
+                    <img
+                      src={schoolStampUrl}
+                      alt=""
+                      width={60}
+                      height={60}
+                      className="h-[60px] w-[60px] max-h-[60px] max-w-[60px] object-contain"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
 
             <div className="mt-6 print:hidden">
               <PrintButton />

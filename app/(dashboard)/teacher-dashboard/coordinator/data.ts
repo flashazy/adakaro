@@ -48,6 +48,7 @@ import type {
   MajorExamStatus,
 } from "./types";
 import type { ClassResultSheetPdfInput } from "@/lib/class-result-sheet-noticeboard-tables";
+import { logoVersionFromRow } from "@/lib/dashboard/resolve-school-display";
 import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
 import {
   loadReportCardSupplementaryBatch,
@@ -65,6 +66,65 @@ export type {
   CoordinatorSubjectOverview,
   MajorExamStatus,
 } from "./types";
+
+/**
+ * Picks which coordinator's signature URL to show for a report card: prefer
+ * the card teacher when they coordinate the class; otherwise first coordinator
+ * (sorted by id) with a non-empty URL.
+ */
+function pickCoordinatorSignatureUrlForCard(
+  cardTeacherId: string | null,
+  coordinatorIdsSorted: string[],
+  urlByTeacherId: Map<string, string | null>
+): string | null {
+  if (coordinatorIdsSorted.length === 0) return null;
+  if (cardTeacherId && coordinatorIdsSorted.includes(cardTeacherId)) {
+    const direct = urlByTeacherId.get(cardTeacherId)?.trim();
+    if (direct) return direct;
+  }
+  for (const id of coordinatorIdsSorted) {
+    const u = urlByTeacherId.get(id)?.trim();
+    if (u) return u;
+  }
+  return null;
+}
+
+/** Parent portal / one-off: resolve coordinator signature URL for a class cluster. */
+export async function resolveCoordinatorSignatureUrlForClassCluster(
+  admin: Db,
+  classIds: string[],
+  cardTeacherId: string | null
+): Promise<string | null> {
+  const coordinatorTeacherIds = new Set<string>();
+  const { data: coordRows } = await admin
+    .from("teacher_coordinators")
+    .select("teacher_id")
+    .in("class_id", classIds);
+  for (const r of (coordRows ?? []) as { teacher_id: string }[]) {
+    if (r.teacher_id) coordinatorTeacherIds.add(r.teacher_id);
+  }
+  const coordinatorIdsSorted = [...coordinatorTeacherIds].sort();
+  const urlByTeacherId = new Map<string, string | null>();
+  if (coordinatorIdsSorted.length === 0) return null;
+  const { data: coordProfiles } = await admin
+    .from("profiles")
+    .select("id, coordinator_signature_url")
+    .in("id", coordinatorIdsSorted);
+  for (const p of (coordProfiles ?? []) as {
+    id: string;
+    coordinator_signature_url: string | null;
+  }[]) {
+    urlByTeacherId.set(
+      p.id,
+      p.coordinator_signature_url?.trim() || null
+    );
+  }
+  return pickCoordinatorSignatureUrlForCard(
+    cardTeacherId,
+    coordinatorIdsSorted,
+    urlByTeacherId
+  );
+}
 
 /** Manual widen — admin select with nested relation. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -544,6 +604,7 @@ async function loadClassReportCards(
     schoolMotto: string | null;
     schoolLogoUrl: string | null;
     schoolStampUrl: string | null;
+    headTeacherSignatureUrl: string | null;
     schoolLevel: SchoolLevel;
     academicYear: string;
     /** Exact `report_cards.term` value (e.g. Term 1, Term 2). */
@@ -703,6 +764,24 @@ async function loadClassReportCards(
       .in("class_id", params.classIds);
     for (const r of (coordRows ?? []) as { teacher_id: string }[]) {
       if (r.teacher_id) coordinatorTeacherIds.add(r.teacher_id);
+    }
+  }
+
+  const coordinatorIdsSorted = [...coordinatorTeacherIds].sort();
+  const coordinatorSigByTeacherId = new Map<string, string | null>();
+  if (coordinatorIdsSorted.length > 0) {
+    const { data: coordProfiles } = await admin
+      .from("profiles")
+      .select("id, coordinator_signature_url")
+      .in("id", coordinatorIdsSorted);
+    for (const p of (coordProfiles ?? []) as {
+      id: string;
+      coordinator_signature_url: string | null;
+    }[]) {
+      coordinatorSigByTeacherId.set(
+        p.id,
+        p.coordinator_signature_url?.trim() || null
+      );
     }
   }
 
@@ -883,6 +962,12 @@ async function loadClassReportCards(
       schoolMotto: params.schoolMotto,
       logoUrl: params.schoolLogoUrl,
       schoolStampUrl: params.schoolStampUrl,
+      headTeacherSignatureUrl: params.headTeacherSignatureUrl,
+      coordinatorSignatureUrl: pickCoordinatorSignatureUrlForCard(
+        c.teacher_id,
+        coordinatorIdsSorted,
+        coordinatorSigByTeacherId
+      ),
       studentName: studentRow.fullName,
       className: displayClassName,
       term: termExact,
@@ -1043,6 +1128,7 @@ export async function loadCoordinatorReportCardsForClass(
     schoolMotto: string | null;
     schoolLogoUrl: string | null;
     schoolStampUrl: string | null;
+    headTeacherSignatureUrl: string | null;
     schoolLevel: SchoolLevel;
     academicYear: string;
     term: string;
@@ -1061,16 +1147,30 @@ export async function loadCoordinatorOverview(params: {
 
   const { data: profile } = await admin
     .from("profiles")
-    .select("full_name")
+    .select("full_name, coordinator_signature_url, updated_at")
     .eq("id", params.userId)
     .maybeSingle();
+  const profRow = profile as {
+    full_name: string | null;
+    coordinator_signature_url?: string | null;
+    updated_at?: string;
+  } | null;
   const teacherName =
-    (profile as { full_name: string | null } | null)?.full_name?.trim() ||
-    "Coordinator";
+    profRow?.full_name?.trim() || "Coordinator";
+  const coordinatorSignatureUrl =
+    profRow?.coordinator_signature_url?.trim() || null;
+  const coordinatorSignatureVersion = logoVersionFromRow(
+    profRow?.updated_at
+  );
 
   const assignments = await loadCoordinatorClassesForUser(params.userId);
   if (assignments.length === 0) {
-    return { teacherName, classes: [] };
+    return {
+      teacherName,
+      coordinatorSignatureUrl,
+      coordinatorSignatureVersion,
+      classes: [],
+    };
   }
 
   const classIds = [...new Set(assignments.map((a) => a.classId))];
@@ -1096,6 +1196,7 @@ export async function loadCoordinatorOverview(params: {
         name: string;
         logo_url: string | null;
         school_stamp_url?: string | null;
+        head_teacher_signature_url?: string | null;
         school_level?: string | null;
         motto?: string | null;
       }[]
@@ -1103,7 +1204,7 @@ export async function loadCoordinatorOverview(params: {
   {
     let res = await admin
       .from("schools")
-      .select("id, name, logo_url, school_level, motto, school_stamp_url")
+      .select("id, name, logo_url, school_level, motto, school_stamp_url, head_teacher_signature_url")
       .in("id", schoolIds);
     if (res.error && /column/i.test(res.error.message ?? "")) {
       res = await admin
@@ -1161,6 +1262,8 @@ export async function loadCoordinatorOverview(params: {
       schoolMotto: mottoTrim ? mottoTrim : null,
       schoolLogoUrl: school?.logo_url ?? null,
       schoolStampUrl: school?.school_stamp_url?.trim() || null,
+      headTeacherSignatureUrl:
+        school?.head_teacher_signature_url?.trim() || null,
       schoolLevel,
       academicYear,
       term: params.term,
@@ -1206,7 +1309,12 @@ export async function loadCoordinatorOverview(params: {
 
   classes.sort((a, b) => a.className.localeCompare(b.className));
 
-  return { teacherName, classes };
+  return {
+    teacherName,
+    coordinatorSignatureUrl,
+    coordinatorSignatureVersion,
+    classes,
+  };
 }
 
 /** Class result sheet periods for the parent “Exam results” tab. */
@@ -1248,6 +1356,7 @@ export async function loadParentPublishedClassResultPeriods(
     name: string;
     logo_url: string | null;
     school_stamp_url?: string | null;
+    head_teacher_signature_url?: string | null;
     school_level?: string | null;
     motto?: string | null;
   };
@@ -1255,7 +1364,7 @@ export async function loadParentPublishedClassResultPeriods(
   {
     let res = await admin
       .from("schools")
-      .select("id, name, logo_url, school_level, motto, school_stamp_url")
+      .select("id, name, logo_url, school_level, motto, school_stamp_url, head_teacher_signature_url")
       .eq("id", cls.school_id)
       .maybeSingle();
     if (res.error && /column/i.test(res.error.message ?? "")) {
@@ -1336,6 +1445,8 @@ export async function loadParentPublishedClassResultPeriods(
       schoolMotto: mottoTrim ? mottoTrim : null,
       schoolLogoUrl: schoolRow?.logo_url ?? null,
       schoolStampUrl: schoolRow?.school_stamp_url?.trim() || null,
+      headTeacherSignatureUrl:
+        schoolRow?.head_teacher_signature_url?.trim() || null,
       schoolLevel,
       academicYear: p.academic_year,
       term: p.term,

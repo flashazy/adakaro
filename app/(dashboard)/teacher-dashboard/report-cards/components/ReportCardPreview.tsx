@@ -136,7 +136,7 @@ export function ReportCardPreview({
   );
 
   return (
-    <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm print:shadow-none print:border-slate-300">
+    <div className="mx-auto max-w-4xl space-y-6 border border-slate-200 bg-white p-5 text-slate-900 shadow-sm sm:p-6 print:shadow-none print:border-slate-300">
       <header className="flex flex-col items-center gap-3 border-b border-slate-200 pb-4 text-center sm:flex-row sm:items-start sm:text-left">
         {data.logoUrl ? (
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-slate-100 bg-white">
@@ -163,37 +163,37 @@ export function ReportCardPreview({
         </div>
       </header>
 
-      <section className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-        <p>
-          <span className="font-semibold text-slate-700">Student:</span>{" "}
+      <section className="grid gap-2 text-sm leading-relaxed sm:grid-cols-2">
+        <p className="text-gray-700">
+          <span className="font-semibold text-slate-800">Student:</span>{" "}
           {data.studentName}
         </p>
-        <p>
-          <span className="font-semibold text-slate-700">Class:</span>{" "}
+        <p className="text-gray-700">
+          <span className="font-semibold text-slate-800">Class:</span>{" "}
           {data.className}
         </p>
-        <p>
-          <span className="font-semibold text-slate-700">Term:</span> {data.term}
+        <p className="text-gray-700">
+          <span className="font-semibold text-slate-800">Term:</span> {data.term}
         </p>
-        <p>
-          <span className="font-semibold text-slate-700">Academic year:</span>{" "}
+        <p className="text-gray-700">
+          <span className="font-semibold text-slate-800">Academic year:</span>{" "}
           {data.academicYear}
         </p>
-        <p className="sm:col-span-2">
-          <span className="font-semibold text-slate-700">
+        <p className="text-gray-700 sm:col-span-2">
+          <span className="font-semibold text-slate-800">
             {data.teacherIsCoordinator ? "Class Coordinator:" : "Class teacher:"}
           </span>{" "}
           {data.teacherName}
         </p>
-        <p className="sm:col-span-2">
-          <span className="font-semibold text-slate-700">Date issued:</span>{" "}
+        <p className="text-gray-700 sm:col-span-2">
+          <span className="font-semibold text-slate-800">Date issued:</span>{" "}
           {data.dateIssued}
         </p>
       </section>
 
-      <section className="mt-6">
+      <section>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-800">
             Subject results
           </h2>
           {showFormatToggle ? (
@@ -214,7 +214,7 @@ export function ReportCardPreview({
             </p>
           ) : null;
         })()}
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full min-w-[700px] border-collapse text-left text-sm">
             <thead>
               <tr className="bg-slate-800 text-white">
@@ -332,7 +332,7 @@ export function ReportCardPreview({
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-sm leading-relaxed text-gray-700">
           Final score per subject = (Exam 1 + Exam 2) ÷ 2 when both are entered.
           Grading: {gradingScaleDescription(data.summary?.schoolLevel)}.
         </p>
@@ -348,10 +348,10 @@ export function ReportCardPreview({
       data.feeStatement ||
       data.coordinatorMessage ||
       formattedNextTermItems ? (
-      <div className="mt-6 space-y-6">
+      <div className="space-y-6">
       {data.schoolCalendar ? (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <h3 className="mb-2 text-sm font-semibold text-gray-800">
+          <h3 className="mb-2 text-sm font-semibold leading-snug text-gray-800">
             📅 School Calendar
           </h3>
           <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">
@@ -364,11 +364,11 @@ export function ReportCardPreview({
       ) : null}
 
       {data.feeStatement ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-800">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">
+        <section className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-slate-800">
+          <h3 className="mb-2 text-sm font-semibold text-gray-800">
             💰 Fee Statement
-          </h2>
-          <ul className="mt-2 list-inside list-disc space-y-1 text-slate-800">
+          </h3>
+          <ul className="list-inside list-disc space-y-1.5 text-gray-700 leading-relaxed">
             <li>
               Total fees this term:{" "}
               <span className="font-semibold tabular-nums">
@@ -398,14 +398,14 @@ export function ReportCardPreview({
             </li>
           </ul>
           {data.feeStatement.balanceDue > 0 ? (
-            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-950">
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm leading-relaxed text-amber-950">
               {formatFeeBalanceReminder(
                 data.feeStatement.balanceDue,
                 data.feeStatement.currencyCode
               )}
             </p>
           ) : (
-            <p className="mt-3 text-sm font-medium text-emerald-800">
+            <p className="mt-3 text-sm font-medium leading-relaxed text-emerald-800">
               Fee balance: Paid in full. Thank you!
             </p>
           )}
@@ -414,7 +414,7 @@ export function ReportCardPreview({
 
       {data.coordinatorMessage ? (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <h3 className="mb-2 text-sm font-semibold text-gray-800">
+          <h3 className="mb-2 text-sm font-semibold leading-snug text-gray-800">
             💬 Coordinator&apos;s Message
           </h3>
           <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">
@@ -425,7 +425,7 @@ export function ReportCardPreview({
 
       {formattedNextTermItems ? (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <h3 className="mb-2 text-sm font-semibold text-gray-800">
+          <h3 className="mb-2 text-sm font-semibold leading-snug text-gray-800">
             📦 Items for Next Term
           </h3>
           <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">
@@ -445,12 +445,12 @@ export function ReportCardPreview({
       */}
       {data.summary?.sentence &&
       (viewer !== "teacher" || reportCardStatus === "approved") ? (
-        <section className="mt-4 rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.10)] px-4 py-3 text-sm text-slate-800 print:border-slate-400 print:bg-white">
-          <p>
+        <section className="rounded-xl border border-[rgb(var(--school-primary-rgb)/0.3)] bg-[rgb(var(--school-primary-rgb)/0.1)] p-4 text-sm leading-relaxed text-slate-800 print:border-slate-300 print:bg-white">
+          <p className="text-gray-800">
             <span className="font-semibold text-slate-900">Summary:</span>{" "}
             {data.summary.sentence}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-slate-500">
             {data.summary.schoolLevel === "secondary"
               ? "Secondary school: best 7 subject averages count toward the total marks."
               : "Primary school: total score is the sum of all subject averages."}
@@ -459,8 +459,8 @@ export function ReportCardPreview({
       ) : null}
 
       {attendanceText ? (
-        <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <h3 className="mb-2 text-sm font-semibold text-gray-800">
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <h3 className="mb-2 text-sm font-semibold leading-snug text-gray-800">
             📊 Attendance ({data.attendance.daysInTermLabel})
           </h3>
           <p className="text-sm leading-relaxed text-gray-700">
@@ -469,42 +469,58 @@ export function ReportCardPreview({
         </div>
       ) : null}
 
-      <section className="mt-8 grid gap-8 border-t border-slate-200 pt-6 sm:grid-cols-3">
-        <div>
-          <p className="text-xs font-semibold uppercase text-slate-600">
+      <section className="break-inside-avoid border-t border-slate-200 pt-6 sm:pt-5">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-8">
+        <div className="min-w-0 sm:w-full">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             {data.teacherIsCoordinator ? "Class Coordinator" : "Class teacher"}
           </p>
-          <div className="mt-8 border-b border-slate-400" />
-          <p className="mt-1 text-xs text-slate-500">Signature</p>
-        </div>
-        <div>
-          <p className="text-xs font-semibold uppercase text-slate-600">
-            Head teacher
-          </p>
-          <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="border-b border-slate-400" />
-              <p className="mt-1 text-xs text-slate-500">Signature</p>
-            </div>
-            {data.schoolStampUrl?.trim() ? (
-              <div className="shrink-0 self-end sm:mb-0">
-                <img
-                  src={data.schoolStampUrl.trim()}
-                  alt=""
-                  className="h-20 w-20 max-h-[100px] max-w-[100px] object-contain"
-                  width={100}
-                  height={100}
-                />
-              </div>
+          <div className="mt-5 flex w-full min-w-0 flex-col items-center">
+            {data.coordinatorSignatureUrl?.trim() ? (
+              <img
+                src={data.coordinatorSignatureUrl.trim()}
+                alt=""
+                className="mb-2 max-h-16 max-w-[280px] object-contain contrast-110 saturate-150 [print-color-adjust:exact]"
+              />
             ) : null}
+            <div className="h-px w-full bg-slate-400" role="presentation" />
+            <div className="mt-1 w-full text-left text-xs text-slate-500">
+              Signature
+            </div>
           </div>
         </div>
-        <div>
-          <p className="text-xs font-semibold uppercase text-slate-600">
-            Parent / guardian
+        <div className="min-w-0 sm:w-full">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Head teacher
           </p>
-          <div className="mt-8 border-b border-slate-400" />
-          <p className="mt-1 text-xs text-slate-500">Signature</p>
+          <div className="mt-5 flex w-full min-w-0 flex-col items-center">
+            {data.headTeacherSignatureUrl?.trim() ? (
+              <img
+                src={data.headTeacherSignatureUrl.trim()}
+                alt=""
+                className="mb-2 max-h-16 max-w-[220px] translate-y-[15px] object-contain [print-color-adjust:exact]"
+              />
+            ) : null}
+            <div className="relative h-px w-full overflow-visible">
+              <div
+                className="absolute inset-x-0 top-0 h-px bg-slate-400"
+                role="presentation"
+              />
+              {data.schoolStampUrl?.trim() ? (
+                <div className="pointer-events-none absolute right-[30%] top-1/2 flex min-h-[40px] w-auto max-h-16 max-w-[110px] -translate-y-1/2 items-center justify-center object-contain opacity-80 rotate-[-4deg]">
+                  <img
+                    src={data.schoolStampUrl.trim()}
+                    alt=""
+                    className="h-auto min-h-[40px] max-h-16 w-auto max-w-[110px] object-contain object-center [print-color-adjust:exact]"
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-1 w-full text-left text-xs text-slate-500">
+              Signature
+            </div>
+          </div>
+        </div>
         </div>
       </section>
     </div>

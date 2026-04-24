@@ -11,6 +11,7 @@ import { normalizeSchoolLevel } from "@/lib/school-level";
 import { SchoolCurrencyForm } from "./school-currency-form";
 import { SchoolAdmissionPrefixForm } from "./school-admission-prefix-form";
 import { SchoolLogoForm } from "./school-logo-form";
+import { SchoolHeadTeacherSignatureForm } from "./school-head-teacher-signature-form";
 import { SchoolStampForm } from "./school-stamp-form";
 import { SchoolLevelForm } from "./school-level-form";
 import { SchoolInformationForm } from "./school-information-form";
@@ -39,6 +40,7 @@ export default async function SchoolSettingsPage() {
     admission_prefix: string | null;
     logo_url: string | null;
     school_stamp_url?: string | null;
+    head_teacher_signature_url?: string | null;
     updated_at: string;
     school_level?: string | null;
     address?: string | null;
@@ -62,7 +64,7 @@ export default async function SchoolSettingsPage() {
   // `school_level` (migration 00086) and extended settings (00088) may not exist
   // on older deployments; fall back to smaller column sets so the page loads.
   const extendedCols =
-    "name, currency, admission_prefix, logo_url, school_stamp_url, updated_at, school_level, address, city, postal_code, phone, email, registration_number, motto, primary_color, current_academic_year, term_structure, term_1_start, term_1_end, term_2_start, term_2_end, term_3_start, term_3_end";
+    "name, currency, admission_prefix, logo_url, school_stamp_url, head_teacher_signature_url, updated_at, school_level, address, city, postal_code, phone, email, registration_number, motto, primary_color, current_academic_year, term_structure, term_1_start, term_1_end, term_2_start, term_2_end, term_3_start, term_3_end";
   const fullCols =
     "name, currency, admission_prefix, logo_url, school_stamp_url, updated_at, school_level";
   const baseCols =
@@ -96,6 +98,14 @@ export default async function SchoolSettingsPage() {
   } as never);
   const isSchoolAdmin = !!isAdminFlag;
 
+  const [{ data: isTeacherForSchool }, { data: isSuperAdminFlag }] =
+    await Promise.all([
+      supabase.rpc("is_teacher_for_school", { p_school_id: schoolId } as never),
+      supabase.rpc("is_super_admin", {} as never),
+    ]);
+  const canManageHeadTeacherSignature =
+    isSchoolAdmin || !!isTeacherForSchool || !!isSuperAdminFlag;
+
   const termStructure: TermStructureValue =
     fetched?.term_structure === "3_terms" ? "3_terms" : "2_terms";
 
@@ -119,6 +129,12 @@ export default async function SchoolSettingsPage() {
       : display.logo_version;
   const stampUrl =
     (fetched?.school_stamp_url?.trim() || null) ?? null;
+  const headTeacherSignatureUrl =
+    (fetched?.head_teacher_signature_url?.trim() || null) ?? null;
+  const headTeacherSignatureVersion =
+    fetched?.updated_at != null
+      ? logoVersionFromRow(fetched.updated_at)
+      : display.logo_version;
 
   return (
     <>
@@ -232,11 +248,23 @@ export default async function SchoolSettingsPage() {
             sectionId="school-stamp"
             title="School stamp"
             defaultOpen
-            description="Official round seal or stamp for documents."
           >
             <SchoolStampForm
               initialStampUrl={stampUrl}
               initialStampVersion={logoVersion}
+            />
+          </SchoolSettingsCollapsibleSection>
+        ) : null}
+
+        {canManageHeadTeacherSignature ? (
+          <SchoolSettingsCollapsibleSection
+            sectionId="head-teacher-signature"
+            title="Head Teacher signature"
+            defaultOpen
+          >
+            <SchoolHeadTeacherSignatureForm
+              initialUrl={headTeacherSignatureUrl}
+              initialVersion={headTeacherSignatureVersion}
             />
           </SchoolSettingsCollapsibleSection>
         ) : null}

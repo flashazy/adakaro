@@ -441,6 +441,233 @@ export async function removeSchoolStamp(
   };
 }
 
+async function requireHeadTeacherSignatureAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  schoolId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const [{ data: isAdmin, error: adminErr }, { data: isTeacher, error: tErr }, { data: isSuper, error: sErr }] =
+    await Promise.all([
+      supabase.rpc("is_school_admin", { p_school_id: schoolId } as never),
+      supabase.rpc("is_teacher_for_school", { p_school_id: schoolId } as never),
+      supabase.rpc("is_super_admin", {} as never),
+    ]);
+  if (!adminErr && isAdmin) return { ok: true };
+  if (!tErr && isTeacher) return { ok: true };
+  if (!sErr && isSuper) return { ok: true };
+  return {
+    ok: false,
+    error: "You must be a school admin, teacher, or super admin to change this.",
+  };
+}
+
+const MAX_HT_SIG_BYTES = 2 * 1024 * 1024;
+const ALLOWED_HT_SIG_EXT = new Set(["png", "jpg", "jpeg", "webp"]);
+const ALLOWED_HT_SIG_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+
+export async function uploadHeadTeacherSignature(
+  _prev: SchoolSettingsState,
+  formData: FormData
+): Promise<SchoolSettingsState> {
+  const raw = formData.get("head_teacher_signature");
+  if (raw == null) {
+    return {
+      error:
+        "No file was included. Choose an image (PNG, JPG, or WebP, up to 2 MB). If the problem continues, refresh the page and try again.",
+    };
+  }
+  if (typeof raw === "string") {
+    return {
+      error:
+        "The file did not upload correctly. Try choosing the image again. Allowed types: PNG, JPG, WebP; max 2 MB.",
+    };
+  }
+  const file = raw;
+  if (!(file instanceof File) || file.size === 0) {
+    return {
+      error:
+        "The file was empty or unreadable. Choose a PNG, JPG, or WebP (max 2 MB).",
+    };
+  }
+  if (file.size > MAX_HT_SIG_BYTES) {
+    return { error: "Signature must be 2 MB or smaller." };
+  }
+  const fromName = file.name.includes(".")
+    ? file.name.split(".").pop()?.toLowerCase() ?? ""
+    : "";
+  let ext =
+    fromName && ALLOWED_HT_SIG_EXT.has(fromName)
+      ? fromName
+      : file.type === "image/png"
+        ? "png"
+        : file.type === "image/webp"
+          ? "webp"
+          : file.type === "image/jpeg"
+            ? "jpg"
+            : "";
+  if (ext === "jpeg") ext = "jpg";
+  if (!ext || !ALLOWED_HT_SIG_EXT.has(ext)) {
+    return { error: "Use a PNG, JPG, JPEG, or WebP image." };
+  }
+  if (file.type && !ALLOWED_HT_SIG_MIME.has(file.type)) {
+    return { error: "Use a PNG, JPG, JPEG, or WebP image." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+  const access = await requireHeadTeacherSignatureAccess(supabase, schoolId);
+  if (!access.ok) {
+    return { error: access.error };
+  }
+
+  const path = `schools/${schoolId}/head-teacher-signature.${ext}`;
+  const { error: uploadError } = await supabase.storage
+    .from("school-assets")
+    .upload(path, file, { upsert: true, contentType: file.type || undefined });
+
+  if (uploadError) {
+    return { error: uploadError.message || "Could not upload signature." };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("school-assets").getPublicUrl(path);
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not save signature URL. Check server configuration (service role).",
+    };
+  }
+
+  const { data: updatedSchool, error: updateError } = await admin
+    .from("schools")
+    .update({ head_teacher_signature_url: publicUrl } as never)
+    .eq("id", schoolId)
+    .select("updated_at")
+    .maybeSingle();
+
+  if (updateError) {
+    return { error: updateError.message };
+  }
+
+  const headTeacherSignatureVersion = logoVersionFromRow(
+    (updatedSchool as { updated_at: string } | null)?.updated_at
+  );
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/school-settings");
+  revalidatePath("/teacher-dashboard");
+  revalidatePath("/teacher-dashboard/report-cards");
+  revalidatePath("/teacher-dashboard/coordinator");
+  revalidatePath("/parent-dashboard/report-card");
+  return {
+    success: true,
+    completedAt: headTeacherSignatureVersion,
+    publicUrl,
+    headTeacherSignatureVersion,
+  };
+}
+
+export async function removeHeadTeacherSignature(
+  _prev: SchoolSettingsState,
+  _formData: FormData
+): Promise<SchoolSettingsState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+  const access = await requireHeadTeacherSignatureAccess(supabase, schoolId);
+  if (!access.ok) {
+    return { error: access.error };
+  }
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not update school. Check server configuration (service role).",
+    };
+  }
+
+  const { data: row } = await admin
+    .from("schools")
+    .select("head_teacher_signature_url")
+    .eq("id", schoolId)
+    .maybeSingle();
+
+  const url = (
+    row as { head_teacher_signature_url: string | null } | null
+  )?.head_teacher_signature_url?.trim();
+
+  if (url) {
+    const storagePath = storagePathFromSchoolAssetsPublicUrl(url);
+    if (storagePath) {
+      await supabase.storage.from("school-assets").remove([storagePath]);
+    } else {
+      const { data: listed } = await supabase.storage
+        .from("school-assets")
+        .list(`schools/${schoolId}`);
+      const names = (listed ?? [])
+        .map((o) => o.name)
+        .filter((n) => /^head-teacher-signature\./i.test(n));
+      if (names.length > 0) {
+        await supabase.storage
+          .from("school-assets")
+          .remove(names.map((n) => `schools/${schoolId}/${n}`));
+      }
+    }
+  }
+
+  const { data: updatedSchool, error: updateError } = await admin
+    .from("schools")
+    .update({ head_teacher_signature_url: null } as never)
+    .eq("id", schoolId)
+    .select("updated_at")
+    .maybeSingle();
+
+  if (updateError) {
+    return { error: updateError.message };
+  }
+
+  const headTeacherSignatureVersion = logoVersionFromRow(
+    (updatedSchool as { updated_at: string } | null)?.updated_at
+  );
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/school-settings");
+  revalidatePath("/teacher-dashboard");
+  revalidatePath("/teacher-dashboard/report-cards");
+  revalidatePath("/teacher-dashboard/coordinator");
+  revalidatePath("/parent-dashboard/report-card");
+  return {
+    success: true,
+    completedAt: headTeacherSignatureVersion,
+    publicUrl: null,
+    headTeacherSignatureVersion,
+  };
+}
+
 export async function updateSchoolCurrency(
   _prev: SchoolSettingsState,
   formData: FormData

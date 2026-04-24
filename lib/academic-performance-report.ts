@@ -499,7 +499,7 @@ export async function persistAcademicPerformanceReport(args: {
 
   const { data: schoolRow } = await admin
     .from("schools")
-    .select("name, motto, logo_url, school_stamp_url")
+    .select("name, motto, logo_url, school_stamp_url, head_teacher_signature_url")
     .eq("id", schoolId)
     .maybeSingle();
   const sr = schoolRow as {
@@ -507,12 +507,14 @@ export async function persistAcademicPerformanceReport(args: {
     motto?: string | null;
     logo_url?: string | null;
     school_stamp_url?: string | null;
+    head_teacher_signature_url?: string | null;
   } | null;
   const schoolName = sr?.name?.trim() || "School";
   const mottoRaw = sr?.motto != null ? String(sr.motto).trim() : "";
   const motto = mottoRaw.length > 0 ? mottoRaw : null;
   const logoUrl = sr?.logo_url ?? null;
   const stampUrl = sr?.school_stamp_url?.trim() || null;
+  const headTeacherSignatureUrl = sr?.head_teacher_signature_url?.trim() || null;
 
   const reportCards = await loadCoordinatorReportCardsForClass(admin, {
     classId,
@@ -522,6 +524,7 @@ export async function persistAcademicPerformanceReport(args: {
     schoolMotto: motto,
     schoolLogoUrl: logoUrl,
     schoolStampUrl: stampUrl,
+    headTeacherSignatureUrl,
     schoolLevel,
     academicYear,
     term,

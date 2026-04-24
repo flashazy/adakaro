@@ -5,6 +5,16 @@ export interface ReportCardPreviewData {
   logoUrl: string | null;
   /** Public URL of official school stamp; shown near signatures when set. */
   schoolStampUrl: string | null;
+  /**
+   * Optional Head Teacher written signature (school settings); above the
+   * Head Teacher rule on preview/PDF, not the class coordinator line.
+   */
+  headTeacherSignatureUrl: string | null;
+  /**
+   * Class coordinator written signature for this class cluster (from the
+   * assigned coordinator(s) in `teacher_coordinators`); above the left rule.
+   */
+  coordinatorSignatureUrl: string | null;
   studentName: string;
   className: string;
   term: string;

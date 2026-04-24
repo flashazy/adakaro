@@ -232,6 +232,8 @@ function toPreviewData(args: {
   schoolMotto?: string | null;
   logoUrl: string | null;
   schoolStampUrl?: string | null;
+  headTeacherSignatureUrl?: string | null;
+  coordinatorSignatureUrl?: string | null;
   schoolLevel: SchoolLevel;
   className: string;
   teacherName: string;
@@ -273,6 +275,8 @@ function toPreviewData(args: {
     schoolMotto: mottoTrim ? mottoTrim : null,
     logoUrl: args.logoUrl,
     schoolStampUrl: args.schoolStampUrl?.trim() || null,
+    headTeacherSignatureUrl: args.headTeacherSignatureUrl?.trim() || null,
+    coordinatorSignatureUrl: args.coordinatorSignatureUrl?.trim() || null,
     studentName: args.student.fullName,
     className: args.className,
     term: args.term,
@@ -304,6 +308,7 @@ export function ReportCardsPageClient({
   schoolLevel,
   logoUrl,
   schoolStampUrl,
+  headTeacherSignatureUrl,
   teacherName,
   classes,
   pendingForAdmin,
@@ -315,6 +320,7 @@ export function ReportCardsPageClient({
   schoolLevel: SchoolLevel;
   logoUrl: string | null;
   schoolStampUrl: string | null;
+  headTeacherSignatureUrl: string | null;
   teacherName: string;
   classes: TeacherClassOption[];
   pendingForAdmin: PendingReportCardRow[];
@@ -756,6 +762,7 @@ export function ReportCardsPageClient({
       schoolMotto,
       logoUrl,
       schoolStampUrl,
+      headTeacherSignatureUrl,
       schoolLevel,
       className: selectedClass.className,
       teacherName,
@@ -783,6 +790,7 @@ export function ReportCardsPageClient({
     schoolLevel,
     logoUrl,
     schoolStampUrl,
+    headTeacherSignatureUrl,
     teacherName,
     term,
     academicYear,
@@ -1707,6 +1715,7 @@ export function ReportCardsPageClient({
                   schoolMotto,
                   logoUrl,
                   schoolStampUrl,
+                  headTeacherSignatureUrl,
                   schoolLevel,
                   className: selectedClass!.className,
                   teacherName,

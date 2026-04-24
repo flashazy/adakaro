@@ -14,6 +14,8 @@ export interface SchoolSettingsState {
   logoVersion?: number;
   /** Busts cache for school stamp image after `schools` row update. */
   stampVersion?: number;
+  /** Busts cache for head teacher signature after `schools` row update. */
+  headTeacherSignatureVersion?: number;
 }
 
 export type TermStructureValue = "2_terms" | "3_terms";

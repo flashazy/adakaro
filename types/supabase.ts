@@ -29,6 +29,8 @@ export interface Database {
           phone: string | null;
           role: UserRole;
           avatar_url: string | null;
+          /** Class coordinator signature image URL (school-assets). */
+          coordinator_signature_url: string | null;
           password_changed: boolean;
           recovery_reset_required: boolean;
           password_forced_reset: boolean;
@@ -43,6 +45,7 @@ export interface Database {
           phone?: string | null;
           role?: UserRole;
           avatar_url?: string | null;
+          coordinator_signature_url?: string | null;
           password_changed?: boolean;
           recovery_reset_required?: boolean;
           password_forced_reset?: boolean;
@@ -57,6 +60,7 @@ export interface Database {
           phone?: string | null;
           role?: UserRole;
           avatar_url?: string | null;
+          coordinator_signature_url?: string | null;
           password_changed?: boolean;
           recovery_reset_required?: boolean;
           password_forced_reset?: boolean;
@@ -345,6 +349,7 @@ export interface Database {
           primary_color: string | null;
           logo_url: string | null;
           school_stamp_url: string | null;
+          head_teacher_signature_url: string | null;
           currency: string;
           plan: string;
           status: SchoolStatus;
@@ -380,6 +385,7 @@ export interface Database {
           primary_color?: string | null;
           logo_url?: string | null;
           school_stamp_url?: string | null;
+          head_teacher_signature_url?: string | null;
           currency?: string;
           plan?: string;
           status?: SchoolStatus;
@@ -414,6 +420,7 @@ export interface Database {
           primary_color?: string | null;
           logo_url?: string | null;
           school_stamp_url?: string | null;
+          head_teacher_signature_url?: string | null;
           currency?: string;
           plan?: string;
           status?: SchoolStatus;

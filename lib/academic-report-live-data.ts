@@ -264,7 +264,7 @@ export async function loadAcademicReportLiveSupplement(
     admin.from("classes").select("name").eq("id", classId).maybeSingle(),
     admin
       .from("schools")
-      .select("name, motto, logo_url, school_stamp_url, school_level")
+      .select("name, motto, logo_url, school_stamp_url, head_teacher_signature_url, school_level")
       .eq("id", schoolId)
       .maybeSingle(),
   ]);
@@ -276,6 +276,7 @@ export async function loadAcademicReportLiveSupplement(
     motto?: string | null;
     logo_url: string | null;
     school_stamp_url?: string | null;
+    head_teacher_signature_url?: string | null;
     school_level?: string | null;
   } | null;
   const schoolName = sr?.name?.trim() || "School";
@@ -283,6 +284,7 @@ export async function loadAcademicReportLiveSupplement(
   const motto = mottoRaw.length > 0 ? mottoRaw : null;
   const logoUrl = sr?.logo_url ?? null;
   const stampUrl = sr?.school_stamp_url?.trim() || null;
+  const headTeacherSignatureUrl = sr?.head_teacher_signature_url?.trim() || null;
   const schoolLevel =
     normalizeSchoolLevel(sr?.school_level) ?? normalizeSchoolLevel(data.school_level) ?? "primary";
 
@@ -296,6 +298,7 @@ export async function loadAcademicReportLiveSupplement(
     schoolMotto: motto,
     schoolLogoUrl: logoUrl,
     schoolStampUrl: stampUrl,
+    headTeacherSignatureUrl,
     schoolLevel,
     classSubjectNames,
   };

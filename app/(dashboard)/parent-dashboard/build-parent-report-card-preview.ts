@@ -18,7 +18,10 @@ import type {
 } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-types";
 import { termDateRange } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-dates";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
-import { mergeReportCardCommentsWithGradebookForParent } from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
+import {
+  mergeReportCardCommentsWithGradebookForParent,
+  resolveCoordinatorSignatureUrlForClassCluster,
+} from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
 import { resolveClassCluster } from "@/lib/class-cluster";
 import {
   loadReportCardSupplementaryBatch,
@@ -122,7 +125,7 @@ export async function buildParentReportCardPreviewData(
       approved_at,
       students ( full_name ),
       classes ( name ),
-      schools ( name, logo_url, motto, school_stamp_url )
+      schools ( name, logo_url, motto, school_stamp_url, head_teacher_signature_url )
     `
     )
     .eq("student_id", params.studentId)
@@ -152,6 +155,7 @@ export async function buildParentReportCardPreviewData(
       logo_url: string | null;
       motto: string | null;
       school_stamp_url: string | null;
+      head_teacher_signature_url: string | null;
     } | null;
   };
 
@@ -267,11 +271,33 @@ export async function buildParentReportCardPreviewData(
   }).format(new Date(issuedAt));
 
   const mottoTrim = (row.schools?.motto ?? "").trim();
+
+  let coordinatorSignatureUrl: string | null = null;
+  try {
+    const admin = createAdminClient();
+    const cluster = await resolveClassCluster(admin, row.class_id);
+    const clusterIds =
+      cluster.isParent && cluster.childClassIds.length > 0
+        ? cluster.classIds
+        : [row.class_id];
+    coordinatorSignatureUrl =
+      await resolveCoordinatorSignatureUrlForClassCluster(
+        admin,
+        clusterIds,
+        row.teacher_id
+      );
+  } catch {
+    coordinatorSignatureUrl = null;
+  }
+
   let data: ReportCardPreviewData = {
     schoolName: row.schools?.name ?? "School",
     schoolMotto: mottoTrim ? mottoTrim : null,
     logoUrl: row.schools?.logo_url ?? null,
     schoolStampUrl: row.schools?.school_stamp_url?.trim() || null,
+    headTeacherSignatureUrl:
+      row.schools?.head_teacher_signature_url?.trim() || null,
+    coordinatorSignatureUrl,
     studentName: row.students?.full_name ?? "—",
     className: row.classes?.name ?? "—",
     term: row.term,

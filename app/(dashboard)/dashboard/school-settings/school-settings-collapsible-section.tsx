@@ -37,7 +37,8 @@ function writeExpandedMap(map: Record<string, boolean>) {
 export interface SchoolSettingsCollapsibleSectionProps {
   sectionId: string;
   title: string;
-  description: ReactNode;
+  /** Optional; when omitted, only the form body is shown (e.g. heading lives inside a card). */
+  description?: ReactNode;
   children: ReactNode;
   /** When true, start expanded; localStorage can still open other sections. */
   defaultOpen?: boolean;
@@ -111,10 +112,14 @@ export function SchoolSettingsCollapsibleSection({
       >
         <div className="min-h-0 overflow-hidden" inert={!open}>
           <div className="border-t border-slate-100 px-6 pb-6 pt-4 dark:border-zinc-800">
-            <p className="text-sm text-slate-500 dark:text-zinc-400">
-              {description}
-            </p>
-            <div className="mt-6">{children}</div>
+            {description != null ? (
+              <p className="text-sm text-slate-500 dark:text-zinc-400">
+                {description}
+              </p>
+            ) : null}
+            <div className={description != null ? "mt-6" : ""}>
+              {children}
+            </div>
           </div>
         </div>
       </div>
