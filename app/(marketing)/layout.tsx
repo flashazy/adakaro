@@ -15,7 +15,10 @@ export default function MarketingLayout({
         Skip to content
       </a>
       <MarketingHeader />
-      <div id="page-content" className="flex-1">
+      <div
+        id="page-content"
+        className="flex-1 bg-gray-50 dark:bg-zinc-950"
+      >
         {children}
       </div>
       <MarketingFooter />

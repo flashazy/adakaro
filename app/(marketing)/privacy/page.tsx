@@ -1,334 +1,319 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalTocNav } from "@/components/legal/legal-toc-nav";
+import {
+  LandingScrollBehavior,
+  SmartFloatingScrollButton,
+} from "@/components/landing/landing-scroll";
+
+const PRIVACY_SECTION_IDS = [
+  "privacy-hero",
+  "information-we-collect",
+  "how-we-use-information",
+  "data-access-and-control",
+  "data-storage-and-security",
+  "payments",
+  "third-party-services",
+  "your-rights",
+  "updates-to-this-policy",
+  "contact",
+] as const;
+
+const privacyToc = [
+  { id: "information-we-collect", label: "1. Information We Collect" },
+  { id: "how-we-use-information", label: "2. How We Use Information" },
+  { id: "data-access-and-control", label: "3. Data Access and Control" },
+  { id: "data-storage-and-security", label: "4. Data Storage and Security" },
+  { id: "payments", label: "5. Payments" },
+  { id: "third-party-services", label: "6. Third-Party Services" },
+  { id: "your-rights", label: "7. Your Rights" },
+  { id: "updates-to-this-policy", label: "8. Updates to This Policy" },
+  { id: "contact", label: "9. Contact" },
+] as const;
 
 export const metadata: Metadata = {
   title: "Privacy Policy — Adakaro",
   description:
-    "How Adakaro collects, uses, and protects personal data for school fee management.",
+    "How Adakaro collects, uses, stores, and protects information for schools using the platform.",
 };
 
-const sections = [
-  {
-    id: "intro",
-    title: "1. Introduction",
-    body: (
-      <>
-        <p>
-          Adakaro (&ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;)
-          provides a school fee management platform for educational institutions,
-          parents, and guardians. We are committed to protecting your privacy and
-          handling personal data responsibly, in line with practices appropriate
-          for services operating in East Africa and internationally.
-        </p>
-        <p className="mt-4">
-          This Privacy Policy explains what information we collect, how we use
-          it, how we protect it, and your rights. By using Adakaro, you
-          acknowledge that you have read this policy. If you do not agree,
-          please discontinue use of the service.
-        </p>
-      </>
-    ),
-  },
-  {
-    id: "collect",
-    title: "2. Information we collect",
-    body: (
-      <>
-        <p className="font-medium text-slate-800 dark:text-zinc-200">
-          Account and identity data
-        </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>
-            Name, email address, phone number (where provided), and account
-            credentials for school administrators and parents.
-          </li>
-          <li>
-            Role information (e.g. admin or parent) and profile details stored
-            in our systems.
-          </li>
-        </ul>
-        <p className="mt-4 font-medium text-slate-800 dark:text-zinc-200">
-          School and academic data
-        </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>
-            School name, settings, currency preferences, classes, fee types, fee
-            structures, and related configuration.
-          </li>
-          <li>
-            Student records required for fee management, such as names,
-            admission numbers, class assignments, and links between parents and
-            students where you or your school have established those
-            relationships.
-          </li>
-        </ul>
-        <p className="mt-4 font-medium text-slate-800 dark:text-zinc-200">
-          Payment-related data
-        </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>
-            Fee amounts, payment status, receipts, control numbers, transaction
-            references, and metadata needed to reconcile payments with student
-            accounts.
-          </li>
-          <li>
-            We do not store full payment card details on Adakaro servers.
-            Card or mobile-money payments are processed by our payment partner
-            (ClickPesa) under their own terms and security standards; we may
-            receive confirmation of successful or failed payments and limited
-            identifiers to match transactions to your account.
-          </li>
-        </ul>
-        <p className="mt-4 font-medium text-slate-800 dark:text-zinc-200">
-          Technical and usage data
-        </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>
-            IP address, browser type, device information, and logs that help us
-            secure the platform, diagnose errors, and improve reliability.
-          </li>
-        </ul>
-      </>
-    ),
-  },
-  {
-    id: "use",
-    title: "3. How we use your information",
-    body: (
-      <>
-        <p>We use personal data to:</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>
-            Provide, operate, and improve the Adakaro service, including fee
-            balances, payment tracking, and reporting for schools.
-          </li>
-          <li>
-            Facilitate parent–student linking, approvals, and communications
-            necessary for account administration.
-          </li>
-          <li>
-            Initiate and confirm payments through ClickPesa (e.g. control
-            numbers, checkout links, webhooks) and update payment records in
-            your school&apos;s workspace.
-          </li>
-          <li>
-            Send service-related notices (e.g. security alerts, account
-            updates) and, where permitted, operational messages about the
-            platform.
-          </li>
-          <li>
-            Comply with legal obligations, enforce our terms, and protect the
-            rights, safety, and integrity of users and the service.
-          </li>
-        </ul>
-        <p className="mt-4">
-          We do not sell your personal information. We do not use student data
-          for unrelated behavioural advertising.
-        </p>
-      </>
-    ),
-  },
-  {
-    id: "protection",
-    title: "4. Data protection and security",
-    body: (
-      <>
-        <p>
-          We implement appropriate technical and organisational measures
-          designed to protect personal data against unauthorised access,
-          alteration, disclosure, or destruction. These include:
-        </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>
-            Encryption in transit (TLS/SSL) between your browser and our
-            application.
-          </li>
-          <li>
-            Access controls and authentication so that users generally see only
-            the data their role and school relationship permit.
-          </li>
-          <li>
-            Secure hosting and database infrastructure provided by our
-            subprocessors (see below).
-          </li>
-        </ul>
-        <p className="mt-4">
-          No method of transmission over the Internet is completely secure. We
-          encourage strong passwords and prompt reporting of suspected
-          unauthorised access.
-        </p>
-      </>
-    ),
-  },
-  {
-    id: "third-parties",
-    title: "5. Third-party services",
-    body: (
-      <>
-        <p className="font-medium text-slate-800 dark:text-zinc-200">
-          Supabase
-        </p>
-        <p className="mt-2">
-          We use Supabase for authentication, database storage, and related
-          infrastructure. Data you submit to Adakaro is processed and stored on
-          systems operated by Supabase in accordance with their privacy policy
-          and our configuration (including row-level security policies where
-          applicable).
-        </p>
-        <p className="mt-4 font-medium text-slate-800 dark:text-zinc-200">
-          ClickPesa
-        </p>
-        <p className="mt-2">
-          Payment services (including mobile money and related rails) are
-          provided by ClickPesa. When you pay through ClickPesa, their privacy
-          notice and terms govern how they process payment data. We receive only
-          the information needed to confirm payments and maintain fee records.
-        </p>
-        <p className="mt-4">
-          We may use additional subprocessors (e.g. hosting, analytics) as our
-          operations evolve. Material changes will be reflected in updates to
-          this policy where required.
-        </p>
-      </>
-    ),
-  },
-  {
-    id: "retention",
-    title: "6. Retention",
-    body: (
-      <p>
-        We retain personal data for as long as your account is active, as needed
-        to provide the service, and as required by law or legitimate business
-        needs (such as financial record-keeping). Schools may request deletion
-        or export of certain data subject to legal retention requirements.
-      </p>
-    ),
-  },
-  {
-    id: "rights",
-    title: "7. Your rights",
-    body: (
-      <>
-        <p>
-          Depending on your jurisdiction (including applicable data-protection
-          laws in Kenya, Tanzania, Uganda, and elsewhere), you may have rights
-          to:
-        </p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>Access the personal data we hold about you.</li>
-          <li>Request correction of inaccurate or incomplete data.</li>
-          <li>
-            Request deletion of your data, where legally permissible and not
-            overridden by the school&apos;s legitimate interests or legal
-            obligations.
-          </li>
-          <li>Object to or restrict certain processing, where applicable.</li>
-          <li>Lodge a complaint with a supervisory authority, where available.</li>
-        </ul>
-        <p className="mt-4">
-          Parents should note that some records are controlled by the school;
-          we may need to coordinate requests with your school where appropriate.
-        </p>
-      </>
-    ),
-  },
-  {
-    id: "children",
-    title: "8. Children",
-    body: (
-      <p>
-        Adakaro is used by schools to manage fees for students, who may be
-        minors. We do not knowingly market directly to children. Personal data
-        about students is provided by schools or parents for educational and fee
-        purposes. Schools are responsible for obtaining any required consents
-        under local law.
-      </p>
-    ),
-  },
-  {
-    id: "changes",
-    title: "9. Changes to this policy",
-    body: (
-      <p>
-        We may update this Privacy Policy from time to time. We will post the
-        revised version on this page and update the &ldquo;Last updated&rdquo;
-        date. Continued use of Adakaro after changes constitutes acceptance of
-        the updated policy, except where applicable law requires additional
-        steps.
-      </p>
-    ),
-  },
-  {
-    id: "contact",
-    title: "10. Contact us",
-    body: (
-      <>
-        <p>
-          For privacy-related questions, requests to exercise your rights, or
-          concerns about data handling, please contact us at:
-        </p>
-        <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-200">
-          <strong>Email:</strong>{" "}
-          <a
-            href="mailto:info@adakaro.com"
-            className="text-indigo-600 hover:underline dark:text-indigo-400"
-          >
-            info@adakaro.com
-          </a>
-        </p>
-      </>
-    ),
-  },
-];
+const body = "leading-relaxed text-gray-700 dark:text-gray-300";
+const list = "mt-3 list-disc space-y-2 pl-5";
+const sectionFirst = "scroll-mt-24 pt-0";
+const sectionRest =
+  "scroll-mt-24 border-t border-gray-200 pt-10 dark:border-zinc-800";
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-12 dark:bg-zinc-950 sm:py-16">
-      <article className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-10">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-          Privacy Policy
-        </h1>
-        <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-          Last updated: 23 March 2026
-        </p>
+    <div className="min-h-screen bg-white text-gray-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <LandingScrollBehavior />
 
-        <div className="mt-10 space-y-10 text-sm leading-relaxed text-slate-600 dark:text-zinc-300">
-          {sections.map((s) => (
-            <section key={s.id} id={s.id} aria-labelledby={`${s.id}-heading`}>
-              <h2
-                id={`${s.id}-heading`}
-                className="text-base font-semibold text-slate-900 dark:text-white"
-              >
-                {s.title}
-              </h2>
-              <div className="mt-3">{s.body}</div>
-            </section>
-          ))}
+      <section
+        id="privacy-hero"
+        className="border-b border-gray-100 bg-gray-50 dark:border-zinc-800 dark:bg-zinc-900/30"
+      >
+        <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+          <div className="mb-12 mt-16">
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+              Privacy Policy
+            </h1>
+            <span className="mt-2 inline-block rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 dark:bg-zinc-800 dark:text-zinc-400">
+              Last updated: April 25, 2026
+            </span>
+            <div
+              className={`mt-4 max-w-2xl space-y-3 text-base leading-relaxed text-gray-600 dark:text-zinc-400`}
+            >
+              <p className={body}>
+                Adakaro (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;)
+                provides a school management platform that helps schools manage fees,
+                students, reports, and communication in one system.
+              </p>
+              <p className={body}>
+                This Privacy Policy explains how we collect, use, and protect your
+                information when you use Adakaro.
+              </p>
+            </div>
+          </div>
         </div>
+      </section>
 
-        <p className="mt-12 border-t border-slate-200 pt-8 dark:border-zinc-800">
-          <Link
-            href="/"
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-          >
-            ← Back to home
-          </Link>
-          {" · "}
-          <Link
-            href="/terms"
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-          >
-            Terms of Service
-          </Link>
-          {" · "}
-          <Link
-            href="/faq"
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-          >
-            FAQ
-          </Link>
-        </p>
-      </article>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex gap-12 pb-16 pt-10 md:pt-12">
+          <div className="mx-auto min-w-0 w-full max-w-3xl flex-1">
+            <div className="space-y-0 text-base">
+              <div id="information-we-collect" className={sectionFirst}>
+                <section aria-labelledby="information-we-collect-heading">
+                  <h2
+                    id="information-we-collect-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    1. Information We Collect
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>We may collect the following information:</p>
+                    <ul className={`${list} ${body}`}>
+                      <li>Account information (name, email address, school name)</li>
+                      <li>School data (student records, fee information, reports)</li>
+                      <li>Messages submitted through contact forms</li>
+                      <li>Basic technical information (such as browser type)</li>
+                    </ul>
+                    <p>
+                      We only collect information necessary to operate the platform
+                      effectively.
+                    </p>
+                  </div>
+                </section>
+              </div>
+
+              <div id="how-we-use-information" className={sectionRest}>
+                <section aria-labelledby="how-we-use-information-heading">
+                  <h2
+                    id="how-we-use-information-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    2. How We Use Information
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>We use your information to:</p>
+                    <ul className={`${list} ${body}`}>
+                      <li>Provide and operate the Adakaro platform</li>
+                      <li>Manage school data and user access</li>
+                      <li>Respond to support requests and inquiries</li>
+                      <li>Improve system performance and usability</li>
+                    </ul>
+                    <p>We do not sell, rent, or trade your data to third parties.</p>
+                  </div>
+                </section>
+              </div>
+
+              <div id="data-access-and-control" className={sectionRest}>
+                <section aria-labelledby="data-access-and-control-heading">
+                  <h2
+                    id="data-access-and-control-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    3. Data Access and Control
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>Each school controls its own data.</p>
+                    <ul className={`${list} ${body}`}>
+                      <li>School administrators manage access permissions</li>
+                      <li>
+                        Teachers, accountants, and parents only see information
+                        relevant to their roles
+                      </li>
+                    </ul>
+                  </div>
+                </section>
+              </div>
+
+              <div id="data-storage-and-security" className={sectionRest}>
+                <section aria-labelledby="data-storage-and-security-heading">
+                  <h2
+                    id="data-storage-and-security-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    4. Data Storage and Security
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>We take reasonable steps to protect your data:</p>
+                    <ul className={`${list} ${body}`}>
+                      <li>Data is stored using secure cloud infrastructure</li>
+                      <li>
+                        Access is controlled through authentication and permissions
+                      </li>
+                      <li>We work to prevent unauthorized access or misuse</li>
+                    </ul>
+                  </div>
+                </section>
+              </div>
+
+              <div id="payments" className={sectionRest}>
+                <section aria-labelledby="payments-heading">
+                  <h2
+                    id="payments-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    5. Payments
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>Adakaro currently supports manual payment tracking:</p>
+                    <ul className={`${list} ${body}`}>
+                      <li>Payments are recorded based on submitted receipts</li>
+                      <li>Adakaro does not process payments directly at this time</li>
+                    </ul>
+                  </div>
+                </section>
+              </div>
+
+              <div id="third-party-services" className={sectionRest}>
+                <section aria-labelledby="third-party-services-heading">
+                  <h2
+                    id="third-party-services-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    6. Third-Party Services
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>
+                      We may use trusted third-party providers (such as hosting
+                      services) to operate the platform.
+                    </p>
+                    <p>These services are used only to support system functionality.</p>
+                  </div>
+                </section>
+              </div>
+
+              <div id="your-rights" className={sectionRest}>
+                <section aria-labelledby="your-rights-heading">
+                  <h2
+                    id="your-rights-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    7. Your Rights
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>Schools may:</p>
+                    <ul className={`${list} ${body}`}>
+                      <li>Request updates or corrections to their data</li>
+                      <li>Request deletion of their data</li>
+                      <li>Control user access within their system</li>
+                    </ul>
+                  </div>
+                </section>
+              </div>
+
+              <div id="updates-to-this-policy" className={sectionRest}>
+                <section aria-labelledby="updates-to-this-policy-heading">
+                  <h2
+                    id="updates-to-this-policy-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    8. Updates to This Policy
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>We may update this Privacy Policy as Adakaro evolves.</p>
+                    <p>Updates will be posted on this page.</p>
+                  </div>
+                </section>
+              </div>
+
+              <div id="contact" className={sectionRest}>
+                <section aria-labelledby="contact-heading">
+                  <h2
+                    id="contact-heading"
+                    className="text-xl font-semibold text-gray-900 dark:text-white"
+                  >
+                    9. Contact
+                  </h2>
+                  <div className={`mt-4 space-y-3 ${body}`}>
+                    <p>If you have questions about this Privacy Policy, contact us:</p>
+                    <p>
+                      <a
+                        href="mailto:support@adakaro.com"
+                        className="font-medium text-gray-900 underline decoration-gray-300 underline-offset-2 transition hover:decoration-gray-900 dark:text-white dark:decoration-zinc-600 dark:hover:decoration-zinc-300"
+                      >
+                        support@adakaro.com
+                      </a>
+                    </p>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <div className="mt-16 text-center">
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                Still have questions?
+              </p>
+              <p className={`mt-2 text-sm ${body}`}>
+                If you have questions about this policy, contact us.
+              </p>
+              <Link
+                href="/contact"
+                className="mt-4 inline-block text-sm font-medium text-gray-900 underline decoration-gray-300 underline-offset-2 transition hover:decoration-gray-900 dark:text-white dark:decoration-zinc-600 dark:hover:decoration-zinc-300"
+              >
+                Contact us →
+              </Link>
+            </div>
+
+            <nav
+              className="mt-12 flex flex-wrap gap-4 text-sm text-gray-500 dark:text-zinc-500"
+              aria-label="Legal pages"
+            >
+              <Link
+                href="/"
+                className="transition hover:text-gray-900 hover:underline dark:hover:text-zinc-100"
+              >
+                ← Back to home
+              </Link>
+              <span className="text-gray-300 dark:text-zinc-600" aria-hidden>
+                ·
+              </span>
+              <Link
+                href="/terms"
+                className="transition hover:text-gray-900 hover:underline dark:hover:text-zinc-100"
+              >
+                Terms of Service
+              </Link>
+              <span className="text-gray-300 dark:text-zinc-600" aria-hidden>
+                ·
+              </span>
+              <Link
+                href="/faq"
+                className="transition hover:text-gray-900 hover:underline dark:hover:text-zinc-100"
+              >
+                FAQ
+              </Link>
+            </nav>
+          </div>
+
+          <aside className="hidden w-56 shrink-0 lg:block">
+            <LegalTocNav items={privacyToc} variant="privacy" />
+          </aside>
+        </div>
+      </div>
+
+      <SmartFloatingScrollButton sectionIds={PRIVACY_SECTION_IDS} />
     </div>
   );
 }

@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { HomeLanding } from "@/components/landing/home-landing";
 
 export const metadata: Metadata = {
-  title: "Adakaro — Track every school fee without paper or confusion",
+  title: "Adakaro — A simple system to run your entire school",
   description:
-    "Adakaro helps schools in Tanzania and East Africa collect fees, generate control numbers, and instantly see who has paid — all in one simple system.",
+    "Manage fees, students, classes, teachers, report cards, and parent communication in one place. Built for real schools.",
   openGraph: {
-    title: "Adakaro — School fee tracking for Tanzania & East Africa",
+    title: "Adakaro — Run your school without paperwork or confusion",
     description:
-      "School fee tracking for Tanzania and East Africa. Control numbers, mobile money, and clear visibility of who has paid.",
+      "One simple system for fees, students, reports, and daily operations — built for schools in Africa.",
   },
 };
 

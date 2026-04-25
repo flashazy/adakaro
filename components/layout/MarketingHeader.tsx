@@ -72,7 +72,7 @@ export function MarketingHeader() {
             href="/signup?role=admin"
             className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
           >
-            Get started
+            Start Free
           </Link>
         </div>
 
@@ -128,7 +128,7 @@ export function MarketingHeader() {
               className="mt-2 rounded-lg bg-indigo-600 px-3 py-2.5 text-center text-sm font-semibold text-white"
               onClick={() => setOpen(false)}
             >
-              Get started
+              Start Free
             </Link>
           </nav>
         </div>

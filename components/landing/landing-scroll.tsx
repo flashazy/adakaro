@@ -7,10 +7,11 @@ import { useCallback, useEffect, useState } from "react";
 const LANDING_SECTION_IDS = [
   "hero",
   "pain",
+  "solution",
   "features",
-  "how",
-  "stories",
-  "trust",
+  "how-it-works",
+  "why",
+  "testimonials",
   "cta",
 ] as const;
 

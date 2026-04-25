@@ -19,8 +19,10 @@ export default function ContactPage() {
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600 dark:text-zinc-400 sm:text-base">
             Have questions about Adakaro? We&apos;re here to help — whether
-            you&apos;re a school exploring the platform or a parent who needs
-            support.
+            you&apos;re exploring the platform or need support.
+            <br />
+            Not sure if Adakaro fits your school? Send us a message — we&apos;ll
+            guide you.
           </p>
         </header>
 
@@ -53,19 +55,20 @@ export default function ContactPage() {
                     Phone
                   </dt>
                   <dd className="mt-1 text-slate-600 dark:text-zinc-400">
-                    <span className="text-slate-400 dark:text-zinc-500">
-                      Coming soon
+                    <span>
+                      Phone support will be available soon. For now, please
+                      contact us by email.
                     </span>
                     <span className="sr-only">
-                      Phone support placeholder — use email for now
+                      Phone support is not available yet; use email to reach us.
                     </span>
                   </dd>
                 </div>
               </dl>
               <p className="mt-6 text-xs leading-relaxed text-slate-500 dark:text-zinc-500">
-                We aim to respond within one to two business days. For urgent
-                payment issues, include your school name and student admission
-                number where relevant.
+                We usually respond within 1–2 business days. For urgent payment
+                issues, include your school name and student admission number so we
+                can help you faster.
               </p>
             </div>
           </aside>
