@@ -1,8 +1,33 @@
 import type { ChildTabData } from "./parent-child-tab-data";
 import { ParentReportCardsTabClient } from "./parent-report-cards-tab-client";
 import { ParentClassResultSheetsTabClient } from "./parent-class-result-sheets-tab-client";
+import { ParentClassTeacherMessagesTabClient } from "@/components/chat/parent-class-teacher-messages-tab-client";
 import { DEFAULT_SCHOOL_DISPLAY_TIMEZONE } from "@/lib/school-timezone";
 export { ParentClassResultsTabContent } from "./parent-class-results-tab-content-client";
+
+export function ParentClassTeacherMessagesTabContent({
+  parentId,
+  classId,
+  classTeacherId,
+  studentName,
+  onMessagesUnreadChange,
+}: {
+  parentId: string;
+  classId: string;
+  classTeacherId: string | null;
+  studentName: string;
+  onMessagesUnreadChange?: (count: number) => void;
+}) {
+  return (
+    <ParentClassTeacherMessagesTabClient
+      parentId={parentId}
+      classId={classId}
+      classTeacherId={classTeacherId}
+      studentName={studentName}
+      onMessagesUnreadChange={onMessagesUnreadChange}
+    />
+  );
+}
 
 function NoData() {
   return (

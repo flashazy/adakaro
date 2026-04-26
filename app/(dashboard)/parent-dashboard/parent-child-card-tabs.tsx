@@ -3,6 +3,7 @@
 import {
   useState,
   useEffect,
+  useCallback,
   type ReactNode,
   Children,
   cloneElement,
@@ -18,24 +19,33 @@ const TAB_LABELS = [
   "Exam results",
   "Report cards",
   "Fees",
+  "Messages",
 ] as const;
 
 const SUBJECT_TAB_INDEX = 1;
+const MESSAGES_TAB_INDEX = 5;
 
 /**
- * Renders one of five RSC child segments (active tab). Child order must match:
- * Attendance, Subject results, Exam results, Report cards, Fees.
+ * Renders one of six RSC child segments (active tab). Child order must match:
+ * Attendance, Subject results, Exam results, Report cards, Fees, Messages.
  */
 export function ParentChildCardTabs({
   children,
   initialSubjectResultsUnread = initialEmptySubjectResultsUnread(),
+  initialMessagesUnread = 0,
 }: {
   children: ReactNode;
   initialSubjectResultsUnread?: SubjectResultsUnreadState;
+  initialMessagesUnread?: number;
 }) {
   const [active, setActive] = useState(0);
   const [subjectUnread, setSubjectUnread] = useState(initialSubjectResultsUnread);
+  const [messagesUnread, setMessagesUnread] = useState(initialMessagesUnread);
   const items = Children.toArray(children);
+
+  const onMessagesUnreadChange = useCallback((n: number) => {
+    setMessagesUnread(n);
+  }, []);
 
   const initialUnreadSerialized = JSON.stringify(initialSubjectResultsUnread);
   useEffect(() => {
@@ -43,6 +53,12 @@ export function ParentChildCardTabs({
     // Sync when the server-provided unread snapshot changes (same content keeps one reference key).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally depend on serialized snapshot only
   }, [initialUnreadSerialized]);
+
+  const initialMessagesUnreadSerialized = JSON.stringify(initialMessagesUnread);
+  useEffect(() => {
+    setMessagesUnread(initialMessagesUnread);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- serialized server snapshot only
+  }, [initialMessagesUnreadSerialized]);
 
   return (
     <div>
@@ -74,10 +90,22 @@ export function ParentChildCardTabs({
                 🔴
               </span>
             )}
+            {i === MESSAGES_TAB_INDEX && messagesUnread > 0 && (
+              <span
+                className="shrink-0"
+                title="Unread messages"
+                aria-hidden
+              >
+                🔴
+              </span>
+            )}
             <span>
               {label}
               {i === SUBJECT_TAB_INDEX && subjectUnread.totalUnviewed > 0
                 ? ` (${subjectUnread.totalUnviewed})`
+                : null}
+              {i === MESSAGES_TAB_INDEX && messagesUnread > 0
+                ? ` (${messagesUnread})`
                 : null}
             </span>
           </button>
@@ -90,6 +118,11 @@ export function ParentChildCardTabs({
             return cloneElement(item, {
               subjectResultsUnread: subjectUnread,
               onSubjectResultsUnreadChange: setSubjectUnread,
+            } as never);
+          }
+          if (active === MESSAGES_TAB_INDEX && isValidElement(item)) {
+            return cloneElement(item, {
+              onMessagesUnreadChange,
             } as never);
           }
           return item ?? null;

@@ -109,6 +109,7 @@ export async function loadClassTeacherStudentsWithParents(
       parentName: nameStr,
       parentPhone: phones.length ? phones.join("; ") : null,
       parentEmail: emails.length ? emails.join("; ") : null,
+      linkedParentId: pids.length > 0 ? pids[0]! : null,
     });
   }
   return rows;

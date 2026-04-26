@@ -544,6 +544,53 @@ export interface Database {
           updated_at?: string;
         };
       };
+      chat_conversations: {
+        Row: {
+          id: string;
+          class_teacher_id: string;
+          parent_id: string;
+          class_id: string;
+          last_message: string | null;
+          last_message_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          class_teacher_id: string;
+          parent_id: string;
+          class_id: string;
+          last_message?: string | null;
+          last_message_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          last_message?: string | null;
+          last_message_at?: string;
+        };
+        Relationships: [];
+      };
+      chat_messages: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          sender_id: string;
+          message: string;
+          is_read: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          sender_id: string;
+          message: string;
+          is_read?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          is_read?: boolean;
+        };
+        Relationships: [];
+      };
       classes: {
         Row: {
           id: string;
@@ -1980,6 +2027,14 @@ export interface Database {
       lookup_student_by_admission: {
         Args: { adm_number: string; p_prefer_school_id?: string | null };
         Returns: { student_id: string; school_id: string }[];
+      };
+      mark_chat_conversation_read: {
+        Args: { p_conversation_id: string };
+        Returns: null;
+      };
+      unread_chat_message_count: {
+        Args: Record<string, never>;
+        Returns: number;
       };
       get_pending_parent_link_requests_for_admin: {
         Args: Record<string, never>;

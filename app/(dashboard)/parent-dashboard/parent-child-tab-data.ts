@@ -14,6 +14,7 @@ import {
 import { loadParentSubjectResultsUnread } from "./parent-subject-results-unread";
 import type { SubjectResultsUnreadState } from "@/lib/parent-subject-results-unread-types";
 import { initialEmptySubjectResultsUnread } from "@/lib/parent-subject-results-unread-types";
+import { countParentChatUnreadForClass } from "@/lib/chat/parent-messages-unread";
 
 export type ChildTabData = {
   reportCards: any[];
@@ -22,6 +23,7 @@ export type ChildTabData = {
   majorExamClassResults: any;
   classResultSubjects: string[];
   subjectResultsUnread: SubjectResultsUnreadState;
+  messagesUnread: number;
 };
 
 function emptyTabData(): ChildTabData {
@@ -32,6 +34,7 @@ function emptyTabData(): ChildTabData {
     majorExamClassResults: { options: [], defaultOptionId: "" },
     classResultSubjects: [],
     subjectResultsUnread: initialEmptySubjectResultsUnread(),
+    messagesUnread: 0,
   };
 }
 
@@ -41,7 +44,11 @@ function emptyTabData(): ChildTabData {
  * parent RLS cannot read those tables.
  */
 export async function loadParentChildTabData(
-  students: { id: string; class_id: string }[]
+  students: {
+    id: string;
+    class_id: string;
+    class_teacher_id?: string | null;
+  }[]
 ): Promise<Map<string, ChildTabData>> {
   const byStudent = new Map<string, ChildTabData>();
   for (const s of students) {
@@ -155,12 +162,24 @@ export async function loadParentChildTabData(
       }
     }
 
+    let messagesUnread = 0;
+    try {
+      messagesUnread = await countParentChatUnreadForClass(
+        parentUserId,
+        classId,
+        s.class_teacher_id ?? null
+      );
+    } catch {
+      messagesUnread = 0;
+    }
+
     entry.reportCards = reportCards;
     entry.classResultSheets = classResultSheets;
     entry.attendance = attendance;
     entry.classResultSubjects = classResultSubjects;
     entry.majorExamClassResults = majorExamClassResults;
     entry.subjectResultsUnread = subjectResultsUnread;
+    entry.messagesUnread = messagesUnread;
   }
 
   return byStudent;

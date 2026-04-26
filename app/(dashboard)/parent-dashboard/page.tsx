@@ -36,6 +36,7 @@ import {
   ParentExamResultsTabContent,
   ParentAttendanceTabContent,
   ParentClassResultsTabContent,
+  ParentClassTeacherMessagesTabContent,
 } from "./parent-child-tab-panels";
 import {
   ParentStudentCardsGroup,
@@ -49,7 +50,7 @@ interface StudentWithClass {
   admission_number: string | null;
   school_id: string;
   class_id: string;
-  class: { name: string } | null;
+  class: { name: string; class_teacher_id: string | null } | null;
   /** e.g. "Class Teacher: Jane Doe — +255…" */
   classTeacherLine?: string | null;
 }
@@ -335,7 +336,9 @@ export default async function ParentDashboard() {
       orderStudentsByGenderThenName(
         supabase
           .from("students")
-          .select("id, full_name, admission_number, school_id, class_id, class:classes(name)")
+          .select(
+            "id, full_name, admission_number, school_id, class_id, class:classes(name, class_teacher_id)"
+          )
           .in("id", studentIds)
       ),
       supabase
@@ -375,7 +378,11 @@ export default async function ParentDashboard() {
 
     if (students.length > 0) {
       childTabDataById = await loadParentChildTabData(
-        students.map((s) => ({ id: s.id, class_id: s.class_id }))
+        students.map((s) => ({
+          id: s.id,
+          class_id: s.class_id,
+          class_teacher_id: s.class?.class_teacher_id ?? null,
+        }))
       );
     }
   }
@@ -654,6 +661,7 @@ export default async function ParentDashboard() {
                           childTab?.subjectResultsUnread ??
                           initialEmptySubjectResultsUnread()
                         }
+                        initialMessagesUnread={childTab?.messagesUnread ?? 0}
                       >
                         <ParentAttendanceTabContent
                           rows={childTab?.attendance ?? []}
@@ -686,6 +694,12 @@ export default async function ParentDashboard() {
                           currencyCode={sc}
                           balances={sBalances}
                           payments={sPayments}
+                        />
+                        <ParentClassTeacherMessagesTabContent
+                          parentId={user.id}
+                          classId={student.class_id}
+                          classTeacherId={student.class?.class_teacher_id ?? null}
+                          studentName={student.full_name}
                         />
                       </ParentChildCardTabs>
                     </ParentStudentCard>

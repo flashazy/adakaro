@@ -84,7 +84,19 @@ export async function login(
     };
   }
 
-  const admin = createAdminClient();
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch {
+    return {
+      error:
+        process.env.NODE_ENV === "development"
+          ? "Server misconfiguration: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env.local."
+          : "Sign-in is temporarily unavailable. Please try again later.",
+      loginFieldHighlight: { identifier: true, password: true },
+    };
+  }
+
   const resolved = await resolveLoginEmailForSignIn(admin, loginRaw);
   if (!resolved.ok) {
     return {

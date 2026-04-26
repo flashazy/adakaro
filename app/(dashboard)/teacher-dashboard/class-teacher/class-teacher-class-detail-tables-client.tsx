@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useDeferredValue,
   useEffect,
@@ -354,13 +355,14 @@ export function ClassTeacherClassDetailTablesClient(props: {
                 <th className="px-4 py-2">Guardian name(s)</th>
                 <th className="px-4 py-2">Phone</th>
                 <th className="px-4 py-2">Email</th>
+                <th className="px-4 py-2 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
               {students.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-4 py-6 text-center text-slate-500 dark:text-zinc-400"
                   >
                     No active students in this class.
@@ -369,7 +371,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
               ) : filteredStudents.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-4 py-6 text-center text-slate-500 dark:text-zinc-400"
                   >
                     No students match your search.
@@ -392,6 +394,27 @@ export function ClassTeacherClassDetailTablesClient(props: {
                     </td>
                     <td className="px-4 py-2 text-slate-700 dark:text-zinc-300">
                       {s.parentEmail ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 text-center align-middle">
+                      {s.linkedParentId ? (
+                        <Link
+                          href={`/teacher-dashboard/class-teacher/messages?parentId=${encodeURIComponent(s.linkedParentId)}&studentName=${encodeURIComponent(s.studentName)}`}
+                          className="inline-flex min-h-[2.25rem] min-w-[2.25rem] items-center justify-center rounded-lg text-lg leading-none text-school-primary transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary dark:text-school-primary"
+                          aria-label="Send message to parent"
+                          title="Send message to parent"
+                        >
+                          <span aria-hidden>💬</span>
+                        </Link>
+                      ) : (
+                        <span
+                          role="img"
+                          className="inline-flex min-h-[2.25rem] min-w-[2.25rem] cursor-not-allowed select-none items-center justify-center rounded-lg text-lg leading-none text-slate-300 dark:text-zinc-600"
+                          aria-label="No parent linked to this student"
+                          title="No parent linked to this student"
+                        >
+                          🔕
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))

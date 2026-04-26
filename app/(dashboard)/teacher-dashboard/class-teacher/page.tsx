@@ -1,9 +1,13 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { fetchClassesWhereUserIsClassTeacher } from "@/lib/class-teacher";
+import {
+  loadAcademicBannerForClass,
+  loadClassTeacherHomeSummary,
+} from "@/lib/class-teacher-dashboard-home";
+import { ClassTeacherDashboardHomeView } from "@/components/class-teacher/class-teacher-dashboard-home-view";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +15,18 @@ export const metadata = {
   title: "Class teacher — Dashboard",
 };
 
-export default async function ClassTeacherDashboardPage() {
+function firstQueryString(
+  v: string | string[] | undefined
+): string | undefined {
+  if (v == null) return undefined;
+  return Array.isArray(v) ? v[0] : v;
+}
+
+export default async function ClassTeacherDashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ class?: string | string[] }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,27 +36,19 @@ export default async function ClassTeacherDashboardPage() {
 
   const classes = await fetchClassesWhereUserIsClassTeacher(user.id);
 
+  const sp = searchParams ? await searchParams : {};
+  const requestedClassId = firstQueryString(sp.class)?.trim();
+
+  const selectedClassId =
+    requestedClassId && classes.some((c) => c.id === requestedClassId)
+      ? requestedClassId
+      : (classes[0]?.id ?? "");
+
+  const selectedClass = classes.find((c) => c.id === selectedClassId);
+
   return (
     <>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Class teacher dashboard
-            </h1>
-            <p className="text-sm text-slate-500 dark:text-zinc-400">
-              View attendance, students and guardians, and marks for your
-              assigned class(es).
-            </p>
-          </div>
-          <Link
-            href="/teacher-dashboard"
-            className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-          >
-            ← Teacher home
-          </Link>
-        </div>
-
         {classes.length === 0 ? (
           <section className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
             You are not assigned as class teacher for any class. Your school
@@ -51,29 +58,42 @@ export default async function ClassTeacherDashboardPage() {
             </span>{" "}
             when editing a class.
           </section>
-        ) : (
-          <ul className="grid gap-4 sm:grid-cols-2">
-            {classes.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/teacher-dashboard/class-teacher/${c.id}`}
-                  className="block rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
-                >
-                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                    {c.name}
-                  </h2>
-                  <p className="mt-2 text-sm text-school-primary dark:text-school-primary">
-                    Open overview →
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
+        ) : selectedClass ? (
+          <ClassTeacherHome
+            teacherId={user.id}
+            classes={classes}
+            selectedClassId={selectedClass.id}
+            selectedClassName={selectedClass.name?.trim() || "Class"}
+          />
+        ) : null}
       </div>
       <div className="print:hidden">
         <SmartFloatingScrollButton sectionIds={[]} />
       </div>
     </>
+  );
+}
+
+async function ClassTeacherHome(props: {
+  teacherId: string;
+  classes: Awaited<ReturnType<typeof fetchClassesWhereUserIsClassTeacher>>;
+  selectedClassId: string;
+  selectedClassName: string;
+}) {
+  const { teacherId, classes, selectedClassId, selectedClassName } = props;
+
+  const [academic, summary] = await Promise.all([
+    loadAcademicBannerForClass(selectedClassId),
+    loadClassTeacherHomeSummary(teacherId, selectedClassId),
+  ]);
+
+  return (
+    <ClassTeacherDashboardHomeView
+      classes={classes}
+      selectedClassId={selectedClassId}
+      selectedClassName={selectedClassName}
+      academic={academic}
+      summary={summary}
+    />
   );
 }

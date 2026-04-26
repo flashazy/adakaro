@@ -8,6 +8,7 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRoleToggle";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { TeacherAcademicNavDropdown } from "@/components/layout/TeacherAcademicNavDropdown";
+import { useChatInboxUnreadCount } from "@/components/layout/teacher-chat-unread-count";
 
 function schoolInitials(name: string): string {
   const t = name.trim();
@@ -80,6 +81,10 @@ export function TeacherDashboardHeader({
   showDashboardRoleToggle = false,
 }: TeacherDashboardHeaderProps) {
   const pathname = usePathname();
+  const classTeacherMessagesUnread = useChatInboxUnreadCount(
+    Boolean(showClassTeacherNav)
+  );
+  const messagesHref = "/teacher-dashboard/class-teacher/messages";
   const schoolTitleLine =
     schoolName?.trim() && schoolCurrency?.trim()
       ? `${schoolName.trim()} (${schoolCurrency.trim()})`
@@ -88,11 +93,20 @@ export function TeacherDashboardHeader({
   const hasSchoolBranding =
     Boolean(schoolLogoUrl?.trim()) || Boolean(schoolName?.trim());
 
-  const navLinkClass = (href: string) => {
-    const active =
+  const navLinkClass = (
+    href: string,
+    opts?: { inactiveWhenPathStartsWith?: string }
+  ) => {
+    let active =
       href === "/teacher-dashboard"
         ? pathname === "/teacher-dashboard" || pathname === "/teacher-dashboard/"
         : pathname === href || pathname.startsWith(`${href}/`);
+    if (
+      opts?.inactiveWhenPathStartsWith &&
+      pathname.startsWith(opts.inactiveWhenPathStartsWith)
+    ) {
+      active = false;
+    }
     return [
       "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
       active
@@ -228,12 +242,25 @@ export function TeacherDashboardHeader({
               </Link>
             ) : null}
             {showClassTeacherNav ? (
-              <Link
-                href="/teacher-dashboard/class-teacher"
-                className={navLinkClass("/teacher-dashboard/class-teacher")}
-              >
-                Class teacher
-              </Link>
+              <>
+                <Link
+                  href="/teacher-dashboard/class-teacher"
+                  className={navLinkClass("/teacher-dashboard/class-teacher", {
+                    inactiveWhenPathStartsWith: messagesHref,
+                  })}
+                >
+                  Class teacher
+                </Link>
+                <Link
+                  href={messagesHref}
+                  className={navLinkClass(messagesHref)}
+                >
+                  Messages
+                  {classTeacherMessagesUnread > 0
+                    ? ` (${classTeacherMessagesUnread})`
+                    : ""}
+                </Link>
+              </>
             ) : null}
             <Link
               href="/"
@@ -336,12 +363,25 @@ export function TeacherDashboardHeader({
             </Link>
           ) : null}
           {showClassTeacherNav ? (
-            <Link
-              href="/teacher-dashboard/class-teacher"
-              className={navLinkClass("/teacher-dashboard/class-teacher")}
-            >
-              Class teacher
-            </Link>
+            <>
+              <Link
+                href="/teacher-dashboard/class-teacher"
+                className={navLinkClass("/teacher-dashboard/class-teacher", {
+                  inactiveWhenPathStartsWith: messagesHref,
+                })}
+              >
+                Class teacher
+              </Link>
+              <Link
+                href={messagesHref}
+                className={navLinkClass(messagesHref)}
+              >
+                Messages
+                {classTeacherMessagesUnread > 0
+                  ? ` (${classTeacherMessagesUnread})`
+                  : ""}
+              </Link>
+            </>
           ) : null}
           <Link
             href="/"

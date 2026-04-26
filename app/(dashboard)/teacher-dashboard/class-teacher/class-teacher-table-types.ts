@@ -8,6 +8,11 @@ export type ClassTeacherStudentParentRow = {
   parentName: string;
   parentPhone: string | null;
   parentEmail: string | null;
+  /**
+   * First linked parent id for deep links to Messages (one icon per row).
+   * Null when the student has no linked parent.
+   */
+  linkedParentId: string | null;
 };
 
 export type ClassTeacherAttendanceRow = {
