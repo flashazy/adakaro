@@ -3,35 +3,33 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import {
-  TEACHER_DEPARTMENTS,
+  MANAGEABLE_TEACHER_DEPARTMENTS,
+  type ManageableTeacherDepartment,
   type TeacherActionState,
-  type TeacherDepartment,
 } from "../types";
 
 interface ManageDepartmentRolesModalProps {
   teacherUserId: string;
   teacherName: string;
-  initialDepartments: TeacherDepartment[];
+  initialDepartments: ManageableTeacherDepartment[];
   onClose: () => void;
   formAction: (formData: FormData) => void;
   pending: boolean;
   flash: TeacherActionState | null;
 }
 
-const DEPARTMENT_LABELS: Record<TeacherDepartment, string> = {
+const DEPARTMENT_LABELS: Record<ManageableTeacherDepartment, string> = {
   academic: "Academic",
   discipline: "Discipline",
   health: "Health",
   finance: "Finance",
-  accounts: "Accounts",
 };
 
-const DEPARTMENT_DESCRIPTIONS: Record<TeacherDepartment, string> = {
+const DEPARTMENT_DESCRIPTIONS: Record<ManageableTeacherDepartment, string> = {
   academic: "View the Academic tab on student profiles.",
   discipline: "View the Discipline tab on student profiles.",
   health: "View the Health tab on student profiles.",
-  finance: "View the Finance tab and record fee payments (same as Accounts).",
-  accounts: "View the Finance tab and record fee payments (same as Finance).",
+  finance: "View the Finance tab and record fee payments.",
 };
 
 function renderFlash(state: TeacherActionState | null) {
@@ -62,7 +60,7 @@ export function ManageDepartmentRolesModal({
   pending,
   flash,
 }: ManageDepartmentRolesModalProps) {
-  const [selected, setSelected] = useState<Set<TeacherDepartment>>(
+  const [selected, setSelected] = useState<Set<ManageableTeacherDepartment>>(
     () => new Set(initialDepartments)
   );
 
@@ -78,7 +76,7 @@ export function ManageDepartmentRolesModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const toggle = (dep: TeacherDepartment) => {
+  const toggle = (dep: ManageableTeacherDepartment) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(dep)) next.delete(dep);
@@ -137,7 +135,7 @@ export function ManageDepartmentRolesModal({
             Admins can always see and edit every section.
           </p>
           <div className="space-y-2">
-            {TEACHER_DEPARTMENTS.map((dep) => {
+            {MANAGEABLE_TEACHER_DEPARTMENTS.map((dep) => {
               const checked = selected.has(dep);
               return (
                 <label

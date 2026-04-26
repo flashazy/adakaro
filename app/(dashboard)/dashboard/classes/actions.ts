@@ -220,6 +220,10 @@ export async function updateClass(
   const description = (formData.get("description") as string)?.trim() || null;
   const parentClassIdRaw = String(formData.get("parent_class_id") ?? "").trim();
   const parentClassId = parentClassIdRaw.length > 0 ? parentClassIdRaw : null;
+  const classTeacherRaw = String(
+    formData.get("class_teacher_id") ?? ""
+  ).trim();
+  const classTeacherId = classTeacherRaw.length > 0 ? classTeacherRaw : null;
 
   if (!name) {
     return { error: "Class name is required." };
@@ -232,14 +236,32 @@ export async function updateClass(
   try {
     const { supabase, schoolId, userId } = await getSchoolId();
 
+    if (classTeacherId) {
+      const { data: mem, error: memErr } = await supabase
+        .from("school_members")
+        .select("id")
+        .eq("school_id", schoolId)
+        .eq("user_id", classTeacherId)
+        .eq("role", "teacher")
+        .maybeSingle();
+      if (memErr || !mem) {
+        return {
+          error:
+            "Class teacher must be a teacher who belongs to this school.",
+        };
+      }
+    }
+
     const { error } = await supabase
       .from("classes")
       .update({
         name,
         description,
         parent_class_id: parentClassId,
+        class_teacher_id: classTeacherId,
       } as never)
-      .eq("id", classId);
+      .eq("id", classId)
+      .eq("school_id", schoolId);
 
     if (error) {
       if (error.code === "23505") {
@@ -253,7 +275,11 @@ export async function updateClass(
     void logAdminActionFromServerAction(
       userId,
       "update_class",
-      { class_id: classId, class_name: name },
+      {
+        class_id: classId,
+        class_name: name,
+        class_teacher_id: classTeacherId,
+      },
       schoolId
     );
 
@@ -270,7 +296,8 @@ export async function deleteClass(classId: string): Promise<ClassActionState> {
     const { error } = await supabase
       .from("classes")
       .delete()
-      .eq("id", classId);
+      .eq("id", classId)
+      .eq("school_id", schoolId);
 
     if (error) {
       if (error.code === "23503") {

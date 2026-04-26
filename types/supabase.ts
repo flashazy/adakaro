@@ -551,6 +551,7 @@ export interface Database {
           name: string;
           description: string | null;
           parent_class_id: string | null;
+          class_teacher_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -560,6 +561,7 @@ export interface Database {
           name: string;
           description?: string | null;
           parent_class_id?: string | null;
+          class_teacher_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -567,6 +569,7 @@ export interface Database {
           name?: string;
           description?: string | null;
           parent_class_id?: string | null;
+          class_teacher_id?: string | null;
           updated_at?: string;
         };
       };

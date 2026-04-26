@@ -26,20 +26,32 @@ export interface SchoolTeacherMemberRow {
   profilePasswordChanged: boolean;
 }
 
-export type TeacherDepartment =
+/** Departments admins can assign in Manage department roles (excludes legacy `accounts`). */
+export type ManageableTeacherDepartment =
   | "academic"
   | "discipline"
   | "health"
-  | "finance"
-  | "accounts";
+  | "finance";
 
-export const TEACHER_DEPARTMENTS: readonly TeacherDepartment[] = [
-  "academic",
-  "discipline",
-  "health",
-  "finance",
-  "accounts",
-] as const;
+/** DB value may still include legacy `accounts` (same access as finance). */
+export type TeacherDepartment = ManageableTeacherDepartment | "accounts";
+
+export const MANAGEABLE_TEACHER_DEPARTMENTS: readonly ManageableTeacherDepartment[] =
+  ["academic", "discipline", "health", "finance"] as const;
+
+/**
+ * Collapses legacy `accounts` into `finance` and de-duplicates for UI / modal state.
+ */
+export function normalizeTeacherDepartmentRoles(
+  roles: readonly TeacherDepartment[]
+): ManageableTeacherDepartment[] {
+  const set = new Set<ManageableTeacherDepartment>();
+  for (const r of roles) {
+    if (r === "accounts" || r === "finance") set.add("finance");
+    else set.add(r);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
 
 /** Class the admin can assign as a coordinator class to an Academic teacher. */
 export interface CoordinatorClassOption {

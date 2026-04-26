@@ -8,7 +8,7 @@ import {
   fetchTeacherCoordinatorClassesForSchool,
   fetchTeacherDepartmentRolesForSchool,
 } from "./actions";
-import type { TeacherDepartment } from "./types";
+import { normalizeTeacherDepartmentRoles } from "./types";
 import { TeachersPageClient, type TeacherRow } from "./teachers-page-client";
 
 export const dynamic = "force-dynamic";
@@ -61,9 +61,9 @@ export default async function TeachersPage() {
     email: m.profileEmail,
     joinedAtLabel: formatShortLocaleDate(m.created_at),
     passwordChanged: m.profilePasswordChanged,
-    departmentRoles:
-      (departmentRolesByUser[m.user_id] as TeacherDepartment[] | undefined) ??
-      [],
+    departmentRoles: normalizeTeacherDepartmentRoles(
+      departmentRolesByUser[m.user_id] ?? []
+    ),
     coordinatorClassIds: coordinatorClassesByUser[m.user_id] ?? [],
   }));
 

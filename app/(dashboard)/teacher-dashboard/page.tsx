@@ -6,8 +6,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import {
   getTeacherLockedContactInfo,
+  hasClassTeacherAssignment,
   hasTeacherAssignments,
 } from "@/lib/teacher-assignment-status";
+import { fetchClassesWhereUserIsClassTeacher } from "@/lib/class-teacher";
 import { getDisplayName } from "@/lib/display-name";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
@@ -54,12 +56,98 @@ export default async function TeacherDashboardPage() {
     redirect("/dashboard");
   }
 
-  const assigned = await hasTeacherAssignments(supabase, user.id);
-  if (!assigned) {
+  const [assigned, isClassTeacher] = await Promise.all([
+    hasTeacherAssignments(supabase, user.id),
+    hasClassTeacherAssignment(supabase, user.id),
+  ]);
+
+  if (!assigned && !isClassTeacher) {
     const contact = await getTeacherLockedContactInfo(supabase, user.id);
     return (
       <>
         <TeacherDashboardLocked contact={contact} />
+        <div className="print:hidden">
+          <SmartFloatingScrollButton sectionIds={[]} />
+        </div>
+      </>
+    );
+  }
+
+  const classTeacherClasses = isClassTeacher
+    ? await fetchClassesWhereUserIsClassTeacher(user.id)
+    : [];
+
+  if (!assigned && isClassTeacher) {
+    const adminOnly = createAdminClient();
+    const { data: profileCt } = await adminOnly
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    const welcomeCt = getDisplayName(
+      user,
+      (profileCt as { full_name: string } | null)?.full_name ?? null
+    );
+    const { data: teacherDocumentsRowsCt } = await supabase
+      .from("teacher_documents")
+      .select(
+        "id, document_name, file_url, file_type, file_size, category, uploaded_at"
+      )
+      .eq("teacher_id", user.id)
+      .order("uploaded_at", { ascending: false });
+    const teacherDocumentsCt =
+      (teacherDocumentsRowsCt ?? []) as {
+        id: string;
+        document_name: string;
+        file_url: string;
+        file_type: string;
+        file_size: number | null;
+        category: string;
+        uploaded_at: string;
+      }[];
+
+    return (
+      <>
+        <div className="space-y-6 bg-gray-50 px-2 py-6 dark:bg-zinc-950 sm:px-4 lg:px-6">
+          <div className="mb-6">
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+              Welcome, {welcomeCt}
+            </h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+              You are set up as a class teacher. Subject teaching assignments
+              are managed separately — when your administrator assigns classes to
+              you, they will appear here as usual.
+            </p>
+          </div>
+
+          <section className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/80 p-5 dark:border-indigo-900/40 dark:bg-indigo-950/25">
+            <h2 className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+              Class teacher
+            </h2>
+            <ul className="flex flex-col gap-2">
+              {classTeacherClasses.map((c) => (
+                <li key={c.id}>
+                  <Link
+                    href={`/teacher-dashboard/class-teacher/${c.id}`}
+                    className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-900 shadow-sm transition-colors hover:bg-indigo-50 dark:border-indigo-800 dark:bg-zinc-900 dark:text-indigo-100 dark:hover:bg-zinc-800"
+                  >
+                    <span className="rounded-md bg-indigo-600/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-indigo-800 dark:bg-indigo-400/15 dark:text-indigo-200">
+                      Class Teacher
+                    </span>
+                    <span className="text-indigo-950 dark:text-indigo-50">
+                      — {c.name}
+                    </span>
+                    <span className="text-xs font-normal text-indigo-700/90 dark:text-indigo-300/90">
+                      (open dashboard)
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <TeacherDocuments initialDocuments={teacherDocumentsCt} />
+        </div>
         <div className="print:hidden">
           <SmartFloatingScrollButton sectionIds={[]} />
         </div>
@@ -343,6 +431,32 @@ export default async function TeacherDashboardPage() {
             Your classes, attendance, marks, and lesson plans in one place.
           </p>
         </div>
+
+        {classTeacherClasses.length > 0 ? (
+          <section className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50/80 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/25">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-indigo-950 dark:text-indigo-50">
+                {classTeacherClasses.map((c) => (
+                  <span
+                    key={c.id}
+                    className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 font-medium shadow-sm dark:border-indigo-800 dark:bg-zinc-900"
+                  >
+                    <span className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+                      Class Teacher
+                    </span>
+                    <span>— {c.name}</span>
+                  </span>
+                ))}
+              </div>
+              <Link
+                href="/teacher-dashboard/class-teacher"
+                className="text-sm font-semibold text-indigo-800 underline-offset-2 hover:underline dark:text-indigo-200"
+              >
+                Open class teacher dashboard →
+              </Link>
+            </div>
+          </section>
+        ) : null}
 
         <section className="mb-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="mb-5 text-base font-semibold text-slate-900 dark:text-white">

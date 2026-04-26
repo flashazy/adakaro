@@ -9,7 +9,7 @@ import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import type { Database } from "@/types/supabase";
 import { generateTeacherTempPassword } from "@/lib/generate-teacher-temp-password";
 import {
-  TEACHER_DEPARTMENTS,
+  MANAGEABLE_TEACHER_DEPARTMENTS,
   type SchoolTeacherMemberRow,
   type ResetTeacherPasswordState,
   type TeacherActionState,
@@ -1159,7 +1159,7 @@ export async function fetchTeacherDepartmentRolesForSchool(
 function parseDepartmentList(formData: FormData): TeacherDepartment[] {
   const raw = formData.getAll("departments").map((v) => String(v).trim());
   const unique = Array.from(new Set(raw)).filter((v): v is TeacherDepartment =>
-    (TEACHER_DEPARTMENTS as readonly string[]).includes(v)
+    (MANAGEABLE_TEACHER_DEPARTMENTS as readonly string[]).includes(v)
   );
   return unique;
 }

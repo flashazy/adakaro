@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchClassesWhereUserIsClassTeacher } from "@/lib/class-teacher";
 
 /** Manual widen — admin select typing without full Relationships on joins. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,6 +32,15 @@ export async function hasTeacherAssignments(
 
   if (error) return false;
   return (count ?? 0) > 0;
+}
+
+/** True when this teacher is the designated class teacher for at least one class. */
+export async function hasClassTeacherAssignment(
+  _supabase: SupabaseClient<Database>,
+  userId: string
+): Promise<boolean> {
+  const rows = await fetchClassesWhereUserIsClassTeacher(userId);
+  return rows.length > 0;
 }
 
 /** True when the teacher is a class coordinator (report cards workspace allows this path). */

@@ -7,6 +7,8 @@ import { AddClassForm } from "./add-class-form";
 import { ClassesList } from "./classes-list";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { BackButton } from "@/components/dashboard/back-button";
+import { fetchSchoolTeachersForSelect } from "@/lib/class-teacher";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function ClassesPage() {
   const supabase = await createClient();
@@ -41,10 +43,36 @@ export default async function ClassesPage() {
     name: string;
     description: string | null;
     parent_class_id: string | null;
+    class_teacher_id: string | null;
     school_id: string;
     created_at: string;
     updated_at: string;
   }[];
+
+  const teacherOptions = await fetchSchoolTeachersForSelect(schoolId);
+  const classTeacherNameById = new Map(
+    teacherOptions.map((t) => [t.id, t.full_name] as const)
+  );
+  const orphanCtIds = typedClasses
+    .map((c) => c.class_teacher_id)
+    .filter((id): id is string => Boolean(id && !classTeacherNameById.has(id)));
+  if (orphanCtIds.length > 0) {
+    try {
+      const admin = createAdminClient();
+      const { data: profs } = await admin
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", [...new Set(orphanCtIds)]);
+      for (const p of (profs ?? []) as { id: string; full_name: string }[]) {
+        classTeacherNameById.set(
+          p.id,
+          p.full_name?.trim() || "Teacher"
+        );
+      }
+    } catch {
+      /* no service role */
+    }
+  }
 
   // Group child streams under their parent class so the list reads as a tree.
   // Top-level classes (no parent) come first in alphabetical order; each
@@ -126,7 +154,12 @@ export default async function ClassesPage() {
         <AddClassForm parentOptions={parentOptions} />
 
         {!fetchError && typedClasses.length > 0 ? (
-          <ClassesList items={orderedClasses} parentOptions={parentOptions} />
+          <ClassesList
+            items={orderedClasses}
+            parentOptions={parentOptions}
+            teacherOptions={teacherOptions}
+            classTeacherNameById={classTeacherNameById}
+          />
         ) : !fetchError ? (
           <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
             <p className="text-sm text-slate-500 dark:text-zinc-400">

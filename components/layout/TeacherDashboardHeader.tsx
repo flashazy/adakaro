@@ -55,6 +55,8 @@ interface TeacherDashboardHeaderProps {
    * Drives the visibility of the "Coordinator" nav link.
    */
   isCoordinator?: boolean;
+  /** True when this teacher is the designated class teacher for at least one class. */
+  showClassTeacherNav?: boolean;
   /** Teacher also has school admin membership — show admin/teacher switch. */
   showDashboardRoleToggle?: boolean;
 }
@@ -74,6 +76,7 @@ export function TeacherDashboardHeader({
   hasDepartmentRole = false,
   hasAcademicDepartmentRole = false,
   isCoordinator = false,
+  showClassTeacherNav = false,
   showDashboardRoleToggle = false,
 }: TeacherDashboardHeaderProps) {
   const pathname = usePathname();
@@ -224,6 +227,14 @@ export function TeacherDashboardHeader({
                 Coordinator
               </Link>
             ) : null}
+            {showClassTeacherNav ? (
+              <Link
+                href="/teacher-dashboard/class-teacher"
+                className={navLinkClass("/teacher-dashboard/class-teacher")}
+              >
+                Class teacher
+              </Link>
+            ) : null}
             <Link
               href="/"
               className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-zinc-800"
@@ -322,6 +333,14 @@ export function TeacherDashboardHeader({
               className={navLinkClass("/teacher-dashboard/coordinator")}
             >
               Coordinator
+            </Link>
+          ) : null}
+          {showClassTeacherNav ? (
+            <Link
+              href="/teacher-dashboard/class-teacher"
+              className={navLinkClass("/teacher-dashboard/class-teacher")}
+            >
+              Class teacher
             </Link>
           ) : null}
           <Link

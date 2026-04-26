@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ClassRow } from "./class-row";
+import { EditClassModal } from "./edit-class-modal";
 import type { Class } from "@/types/supabase";
+import type { SchoolTeacherOption } from "@/lib/class-teacher";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import {
   DASHBOARD_CLASSES_ROWS_STORAGE_KEY,
@@ -20,12 +22,20 @@ export interface ClassListItem {
 interface ClassesListProps {
   items: ClassListItem[];
   parentOptions: { id: string; name: string }[];
+  teacherOptions: SchoolTeacherOption[];
+  classTeacherNameById: Map<string, string>;
 }
 
-export function ClassesList({ items, parentOptions }: ClassesListProps) {
+export function ClassesList({
+  items,
+  parentOptions,
+  teacherOptions,
+  classTeacherNameById,
+}: ClassesListProps) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
+  const [editingClass, setEditingClass] = useState<Class | null>(null);
 
   useEffect(() => {
     const stored = parseStudentListRowsPerPage(
@@ -71,6 +81,16 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
 
   return (
     <div className="space-y-4">
+      <EditClassModal
+        cls={editingClass}
+        parentOptions={
+          editingClass
+            ? parentOptions.filter((p) => p.id !== editingClass.id)
+            : []
+        }
+        teacherOptions={teacherOptions}
+        onClose={() => setEditingClass(null)}
+      />
       <div className="relative">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -134,12 +154,15 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
           ) : null}
         </div>
 
-        <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:gap-4 dark:border-zinc-800">
+        <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_1fr_auto] sm:gap-4 dark:border-zinc-800">
           <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
             Name
           </p>
           <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
             Description
+          </p>
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+            Class teacher
           </p>
           <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
             Actions
@@ -154,7 +177,12 @@ export function ClassesList({ items, parentOptions }: ClassesListProps) {
                 cls={cls}
                 isStream={isStream}
                 streamCount={streamCount}
-                parentOptions={parentOptions.filter((p) => p.id !== cls.id)}
+                classTeacherLabel={
+                  cls.class_teacher_id
+                    ? classTeacherNameById.get(cls.class_teacher_id) ?? "—"
+                    : null
+                }
+                onEdit={setEditingClass}
               />
             ))}
           </div>

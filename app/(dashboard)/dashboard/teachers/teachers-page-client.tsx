@@ -9,7 +9,10 @@ import {
   setTeacherCoordinatorClassesAction,
   setTeacherDepartmentRolesAction,
 } from "./actions";
-import type { TeacherActionState, TeacherDepartment } from "./types";
+import type {
+  ManageableTeacherDepartment,
+  TeacherActionState,
+} from "./types";
 import { ManageDepartmentRolesModal } from "./components/ManageDepartmentRolesModal";
 import { AssignCoordinatorModal } from "./components/AssignCoordinatorModal";
 import { BulkAddTeachersModal } from "./components/BulkAddTeachersModal";
@@ -51,7 +54,7 @@ export interface TeacherRow {
   /** True after the teacher has completed the first-time password change. */
   passwordChanged: boolean;
   /** Department roles assigned to this teacher for the active school. */
-  departmentRoles: TeacherDepartment[];
+  departmentRoles: ManageableTeacherDepartment[];
   /**
    * Class ids this teacher coordinates. Populated only for teachers holding the
    * Academic department role — Coordinator is a promotion of Academic.
@@ -59,12 +62,11 @@ export interface TeacherRow {
   coordinatorClassIds: string[];
 }
 
-const DEPARTMENT_LABELS: Record<TeacherDepartment, string> = {
+const DEPARTMENT_LABELS: Record<ManageableTeacherDepartment, string> = {
   academic: "Academic",
   discipline: "Discipline",
   health: "Health",
   finance: "Finance",
-  accounts: "Accounts",
 };
 
 interface TeachersPageClientProps {
@@ -117,7 +119,7 @@ export function TeachersPageClient({
   const [rolesModal, setRolesModal] = useState<{
     userId: string;
     name: string;
-    initial: TeacherDepartment[];
+    initial: ManageableTeacherDepartment[];
   } | null>(null);
   const [coordinatorModal, setCoordinatorModal] = useState<{
     userId: string;

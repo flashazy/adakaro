@@ -41,6 +41,7 @@ import {
   ParentStudentCardsGroup,
   ParentStudentCard,
 } from "./parent-student-cards-accordion";
+import { fetchClassTeacherContactByClassIds } from "@/lib/class-teacher";
 
 interface StudentWithClass {
   id: string;
@@ -49,6 +50,8 @@ interface StudentWithClass {
   school_id: string;
   class_id: string;
   class: { name: string } | null;
+  /** e.g. "Class Teacher: Jane Doe — +255…" */
+  classTeacherLine?: string | null;
 }
 
 type BalanceRow = ParentFeeBalanceRow;
@@ -354,6 +357,22 @@ export default async function ParentDashboard() {
     students = (studentsRes.data ?? []) as StudentWithClass[];
     balances = (balancesRes.data ?? []) as BalanceRow[];
     payments = (paymentsRes.data ?? []) as PaymentRow[];
+
+    const classIdsForTeacher = [
+      ...new Set(students.map((s) => s.class_id).filter(Boolean)),
+    ];
+    const classTeacherByClass = await fetchClassTeacherContactByClassIds(
+      classIdsForTeacher
+    );
+    students = students.map((s) => {
+      const ct = classTeacherByClass.get(s.class_id);
+      const classTeacherLine =
+        ct != null
+          ? `Class Teacher: ${ct.full_name} — ${ct.phone ?? "—"}`
+          : null;
+      return { ...s, classTeacherLine };
+    });
+
     if (students.length > 0) {
       childTabDataById = await loadParentChildTabData(
         students.map((s) => ({ id: s.id, class_id: s.class_id }))
@@ -559,6 +578,11 @@ export default async function ParentDashboard() {
                                       </span>
                                     )}
                                   </div>
+                                  {student.classTeacherLine ? (
+                                    <p className="mt-2 text-xs font-medium text-slate-700 dark:text-zinc-300">
+                                      {student.classTeacherLine}
+                                    </p>
+                                  ) : null}
                                 </div>
                                 <svg
                                   className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 dark:text-zinc-500"
@@ -605,6 +629,11 @@ export default async function ParentDashboard() {
                                       </span>
                                     )}
                                   </div>
+                                  {student.classTeacherLine ? (
+                                    <p className="mt-2 text-xs font-medium text-slate-700 dark:text-zinc-300">
+                                      {student.classTeacherLine}
+                                    </p>
+                                  ) : null}
                                   <p className="mt-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
                                     {schoolDisplayName}
                                   </p>
