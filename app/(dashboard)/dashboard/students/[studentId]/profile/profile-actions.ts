@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
 import { STUDENT_AVATAR_MAX_BYTES } from "@/lib/student-avatar-canvas";
 import type { Database } from "@/types/supabase";
 
@@ -42,6 +43,53 @@ async function requireSchoolAdminForStudent(studentId: string) {
     ok: true as const,
     supabase,
     userId: user.id,
+  };
+}
+
+/** School admins, or finance/accounts staff (same policy as recording fee payments). */
+async function requireStudentFinanceRecordEditor(studentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false as const, error: "You must be signed in." };
+  }
+
+  const { data: studentRow, error: stErr } = await supabase
+    .from("students")
+    .select("id, school_id")
+    .eq("id", studentId)
+    .maybeSingle();
+
+  const student = studentRow as { id: string; school_id: string } | null;
+  if (stErr || !student) {
+    return { ok: false as const, error: "Student not found." };
+  }
+
+  const { data: isAdmin, error: rpcErr } = await supabase.rpc(
+    "is_school_admin",
+    { p_school_id: student.school_id } as never
+  );
+  if (!rpcErr && isAdmin === true) {
+    return {
+      ok: true as const,
+      supabase,
+      userId: user.id,
+    };
+  }
+
+  if (await canUserRecordStudentPayment(supabase, user.id, student.school_id)) {
+    return {
+      ok: true as const,
+      supabase,
+      userId: user.id,
+    };
+  }
+
+  return {
+    ok: false as const,
+    error: "You do not have permission to manage term finance snapshots.",
   };
 }
 
@@ -238,66 +286,36 @@ export async function upsertStudentHealthRecord(formData: FormData) {
   return { success: true as const };
 }
 
-export async function upsertStudentFinanceRecord(formData: FormData) {
+const MAX_FINANCE_NOTE_CHARS = 20_000;
+
+export async function upsertStudentFinanceNote(formData: FormData) {
   const studentId = String(formData.get("student_id") ?? "").trim();
   const id = String(formData.get("id") ?? "").trim();
-  const academicYear = Number(formData.get("academic_year"));
-  const term = String(formData.get("term") ?? "").trim() as Term;
-  const feeBalance = Number(formData.get("fee_balance"));
-  const scholarshipAmount = Number(formData.get("scholarship_amount"));
-  const scholarshipType =
-    String(formData.get("scholarship_type") ?? "").trim() || null;
-  const paymentNotes =
-    String(formData.get("payment_notes") ?? "").trim() || null;
+  const body = String(formData.get("body") ?? "").trim();
 
   if (!studentId) return { error: "Missing student." };
-  if (term !== "Term 1" && term !== "Term 2") {
-    return { error: "Term must be Term 1 or Term 2." };
-  }
-  if (!Number.isInteger(academicYear) || academicYear < 2000 || academicYear > 2100) {
-    return { error: "Enter a valid academic year." };
-  }
-  if (!Number.isFinite(feeBalance) || feeBalance < 0) {
-    return { error: "Fee balance must be a valid non‑negative number." };
-  }
-  if (!Number.isFinite(scholarshipAmount) || scholarshipAmount < 0) {
-    return { error: "Scholarship amount must be a valid non‑negative number." };
+  if (!body) return { error: "Note cannot be empty." };
+  if (body.length > MAX_FINANCE_NOTE_CHARS) {
+    return { error: "Note is too long." };
   }
 
-  const gate = await requireSchoolAdminForStudent(studentId);
+  const gate = await requireStudentFinanceRecordEditor(studentId);
   if (!gate.ok) return { error: gate.error };
-
-  const base = {
-    student_id: studentId,
-    academic_year: academicYear,
-    term,
-    fee_balance: feeBalance,
-    scholarship_amount: scholarshipAmount,
-    scholarship_type: scholarshipType,
-    payment_notes: paymentNotes,
-    updated_by: gate.userId,
-  };
 
   if (id) {
     const { error } = await gate.supabase
-      .from("student_finance_records")
-      .update(base as never)
+      .from("student_finance_notes")
+      .update({ body } as never)
       .eq("id", id)
       .eq("student_id", studentId);
     if (error) return { error: error.message };
   } else {
-    const { error } = await gate.supabase
-      .from("student_finance_records")
-      .insert(base as never);
-    if (error) {
-      if (error.code === "23505") {
-        return {
-          error:
-            "A finance row already exists for this year and term. Edit that row instead.",
-        };
-      }
-      return { error: error.message };
-    }
+    const { error } = await gate.supabase.from("student_finance_notes").insert({
+      student_id: studentId,
+      body,
+      created_by: gate.userId,
+    } as never);
+    if (error) return { error: error.message };
   }
 
   revalidateStudentProfile(studentId);

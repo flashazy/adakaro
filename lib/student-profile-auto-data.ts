@@ -70,6 +70,17 @@ export interface ProfileReportCardBlock {
   subjectLines: ProfileReportCardSubjectLine[];
 }
 
+/** Free-form staff finance note on a student profile (replaces old term “snapshots”). */
+export interface ProfileFinanceNoteRow {
+  id: string;
+  body: string;
+  created_at: string;
+  /** Last update time (equals created_at on insert; use for “recorded at” in UI). */
+  updated_at: string;
+  /** e.g. "Amina (Finance)" for the table. */
+  recorded_by_line: string;
+}
+
 export interface ProfilePaymentRow {
   id: string;
   amount: number;
@@ -380,6 +391,60 @@ export async function loadProfilePayments(
       ),
       receipt_number: receipt?.receipt_number ?? null,
       reference_number: p.reference_number,
+    };
+  });
+}
+
+export async function loadProfileFinanceNotes(
+  supabase: SupabaseClient<Database>,
+  studentId: string
+): Promise<ProfileFinanceNoteRow[]> {
+  const { data: dataRaw, error } = await supabase
+    .from("student_finance_notes")
+    .select("id, body, created_at, updated_at, created_by")
+    .eq("student_id", studentId)
+    .order("created_at", { ascending: false });
+
+  if (error) return [];
+  if (!dataRaw || dataRaw.length === 0) return [];
+
+  const rows = dataRaw as {
+    id: string;
+    body: string;
+    created_at: string;
+    updated_at: string;
+    created_by: string;
+  }[];
+
+  const byId = new Set(rows.map((r) => r.created_by));
+  const ids = Array.from(byId);
+  const profileById = new Map<string, { full_name: string | null; role: UserRole }>();
+
+  if (ids.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("id, full_name, role")
+      .in("id", ids);
+    for (const r of (profs ?? []) as {
+      id: string;
+      full_name: string | null;
+      role: UserRole;
+    }[]) {
+      profileById.set(r.id, { full_name: r.full_name, role: r.role });
+    }
+  }
+
+  return rows.map((r) => {
+    const pro = profileById.get(r.created_by) ?? null;
+    return {
+      id: r.id,
+      body: r.body,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      recorded_by_line: formatPaymentRecorderLine(
+        pro?.full_name ?? null,
+        pro?.role ?? null
+      ),
     };
   });
 }

@@ -3,12 +3,14 @@
 import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ChevronUp } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { formatCurrency } from "@/lib/currency";
 import { formatPaymentRecordedAtInSchoolZone } from "@/lib/school-timezone";
 import { tanzaniaGradeBadgeClass } from "@/lib/tanzania-grades";
 import type {
   ProfileAttendanceSummary,
+  ProfileFinanceNoteRow,
   ProfileGradebookScoreRow,
   ProfilePaymentRow,
   ProfileReportCardBlock,
@@ -18,21 +20,21 @@ import type { Database, StudentFeeBalance } from "@/types/supabase";
 import {
   upsertStudentAcademicRecord,
   upsertStudentDisciplineRecord,
-  upsertStudentFinanceRecord,
+  upsertStudentFinanceNote,
   upsertStudentHealthRecord,
 } from "./profile-actions";
 import { RecordStudentPaymentModal } from "@/components/dashboard/record-student-payment-modal";
 import { StudentProfileAvatar } from "./student-profile-avatar";
 import { StudentRecordAttachmentsPanel } from "./student-record-attachments-panel";
 import type { StudentProfileViewerFlags } from "./student-profile-viewer";
+import { ProfilePaymentHistory } from "./profile-payment-history";
+import type { ProfilePaymentListQuery } from "@/lib/student-profile-payments-list";
 
 type AcademicRow =
   Database["public"]["Tables"]["student_academic_records"]["Row"];
 type DisciplineRow =
   Database["public"]["Tables"]["student_discipline_records"]["Row"];
 type HealthRow = Database["public"]["Tables"]["student_health_records"]["Row"];
-type FinanceRow =
-  Database["public"]["Tables"]["student_finance_records"]["Row"];
 type AttachmentRow =
   Database["public"]["Tables"]["student_record_attachments"]["Row"];
 
@@ -70,6 +72,9 @@ function formatDateOnly(iso: string | null | undefined): string {
  */
 const PROFILE_SECTION_PAGE_SIZE = 5;
 
+const FINANCE_NOTES_INLINE_LIMIT = 5;
+const FINANCE_NOTES_VIEW_ALL_PAGE_SIZE = 8;
+
 function incidentLabel(t: DisciplineRow["incident_type"]): string {
   const map: Record<DisciplineRow["incident_type"], string> = {
     warning: "Warning",
@@ -83,15 +88,9 @@ function incidentLabel(t: DisciplineRow["incident_type"]): string {
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white";
+/** Same as `inputClass` but without `mt-1` (e.g. search in a flex header). */
+const inputClassNoTopMargin = inputClass.replace("mt-1 ", "");
 const labelClass = "block text-sm font-medium text-slate-700 dark:text-zinc-300";
-
-export interface ProfileScholarshipLine {
-  id: string;
-  academic_year: number;
-  term: FinanceRow["term"];
-  amount: number;
-  scholarship_type: string | null;
-}
 
 interface StudentProfileClientProps {
   studentId: string;
@@ -100,19 +99,23 @@ interface StudentProfileClientProps {
   className: string | null;
   avatarUrl: string | null;
   viewer: StudentProfileViewerFlags;
+  initialActiveTab: TabId;
   recordAttachments: AttachmentRow[];
   academicRecords: AcademicRow[];
   disciplineRecords: DisciplineRow[];
   healthRecords: HealthRow[];
-  financeRecords: FinanceRow[];
+  profileFinanceNotes: ProfileFinanceNoteRow[];
   currencyCode: string;
   profileGradebookScores: ProfileGradebookScoreRow[];
   profileAttendanceSummary: ProfileAttendanceSummary;
   profileReportCards: ProfileReportCardBlock[];
   profilePayments: ProfilePaymentRow[];
+  profilePaymentTotal: number;
+  profilePaymentListQuery: ProfilePaymentListQuery;
   profileFeeBalances: StudentFeeBalance[];
-  profileScholarshipLines: ProfileScholarshipLine[];
   displayTimezone: string;
+  /** "Name (Role)" for the Add note preview (server still sets created_by on save). */
+  currentUserFinanceNoteRecorderLine: string;
 }
 
 export function StudentProfileClient({
@@ -122,23 +125,29 @@ export function StudentProfileClient({
   className,
   avatarUrl,
   viewer,
+  initialActiveTab,
   recordAttachments,
   academicRecords,
   disciplineRecords,
   healthRecords,
-  financeRecords,
+  profileFinanceNotes,
   currencyCode,
   profileGradebookScores,
   profileAttendanceSummary,
   profileReportCards,
   profilePayments,
+  profilePaymentTotal,
+  profilePaymentListQuery,
   profileFeeBalances,
-  profileScholarshipLines,
   displayTimezone,
+  currentUserFinanceNoteRecorderLine,
 }: StudentProfileClientProps) {
   const router = useRouter();
   const visible = viewer.visibleTabs;
   const [tab, setTab] = useState<TabId>(() => {
+    if (visible.includes(initialActiveTab)) {
+      return initialActiveTab;
+    }
     if (visible.includes("academic")) return "academic";
     return visible[0] ?? "academic";
   });
@@ -161,6 +170,16 @@ export function StudentProfileClient({
     return m;
   }, [recordAttachments]);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => {
+      setShowScrollTop(window.scrollY > 400);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const money = (n: number) => formatCurrency(n, currencyCode);
   const totalFeeBalance = useMemo(
@@ -175,12 +194,49 @@ export function StudentProfileClient({
     DisciplineRow | "new" | null
   >(null);
   const [healthModal, setHealthModal] = useState<HealthRow | "new" | null>(null);
-  const [financeModal, setFinanceModal] = useState<FinanceRow | "new" | null>(
-    null
-  );
+  const [financeNoteModal, setFinanceNoteModal] = useState<
+    ProfileFinanceNoteRow | "new" | null
+  >(null);
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+  const [financeNotesViewAllOpen, setFinanceNotesViewAllOpen] = useState(false);
+  const [viewAllNotesSearch, setViewAllNotesSearch] = useState("");
+  const [viewAllNotesPage, setViewAllNotesPage] = useState(0);
 
   const defaultYear = useMemo(() => new Date().getFullYear(), []);
+
+  const inlineFinanceNotes = useMemo(
+    () => profileFinanceNotes.slice(0, FINANCE_NOTES_INLINE_LIMIT),
+    [profileFinanceNotes]
+  );
+
+  const viewAllNotesFiltered = useMemo(() => {
+    const q = viewAllNotesSearch.trim().toLowerCase();
+    if (!q) return profileFinanceNotes;
+    return profileFinanceNotes.filter((n) =>
+      n.body.toLowerCase().includes(q)
+    );
+  }, [profileFinanceNotes, viewAllNotesSearch]);
+
+  const viewAllNotesTotalPages = Math.max(
+    1,
+    Math.ceil(viewAllNotesFiltered.length / FINANCE_NOTES_VIEW_ALL_PAGE_SIZE)
+  );
+  const viewAllSafePage = Math.min(
+    viewAllNotesPage,
+    viewAllNotesTotalPages - 1
+  );
+  const viewAllPaginatedNotes = useMemo(
+    () =>
+      viewAllNotesFiltered.slice(
+        viewAllSafePage * FINANCE_NOTES_VIEW_ALL_PAGE_SIZE,
+        (viewAllSafePage + 1) * FINANCE_NOTES_VIEW_ALL_PAGE_SIZE
+      ),
+    [viewAllNotesFiltered, viewAllSafePage]
+  );
+
+  useEffect(() => {
+    setViewAllNotesPage(0);
+  }, [viewAllNotesSearch]);
 
   // -------------------------------------------------------------------------
   // Pagination + search for the Academic-tab "Assignment scores" table and
@@ -280,7 +336,8 @@ export function StudentProfileClient({
     setAcademicModal(null);
     setDisciplineModal(null);
     setHealthModal(null);
-    setFinanceModal(null);
+    setFinanceNoteModal(null);
+    setFinanceNotesViewAllOpen(false);
     setRecordPaymentOpen(false);
     setFormError(null);
   }
@@ -933,26 +990,12 @@ export function StudentProfileClient({
 
       {tab === "finance" && visible.includes("finance") && (
         <section className="space-y-8" aria-labelledby="finance-heading">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2
-              id="finance-heading"
-              className="text-base font-semibold text-slate-900 dark:text-white"
-            >
-              Finance
-            </h2>
-            {viewer.canManageStaffRecords ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError(null);
-                  setFinanceModal("new");
-                }}
-                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
-              >
-                Add record
-              </button>
-            ) : null}
-          </div>
+          <h2
+            id="finance-heading"
+            className="text-base font-semibold text-slate-900 dark:text-white"
+          >
+            Finance
+          </h2>
 
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
@@ -1009,180 +1052,96 @@ export function StudentProfileClient({
             </div>
           ) : null}
 
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
-              Scholarships (from staff finance snapshots)
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-zinc-500">
-              Amounts recorded by staff on term finance snapshots below.
-            </p>
-            {profileScholarshipLines.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-zinc-400">
-                No scholarship amounts recorded.
-              </p>
-            ) : (
-              <ul className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                {profileScholarshipLines.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex flex-wrap justify-between gap-2 text-sm text-slate-700 dark:text-zinc-300"
-                  >
-                    <span>
-                      {s.academic_year} · {s.term}
-                      {s.scholarship_type ? (
-                        <span className="text-slate-500 dark:text-zinc-500">
-                          {" "}
-                          · {s.scholarship_type}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">
-                      {money(s.amount)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
-              Payment history
-            </h3>
-            {profilePayments.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-zinc-400">
-                No payments recorded yet.
-              </p>
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
-                  <thead className="bg-slate-50 dark:bg-zinc-800/80">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Date &amp; time
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Amount
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Recorded by
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Receipt
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Reference
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                    {profilePayments.map((p) => (
-                      <tr key={p.id}>
-                        <td className="whitespace-nowrap px-3 py-2 text-slate-800 dark:text-zinc-200">
-                          {formatPaymentRecordedAtInSchoolZone(
-                            p.recorded_at,
-                            displayTimezone
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-900 dark:text-zinc-100">
-                          {money(p.amount)}
-                        </td>
-                        <td className="min-w-[10rem] max-w-[200px] px-3 py-2 text-slate-800 dark:text-zinc-200">
-                          {p.recorded_by_line}
-                        </td>
-                        <td className="px-3 py-2">
-                          {p.receipt_number ? (
-                            <Link
-                              href={`/dashboard/receipts/${p.id}`}
-                              className="font-mono text-sm text-school-primary hover:opacity-90 dark:text-school-primary"
-                            >
-                              {p.receipt_number}
-                            </Link>
-                          ) : (
-                            <Link
-                              href={`/dashboard/receipts/${p.id}`}
-                              className="text-sm text-school-primary hover:opacity-90 dark:text-school-primary"
-                            >
-                              View
-                            </Link>
-                          )}
-                        </td>
-                        <td className="max-w-[140px] truncate px-3 py-2 text-slate-600 dark:text-zinc-400">
-                          {p.reference_number ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <ProfilePaymentHistory
+            payments={profilePayments}
+            total={profilePaymentTotal}
+            page={profilePaymentListQuery.page}
+            per={profilePaymentListQuery.per}
+            q={profilePaymentListQuery.q}
+            from={profilePaymentListQuery.from}
+            to={profilePaymentListQuery.to}
+            displayTimezone={displayTimezone}
+            currencyCode={currencyCode}
+          />
 
           <div className="space-y-3 border-t border-slate-200 pt-6 dark:border-zinc-800">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
-              Staff term finance snapshots
+              Staff finance notes
             </h3>
-            <p className="text-xs text-slate-500 dark:text-zinc-500">
-              Manual term notes and balances admins add to supplement the
-              figures above.
-            </p>
-            {financeRecords.length === 0 ? (
+            {viewer.canRecordPayment ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormError(null);
+                    setFinanceNoteModal("new");
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Add note
+                </button>
+              </div>
+            ) : null}
+            {profileFinanceNotes.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-zinc-400">
-                No term finance snapshots yet.
+                No notes yet
               </p>
             ) : (
-              <ul className="space-y-3">
-                {financeRecords.map((r) => (
-                  <li
-                    key={r.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {r.academic_year} · {r.term}
+              <>
+                <ul className="space-y-3">
+                  {inlineFinanceNotes.map((n) => (
+                    <li
+                      key={n.id}
+                      className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="min-w-0 flex-1 text-sm text-slate-800 dark:text-zinc-200">
+                          <span className="font-medium text-slate-700 dark:text-zinc-300">
+                            Recorded by {n.recorded_by_line}
+                          </span>
+                          <span className="text-slate-400"> · </span>
+                          <span className="tabular-nums text-slate-600 dark:text-zinc-400">
+                            {formatPaymentRecordedAtInSchoolZone(
+                              n.updated_at,
+                              displayTimezone
+                            )}
+                          </span>
                         </p>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                          Updated {formatTs(r.updated_at)}
-                        </p>
+                        {viewer.canRecordPayment ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormError(null);
+                              setFinanceNoteModal(n);
+                            }}
+                            className="shrink-0 text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
                       </div>
-                      {viewer.canManageStaffRecords ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormError(null);
-                            setFinanceModal(r);
-                          }}
-                          className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-                        >
-                          Edit
-                        </button>
-                      ) : null}
-                    </div>
-                    <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                      Fee balance:{" "}
-                      <span className="font-mono font-medium">
-                        {money(Number(r.fee_balance))}
-                      </span>
-                      {" · "}
-                      Scholarship:{" "}
-                      <span className="font-mono font-medium">
-                        {money(Number(r.scholarship_amount))}
-                      </span>
-                    </p>
-                    {r.scholarship_type ? (
-                      <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-                        Type: {r.scholarship_type}
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+                        {n.body}
                       </p>
-                    ) : null}
-                    {r.payment_notes ? (
-                      <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                        {r.payment_notes}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+                {profileFinanceNotes.length > FINANCE_NOTES_INLINE_LIMIT ? (
+                  <p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setViewAllNotesSearch("");
+                        setViewAllNotesPage(0);
+                        setFinanceNotesViewAllOpen(true);
+                      }}
+                      className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
+                    >
+                      View all notes
+                    </button>
+                  </p>
+                ) : null}
+              </>
             )}
           </div>
         </section>
@@ -1623,137 +1582,199 @@ export function StudentProfileClient({
         </div>
       ) : null}
 
-      {/* Finance modal */}
-      {financeModal ? (
+      {/* Finance — view all notes (search + pagination) */}
+      {financeNotesViewAllOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
           onClick={(e) => {
-            if (e.target === e.currentTarget && !pending) setFinanceModal(null);
+            if (e.target === e.currentTarget && !pending) {
+              setFinanceNotesViewAllOpen(false);
+            }
+          }}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-slate-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900 sm:rounded-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="finance-view-all-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-700 sm:px-5">
+              <h3
+                id="finance-view-all-title"
+                className="text-base font-semibold text-slate-900 dark:text-white"
+              >
+                All finance notes
+              </h3>
+            </div>
+            <div className="space-y-4 border-b border-slate-200 px-4 py-3 dark:border-zinc-800 sm:px-5">
+              <label className="sr-only" htmlFor="finance_view_all_search">
+                Search notes
+              </label>
+              <input
+                id="finance_view_all_search"
+                type="search"
+                value={viewAllNotesSearch}
+                onChange={(e) => setViewAllNotesSearch(e.target.value)}
+                placeholder="Search notes…"
+                className={inputClassNoTopMargin}
+              />
+            </div>
+            <div className="px-4 py-4 sm:px-5">
+              {viewAllNotesFiltered.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-zinc-400">
+                  {viewAllNotesSearch.trim()
+                    ? "No notes match your search."
+                    : "No notes yet."}
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {viewAllPaginatedNotes.map((n) => (
+                    <li
+                      key={n.id}
+                      className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-800/50"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="min-w-0 flex-1 text-sm text-slate-800 dark:text-zinc-200">
+                          <span className="font-medium text-slate-700 dark:text-zinc-300">
+                            Recorded by {n.recorded_by_line}
+                          </span>
+                          <span className="text-slate-400"> · </span>
+                          <span className="tabular-nums text-slate-600 dark:text-zinc-400">
+                            {formatPaymentRecordedAtInSchoolZone(
+                              n.updated_at,
+                              displayTimezone
+                            )}
+                          </span>
+                        </p>
+                        {viewer.canRecordPayment ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormError(null);
+                              setFinanceNotesViewAllOpen(false);
+                              setFinanceNoteModal(n);
+                            }}
+                            className="shrink-0 text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+                        {n.body}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {viewAllNotesFiltered.length > FINANCE_NOTES_VIEW_ALL_PAGE_SIZE ? (
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-slate-500 dark:text-zinc-500">
+                    Page {viewAllSafePage + 1} of {viewAllNotesTotalPages} ·{" "}
+                    {viewAllNotesFiltered.length} note
+                    {viewAllNotesFiltered.length === 1 ? "" : "s"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={viewAllSafePage <= 0}
+                      onClick={() =>
+                        setViewAllNotesPage((p) => Math.max(0, p - 1))
+                      }
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        viewAllSafePage >= viewAllNotesTotalPages - 1
+                      }
+                      onClick={() =>
+                        setViewAllNotesPage((p) =>
+                          Math.min(viewAllNotesTotalPages - 1, p + 1)
+                        )
+                      }
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setFinanceNotesViewAllOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Finance staff notes — add / edit */}
+      {financeNoteModal ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !pending) setFinanceNoteModal(null);
           }}
         >
           <div
             className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-slate-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900 sm:rounded-2xl"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="finance-dialog-title"
+            aria-labelledby="finance-note-dialog-title"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-700 sm:px-5">
               <h3
-                id="finance-dialog-title"
+                id="finance-note-dialog-title"
                 className="text-base font-semibold text-slate-900 dark:text-white"
               >
-                {financeModal === "new" ? "Add finance record" : "Edit finance record"}
+                {financeNoteModal === "new" ? "Add note" : "Edit note"}
               </h3>
             </div>
             <form
+              key={
+                financeNoteModal === "new" ? "fn-new" : financeNoteModal.id
+              }
               className="space-y-4 px-4 py-4 sm:px-5"
-              onSubmit={submitForm(upsertStudentFinanceRecord)}
+              onSubmit={submitForm(upsertStudentFinanceNote)}
             >
               <input type="hidden" name="student_id" value={studentId} />
-              {financeModal !== "new" ? (
-                <input type="hidden" name="id" value={financeModal.id} />
+              {financeNoteModal !== "new" ? (
+                <input type="hidden" name="id" value={financeNoteModal.id} />
               ) : null}
+              <p className="text-sm text-slate-600 dark:text-zinc-400">
+                <span className="font-medium text-slate-700 dark:text-zinc-300">
+                  Recorded by:
+                </span>{" "}
+                {financeNoteModal === "new"
+                  ? currentUserFinanceNoteRecorderLine
+                  : financeNoteModal.recorded_by_line}
+                <span className="text-slate-400"> (automatic)</span>
+              </p>
               <div>
-                <label className={labelClass} htmlFor="finance_year">
-                  Academic year
-                </label>
-                <input
-                  id="finance_year"
-                  name="academic_year"
-                  type="number"
-                  required
-                  min={2000}
-                  max={2100}
-                  defaultValue={
-                    financeModal === "new"
-                      ? defaultYear
-                      : financeModal.academic_year
-                  }
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass} htmlFor="finance_term">
-                  Term
-                </label>
-                <select
-                  id="finance_term"
-                  name="term"
-                  required
-                  defaultValue={
-                    financeModal === "new" ? "Term 1" : financeModal.term
-                  }
-                  className={inputClass}
+                <label
+                  className="sr-only"
+                  htmlFor="finance_note_body"
                 >
-                  <option value="Term 1">Term 1</option>
-                  <option value="Term 2">Term 2</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelClass} htmlFor="fee_balance">
-                  Fee balance
-                </label>
-                <input
-                  id="fee_balance"
-                  name="fee_balance"
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  required
-                  defaultValue={
-                    financeModal === "new" ? "0" : String(financeModal.fee_balance)
-                  }
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass} htmlFor="scholarship_amount">
-                  Scholarship amount
-                </label>
-                <input
-                  id="scholarship_amount"
-                  name="scholarship_amount"
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  required
-                  defaultValue={
-                    financeModal === "new"
-                      ? "0"
-                      : String(financeModal.scholarship_amount)
-                  }
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass} htmlFor="scholarship_type">
-                  Scholarship type
-                </label>
-                <input
-                  id="scholarship_type"
-                  name="scholarship_type"
-                  type="text"
-                  defaultValue={
-                    financeModal === "new"
-                      ? ""
-                      : financeModal.scholarship_type ?? ""
-                  }
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass} htmlFor="payment_notes">
-                  Payment notes
+                  Note
                 </label>
                 <textarea
-                  id="payment_notes"
-                  name="payment_notes"
-                  rows={2}
+                  id="finance_note_body"
+                  name="body"
+                  required
+                  rows={5}
+                  placeholder="Write a note…"
                   defaultValue={
-                    financeModal === "new"
-                      ? ""
-                      : financeModal.payment_notes ?? ""
+                    financeNoteModal === "new" ? "" : financeNoteModal.body
                   }
                   className={inputClass}
                 />
@@ -1766,7 +1787,7 @@ export function StudentProfileClient({
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => setFinanceModal(null)}
+                  onClick={() => setFinanceNoteModal(null)}
                   disabled={pending}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
@@ -1785,6 +1806,20 @@ export function StudentProfileClient({
         </div>
       ) : null}
 
+      <button
+        type="button"
+        aria-label="Back to top"
+        onClick={() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        className={`fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-school-primary text-white shadow-lg ring-1 ring-slate-900/10 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-school-primary focus:ring-offset-2 dark:ring-zinc-900/30 dark:focus:ring-offset-zinc-900 ${
+          showScrollTop
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-2 opacity-0"
+        }`}
+      >
+        <ChevronUp className="h-6 w-6" strokeWidth={2.25} aria-hidden />
+      </button>
     </div>
   );
 }

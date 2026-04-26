@@ -9,16 +9,24 @@ import {
   loadProfileAttendanceSummary,
   loadProfileFeeBalances,
   loadProfileGradebookScores,
-  loadProfilePayments,
+  loadProfileFinanceNotes,
   loadProfileReportCards,
 } from "@/lib/student-profile-auto-data";
+import {
+  loadProfilePaymentHistoryPage,
+  parseProfilePaymentListQuery,
+  profilePaymentListUrlIsActive,
+  serializeProfilePaymentListQuery,
+  type ProfilePaymentListQuery,
+} from "@/lib/student-profile-payments-list";
 import { normalizeSchoolLevel } from "@/lib/school-level";
+import { formatPaymentRecorderLine } from "@/lib/payment-recorder-label";
 import { StudentProfileClient } from "./student-profile-client";
 import type {
   StudentProfileTabId,
   StudentProfileViewerFlags,
 } from "./student-profile-viewer";
-import type { Database } from "@/types/supabase";
+import type { Database, UserRole } from "@/types/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -27,19 +35,38 @@ type AcademicRow =
 type DisciplineRow =
   Database["public"]["Tables"]["student_discipline_records"]["Row"];
 type HealthRow = Database["public"]["Tables"]["student_health_records"]["Row"];
-type FinanceRow =
-  Database["public"]["Tables"]["student_finance_records"]["Row"];
 type AttachmentRow =
   Database["public"]["Tables"]["student_record_attachments"]["Row"];
 
 export type { StudentProfileTabId, StudentProfileViewerFlags };
 
+function searchParamsToURLSearchParams(
+  raw: Readonly<Record<string, string | string[] | undefined>>
+): URLSearchParams {
+  const p = new URLSearchParams();
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const v of value) p.append(key, v);
+    } else {
+      p.set(key, value);
+    }
+  }
+  return p;
+}
+
 export default async function StudentProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ studentId: string }>;
+  searchParams: Promise<Readonly<Record<string, string | string[] | undefined>>>;
 }) {
   const { studentId } = await params;
+  const rawSearchParams = await searchParams;
+  const urlSearch = searchParamsToURLSearchParams(
+    (rawSearchParams ?? {}) as Readonly<Record<string, string | string[] | undefined>>
+  );
   const supabase = await createClient();
   const {
     data: { user },
@@ -97,7 +124,7 @@ export default async function StudentProfilePage({
       .eq("user_id", user.id),
     supabase
       .from("profiles")
-      .select("role")
+      .select("full_name, role")
       .eq("id", user.id)
       .maybeSingle(),
   ]);
@@ -121,9 +148,14 @@ export default async function StudentProfilePage({
     }
   }
 
-  const myProfileRole = (myProfile as { role: string } | null)?.role;
+  const me = myProfile as { full_name: string | null; role: UserRole } | null;
+  const myProfileRole = me?.role;
   const isFinanceOrAccountsProfile =
     myProfileRole === "finance" || myProfileRole === "accounts";
+  const currentUserFinanceNoteRecorderLine = formatPaymentRecorderLine(
+    me?.full_name ?? null,
+    me?.role ?? null
+  );
 
   const adminOk = Boolean(isAdmin) || Boolean(isSuper);
   const teacherOk = Boolean(teacherForClass);
@@ -165,6 +197,14 @@ export default async function StudentProfilePage({
     isFinanceOrAccountsProfile ||
     tabAccess.has("finance");
 
+  const hasPmtInUrl = profilePaymentListUrlIsActive(urlSearch);
+  const initialProfileTab: StudentProfileTabId =
+    hasPmtInUrl && visibleTabs.includes("finance")
+      ? "finance"
+      : visibleTabs.includes("academic")
+        ? "academic"
+        : (visibleTabs[0] ?? "academic");
+
   const viewer: StudentProfileViewerFlags = {
     canManageStaffRecords: adminOk,
     canUploadAttachments: adminOk || teacherOk,
@@ -197,12 +237,11 @@ export default async function StudentProfilePage({
     { data: academicRows, error: academicErr },
     { data: disciplineRows, error: disciplineErr },
     { data: healthRows, error: healthErr },
-    { data: financeRows, error: financeErr },
+    profileFinanceNotes,
     { data: schoolRow, error: schoolErr },
     profileGradebookScores,
     profileAttendanceSummary,
     profileReportCards,
-    profilePayments,
     profileFeeBalances,
   ] = await Promise.all([
     academicClient
@@ -221,11 +260,7 @@ export default async function StudentProfilePage({
       .select("*")
       .eq("student_id", studentId)
       .order("updated_at", { ascending: false }),
-    financeClient
-      .from("student_finance_records")
-      .select("*")
-      .eq("student_id", studentId)
-      .order("updated_at", { ascending: false }),
+    loadProfileFinanceNotes(financeClient, studentId),
     supabase
       .from("schools")
       .select("currency, timezone")
@@ -266,7 +301,6 @@ export default async function StudentProfilePage({
       typedStudent.class_id
     ),
     loadProfileReportCards(academicClient, studentId),
-    loadProfilePayments(financeClient, studentId),
     loadProfileFeeBalances(financeClient, studentId),
   ]);
 
@@ -310,27 +344,57 @@ export default async function StudentProfilePage({
   const currencyCode = normalizeSchoolCurrency(schoolRowTyped?.currency);
   const displayTimezone = resolveSchoolDisplayTimezone(schoolRowTyped?.timezone);
 
-  const financeRowsTyped = (financeRows ?? []) as FinanceRow[];
-  const profileScholarshipLines = financeRowsTyped
-    .filter((r) => Number(r.scholarship_amount) > 0)
-    .map((r) => ({
-      id: r.id,
-      academic_year: r.academic_year,
-      term: r.term,
-      amount: Number(r.scholarship_amount),
-      scholarship_type: r.scholarship_type,
-    }));
+  const paymentListQuery = parseProfilePaymentListQuery(urlSearch);
+  const tzForPmt = displayTimezone;
+
+  type ProfilePayRow = import("@/lib/student-profile-auto-data").ProfilePaymentRow;
+  let profilePaymentsResult: {
+    rows: ProfilePayRow[];
+    total: number;
+    error: string | null;
+  } = { rows: [], total: 0, error: null };
+  if (canReadFinance) {
+    const first = await loadProfilePaymentHistoryPage(
+      financeClient,
+      studentId,
+      paymentListQuery,
+      tzForPmt
+    );
+    if (first.error) {
+      profilePaymentsResult = {
+        rows: [],
+        total: 0,
+        error: first.error,
+      };
+    } else if (first.total > 0) {
+      const maxPage = Math.max(1, Math.ceil(first.total / paymentListQuery.per));
+      if (paymentListQuery.page > maxPage) {
+        const q: ProfilePaymentListQuery = {
+          ...paymentListQuery,
+          page: maxPage,
+          offset: (maxPage - 1) * paymentListQuery.per,
+        };
+        redirect(
+          `/dashboard/students/${studentId}/profile?${serializeProfilePaymentListQuery(q)}`
+        );
+      } else {
+        profilePaymentsResult = first;
+      }
+    } else {
+      profilePaymentsResult = first;
+    }
+  }
 
   const loadError = [
     academicErr && `Academic: ${academicErr.message}`,
     disciplineErr && `Discipline: ${disciplineErr.message}`,
     healthErr && `Health: ${healthErr.message}`,
-    financeErr && `Finance: ${financeErr.message}`,
     schoolErr && `School: ${schoolErr.message}`,
     scopeErr && `Attachment scopes: ${scopeErr.message}`,
     deptRoleErr && `Department roles: ${deptRoleErr.message}`,
     myProfileErr && `Profile: ${myProfileErr.message}`,
     attachmentErr && `Attachments: ${attachmentErr}`,
+    profilePaymentsResult.error && `Payments: ${profilePaymentsResult.error}`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -369,8 +433,8 @@ export default async function StudentProfilePage({
             role="alert"
           >
             Some sections could not load ({loadError}). Apply migrations
-            00078_student_profile_records and 00081_student_record_attachments if
-            this is a fresh database.
+            00078+ (student profile, payments list RPC 00111), finance notes, and
+            00081_student_record_attachments if this is a fresh database.
           </div>
         ) : null}
         <StudentProfileClient
@@ -380,19 +444,22 @@ export default async function StudentProfilePage({
           className={typedStudent.class?.name ?? null}
           avatarUrl={typedStudent.avatar_url}
           viewer={viewer}
+          initialActiveTab={initialProfileTab}
           recordAttachments={recordAttachments}
           academicRecords={(academicRows ?? []) as AcademicRow[]}
           disciplineRecords={(disciplineRows ?? []) as DisciplineRow[]}
           healthRecords={(healthRows ?? []) as HealthRow[]}
-          financeRecords={financeRowsTyped}
+          profileFinanceNotes={profileFinanceNotes}
           currencyCode={currencyCode}
           profileGradebookScores={profileGradebookScores}
           profileAttendanceSummary={profileAttendanceSummary}
           profileReportCards={profileReportCards}
-          profilePayments={profilePayments}
+          profilePayments={profilePaymentsResult.rows}
+          profilePaymentTotal={profilePaymentsResult.total}
+          profilePaymentListQuery={paymentListQuery}
           profileFeeBalances={profileFeeBalances}
-          profileScholarshipLines={profileScholarshipLines}
           displayTimezone={displayTimezone}
+          currentUserFinanceNoteRecorderLine={currentUserFinanceNoteRecorderLine}
         />
       </main>
     </>

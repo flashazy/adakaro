@@ -763,53 +763,37 @@ export interface Database {
           },
         ];
       };
-      student_finance_records: {
+      student_finance_notes: {
         Row: {
           id: string;
           student_id: string;
-          academic_year: number;
-          term: "Term 1" | "Term 2";
-          fee_balance: number;
-          scholarship_amount: number;
-          scholarship_type: string | null;
-          payment_notes: string | null;
-          updated_by: string | null;
+          body: string;
+          created_by: string;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           student_id: string;
-          academic_year: number;
-          term: "Term 1" | "Term 2";
-          fee_balance?: number;
-          scholarship_amount?: number;
-          scholarship_type?: string | null;
-          payment_notes?: string | null;
-          updated_by?: string | null;
+          body: string;
+          created_by: string;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
-          academic_year?: number;
-          term?: "Term 1" | "Term 2";
-          fee_balance?: number;
-          scholarship_amount?: number;
-          scholarship_type?: string | null;
-          payment_notes?: string | null;
-          updated_by?: string | null;
+          body?: string;
           updated_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "student_finance_records_student_id_fkey";
+            foreignKeyName: "student_finance_notes_student_id_fkey";
             columns: ["student_id"];
             referencedRelation: "students";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "student_finance_records_updated_by_fkey";
-            columns: ["updated_by"];
+            foreignKeyName: "student_finance_notes_created_by_fkey";
+            columns: ["created_by"];
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
@@ -2043,6 +2027,49 @@ export interface Database {
       is_teacher_for_student_by_id: {
         Args: { p_student_id: string };
         Returns: boolean;
+      };
+      get_student_payments: {
+        Args: {
+          p_student_id: string;
+          p_q: string | null;
+          p_from: string | null;
+          p_to: string | null;
+          p_school_timezone: string;
+          p_limit: number;
+          p_offset: number;
+        };
+        Returns: {
+          id: string;
+          amount: number;
+          recorded_at: string;
+          recorded_by_name: string | null;
+          recorded_by_role: string | null;
+          reference_number: string | null;
+          payment_date: string;
+          receipt_number: string | null;
+        }[];
+      };
+      get_student_payments_count: {
+        Args: {
+          p_student_id: string;
+          p_q: string | null;
+          p_from: string | null;
+          p_to: string | null;
+          p_school_timezone: string;
+        };
+        Returns: number;
+      };
+      profile_payments_list_page: {
+        Args: {
+          p_student_id: string;
+          p_q: string | null;
+          p_from: string | null;
+          p_to: string | null;
+          p_school_timezone: string;
+          p_limit: number;
+          p_offset: number;
+        };
+        Returns: Json;
       };
       has_record_attachment_scope: {
         Args: { p_school_id: string; p_scope: string };
