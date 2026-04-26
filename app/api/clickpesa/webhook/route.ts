@@ -175,7 +175,8 @@ export async function POST(req: NextRequest) {
       status: "completed",
       payment_date: paymentDate,
       reference_number: paymentReference,
-      recorded_by: bill.parent_id,
+      recorded_by_id: bill.parent_id,
+      recorded_at: new Date().toISOString(),
     } as never)
     .select("id")
     .single();

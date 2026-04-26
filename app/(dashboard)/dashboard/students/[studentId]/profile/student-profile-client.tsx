@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { formatCurrency } from "@/lib/currency";
+import { formatPaymentRecordedAtInSchoolZone } from "@/lib/school-timezone";
 import { tanzaniaGradeBadgeClass } from "@/lib/tanzania-grades";
 import type {
   ProfileAttendanceSummary,
@@ -20,6 +21,7 @@ import {
   upsertStudentFinanceRecord,
   upsertStudentHealthRecord,
 } from "./profile-actions";
+import { RecordStudentPaymentModal } from "@/components/dashboard/record-student-payment-modal";
 import { StudentProfileAvatar } from "./student-profile-avatar";
 import { StudentRecordAttachmentsPanel } from "./student-record-attachments-panel";
 import type { StudentProfileViewerFlags } from "./student-profile-viewer";
@@ -110,6 +112,7 @@ interface StudentProfileClientProps {
   profilePayments: ProfilePaymentRow[];
   profileFeeBalances: StudentFeeBalance[];
   profileScholarshipLines: ProfileScholarshipLine[];
+  displayTimezone: string;
 }
 
 export function StudentProfileClient({
@@ -131,6 +134,7 @@ export function StudentProfileClient({
   profilePayments,
   profileFeeBalances,
   profileScholarshipLines,
+  displayTimezone,
 }: StudentProfileClientProps) {
   const router = useRouter();
   const visible = viewer.visibleTabs;
@@ -174,6 +178,7 @@ export function StudentProfileClient({
   const [financeModal, setFinanceModal] = useState<FinanceRow | "new" | null>(
     null
   );
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
 
   const defaultYear = useMemo(() => new Date().getFullYear(), []);
 
@@ -276,6 +281,7 @@ export function StudentProfileClient({
     setDisciplineModal(null);
     setHealthModal(null);
     setFinanceModal(null);
+    setRecordPaymentOpen(false);
     setFormError(null);
   }
 
@@ -988,6 +994,21 @@ export function StudentProfileClient({
             )}
           </div>
 
+          {viewer.canRecordPayment ? (
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormError(null);
+                  setRecordPaymentOpen(true);
+                }}
+                className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105"
+              >
+                Record payment
+              </button>
+            </div>
+          ) : null}
+
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
               Scholarships (from staff finance snapshots)
@@ -1038,10 +1059,13 @@ export function StudentProfileClient({
                   <thead className="bg-slate-50 dark:bg-zinc-800/80">
                     <tr>
                       <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
-                        Date
+                        Date &amp; time
                       </th>
                       <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
                         Amount
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
+                        Recorded by
                       </th>
                       <th className="px-3 py-2 text-left font-medium text-slate-700 dark:text-zinc-300">
                         Receipt
@@ -1055,10 +1079,16 @@ export function StudentProfileClient({
                     {profilePayments.map((p) => (
                       <tr key={p.id}>
                         <td className="whitespace-nowrap px-3 py-2 text-slate-800 dark:text-zinc-200">
-                          {formatDateOnly(p.payment_date)}
+                          {formatPaymentRecordedAtInSchoolZone(
+                            p.recorded_at,
+                            displayTimezone
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-900 dark:text-zinc-100">
                           {money(p.amount)}
+                        </td>
+                        <td className="min-w-[10rem] max-w-[200px] px-3 py-2 text-slate-800 dark:text-zinc-200">
+                          {p.recorded_by_line}
                         </td>
                         <td className="px-3 py-2">
                           {p.receipt_number ? (
@@ -1157,6 +1187,15 @@ export function StudentProfileClient({
           </div>
         </section>
       )}
+
+      <RecordStudentPaymentModal
+        key={recordPaymentOpen ? "on" : "off"}
+        open={recordPaymentOpen}
+        onClose={() => setRecordPaymentOpen(false)}
+        studentId={studentId}
+        profileFeeBalances={profileFeeBalances}
+        currencyCode={currencyCode}
+      />
 
       {/* Academic modal */}
       {academicModal ? (

@@ -23,13 +23,15 @@ const DEPARTMENT_LABELS: Record<TeacherDepartment, string> = {
   discipline: "Discipline",
   health: "Health",
   finance: "Finance",
+  accounts: "Accounts",
 };
 
 const DEPARTMENT_DESCRIPTIONS: Record<TeacherDepartment, string> = {
   academic: "View the Academic tab on student profiles.",
   discipline: "View the Discipline tab on student profiles.",
   health: "View the Health tab on student profiles.",
-  finance: "View the Finance tab on student profiles.",
+  finance: "View the Finance tab and record fee payments (same as Accounts).",
+  accounts: "View the Finance tab and record fee payments (same as Finance).",
 };
 
 function renderFlash(state: TeacherActionState | null) {

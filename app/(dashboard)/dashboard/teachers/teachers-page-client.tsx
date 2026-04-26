@@ -64,6 +64,7 @@ const DEPARTMENT_LABELS: Record<TeacherDepartment, string> = {
   discipline: "Discipline",
   health: "Health",
   finance: "Finance",
+  accounts: "Accounts",
 };
 
 interface TeachersPageClientProps {

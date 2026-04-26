@@ -110,9 +110,17 @@ export async function updateSession(request: NextRequest) {
           .maybeSingle();
 
         const pr = (profileRow as {
-          role: "admin" | "parent" | "super_admin" | "teacher";
+          role:
+            | "admin"
+            | "parent"
+            | "super_admin"
+            | "teacher"
+            | "finance"
+            | "accounts";
         } | null)?.role;
-        if (
+        if (pr === "finance" || pr === "accounts") {
+          role = "admin";
+        } else if (
           pr === "admin" ||
           pr === "parent" ||
           pr === "super_admin" ||
@@ -334,7 +342,7 @@ export async function updateSession(request: NextRequest) {
         .from("teacher_department_roles")
         .select("id")
         .eq("user_id", user.id)
-        .eq("department", "finance")
+        .in("department", ["finance", "accounts"])
         .limit(1)
         .maybeSingle();
       isTeacherFinanceReceiptRoute =

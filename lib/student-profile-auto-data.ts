@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase";
+import type { Database, UserRole } from "@/types/supabase";
+import { formatPaymentRecorderLine } from "@/lib/payment-recorder-label";
 import { tanzaniaLetterGrade, tanzaniaPercentFromScore } from "@/lib/tanzania-grades";
 import type { SchoolLevel } from "@/lib/school-level";
 
@@ -26,7 +27,7 @@ type ReportCommentPick = Pick<
 >;
 type PaymentWithReceipt = Pick<
   Database["public"]["Tables"]["payments"]["Row"],
-  "id" | "amount" | "payment_date" | "reference_number"
+  "id" | "amount" | "reference_number" | "recorded_at" | "recorded_by_id"
 > & {
   receipt: { receipt_number: string } | null;
 };
@@ -72,7 +73,10 @@ export interface ProfileReportCardBlock {
 export interface ProfilePaymentRow {
   id: string;
   amount: number;
-  payment_date: string;
+  /** ISO-8601 — time the row was saved; use `formatPaymentRecordedAtInSchoolZone` in the client. */
+  recorded_at: string;
+  /** Preformatted e.g. "Full name (Admin)" for the table. */
+  recorded_by_line: string;
   receipt_number: string | null;
   reference_number: string | null;
 }
@@ -333,20 +337,47 @@ export async function loadProfilePayments(
   const { data: dataRaw, error } = await supabase
     .from("payments")
     .select(
-      "id, amount, payment_date, reference_number, receipt:receipts(receipt_number)"
+      "id, amount, reference_number, recorded_at, recorded_by_id, receipt:receipts(receipt_number)"
     )
     .eq("student_id", studentId)
-    .order("payment_date", { ascending: false });
+    .order("recorded_at", { ascending: false });
 
   const data = dataRaw as PaymentWithReceipt[] | null;
   if (error || !data) return [];
 
+  const byId = new Set(
+    data.map((p) => p.recorded_by_id).filter((u): u is string => Boolean(u))
+  );
+  const ids = Array.from(byId);
+  const profileById = new Map<string, { full_name: string | null; role: UserRole }>();
+
+  if (ids.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("id, full_name, role")
+      .in("id", ids);
+    for (const r of (profs ?? []) as {
+      id: string;
+      full_name: string | null;
+      role: UserRole;
+    }[]) {
+      profileById.set(r.id, { full_name: r.full_name, role: r.role });
+    }
+  }
+
   return data.map((p) => {
     const receipt = p.receipt;
+    const pro = p.recorded_by_id
+      ? profileById.get(p.recorded_by_id) ?? null
+      : null;
     return {
       id: p.id,
       amount: Number(p.amount),
-      payment_date: p.payment_date,
+      recorded_at: p.recorded_at,
+      recorded_by_line: formatPaymentRecorderLine(
+        pro?.full_name ?? null,
+        pro?.role ?? null
+      ),
       receipt_number: receipt?.receipt_number ?? null,
       reference_number: p.reference_number,
     };

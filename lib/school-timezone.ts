@@ -46,3 +46,29 @@ export function formatDateTimeInSchoolZone(
   }).format(d);
   return `${dateStr} - ${timeStr}`;
 }
+
+/**
+ * e.g. "Apr 26, 2026 · 09:54 AM" in the school IANA zone.
+ * Used for student profile payment history.
+ */
+export function formatPaymentRecordedAtInSchoolZone(
+  iso: string | null | undefined,
+  timeZone: string
+): string {
+  if (!iso?.trim()) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const dateStr = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(d);
+  const timeStr = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+  return `${dateStr} · ${timeStr}`;
+}

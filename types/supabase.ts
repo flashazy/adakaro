@@ -6,7 +6,13 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = "admin" | "parent" | "super_admin" | "teacher";
+export type UserRole =
+  | "admin"
+  | "parent"
+  | "super_admin"
+  | "teacher"
+  | "finance"
+  | "accounts";
 export type SchoolStatus = "active" | "suspended";
 export type StudentStatus = "active" | "inactive" | "graduated" | "transferred";
 export type PaymentMethod =
@@ -1196,7 +1202,9 @@ export interface Database {
           status: PaymentStatusType;
           payment_date: string;
           reference_number: string | null;
-          recorded_by: string;
+          recorded_by_id: string;
+          /** When the row was saved (wall-clock) — use school zone in the UI. */
+          recorded_at: string;
           notes: string | null;
           created_at: string;
           updated_at: string;
@@ -1210,7 +1218,8 @@ export interface Database {
           status?: PaymentStatusType;
           payment_date?: string;
           reference_number?: string | null;
-          recorded_by: string;
+          recorded_by_id: string;
+          recorded_at?: string;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;

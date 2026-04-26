@@ -30,13 +30,15 @@ export type TeacherDepartment =
   | "academic"
   | "discipline"
   | "health"
-  | "finance";
+  | "finance"
+  | "accounts";
 
 export const TEACHER_DEPARTMENTS: readonly TeacherDepartment[] = [
   "academic",
   "discipline",
   "health",
   "finance",
+  "accounts",
 ] as const;
 
 /** Class the admin can assign as a coordinator class to an Academic teacher. */

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { normalizeSchoolCurrency } from "@/lib/currency";
+import { resolveSchoolDisplayTimezone } from "@/lib/school-timezone";
 import {
   loadProfileAttendanceSummary,
   loadProfileFeeBalances,
@@ -77,6 +78,7 @@ export default async function StudentProfilePage({
     { data: teacherForClass },
     { data: scopeRows, error: scopeErr },
     { data: deptRoleRows, error: deptRoleErr },
+    { data: myProfile, error: myProfileErr },
   ] = await Promise.all([
     supabase.rpc("is_school_admin", { p_school_id: schoolId } as never),
     supabase.rpc("is_super_admin" as never),
@@ -93,6 +95,11 @@ export default async function StudentProfilePage({
       .select("department")
       .eq("school_id", schoolId)
       .eq("user_id", user.id),
+    supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle(),
   ]);
 
   const hasHealthScope =
@@ -106,16 +113,17 @@ export default async function StudentProfilePage({
   if (!deptRoleErr) {
     for (const row of deptRoleRows ?? []) {
       const dep = (row as { department: string }).department;
-      if (
-        dep === "academic" ||
-        dep === "discipline" ||
-        dep === "health" ||
-        dep === "finance"
-      ) {
+      if (dep === "academic" || dep === "discipline" || dep === "health") {
         departmentRoles.add(dep);
+      } else if (dep === "finance" || dep === "accounts") {
+        departmentRoles.add("finance");
       }
     }
   }
+
+  const myProfileRole = (myProfile as { role: string } | null)?.role;
+  const isFinanceOrAccountsProfile =
+    myProfileRole === "finance" || myProfileRole === "accounts";
 
   const adminOk = Boolean(isAdmin) || Boolean(isSuper);
   const teacherOk = Boolean(teacherForClass);
@@ -124,7 +132,8 @@ export default async function StudentProfilePage({
     teacherOk ||
     departmentRoles.size > 0 ||
     hasHealthScope ||
-    hasDisciplineScope;
+    hasDisciplineScope ||
+    isFinanceOrAccountsProfile;
 
   if (!canAccessProfile) {
     redirect("/dashboard/students");
@@ -137,20 +146,31 @@ export default async function StudentProfilePage({
     "finance",
   ];
 
+  const tabAccess = new Set<StudentProfileTabId>(departmentRoles);
+  if (isFinanceOrAccountsProfile) {
+    tabAccess.add("finance");
+  }
+
   let visibleTabs: StudentProfileTabId[];
   if (adminOk) {
     visibleTabs = allTabs;
   } else {
-    // Tabs are strictly derived from teacher_department_roles. Legacy
-    // attachment scopes no longer grant tab visibility on their own.
-    visibleTabs = allTabs.filter((t) => departmentRoles.has(t));
+    // Tabs: teacher_department_roles plus optional profiles.role = finance/accounts
+    // (see tabAccess). Legacy attachment scopes do not grant tab visibility.
+    visibleTabs = allTabs.filter((t) => tabAccess.has(t));
   }
+
+  const canRecordPayment =
+    adminOk ||
+    isFinanceOrAccountsProfile ||
+    tabAccess.has("finance");
 
   const viewer: StudentProfileViewerFlags = {
     canManageStaffRecords: adminOk,
     canUploadAttachments: adminOk || teacherOk,
     canDeleteAttachments: adminOk,
     canChangeAvatar: adminOk,
+    canRecordPayment,
     visibleTabs,
   };
 
@@ -163,7 +183,8 @@ export default async function StudentProfilePage({
   const canReadAcademic = adminOk || departmentRoles.has("academic");
   const canReadDiscipline = adminOk || departmentRoles.has("discipline");
   const canReadHealth = adminOk || departmentRoles.has("health");
-  const canReadFinance = adminOk || departmentRoles.has("finance");
+  const canReadFinance =
+    adminOk || departmentRoles.has("finance") || isFinanceOrAccountsProfile;
 
   const academicClient = canReadAcademic ? adminClient : supabase;
   const disciplineClient = canReadDiscipline ? adminClient : supabase;
@@ -205,7 +226,11 @@ export default async function StudentProfilePage({
       .select("*")
       .eq("student_id", studentId)
       .order("updated_at", { ascending: false }),
-    supabase.from("schools").select("currency").eq("id", schoolId).maybeSingle(),
+    supabase
+      .from("schools")
+      .select("currency, timezone")
+      .eq("id", schoolId)
+      .maybeSingle(),
     useFullGradebook
       ? (async () => {
           // Fetch the school's grading tier so the gradebook letter band uses
@@ -278,9 +303,12 @@ export default async function StudentProfilePage({
     }
   }
 
-  const currencyCode = normalizeSchoolCurrency(
-    (schoolRow as { currency: string | null } | null)?.currency
-  );
+  const schoolRowTyped = schoolRow as {
+    currency: string | null;
+    timezone: string | null;
+  } | null;
+  const currencyCode = normalizeSchoolCurrency(schoolRowTyped?.currency);
+  const displayTimezone = resolveSchoolDisplayTimezone(schoolRowTyped?.timezone);
 
   const financeRowsTyped = (financeRows ?? []) as FinanceRow[];
   const profileScholarshipLines = financeRowsTyped
@@ -301,6 +329,7 @@ export default async function StudentProfilePage({
     schoolErr && `School: ${schoolErr.message}`,
     scopeErr && `Attachment scopes: ${scopeErr.message}`,
     deptRoleErr && `Department roles: ${deptRoleErr.message}`,
+    myProfileErr && `Profile: ${myProfileErr.message}`,
     attachmentErr && `Attachments: ${attachmentErr}`,
   ]
     .filter(Boolean)
@@ -363,6 +392,7 @@ export default async function StudentProfilePage({
           profilePayments={profilePayments}
           profileFeeBalances={profileFeeBalances}
           profileScholarshipLines={profileScholarshipLines}
+          displayTimezone={displayTimezone}
         />
       </main>
     </>

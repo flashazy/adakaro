@@ -200,7 +200,11 @@ export async function login(
     redirect(next);
   }
 
-  if (role === "admin") {
+  if (
+    role === "admin" ||
+    profileRole === "finance" ||
+    profileRole === "accounts"
+  ) {
     redirect("/dashboard");
   }
   if (role === "teacher") {

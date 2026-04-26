@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
 import type { PaymentMethod } from "@/types/supabase";
 
 const VALID_METHODS: PaymentMethod[] = [
@@ -47,7 +48,38 @@ export async function recordPayment(
 
     if (!user) return { error: "Not authenticated." };
 
+    const userSchoolId = await getSchoolIdForUser(supabase, user.id);
+    const { data: isSuper, error: superRpcErr } = await supabase.rpc(
+      "is_super_admin",
+      {} as never
+    );
+    const superOk = !superRpcErr && isSuper === true;
+
+    const { data: studentRow, error: studentErr } = await supabase
+      .from("students")
+      .select("school_id")
+      .eq("id", studentId)
+      .maybeSingle();
+
+    if (studentErr || !studentRow) {
+      return { error: "Student not found." };
+    }
+    const studentSchoolId = (studentRow as { school_id: string }).school_id;
+    if (userSchoolId) {
+      if (studentSchoolId !== userSchoolId) {
+        return { error: "You can only record payments for students in your school." };
+      }
+    } else if (!superOk) {
+      return { error: "No school for this user." };
+    }
+
+    const schoolForPerm = userSchoolId ?? studentSchoolId;
+    if (!(await canUserRecordStudentPayment(supabase, user.id, schoolForPerm))) {
+      return { error: "You do not have permission to record payments." };
+    }
+
     // Insert payment
+    const recordedAt = new Date().toISOString();
     const { data: payment, error: paymentError } = await supabase
       .from("payments")
       .insert({
@@ -58,7 +90,8 @@ export async function recordPayment(
         reference_number: referenceNumber,
         payment_date: paymentDate,
         notes,
-        recorded_by: user.id,
+        recorded_by_id: user.id,
+        recorded_at: recordedAt,
       } as never)
       .select("id")
       .single();
@@ -79,8 +112,8 @@ export async function recordPayment(
     }
 
     revalidatePath("/dashboard/payments");
+    revalidatePath(`/dashboard/students/${studentId}/profile`);
 
-    const schoolId = await getSchoolIdForUser(supabase, user.id);
     void logAdminActionFromServerAction(
       user.id,
       "record_payment",
@@ -91,7 +124,7 @@ export async function recordPayment(
         fee_structure_id: feeStructureId,
         student_id: studentId,
       },
-      schoolId ?? undefined
+      schoolForPerm
     );
 
     return {

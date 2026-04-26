@@ -67,9 +67,11 @@ export async function getLoginPageExistingSession(): Promise<LoginPageExistingSe
     }
   }
 
+  const isFinanceOrAccounts =
+    profileRole === "finance" || profileRole === "accounts";
   const cancelHref = isSuper
     ? "/super-admin"
-    : role === "admin"
+    : role === "admin" || isFinanceOrAccounts
       ? "/dashboard"
       : role === "teacher"
         ? "/teacher-dashboard"
