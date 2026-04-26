@@ -233,6 +233,20 @@ export default async function StudentProfilePage({
 
   const useFullGradebook = canReadAcademic;
 
+  let profileSchoolLevel = normalizeSchoolLevel(undefined);
+  try {
+    const { data: schoolLevelRow } = await adminClient
+      .from("schools")
+      .select("school_level")
+      .eq("id", typedStudent.school_id)
+      .maybeSingle();
+    profileSchoolLevel = normalizeSchoolLevel(
+      (schoolLevelRow as { school_level: string | null } | null)?.school_level
+    );
+  } catch {
+    // Pre-migration DBs without the column — keep the default.
+  }
+
   const [
     { data: academicRows, error: academicErr },
     { data: disciplineRows, error: disciplineErr },
@@ -267,40 +281,23 @@ export default async function StudentProfilePage({
       .eq("id", schoolId)
       .maybeSingle(),
     useFullGradebook
-      ? (async () => {
-          // Fetch the school's grading tier so the gradebook letter band uses
-          // the right scale (A–E for primary, A–F for secondary). Falls back
-          // to the `normalizeSchoolLevel` default ("primary") when the column
-          // is missing or returns null — which matches the migration default
-          // for `schools.school_level`.
-          let studentSchoolLevel = normalizeSchoolLevel(undefined);
-          try {
-            const { data: schoolLevelRow } = await adminClient
-              .from("schools")
-              .select("school_level")
-              .eq("id", typedStudent.school_id)
-              .maybeSingle();
-            studentSchoolLevel = normalizeSchoolLevel(
-              (schoolLevelRow as { school_level: string | null } | null)
-                ?.school_level
-            );
-          } catch {
-            // Pre-migration DBs without the column — keep the default.
-          }
-          return loadProfileGradebookScores(
-            adminClient,
-            studentId,
-            typedStudent.school_id,
-            studentSchoolLevel
-          );
-        })()
+      ? loadProfileGradebookScores(
+          adminClient,
+          studentId,
+          typedStudent.school_id,
+          profileSchoolLevel
+        )
       : Promise.resolve([]),
     loadProfileAttendanceSummary(
       academicClient,
       studentId,
       typedStudent.class_id
     ),
-    loadProfileReportCards(academicClient, studentId),
+    loadProfileReportCards(
+      academicClient,
+      studentId,
+      profileSchoolLevel
+    ),
     loadProfileFeeBalances(financeClient, studentId),
   ]);
 

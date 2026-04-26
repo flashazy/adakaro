@@ -1,8 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, UserRole } from "@/types/supabase";
+import { mergeReportCardCommentsWithGradebookForParent } from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
+import {
+  buildSubjectPreviewRows,
+  reportCardExamColumnTitles,
+} from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-builder";
+import type {
+  ReportCardStatus,
+  StudentReportRow,
+} from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-types";
 import { formatPaymentRecorderLine } from "@/lib/payment-recorder-label";
-import { tanzaniaLetterGrade, tanzaniaPercentFromScore } from "@/lib/tanzania-grades";
 import type { SchoolLevel } from "@/lib/school-level";
+import {
+  getCurrentAcademicYearAndTerm,
+  type SubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
+import { tanzaniaLetterGrade, tanzaniaPercentFromScore } from "@/lib/tanzania-grades";
+import type { Database, UserRole } from "@/types/supabase";
 
 type TeacherScorePick = Pick<
   Database["public"]["Tables"]["teacher_scores"]["Row"],
@@ -12,18 +25,16 @@ type GradebookAssignmentPick = Pick<
   Database["public"]["Tables"]["teacher_gradebook_assignments"]["Row"],
   "id" | "title" | "max_score" | "subject" | "term" | "academic_year" | "class_id"
 >;
+
 type ReportCardPick = Pick<
   Database["public"]["Tables"]["report_cards"]["Row"],
-  "id" | "term" | "academic_year" | "status" | "submitted_at" | "admin_note"
->;
-type ReportCommentPick = Pick<
-  Database["public"]["Tables"]["teacher_report_card_comments"]["Row"],
-  | "report_card_id"
-  | "subject"
-  | "comment"
-  | "letter_grade"
-  | "calculated_grade"
-  | "score_percent"
+  | "id"
+  | "class_id"
+  | "term"
+  | "academic_year"
+  | "status"
+  | "submitted_at"
+  | "admin_note"
 >;
 type PaymentWithReceipt = Pick<
   Database["public"]["Tables"]["payments"]["Row"],
@@ -31,10 +42,6 @@ type PaymentWithReceipt = Pick<
 > & {
   receipt: { receipt_number: string } | null;
 };
-import {
-  getCurrentAcademicYearAndTerm,
-  type SubjectEnrollmentTerm,
-} from "@/lib/student-subject-enrollment";
 
 export interface ProfileGradebookScoreRow {
   id: string;
@@ -52,12 +59,18 @@ export interface ProfileAttendanceSummary {
   termLabel: string;
 }
 
+/**
+ * Aligned with parent report card rows: merged DB comments + major-exam
+ * gradebook scores, same formatting as `buildSubjectPreviewRows`.
+ */
 export interface ProfileReportCardSubjectLine {
   subject: string;
-  comment: string | null;
-  letterGrade: string | null;
-  calculatedGrade: string | null;
-  scorePercent: number | null;
+  exam1Pct: string;
+  exam2Pct: string;
+  averagePct: string;
+  grade: string;
+  /** Display; "—" when empty. */
+  comment: string;
 }
 
 export interface ProfileReportCardBlock {
@@ -67,6 +80,9 @@ export interface ProfileReportCardBlock {
   status: string;
   submittedAt: string | null;
   adminNote: string | null;
+  /** Column headers for this card's term, e.g. "April Midterm (%)". */
+  exam1ColumnLabel: string;
+  exam2ColumnLabel: string;
   subjectLines: ProfileReportCardSubjectLine[];
 }
 
@@ -272,12 +288,13 @@ function reportCardSortKey(academicYear: string, term: string): number {
 
 export async function loadProfileReportCards(
   supabase: SupabaseClient<Database>,
-  studentId: string
+  studentId: string,
+  schoolLevel: SchoolLevel
 ): Promise<ProfileReportCardBlock[]> {
   const { data: cardsRaw, error } = await supabase
     .from("report_cards")
     .select(
-      "id, term, academic_year, status, submitted_at, admin_note"
+      "id, class_id, term, academic_year, status, submitted_at, admin_note"
     )
     .eq("student_id", studentId)
     .order("academic_year", { ascending: false });
@@ -285,53 +302,73 @@ export async function loadProfileReportCards(
   const cards = cardsRaw as ReportCardPick[] | null;
   if (error || !cards?.length) return [];
 
-  const cardIds = cards.map((c) => c.id);
-  const { data: commentsRaw, error: cErr } = await supabase
-    .from("teacher_report_card_comments")
-    .select(
-      "report_card_id, subject, comment, letter_grade, calculated_grade, score_percent"
-    )
-    .eq("student_id", studentId)
-    .in("report_card_id", cardIds);
+  const buildBlock = async (c: ReportCardPick): Promise<ProfileReportCardBlock> => {
+    const { exam1, exam2 } = reportCardExamColumnTitles(c.term);
+    try {
+      const commentRows = await mergeReportCardCommentsWithGradebookForParent({
+        reportCardId: c.id,
+        studentId,
+        classId: c.class_id,
+        academicYear: c.academic_year,
+        term: c.term,
+      });
+      const subjectOrder = [
+        ...new Set(commentRows.map((r) => r.subject)),
+      ].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const syntheticStudent: StudentReportRow = {
+        studentId,
+        fullName: "—",
+        parentEmail: null,
+        reportCardId: c.id,
+        status: c.status as ReportCardStatus,
+        comments: commentRows,
+      };
+      const rows = buildSubjectPreviewRows(
+        c.term,
+        subjectOrder,
+        syntheticStudent,
+        undefined,
+        null,
+        schoolLevel
+      );
+      const subjectLines: ProfileReportCardSubjectLine[] = rows.map((r) => ({
+        subject: r.subject,
+        exam1Pct: r.exam1Pct,
+        exam2Pct: r.exam2Pct,
+        averagePct: r.averagePct,
+        grade: r.grade,
+        comment: r.comment.trim() === "" ? "—" : r.comment,
+      }));
+      return {
+        id: c.id,
+        term: c.term,
+        academicYear: c.academic_year,
+        status: c.status,
+        submittedAt: c.submitted_at,
+        adminNote: c.admin_note,
+        exam1ColumnLabel: exam1,
+        exam2ColumnLabel: exam2,
+        subjectLines,
+      };
+    } catch (e) {
+      console.error("[loadProfileReportCards] build failed", c.id, e);
+      return {
+        id: c.id,
+        term: c.term,
+        academicYear: c.academic_year,
+        status: c.status,
+        submittedAt: c.submitted_at,
+        adminNote: c.admin_note,
+        exam1ColumnLabel: exam1,
+        exam2ColumnLabel: exam2,
+        subjectLines: [],
+      };
+    }
+  };
 
-  const comments = commentsRaw as ReportCommentPick[] | null;
-
-  if (cErr) {
-    return cards.map((c) => ({
-      id: c.id,
-      term: c.term,
-      academicYear: c.academic_year,
-      status: c.status,
-      submittedAt: c.submitted_at,
-      adminNote: c.admin_note,
-      subjectLines: [],
-    }));
-  }
-
-  const byCard = new Map<string, ProfileReportCardSubjectLine[]>();
-  for (const row of comments ?? []) {
-    const list = byCard.get(row.report_card_id) ?? [];
-    list.push({
-      subject: row.subject?.trim() || "—",
-      comment: row.comment,
-      letterGrade: row.letter_grade,
-      calculatedGrade: row.calculated_grade,
-      scorePercent: row.score_percent,
-    });
-    byCard.set(row.report_card_id, list);
-  }
-
-  const blocks: ProfileReportCardBlock[] = cards.map((c) => ({
-    id: c.id,
-    term: c.term,
-    academicYear: c.academic_year,
-    status: c.status,
-    submittedAt: c.submitted_at,
-    adminNote: c.admin_note,
-    subjectLines: (byCard.get(c.id) ?? []).sort((a, b) =>
-      a.subject.localeCompare(b.subject)
-    ),
-  }));
+  const blocks: ProfileReportCardBlock[] = await Promise.all(
+    cards.map((c) => buildBlock(c))
+  );
 
   blocks.sort(
     (a, b) =>

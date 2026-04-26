@@ -28,6 +28,7 @@ import { StudentProfileAvatar } from "./student-profile-avatar";
 import { StudentRecordAttachmentsPanel } from "./student-record-attachments-panel";
 import type { StudentProfileViewerFlags } from "./student-profile-viewer";
 import { ProfilePaymentHistory } from "./profile-payment-history";
+import { StudentProfileFullReportCardButton } from "./student-profile-full-report-card-button";
 import type { ProfilePaymentListQuery } from "@/lib/student-profile-payments-list";
 
 type AcademicRow =
@@ -605,6 +606,16 @@ export function StudentProfileClient({
             ) : (
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <StudentProfileFullReportCardButton
+                    studentId={studentId}
+                    reportCardRows={profileReportCards.map((rc) => ({
+                      id: rc.id,
+                      term: rc.term,
+                      academicYear: rc.academicYear,
+                    }))}
+                  />
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
                   <label
                     htmlFor="profile-report-comments-search"
                     className="sr-only"
@@ -663,38 +674,68 @@ export function StudentProfileClient({
                                 {rc.adminNote}
                               </p>
                             ) : null}
-                            <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
-                              {linesForCard.map(({ line, idx }) => (
-                                <li
-                                  key={`${rc.id}-${line.subject}-${idx}`}
-                                  className="text-sm text-slate-700 dark:text-zinc-300"
-                                >
-                                  <span className="font-medium text-slate-900 dark:text-white">
-                                    {line.subject}
-                                  </span>
-                                  {line.letterGrade || line.calculatedGrade ? (
-                                    <span className="ml-2 text-slate-600 dark:text-zinc-400">
-                                      (
-                                      {line.letterGrade ??
-                                        line.calculatedGrade ??
-                                        (line.scorePercent != null
-                                          ? `${line.scorePercent}%`
-                                          : "—")}
-                                      )
-                                    </span>
-                                  ) : line.scorePercent != null ? (
-                                    <span className="ml-2 text-slate-600 dark:text-zinc-400">
-                                      ({line.scorePercent}%)
-                                    </span>
-                                  ) : null}
-                                  {line.comment ? (
-                                    <p className="mt-0.5 text-slate-600 dark:text-zinc-400">
-                                      {line.comment}
-                                    </p>
-                                  ) : null}
-                                </li>
-                              ))}
-                            </ul>
+                            <div className="mt-3 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                              {linesForCard.length === 0 ? (
+                                <p className="text-sm text-slate-500 dark:text-zinc-400">
+                                  No subject rows for this report card.
+                                </p>
+                              ) : (
+                                <div className="overflow-x-auto -mx-1">
+                                  <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
+                                    <thead className="bg-slate-50 text-left text-xs font-medium text-slate-600 dark:bg-zinc-800/80 dark:text-zinc-400">
+                                      <tr>
+                                        <th className="px-2 py-2 pr-3">
+                                          Subject
+                                        </th>
+                                        <th className="whitespace-nowrap px-2 py-2">
+                                          {rc.exam1ColumnLabel}
+                                        </th>
+                                        <th className="whitespace-nowrap px-2 py-2">
+                                          {rc.exam2ColumnLabel}
+                                        </th>
+                                        <th className="whitespace-nowrap px-2 py-2">
+                                          Average %
+                                        </th>
+                                        <th className="whitespace-nowrap px-2 py-2">
+                                          Grade
+                                        </th>
+                                        <th className="min-w-[10rem] px-2 py-2">
+                                          Teacher comment
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                                      {linesForCard.map(({ line, idx }) => (
+                                        <tr key={`${rc.id}-${line.subject}-${idx}`}>
+                                          <td className="px-2 py-2 font-medium text-slate-900 dark:text-zinc-100">
+                                            {line.subject}
+                                          </td>
+                                          <td className="whitespace-nowrap px-2 py-2 font-mono text-slate-800 dark:text-zinc-200">
+                                            {line.exam1Pct}
+                                          </td>
+                                          <td className="whitespace-nowrap px-2 py-2 font-mono text-slate-800 dark:text-zinc-200">
+                                            {line.exam2Pct}
+                                          </td>
+                                          <td className="whitespace-nowrap px-2 py-2 font-mono text-slate-800 dark:text-zinc-200">
+                                            {line.averagePct}
+                                          </td>
+                                          <td
+                                            className={`whitespace-nowrap px-2 py-2 ${tanzaniaGradeBadgeClass(
+                                              line.grade
+                                            )}`}
+                                          >
+                                            {line.grade}
+                                          </td>
+                                          <td className="max-w-[20rem] px-2 py-2 text-slate-700 dark:text-zinc-300">
+                                            {line.comment}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
                           </li>
                         );
                       })}
