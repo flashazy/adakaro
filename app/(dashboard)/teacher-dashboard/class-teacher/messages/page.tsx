@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { fetchClassesWhereUserIsClassTeacher } from "@/lib/class-teacher";
 import { loadClassTeacherMessageParentRows } from "@/lib/class-teacher-messages";
+import { ClassTeacherDashboardNavTextLink } from "@/components/class-teacher/class-teacher-dashboard-nav-buttons";
 import { ClassTeacherMessagesClient } from "@/components/chat/class-teacher-messages-client";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
@@ -60,12 +61,12 @@ export default async function ClassTeacherMessagesPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-3 text-sm font-medium">
-            <Link
+            <ClassTeacherDashboardNavTextLink
               href="/teacher-dashboard/class-teacher"
               className="text-school-primary hover:opacity-90 dark:text-school-primary"
             >
               ← Class teacher home
-            </Link>
+            </ClassTeacherDashboardNavTextLink>
             <Link
               href="/teacher-dashboard"
               className="text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"

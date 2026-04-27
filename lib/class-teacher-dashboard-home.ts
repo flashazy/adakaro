@@ -184,7 +184,7 @@ export async function loadClassTeacherHomeSummary(
         .in("conversation_id", convIds)
         .neq("sender_id", teacherId)
         .order("created_at", { ascending: false })
-        .limit(15);
+        .limit(80);
       if (!mErr && msgs?.length) {
         const parentMsgs = (msgs as {
           id: string;
@@ -194,9 +194,9 @@ export async function loadClassTeacherHomeSummary(
           conversation_id: string;
         }[]).filter((m) => parentByConv.get(m.conversation_id) === m.sender_id);
 
-        const top3 = parentMsgs.slice(0, 3);
+        const top10 = parentMsgs.slice(0, 10);
 
-        const parentIds = [...new Set(top3.map((m) => m.sender_id))];
+        const parentIds = [...new Set(top10.map((m) => m.sender_id))];
         const nameByParent = new Map<string, string>();
         if (parentIds.length > 0) {
           const { data: profs } = await admin
@@ -245,7 +245,7 @@ export async function loadClassTeacherHomeSummary(
           }
         }
 
-        for (const m of top3) {
+        for (const m of top10) {
           const parentId = m.sender_id;
           const sids = studentIdsByParent.get(parentId) ?? [];
           const names = sids

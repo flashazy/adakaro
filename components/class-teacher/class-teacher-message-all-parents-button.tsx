@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
+import { toast } from "sonner";
 import { broadcastClassTeacherMessageToLinkedParentsAction } from "@/lib/chat/chat-server-actions";
 
 const NO_LINKED_COPY =
@@ -81,6 +82,7 @@ export function ClassTeacherMessageAllParentsButton(props: {
       );
       if (!r.ok) {
         setSendError(r.error);
+        toast.error(r.error);
         return;
       }
       setSuccessCount(r.sentCount);
@@ -94,11 +96,20 @@ export function ClassTeacherMessageAllParentsButton(props: {
       <button
         type="button"
         onClick={handleOpen}
-        className="inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter,box-shadow] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary"
+        disabled={sending}
+        aria-busy={sending}
+        className="inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter,box-shadow] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:pointer-events-none disabled:opacity-60"
       >
-        <span className="text-base leading-none" aria-hidden>
-          📧
-        </span>
+        {sending ? (
+          <Loader2
+            className="h-4 w-4 shrink-0 animate-spin text-white"
+            aria-hidden
+          />
+        ) : (
+          <span className="text-base leading-none" aria-hidden>
+            📧
+          </span>
+        )}
         <span className="truncate">Message all parents</span>
       </button>
 

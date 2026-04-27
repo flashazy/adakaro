@@ -5,6 +5,11 @@ import type {
   ClassTeacherHomeSummary,
 } from "@/lib/class-teacher-dashboard-home";
 import { ClassTeacherHomeClassSelect } from "@/components/class-teacher/class-teacher-home-class-select";
+import {
+  ClassTeacherDashboardNavTextLink,
+  ClassTeacherDashboardQuickNavButton,
+  ClassTeacherDashboardReplyNavButton,
+} from "@/components/class-teacher/class-teacher-dashboard-nav-buttons";
 import { ClassTeacherMessageAllParentsButton } from "@/components/class-teacher/class-teacher-message-all-parents-button";
 import { ClassTeacherPhoneSection } from "@/components/class-teacher/class-teacher-phone-section";
 
@@ -68,17 +73,19 @@ export function ClassTeacherDashboardHomeView(props: {
             selectedClassId={selectedClassId}
           />
           <div className="flex flex-wrap items-center gap-3 text-sm font-medium">
-            <Link
+            <ClassTeacherDashboardNavTextLink
               href={messagesHref}
               className="text-school-primary hover:opacity-90 dark:text-school-primary"
             >
-              Messages
-              {unread > 0 ? (
-                <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[0.65rem] font-bold leading-none text-white">
-                  {unread > 99 ? "99+" : unread}
-                </span>
-              ) : null}
-            </Link>
+              <>
+                Messages
+                {unread > 0 ? (
+                  <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[0.65rem] font-bold leading-none text-white">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                ) : null}
+              </>
+            </ClassTeacherDashboardNavTextLink>
             <Link
               href="/teacher-dashboard"
               className="text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
@@ -139,29 +146,24 @@ export function ClassTeacherDashboardHomeView(props: {
           Quick actions
         </h2>
         <div className="mt-3 flex flex-row flex-nowrap gap-4">
-          <Link
+          <ClassTeacherDashboardQuickNavButton
             href={overviewHref}
-            className="inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter,box-shadow] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary"
-          >
-            <span className="text-base leading-none" aria-hidden>
-              👥
-            </span>
-            <span className="truncate">View students</span>
-          </Link>
-          <Link
+            icon="👥"
+            label="View students"
+          />
+          <ClassTeacherDashboardQuickNavButton
             href={messagesHref}
-            className="relative inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter,box-shadow] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary"
-          >
-            {unread > 0 ? (
-              <span className="absolute -right-1 -top-1 z-[1] inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[0.65rem] font-bold leading-none text-white dark:border-zinc-900">
-                {unread > 99 ? "99+" : unread}
-              </span>
-            ) : null}
-            <span className="text-base leading-none" aria-hidden>
-              💬
-            </span>
-            <span className="truncate">Messages</span>
-          </Link>
+            icon="💬"
+            label="Messages"
+            relative
+            badge={
+              unread > 0 ? (
+                <span className="absolute -right-1 -top-1 z-[1] inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[0.65rem] font-bold leading-none text-white dark:border-zinc-900">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              ) : undefined
+            }
+          />
           <ClassTeacherMessageAllParentsButton
             classId={selectedClassId}
             linkedParentCount={summary.linkedParentCount}
@@ -170,14 +172,23 @@ export function ClassTeacherDashboardHomeView(props: {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Recent messages from parents
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-            Latest three parent messages for this class.
-          </p>
+        <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-start sm:justify-between dark:border-zinc-800">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+              Recent messages from parents
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+              Up to 10 most recent parent messages for this class.
+            </p>
+          </div>
+          <ClassTeacherDashboardNavTextLink
+            href={messagesHref}
+            className="shrink-0 text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
+          >
+            View all messages →
+          </ClassTeacherDashboardNavTextLink>
         </div>
+        <div className="h-[300px] overflow-y-auto overflow-x-hidden">
         <ul className="divide-y divide-slate-100 dark:divide-zinc-800">
           {summary.recentFromParents.length === 0 ? (
             <li className="px-4 py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
@@ -207,27 +218,23 @@ export function ClassTeacherDashboardHomeView(props: {
                     </p>
                   </div>
                   <div className="shrink-0 sm:pl-4">
-                    <Link
-                      href={replyHref}
-                      className="inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-school-primary shadow-sm transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-800 dark:hover:bg-zinc-700 sm:w-auto"
-                    >
-                      Reply
-                    </Link>
+                    <ClassTeacherDashboardReplyNavButton href={replyHref} />
                   </div>
                 </li>
               );
             })
           )}
         </ul>
+        </div>
       </section>
 
       <div className="flex justify-center border-t border-slate-200 pt-6 dark:border-zinc-800">
-        <Link
+        <ClassTeacherDashboardNavTextLink
           href={overviewHref}
           className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
         >
           Open full class overview →
-        </Link>
+        </ClassTeacherDashboardNavTextLink>
       </div>
     </div>
   );
