@@ -36,9 +36,12 @@ function dedupeAndSortLines(lines: ChatLine[]): ChatLine[] {
 export function ChatThreadBody({
   lines,
   currentUserId,
+  alwaysStickToBottom = false,
 }: {
   lines: ChatLine[];
   currentUserId: string;
+  /** When true, scroll to the latest message on every update (e.g. parent dashboard thread). */
+  alwaysStickToBottom?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
@@ -50,13 +53,26 @@ export function ChatThreadBody({
   );
 
   useLayoutEffect(() => {
+    const len = sortedLines.length;
+    const lastId = len > 0 ? sortedLines[len - 1]!.id : "";
+
+    if (len === 0) {
+      prevLenRef.current = 0;
+      prevLastIdRef.current = "";
+      return;
+    }
+
     const el = scrollRef.current;
     if (!el) return;
 
-    const len = sortedLines.length;
-    const lastId = len > 0 ? sortedLines[len - 1]!.id : "";
+    if (alwaysStickToBottom) {
+      el.scrollTop = el.scrollHeight;
+      prevLenRef.current = len;
+      prevLastIdRef.current = lastId;
+      return;
+    }
+
     const prevLen = prevLenRef.current;
-    const prevLastId = prevLastIdRef.current;
 
     const firstOpen = prevLen === 0 && len > 0;
     const grew = len > prevLen;
@@ -64,19 +80,15 @@ export function ChatThreadBody({
     prevLenRef.current = len;
     prevLastIdRef.current = lastId;
 
-    if (len === 0) return;
-
     const nearBottom =
       el.scrollHeight - el.scrollTop - el.clientHeight < 100;
 
     if (firstOpen || (grew && nearBottom)) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [sortedLines]);
+  }, [sortedLines, alwaysStickToBottom]);
 
   if (sortedLines.length === 0) {
-    prevLenRef.current = 0;
-    prevLastIdRef.current = "";
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col items-center justify-center px-4 py-12 text-center text-sm text-slate-500 dark:text-zinc-400">
         No messages yet. Say hello below.

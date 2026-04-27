@@ -82,10 +82,19 @@ async function ClassTeacherHome(props: {
 }) {
   const { teacherId, classes, selectedClassId, selectedClassName } = props;
 
-  const [academic, summary] = await Promise.all([
+  const supabase = await createClient();
+  const [{ data: prof }, academic, summary] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("phone")
+      .eq("id", teacherId)
+      .maybeSingle(),
     loadAcademicBannerForClass(selectedClassId),
     loadClassTeacherHomeSummary(teacherId, selectedClassId),
   ]);
+
+  const raw = (prof as { phone: string | null } | null)?.phone?.trim();
+  const teacherPhone = raw && raw.length > 0 ? raw : null;
 
   return (
     <ClassTeacherDashboardHomeView
@@ -94,6 +103,7 @@ async function ClassTeacherHome(props: {
       selectedClassName={selectedClassName}
       academic={academic}
       summary={summary}
+      teacherPhone={teacherPhone}
     />
   );
 }

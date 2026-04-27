@@ -275,7 +275,7 @@ export function ParentClassTeacherMessagesTabClient({
 
   return (
     <div className="flex flex-col border-t border-slate-100 dark:border-zinc-800">
-      <div className="flex items-start justify-between gap-2 border-b border-slate-100 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-slate-100 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
         <p className="min-w-0 text-xs text-slate-500 dark:text-zinc-400">
           Messages with your child&apos;s class teacher ({studentName})
         </p>
@@ -293,8 +293,14 @@ export function ParentClassTeacherMessagesTabClient({
           Refresh
         </button>
       </div>
-      <ChatThreadBody lines={messages} currentUserId={parentId} />
-      <div className="border-t border-slate-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="h-[400px] min-h-0 w-full shrink-0 overflow-hidden">
+        <ChatThreadBody
+          lines={messages}
+          currentUserId={parentId}
+          alwaysStickToBottom
+        />
+      </div>
+      <div className="shrink-0 border-t border-slate-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
         {error ? (
           <p className="mb-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>
         ) : null}

@@ -81,10 +81,7 @@ export async function recordParentSubjectResultViewedAction(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Postgrest Insert inference for this table
   const { error } = await (supabase as any)
     .from("parent_viewed_results")
-    .upsert(row, {
-      onConflict: "parent_id,student_id,assignment_id",
-      ignoreDuplicates: false,
-    });
+    .upsert(row, { onConflict: "parent_id,student_id,assignment_id" });
   if (error) {
     return { ok: false, error: error.message || "Failed to record view." };
   }

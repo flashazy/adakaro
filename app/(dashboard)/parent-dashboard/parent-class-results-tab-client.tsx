@@ -18,7 +18,7 @@ import type { PassRateStats, FailRateStats } from "@/lib/gradebook-full-report-c
 import type { SchoolLevel } from "@/lib/school-level";
 import { subjectTextKey } from "@/lib/subject-text-key";
 import type { SubjectResultsUnreadState } from "@/lib/parent-subject-results-unread-types";
-import { markSubjectResultAssignmentViewed } from "@/lib/parent-subject-results-unread-types";
+import { markSubjectResultAssignmentsViewed } from "@/lib/parent-subject-results-unread-types";
 import { loadParentClassResultsForSubjectAction } from "./parent-class-results-actions";
 import { recordParentSubjectResultViewedAction } from "./parent-subject-results-view-actions";
 
@@ -183,35 +183,50 @@ export function ParentClassResultsTabClient({
     [options, selectedId]
   );
 
-  const selectedAssignmentId = selected?.assignment?.id ?? null;
-
+  /** When subject results are shown, mark every assignment in the loaded list as viewed (persists + badge). */
   useEffect(() => {
     if (isPending) return;
-    if (!selectedAssignmentId) return;
-    if (subjectResultsUnread.byAssignmentUnviewed[selectedAssignmentId] !== true) {
-      return;
-    }
+    if (options.length === 0) return;
+    const ids = options
+      .map((o) => o.assignment.id)
+      .filter((id) => subjectResultsUnread.byAssignmentUnviewed[id] === true);
+    if (ids.length === 0) return;
 
     let cancelled = false;
-    (async () => {
-      const r = await recordParentSubjectResultViewedAction({
-        studentId,
-        classId,
-        assignmentId: selectedAssignmentId,
-      });
-      if (cancelled || !r.ok) return;
+    void (async () => {
+      for (const assignmentId of ids) {
+        if (cancelled) return;
+        const r = await recordParentSubjectResultViewedAction({
+          studentId,
+          classId,
+          assignmentId,
+        });
+        if (cancelled) return;
+        if (!r.ok) {
+          if (process.env.NODE_ENV === "development") {
+            // eslint-disable-next-line no-console -- diagnose persist failures
+            console.warn(
+              "[ParentClassResults] recordParentSubjectResultViewedAction",
+              r.error
+            );
+          }
+          return;
+        }
+      }
+      if (cancelled) return;
       onSubjectResultsUnreadChange((prev) =>
-        markSubjectResultAssignmentViewed(prev, selectedAssignmentId)
+        markSubjectResultAssignmentsViewed(prev, ids)
       );
     })();
+
     return () => {
       cancelled = true;
     };
   }, [
     isPending,
-    classId,
+    options,
     studentId,
-    selectedAssignmentId,
+    classId,
     subjectResultsUnread,
     onSubjectResultsUnreadChange,
   ]);

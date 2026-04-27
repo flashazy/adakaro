@@ -43,6 +43,7 @@ import {
   ParentStudentCard,
 } from "./parent-student-cards-accordion";
 import { fetchClassTeacherContactByClassIds } from "@/lib/class-teacher";
+import { ParentClassTeacherContactLine } from "@/components/parent/parent-class-teacher-contact-line";
 
 interface StudentWithClass {
   id: string;
@@ -51,8 +52,10 @@ interface StudentWithClass {
   school_id: string;
   class_id: string;
   class: { name: string; class_teacher_id: string | null } | null;
-  /** e.g. "Class Teacher: Jane Doe — +255…" */
-  classTeacherLine?: string | null;
+  classTeacherContact?: {
+    fullName: string;
+    phone: string | null;
+  } | null;
 }
 
 type BalanceRow = ParentFeeBalanceRow;
@@ -369,11 +372,11 @@ export default async function ParentDashboard() {
     );
     students = students.map((s) => {
       const ct = classTeacherByClass.get(s.class_id);
-      const classTeacherLine =
+      const classTeacherContact =
         ct != null
-          ? `Class Teacher: ${ct.full_name} — ${ct.phone ?? "—"}`
+          ? { fullName: ct.full_name, phone: ct.phone }
           : null;
-      return { ...s, classTeacherLine };
+      return { ...s, classTeacherContact };
     });
 
     if (students.length > 0) {
@@ -585,10 +588,13 @@ export default async function ParentDashboard() {
                                       </span>
                                     )}
                                   </div>
-                                  {student.classTeacherLine ? (
-                                    <p className="mt-2 text-xs font-medium text-slate-700 dark:text-zinc-300">
-                                      {student.classTeacherLine}
-                                    </p>
+                                  {student.classTeacherContact ? (
+                                    <ParentClassTeacherContactLine
+                                      teacherName={
+                                        student.classTeacherContact.fullName
+                                      }
+                                      phone={student.classTeacherContact.phone}
+                                    />
                                   ) : null}
                                 </div>
                                 <svg
@@ -636,10 +642,13 @@ export default async function ParentDashboard() {
                                       </span>
                                     )}
                                   </div>
-                                  {student.classTeacherLine ? (
-                                    <p className="mt-2 text-xs font-medium text-slate-700 dark:text-zinc-300">
-                                      {student.classTeacherLine}
-                                    </p>
+                                  {student.classTeacherContact ? (
+                                    <ParentClassTeacherContactLine
+                                      teacherName={
+                                        student.classTeacherContact.fullName
+                                      }
+                                      phone={student.classTeacherContact.phone}
+                                    />
                                   ) : null}
                                   <p className="mt-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
                                     {schoolDisplayName}

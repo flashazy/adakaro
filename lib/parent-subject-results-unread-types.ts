@@ -11,32 +11,58 @@ export interface SubjectResultsUnreadState {
   assignmentSubjectById: Record<string, string>;
 }
 
-export function markSubjectResultAssignmentViewed(
+/** Number of subjects that still have at least one unviewed assignment. */
+function countSubjectsWithUnread(
+  bySubjectHasUnviewed: Record<string, boolean>
+): number {
+  return Object.values(bySubjectHasUnviewed).filter(Boolean).length;
+}
+
+/**
+ * Mark several assignments viewed in local state (after DB writes succeed).
+ */
+export function markSubjectResultAssignmentsViewed(
   state: SubjectResultsUnreadState,
-  assignmentId: string
+  assignmentIds: string[]
 ): SubjectResultsUnreadState {
-  if (state.byAssignmentUnviewed[assignmentId] !== true) {
-    return state;
+  if (assignmentIds.length === 0) return state;
+  const byAssignmentUnviewed = { ...state.byAssignmentUnviewed };
+  let touched = false;
+  for (const id of assignmentIds) {
+    if (byAssignmentUnviewed[id] === true) {
+      byAssignmentUnviewed[id] = false;
+      touched = true;
+    }
   }
-  const byAssignmentUnviewed = {
-    ...state.byAssignmentUnviewed,
-    [assignmentId]: false,
-  };
-  const subj = state.assignmentSubjectById[assignmentId];
-  const bySubjectHasUnviewed: Record<string, boolean> = { ...state.bySubjectHasUnviewed };
-  if (subj) {
+  if (!touched) return state;
+
+  const bySubjectHasUnviewed = { ...state.bySubjectHasUnviewed };
+  const subjectKeys = new Set(
+    assignmentIds
+      .map((id) => state.assignmentSubjectById[id])
+      .filter((sk): sk is string => Boolean(sk?.length))
+  );
+  for (const subj of subjectKeys) {
     const anyLeft = Object.entries(state.assignmentSubjectById).some(
-      ([aid, sk]) => sk === subj && byAssignmentUnviewed[aid]
+      ([aid, sk]) =>
+        sk === subj && byAssignmentUnviewed[aid] === true
     );
     bySubjectHasUnviewed[subj] = anyLeft;
   }
-  const totalUnviewed = Object.values(byAssignmentUnviewed).filter(Boolean).length;
+
   return {
-    totalUnviewed,
+    totalUnviewed: countSubjectsWithUnread(bySubjectHasUnviewed),
     bySubjectHasUnviewed,
     byAssignmentUnviewed,
     assignmentSubjectById: state.assignmentSubjectById,
   };
+}
+
+export function markSubjectResultAssignmentViewed(
+  state: SubjectResultsUnreadState,
+  assignmentId: string
+): SubjectResultsUnreadState {
+  return markSubjectResultAssignmentsViewed(state, [assignmentId]);
 }
 
 export function initialEmptySubjectResultsUnread(): SubjectResultsUnreadState {

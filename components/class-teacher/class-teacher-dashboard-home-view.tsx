@@ -5,6 +5,8 @@ import type {
   ClassTeacherHomeSummary,
 } from "@/lib/class-teacher-dashboard-home";
 import { ClassTeacherHomeClassSelect } from "@/components/class-teacher/class-teacher-home-class-select";
+import { ClassTeacherMessageAllParentsButton } from "@/components/class-teacher/class-teacher-message-all-parents-button";
+import { ClassTeacherPhoneSection } from "@/components/class-teacher/class-teacher-phone-section";
 
 function formatRecentWhen(iso: string): string {
   const d = new Date(iso);
@@ -23,9 +25,16 @@ export function ClassTeacherDashboardHomeView(props: {
   selectedClassName: string;
   academic: ClassTeacherAcademicBanner;
   summary: ClassTeacherHomeSummary;
+  teacherPhone: string | null;
 }) {
-  const { classes, selectedClassId, selectedClassName, academic, summary } =
-    props;
+  const {
+    classes,
+    selectedClassId,
+    selectedClassName,
+    academic,
+    summary,
+    teacherPhone,
+  } = props;
   const overviewHref = `/teacher-dashboard/class-teacher/${selectedClassId}`;
   const messagesHref = "/teacher-dashboard/class-teacher/messages";
   const unread = summary.unreadMessageCount;
@@ -123,6 +132,8 @@ export function ClassTeacherDashboardHomeView(props: {
         </div>
       </div>
 
+      <ClassTeacherPhoneSection initialPhone={teacherPhone} />
+
       <section>
         <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
           Quick actions
@@ -151,17 +162,10 @@ export function ClassTeacherDashboardHomeView(props: {
             </span>
             <span className="truncate">Messages</span>
           </Link>
-          <button
-            type="button"
-            disabled
-            title="Coming soon"
-            className="inline-flex min-h-[2.75rem] min-w-0 flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-lg border-2 border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-sm font-semibold text-slate-400 shadow-sm dark:border-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-500"
-          >
-            <span className="text-base leading-none opacity-60" aria-hidden>
-              📧
-            </span>
-            <span className="truncate">Message all parents</span>
-          </button>
+          <ClassTeacherMessageAllParentsButton
+            classId={selectedClassId}
+            linkedParentCount={summary.linkedParentCount}
+          />
         </div>
       </section>
 

@@ -302,6 +302,133 @@ export async function countUnreadMessagesForTeacherConversationsAction(
   return { ok: true, byConversationId };
 }
 
+const NO_LINKED_PARENTS_MSG =
+  "No linked parents in this class. Parents must be linked to students before receiving messages.";
+
+function formatClassTeacherBroadcastMessage(subject: string, body: string): string {
+  const s = subject.trim();
+  const b = body.trim();
+  if (!s) return b;
+  return `Subject: ${s}\n\n${b}`;
+}
+
+async function ensureConversationIdAdmin(
+  admin: AdminDb,
+  classTeacherId: string,
+  parentId: string,
+  classId: string
+): Promise<Ok<{ conversationId: string }> | Err> {
+  const { data: existing, error: selErr } = await admin
+    .from("chat_conversations")
+    .select("id")
+    .eq("class_teacher_id", classTeacherId)
+    .eq("parent_id", parentId)
+    .eq("class_id", classId)
+    .maybeSingle();
+  if (selErr) return { ok: false, error: selErr.message };
+  if (existing?.id) {
+    return { ok: true, conversationId: (existing as { id: string }).id };
+  }
+
+  const { data: inserted, error: insErr } = await admin
+    .from("chat_conversations")
+    .insert({
+      class_teacher_id: classTeacherId,
+      parent_id: parentId,
+      class_id: classId,
+    })
+    .select("id")
+    .single();
+
+  if (!insErr && inserted?.id) {
+    return { ok: true, conversationId: (inserted as { id: string }).id };
+  }
+
+  if (insErr?.code === "23505") {
+    const { data: raced, error: rErr } = await admin
+      .from("chat_conversations")
+      .select("id")
+      .eq("class_teacher_id", classTeacherId)
+      .eq("parent_id", parentId)
+      .eq("class_id", classId)
+      .maybeSingle();
+    if (!rErr && raced?.id) {
+      return { ok: true, conversationId: (raced as { id: string }).id };
+    }
+  }
+
+  return {
+    ok: false,
+    error: insErr?.message ?? "Could not create conversation",
+  };
+}
+
+/**
+ * Sends one chat message to every parent with an active `parent_students` link
+ * to an active student in `classId`, for the signed-in class teacher.
+ */
+export async function broadcastClassTeacherMessageToLinkedParentsAction(
+  classId: string,
+  subject: string,
+  body: string
+): Promise<Ok<{ sentCount: number }> | Err> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in" };
+
+  const bodyText = body.trim();
+  if (!bodyText) return { ok: false, error: "Message body is required" };
+
+  const admin = await getChatAdmin();
+  const isTeacher = await userIsClassTeacherForClass(userId, classId);
+  if (!isTeacher) return { ok: false, error: "Not allowed" };
+
+  const { data: studs, error: stErr } = await admin
+    .from("students")
+    .select("id")
+    .eq("class_id", classId)
+    .eq("status", "active");
+  if (stErr) return { ok: false, error: stErr.message };
+  if (!studs?.length) {
+    return { ok: false, error: NO_LINKED_PARENTS_MSG };
+  }
+
+  const studentIds = (studs as { id: string }[]).map((s) => s.id);
+  const { data: links, error: lErr } = await admin
+    .from("parent_students")
+    .select("parent_id")
+    .in("student_id", studentIds);
+  if (lErr) return { ok: false, error: lErr.message };
+
+  const parentIds = [
+    ...new Set(
+      ((links ?? []) as { parent_id: string }[]).map((l) => l.parent_id)
+    ),
+  ].sort();
+  if (parentIds.length === 0) {
+    return { ok: false, error: NO_LINKED_PARENTS_MSG };
+  }
+
+  const messageText = formatClassTeacherBroadcastMessage(subject, bodyText);
+
+  for (const parentId of parentIds) {
+    const conv = await ensureConversationIdAdmin(
+      admin,
+      userId,
+      parentId,
+      classId
+    );
+    if (!conv.ok) return conv;
+    const { error: msgErr } = await admin.from("chat_messages").insert({
+      conversation_id: conv.conversationId,
+      sender_id: userId,
+      message: messageText,
+    });
+    if (msgErr) return { ok: false, error: msgErr.message };
+  }
+
+  return { ok: true, sentCount: parentIds.length };
+}
+
 export async function getChatInboxUnreadCountAction(): Promise<
   Ok<{ count: number }> | Err
 > {

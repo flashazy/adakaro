@@ -159,7 +159,6 @@ export async function loadParentSubjectResultsUnread(
 
   const byAssignmentUnviewed: Record<string, boolean> = {};
   const assignmentSubjectById: Record<string, string> = {};
-  let totalUnviewed = 0;
 
   for (const a of withScores) {
     const act = assignmentActivityIso(a, byAssignScores.get(a.id) ?? []);
@@ -169,9 +168,6 @@ export async function loadParentSubjectResultsUnread(
     const isUnviewed =
       !vAt || activityMs(act) > activityMs(vAt);
     byAssignmentUnviewed[a.id] = isUnviewed;
-    if (isUnviewed) {
-      totalUnviewed += 1;
-    }
   }
 
   const bySubjectHasUnviewed: Record<string, boolean> = {};
@@ -183,6 +179,9 @@ export async function loadParentSubjectResultsUnread(
       .filter((a) => subjectTextKey(a.subject) === sk)
       .some((a) => byAssignmentUnviewed[a.id]);
   }
+
+  const totalUnviewed = Object.values(bySubjectHasUnviewed).filter(Boolean)
+    .length;
 
   return {
     totalUnviewed,
