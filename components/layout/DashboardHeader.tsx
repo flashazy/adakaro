@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
-import { AdakaroLogoMark } from "@/components/brand/AdakaroLogoMark";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRoleToggle";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -233,8 +233,15 @@ export function DashboardHeader({
           <Link
             href={homeHref}
             className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-white"
+            aria-label="Adakaro"
           >
-            <AdakaroLogoMark size={36} className="shrink-0 shadow-sm" />
+            <Image
+              src="/brand/logo-icon.svg"
+              alt="Adakaro"
+              width={32}
+              height={32}
+              className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
+            />
             Adakaro
           </Link>
           {isSuperAdmin && isSuper ? (

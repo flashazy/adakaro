@@ -1,18 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="f-frame" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#4338ca"/>
-      <stop offset="0.5" stop-color="#4f46e5"/>
-      <stop offset="1" stop-color="#3730a3"/>
+    <linearGradient id="adakaroAGradientIcon" x1="170" y1="372" x2="362" y2="122" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#60A5FA"/>
     </linearGradient>
-    <linearGradient id="f-shield" x1="32" y1="14" x2="32" y2="44" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#818cf8"/>
-      <stop offset="0.42" stop-color="#4f46e5"/>
-      <stop offset="1" stop-color="#3730a3"/>
+    <linearGradient id="adakaroArcGradientIcon" x1="220" y1="326" x2="312" y2="364" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FB923C"/>
+      <stop offset="1" stop-color="#F97316"/>
     </linearGradient>
   </defs>
-  <rect x="2" y="2" width="60" height="60" rx="16" ry="16" fill="url(#f-frame)"/>
-  <circle cx="32" cy="32" r="22.5" fill="#FFFFFF"/>
-  <path d="M32 14.5 L42.2 19.4 V31.4 C42.2 37.1 38 41.6 32 44.8 C26 41.6 21.8 37.1 21.8 31.4 V19.4 Z" fill="url(#f-shield)"/>
-  <path d="M25.5 31.8 L29.8 36.1 L38.5 25.2" stroke="#FFFFFF" stroke-width="2.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(0 12)">
+    <path d="M76 426C110 423 142 401 162 366L246 132C249 122 258 116 268 118C257 104 235 104 224 118L106 364C92 390 70 410 44 420C54 424 64 426 76 426Z" fill="url(#adakaroAGradientIcon)"/>
+    <path d="M436 426C402 423 370 401 350 366L266 132C263 122 254 116 244 118C255 104 277 104 288 118L406 364C420 390 442 410 468 420C458 424 448 426 436 426Z" fill="url(#adakaroAGradientIcon)"/>
+    <path d="M178 362C198 334 228 316 256 316C284 316 314 334 334 362C303 348 277 344 256 344C235 344 209 348 178 362Z" fill="url(#adakaroArcGradientIcon)"/>
+  </g>
 </svg>

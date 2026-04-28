@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AdakaroLogoMark } from "@/components/brand/AdakaroLogoMark";
+import Image from "next/image";
 
 export function MinimalHeader() {
   return (
@@ -8,8 +8,15 @@ export function MinimalHeader() {
         <Link
           href="/"
           className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-white"
+          aria-label="Adakaro"
         >
-          <AdakaroLogoMark size={36} className="shrink-0 shadow-sm" />
+          <Image
+            src="/brand/logo-icon.svg"
+            alt="Adakaro"
+            width={32}
+            height={32}
+            className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
+          />
           Adakaro
         </Link>
         <Link

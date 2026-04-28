@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Adakaro icon logo">
+  <title>Adakaro Icon Logo</title>
+  <defs>
+    <linearGradient id="adakaroAGradientIcon" x1="170" y1="372" x2="362" y2="122" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#60A5FA"/>
+    </linearGradient>
+    <linearGradient id="adakaroArcGradientIcon" x1="220" y1="326" x2="312" y2="364" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FB923C"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(0 12)">
+    <path
+      d="M76 426C110 423 142 401 162 366L246 132C249 122 258 116 268 118C257 104 235 104 224 118L106 364C92 390 70 410 44 420C54 424 64 426 76 426Z"
+      fill="url(#adakaroAGradientIcon)"
+    />
+    <path
+      d="M436 426C402 423 370 401 350 366L266 132C263 122 254 116 244 118C255 104 277 104 288 118L406 364C420 390 442 410 468 420C458 424 448 426 436 426Z"
+      fill="url(#adakaroAGradientIcon)"
+    />
+    <path
+      d="M178 362C198 334 228 316 256 316C284 316 314 334 334 362C303 348 277 344 256 344C235 344 209 348 178 362Z"
+      fill="url(#adakaroArcGradientIcon)"
+    />
+  </g>
+</svg>

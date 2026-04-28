@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   title: "Adakaro — School Fee Management",
   description:
     "Simple, modern school fee management for administrators and parents.",
+  icons: {
+    icon: "/brand/favicon.ico",
+    shortcut: "/brand/favicon.ico",
+    apple: "/brand/logo-icon-192.png",
+  },
 };
 
 export default function RootLayout({

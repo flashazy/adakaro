@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
-import { AdakaroLogoMark } from "@/components/brand/AdakaroLogoMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 const NAV_LINKS = [
@@ -33,14 +33,33 @@ export function MarketingHeader() {
   }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/95">
+    <header className="sticky top-0 z-50 border-b border-gray-200/60 bg-white/95 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-950/95">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <Link
           href="/"
-          className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-white"
+          className="flex shrink-0 items-center"
+          aria-label="Adakaro"
         >
-          <AdakaroLogoMark size={36} className="shrink-0 shadow-sm" />
-          Adakaro
+          <Image
+            src="/brand/logo-wordmark.svg"
+            alt="Adakaro"
+            width={140}
+            height={40}
+            priority
+            className="h-auto w-[126px] sm:w-[138px] dark:hidden"
+          />
+          <span className="hidden w-[126px] items-center gap-2 sm:w-[138px] dark:inline-flex">
+            <Image
+              src="/brand/logo-icon.svg"
+              alt=""
+              width={26}
+              height={26}
+              className="h-[26px] w-[26px] shrink-0"
+            />
+            <span className="text-[13px] font-bold tracking-[0.15em] text-gray-900 dark:text-white">
+              ADAKARO
+            </span>
+          </span>
         </Link>
 
         <nav
