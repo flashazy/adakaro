@@ -120,6 +120,15 @@ function parseNum(
   return Number.isFinite(n) ? n : null;
 }
 
+function autoCommentFromAveragePercent(avgRaw: number | null): string {
+  if (avgRaw == null || !Number.isFinite(avgRaw)) return "";
+  if (avgRaw >= 80) return "Excellent performance, keep it up";
+  if (avgRaw >= 65) return "Good performance, can do even better";
+  if (avgRaw >= 50) return "Satisfactory, but needs more effort";
+  if (avgRaw >= 35) return "Below average, requires improvement";
+  return "Poor performance, serious attention needed";
+}
+
 function isReportTerm(t: string): t is ReportTermValue {
   return t === "Term 1" || t === "Term 2";
 }
@@ -254,6 +263,11 @@ export function buildSubjectPreviewRows(
     const selected = showSelectedFlag
       ? selectedKeySet?.has(subject.trim().toLowerCase()) === true
       : null;
+    const manualComment = c?.comment?.trim() ?? "";
+    const comment =
+      manualComment !== ""
+        ? manualComment
+        : autoCommentFromAveragePercent(avgRaw);
 
     return {
       subject,
@@ -268,7 +282,7 @@ export function buildSubjectPreviewRows(
       averagePct: avgRaw != null && Number.isFinite(avgRaw) ? `${avgRaw}%` : "—",
       grade,
       position,
-      comment: c?.comment?.trim() ?? "",
+      comment,
       hasMajorExamScore,
       selected,
     };
