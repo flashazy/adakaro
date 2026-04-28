@@ -21,6 +21,7 @@ import {
 } from "@/lib/student-subject-enrollment-queries";
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { resolveSchoolDisplayTimezone } from "@/lib/school-timezone";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -48,7 +49,7 @@ function normalizeText(value: unknown): string | null {
  * Child stream: that stream plus its parent so exams created on the parent
  * still appear when the teacher switches to their own class.
  */
-async function gradebookAssignmentClassIdsForSelection(
+export async function gradebookAssignmentClassIdsForSelection(
   admin: Db,
   classId: string
 ): Promise<string[]> {
@@ -885,18 +886,30 @@ export async function loadGradebookAssignmentsForClass(
   const classIdsForAssignments =
     await gradebookAssignmentClassIdsForSelection(admin, classId);
 
-  const { data: rawData, error } = await (admin as Db)
-    .from("teacher_gradebook_assignments")
-    .select(
-      "id, title, max_score, weight, due_date, subject, exam_type, academic_year, term, created_at"
-    )
-    .eq("teacher_id", user.id)
-    .in("class_id", classIdsForAssignments)
-    .eq("subject", subject);
-
-  if (error) {
-    return { ok: false as const, error: error.message };
-  }
+  const rawData = await fetchAllRows<{
+    id: string;
+    title: string;
+    max_score: number;
+    weight: number;
+    due_date: string | null;
+    subject: string;
+    exam_type: string | null;
+    academic_year: string;
+    term: string | null;
+    created_at: string;
+  }>({
+    label: "teacher-dashboard:loadGradebookAssignmentsForClass assignments",
+    fetchPage: async (from, to) =>
+      await (admin as Db)
+        .from("teacher_gradebook_assignments")
+        .select(
+          "id, title, max_score, weight, due_date, subject, exam_type, academic_year, term, created_at"
+        )
+        .eq("teacher_id", user.id)
+        .in("class_id", classIdsForAssignments)
+        .eq("subject", subject)
+        .range(from, to),
+  });
 
   const deduped = new Map<
     string,
@@ -987,18 +1000,32 @@ export async function loadGradebookClassMatrix(
   const classIdsForMatrix =
     await gradebookAssignmentClassIdsForSelection(admin, classId);
 
-  const { data: assignmentRowsRaw, error: aErr } = await (admin as Db)
-    .from("teacher_gradebook_assignments")
-    .select(
-      "id, title, max_score, weight, due_date, subject, created_at, exam_type, academic_year, term"
-    )
-    .eq("teacher_id", user.id)
-    .in("class_id", classIdsForMatrix)
-    .eq("subject", subject);
-
-  if (aErr) {
-    return { ok: false as const, error: aErr.message };
-  }
+  const assignmentRowsRaw = await fetchAllRows<
+    {
+      id: string;
+      title: string;
+      max_score: number;
+      weight: number;
+      due_date: string | null;
+      subject: string;
+      created_at?: string;
+      exam_type: string | null;
+      academic_year: string;
+      term: string | null;
+    }
+  >({
+    label: "teacher-dashboard:loadGradebookClassMatrix assignments",
+    fetchPage: async (from, to) =>
+      await (admin as Db)
+        .from("teacher_gradebook_assignments")
+        .select(
+          "id, title, max_score, weight, due_date, subject, created_at, exam_type, academic_year, term"
+        )
+        .eq("teacher_id", user.id)
+        .in("class_id", classIdsForMatrix)
+        .eq("subject", subject)
+        .range(from, to),
+  });
 
   const dedupAssignments = new Map<string, (typeof assignmentRowsRaw)[number]>();
   for (const row of assignmentRowsRaw ?? []) {
@@ -1071,14 +1098,21 @@ export async function loadGradebookClassMatrix(
   > = {};
 
   if (assignmentIds.length > 0) {
-    const { data: scoreRows, error: scoresError } = await (admin as Db)
-      .from("teacher_scores")
-      .select("assignment_id, student_id, score, comments, remarks")
-      .in("assignment_id", assignmentIds);
-
-    if (scoresError) {
-      return { ok: false as const, error: scoresError.message };
-    }
+    const scoreRows = await fetchAllRows<{
+      assignment_id: string;
+      student_id: string;
+      score: unknown;
+      comments: string | null;
+      remarks: string | null;
+    }>({
+      label: "teacher-dashboard:loadGradebookClassMatrix scores",
+      fetchPage: async (from, to) =>
+        await (admin as Db)
+          .from("teacher_scores")
+          .select("assignment_id, student_id, score, comments, remarks")
+          .in("assignment_id", assignmentIds)
+          .range(from, to),
+    });
 
     for (const row of scoreRows ?? []) {
       const r = row as {
@@ -1392,14 +1426,20 @@ export async function loadGradebookMatrix(
     enrollmentDateOnOrBefore: null,
   });
 
-  const { data: scoreRows, error: scoresError } = await (admin as Db)
-    .from("teacher_scores")
-    .select("student_id, score, comments, remarks")
-    .eq("assignment_id", assignmentId);
-
-  if (scoresError) {
-    return { ok: false as const, error: scoresError.message };
-  }
+  const scoreRows = await fetchAllRows<{
+    student_id: string;
+    score: unknown;
+    comments: string | null;
+    remarks: string | null;
+  }>({
+    label: "teacher-dashboard:loadGradebookMatrix assignment scores",
+    fetchPage: async (from, to) =>
+      await (admin as Db)
+        .from("teacher_scores")
+        .select("student_id, score, comments, remarks")
+        .eq("assignment_id", assignmentId)
+        .range(from, to),
+  });
 
   const scoreByStudent: Record<
     string,
@@ -1457,14 +1497,20 @@ export async function loadScoresForAssignment(assignmentId: string) {
     return { ok: false as const, error: "Assignment not found." };
   }
 
-  const { data: scoreRows, error: scoresError } = await (admin as Db)
-    .from("teacher_scores")
-    .select("student_id, score, comments, remarks")
-    .eq("assignment_id", assignmentId);
-
-  if (scoresError) {
-    return { ok: false as const, error: scoresError.message };
-  }
+  const scoreRows = await fetchAllRows<{
+    student_id: string;
+    score: unknown;
+    comments: string | null;
+    remarks: string | null;
+  }>({
+    label: "teacher-dashboard:loadScoresForAssignment scores",
+    fetchPage: async (from, to) =>
+      await (admin as Db)
+        .from("teacher_scores")
+        .select("student_id, score, comments, remarks")
+        .eq("assignment_id", assignmentId)
+        .range(from, to),
+  });
 
   const scoreByStudent: Record<
     string,

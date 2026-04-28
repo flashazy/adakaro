@@ -54,6 +54,7 @@ import {
   loadReportCardSupplementaryBatch,
   mergeSupplementaryForPreview,
 } from "@/lib/report-card-supplementary";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 // Re-export shared types/constants so existing consumers of `./data` continue
 // to work. The underlying definitions live in the client-safe `./types`
@@ -360,6 +361,21 @@ function collapseCommentsToOnePerSubject(
   rows: ReportCardCommentRow[]
 ): ReportCardCommentRow[] {
   const bySubject = new Map<string, ReportCardCommentRow>();
+  const pickNumber = (
+    preferred: number | null | undefined,
+    fallback: number | null | undefined
+  ): number | null => {
+    return preferred != null ? preferred : fallback ?? null;
+  };
+  const pickString = (
+    preferred: string | null | undefined,
+    fallback: string | null | undefined
+  ): string | null => {
+    const p = (preferred ?? "").trim();
+    if (p) return p;
+    const f = (fallback ?? "").trim();
+    return f || null;
+  };
   const scoreRichness = (r: ReportCardCommentRow): number => {
     let s = 0;
     if (r.exam1Score != null) s += 3;
@@ -397,10 +413,30 @@ function collapseCommentsToOnePerSubject(
 
     bySubject.set(key, {
       ...base,
+      // Merge exam/calculated values field-by-field so we never drop one exam
+      // when April/June values exist on different rows.
+      exam1Score: pickNumber(base.exam1Score, other.exam1Score),
+      exam2Score: pickNumber(base.exam2Score, other.exam2Score),
+      calculatedScore: pickNumber(base.calculatedScore, other.calculatedScore),
+      scorePercent: pickNumber(base.scorePercent, other.scorePercent),
+      exam1GradebookOriginal: pickNumber(
+        base.exam1GradebookOriginal,
+        other.exam1GradebookOriginal
+      ),
+      exam2GradebookOriginal: pickNumber(
+        base.exam2GradebookOriginal,
+        other.exam2GradebookOriginal
+      ),
+      exam1ScoreOverridden:
+        base.exam1ScoreOverridden === true || other.exam1ScoreOverridden === true,
+      exam2ScoreOverridden:
+        base.exam2ScoreOverridden === true || other.exam2ScoreOverridden === true,
       comment: mergedComment,
       position: mergedPosition,
       letterGrade: mergedLetterGrade,
       calculatedGrade: mergedCalculatedGrade,
+      // Keep a stable non-empty subject label even across mixed-case rows.
+      subject: pickString(base.subject, other.subject) ?? base.subject,
     });
   }
   return [...bySubject.values()];
@@ -409,6 +445,13 @@ function collapseCommentsToOnePerSubject(
 interface GradebookExamPair {
   exam1Pct: number | null;
   exam2Pct: number | null;
+}
+
+function normalizeGradebookAssignmentTitleForCoordinator(raw: string): string {
+  return (raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 /**
@@ -444,17 +487,14 @@ async function loadGradebookScoresForClass(
     .select("id, title, exam_type, subject, max_score, academic_year")
     .in("class_id", params.classIds);
 
-  const gbRows = ((gbRowsRaw ?? []) as {
+  const gbRows = (gbRowsRaw ?? []) as {
     id: string;
     title: string;
     exam_type: string | null;
     subject: string;
     max_score: number | string;
     academic_year: string | null;
-  }[]).filter((r) => {
-    const yr = (r.academic_year ?? "").trim();
-    return !yr || yr === params.academicYear;
-  });
+  }[];
 
   type Meta = {
     subjectKey: string;
@@ -464,16 +504,33 @@ async function loadGradebookScoresForClass(
   const metaByAssignment = new Map<string, Meta>();
 
   for (const r of gbRows) {
-    const examType =
-      parseGradebookExamType(r.exam_type) ??
-      inferMajorExamTypeFromTitle(r.title);
-    if (!examType) continue;
-    const slot: "exam1" | "exam2" | null =
-      examType === wanted.exam1
+    const examTypeRaw = parseGradebookExamType(r.exam_type);
+    let slot: "exam1" | "exam2" | null =
+      examTypeRaw === wanted.exam1
         ? "exam1"
-        : examType === wanted.exam2
+        : examTypeRaw === wanted.exam2
           ? "exam2"
           : null;
+
+    // Deterministic fallback (no inference): exact preset titles used by
+    // markbook assignment creation.
+    if (!slot) {
+      const nt = normalizeGradebookAssignmentTitleForCoordinator(r.title);
+      if (params.term === "Term 1") {
+        if (nt === "april midterm examination") {
+          slot = "exam1";
+        } else if (nt === "june terminal examination") {
+          slot = "exam2";
+        }
+      } else {
+        if (nt === "september midterm examination") {
+          slot = "exam1";
+        } else if (nt === "december annual examination") {
+          slot = "exam2";
+        }
+      }
+    }
+
     if (!slot) continue;
     const maxScore = Number(r.max_score);
     if (!Number.isFinite(maxScore) || maxScore <= 0) continue;
@@ -487,17 +544,23 @@ async function loadGradebookScoresForClass(
   const assignmentIds = [...metaByAssignment.keys()];
   if (assignmentIds.length === 0) return out;
 
-  const { data: scRows } = await admin
-    .from("teacher_scores")
-    .select("assignment_id, student_id, score")
-    .in("assignment_id", assignmentIds)
-    .in("student_id", params.studentIds);
-
-  for (const row of (scRows ?? []) as {
+  const scRows = await fetchAllRows<{
     assignment_id: string;
     student_id: string;
     score: unknown;
-  }[]) {
+  }>({
+    label: "coordinator:data teacher_scores by assignments+students",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_scores")
+        .select("assignment_id, student_id, score")
+        .in("assignment_id", assignmentIds)
+        .in("student_id", params.studentIds)
+        .order("id", { ascending: true })
+        .range(from, to),
+  });
+
+  for (const row of scRows) {
     const meta = metaByAssignment.get(row.assignment_id);
     if (!meta) continue;
     const n = parseNumeric(row.score);
@@ -622,18 +685,41 @@ async function loadClassReportCards(
     parseSubjectEnrollmentTerm(termExact) ??
     (gbTerm === "Term 2" ? "Term 2" : "Term 1");
 
-  let rcQuery = admin
-    .from("report_cards")
-    .select(
-      "id, class_id, school_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id, gender )"
-    )
-    .in("class_id", params.classIds)
-    .eq("term", termExact)
-    .eq("academic_year", params.academicYear);
-  if (params.statuses && params.statuses.length > 0) {
-    rcQuery = rcQuery.in("status", params.statuses);
-  }
-  const { data: cards } = await rcQuery;
+  const cards = await fetchAllRows<{
+    id: string;
+    class_id: string;
+    school_id: string;
+    status: ReportCardStatus;
+    student_id: string;
+    term: string;
+    academic_year: string;
+    approved_at: string | null;
+    updated_at: string | null;
+    teacher_id: string | null;
+    students: {
+      full_name: string;
+      parent_email: string | null;
+      admission_number: string | null;
+      class_id: string;
+      gender: "male" | "female" | null;
+    } | null;
+  }>({
+    label: "coordinator:data report_cards by class+term+year",
+    fetchPage: async (from, to) => {
+      let q = admin
+        .from("report_cards")
+        .select(
+          "id, class_id, school_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id, gender )"
+        )
+        .in("class_id", params.classIds)
+        .eq("term", termExact)
+        .eq("academic_year", params.academicYear);
+      if (params.statuses && params.statuses.length > 0) {
+        q = q.in("status", params.statuses);
+      }
+      return await q.range(from, to);
+    },
+  });
 
   const cardRows = (cards ?? []) as {
     id: string;
@@ -687,7 +773,6 @@ async function loadClassReportCards(
   }
 
   const studentIds = [...new Set(cardRows.map((c) => c.student_id))];
-
   // Pull major-exam scores straight from the gradebook. Coordinators are not
   // restricted by `teacher_id`, so `admin` returns every subject teacher's
   // scores — this matches what the teacher sees auto-filled in their editor.
@@ -706,13 +791,23 @@ async function loadClassReportCards(
   }
 
   const { start, end } = termDateRange(gbTerm, params.academicYear);
-  const { data: attRowsRaw } = await admin
-    .from("teacher_attendance")
-    .select("student_id, status, attendance_date, subject_id")
-    .in("class_id", params.classIds)
-    .in("student_id", studentIds)
-    .gte("attendance_date", start)
-    .lte("attendance_date", end);
+  const attRowsRaw = await fetchAllRows<{
+    student_id: string;
+    status: "present" | "absent" | "late";
+    attendance_date: string;
+    subject_id: string | null;
+  }>({
+    label: "coordinator:data teacher_attendance for class term range",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_attendance")
+        .select("student_id, status, attendance_date, subject_id")
+        .in("class_id", params.classIds)
+        .in("student_id", studentIds)
+        .gte("attendance_date", start)
+        .lte("attendance_date", end)
+        .range(from, to),
+  });
 
   const attRows = dedupeTeacherAttendanceByStudentAndDate(
     (attRowsRaw ?? []) as {
@@ -944,6 +1039,7 @@ async function loadClassReportCards(
       summary.selectedSubjects,
       params.schoolLevel
     );
+
 
     const attendance = attendanceByStudent.get(c.student_id) ?? {
       present: 0,

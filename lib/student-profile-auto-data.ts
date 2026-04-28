@@ -14,6 +14,7 @@ import {
   getCurrentAcademicYearAndTerm,
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { tanzaniaLetterGrade, tanzaniaPercentFromScore } from "@/lib/tanzania-grades";
 import type { Database, UserRole } from "@/types/supabase";
 
@@ -175,20 +176,30 @@ export async function loadProfileGradebookScores(
    */
   schoolLevel: SchoolLevel = "secondary"
 ): Promise<ProfileGradebookScoreRow[]> {
-  const { data: scoresRaw, error } = await admin
-    .from("teacher_scores")
-    .select("id, assignment_id, score")
-    .eq("student_id", studentId);
+  const scoresRaw = await fetchAllRows<TeacherScorePick>({
+    label: "student-profile:auto-data teacher_scores by student",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_scores")
+        .select("id, assignment_id, score")
+        .eq("student_id", studentId)
+        .range(from, to),
+  });
   const scores = scoresRaw as TeacherScorePick[] | null;
-  if (error || !scores?.length) return [];
+  if (!scores?.length) return [];
 
   const assignmentIds = [...new Set(scores.map((s) => s.assignment_id))];
-  const { data: assignsRaw, error: aErr } = await admin
-    .from("teacher_gradebook_assignments")
-    .select("id, title, max_score, subject, term, academic_year, class_id")
-    .in("id", assignmentIds);
+  const assignsRaw = await fetchAllRows<GradebookAssignmentPick>({
+    label: "student-profile:auto-data gradebook assignments by ids",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_gradebook_assignments")
+        .select("id, title, max_score, subject, term, academic_year, class_id")
+        .in("id", assignmentIds)
+        .range(from, to),
+  });
   const assigns = assignsRaw as GradebookAssignmentPick[] | null;
-  if (aErr || !assigns?.length) return [];
+  if (!assigns?.length) return [];
 
   const classIds = [...new Set(assigns.map((a) => a.class_id))];
   const { data: classRowsRaw } = await admin
@@ -261,13 +272,18 @@ export async function loadProfileAttendanceSummary(
     return { presentDays: 0, absentDays: 0, lateDays: 0, termLabel };
   }
 
-  const { data: rows, error } = await supabase
-    .from("teacher_attendance")
-    .select("attendance_date, status")
-    .eq("student_id", studentId)
-    .eq("class_id", classId);
+  const rows = await fetchAllRows<{ attendance_date: string; status: "present" | "absent" | "late" }>({
+    label: "student-profile:auto-data attendance by student+class",
+    fetchPage: async (from, to) =>
+      await supabase
+        .from("teacher_attendance")
+        .select("attendance_date, status")
+        .eq("student_id", studentId)
+        .eq("class_id", classId)
+        .range(from, to),
+  });
 
-  if (error || !rows?.length) {
+  if (!rows?.length) {
     return { presentDays: 0, absentDays: 0, lateDays: 0, termLabel };
   }
 

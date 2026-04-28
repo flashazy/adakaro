@@ -6,6 +6,7 @@ import type {
   ClassTeacherGradeRow,
   ClassTeacherStudentParentRow,
 } from "./class-teacher-table-types";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -119,10 +120,13 @@ export async function loadClassTeacherAttendanceOverview(
   admin: Admin,
   classId: string
 ): Promise<ClassTeacherAttendanceRow[]> {
-  const { data: att, error } = await admin
-    .from("teacher_attendance")
-    .select(
-      `
+  const att = await fetchAllRows({
+    label: "class-teacher:attendance overview rows",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_attendance")
+        .select(
+          `
       id,
       attendance_date,
       status,
@@ -131,12 +135,13 @@ export async function loadClassTeacherAttendanceOverview(
       subjects ( name ),
       students ( full_name )
     `
-    )
-    .eq("class_id", classId)
-    .order("attendance_date", { ascending: false })
-    .limit(2500);
+        )
+        .eq("class_id", classId)
+        .order("attendance_date", { ascending: false })
+        .range(from, to),
+  });
 
-  if (error || !att?.length) return [];
+  if (!att?.length) return [];
 
   const teacherIds = [
     ...new Set(
@@ -188,13 +193,23 @@ export async function loadClassTeacherGradesReadOnly(
   admin: Admin,
   classId: string
 ): Promise<ClassTeacherGradeRow[]> {
-  const { data: assigns, error } = await admin
-    .from("teacher_gradebook_assignments")
-    .select("id, subject, title, max_score, teacher_id")
-    .eq("class_id", classId)
-    .order("subject")
-    .limit(500);
-  if (error || !assigns?.length) return [];
+  const assigns = await fetchAllRows<{
+    id: string;
+    subject: string;
+    title: string;
+    max_score: number;
+    teacher_id: string;
+  }>({
+    label: "class-teacher:grades readonly assignments",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_gradebook_assignments")
+        .select("id, subject, title, max_score, teacher_id")
+        .eq("class_id", classId)
+        .order("subject")
+        .range(from, to),
+  });
+  if (!assigns?.length) return [];
 
   const assignmentIds = (assigns as { id: string }[]).map((a) => a.id);
   const teacherIds = [
@@ -213,16 +228,25 @@ export async function loadClassTeacherGradesReadOnly(
     }
   }
 
-  const { data: scores } = await admin
-    .from("teacher_scores")
-    .select(
-      `
+  const scores = await fetchAllRows<{
+    assignment_id: string;
+    score: unknown;
+    students: { full_name: string } | null;
+  }>({
+    label: "class-teacher:grades readonly scores",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_scores")
+        .select(
+          `
       assignment_id,
       score,
       students ( full_name )
     `
-    )
-    .in("assignment_id", assignmentIds);
+        )
+        .in("assignment_id", assignmentIds)
+        .range(from, to),
+  });
 
   const scoreRows = (scores ?? []) as unknown as {
     assignment_id: string;

@@ -19,6 +19,11 @@ import {
   GRADEBOOK_EXAM_ASSIGNMENT_TITLES,
 } from "./constants";
 import {
+  inferMajorExamTypeFromTitle,
+  parseGradebookExamType,
+  type GradebookMajorExamTypeValue,
+} from "@/lib/gradebook-major-exams";
+import {
   currentAcademicYear,
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
@@ -31,6 +36,7 @@ import {
   normalizeSchoolLevel,
   type SchoolLevel,
 } from "@/lib/school-level";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 export type {
   PendingReportCardRow,
@@ -941,6 +947,16 @@ const NORM_TITLE_TO_BUCKET: Record<
   )]: "decemberAnnualPct",
 };
 
+const EXAM_TYPE_TO_BUCKET: Record<
+  GradebookMajorExamTypeValue,
+  keyof ReportCardGradebookExamPercentages
+> = {
+  April_Midterm: "aprilMidtermPct",
+  June_Terminal: "juneTerminalPct",
+  September_Midterm: "septemberMidtermPct",
+  December_Annual: "decemberAnnualPct",
+};
+
 function emptyExamPercents(): ReportCardGradebookExamPercentages {
   return {
     aprilMidtermPct: null,
@@ -1040,22 +1056,48 @@ export async function loadStudentGradebookExamScores(params: {
     params.examNames?.length && params.examNames.some((n) => n.trim())
       ? params.examNames
       : [...DEFAULT_REPORT_CARD_GRADEBOOK_EXAM_NAMES];
-  const allowedNorm = new Set(
-    nameList.map((n) => normalizeGradebookAssignmentTitle(n))
-  );
+  const allowedBuckets = new Set<keyof ReportCardGradebookExamPercentages>();
+  for (const rawName of nameList) {
+    const nt = normalizeGradebookAssignmentTitle(rawName);
+    const byTitle = NORM_TITLE_TO_BUCKET[nt];
+    if (byTitle) {
+      allowedBuckets.add(byTitle);
+      continue;
+    }
+    const inferred = inferMajorExamTypeFromTitle(rawName);
+    if (inferred) {
+      allowedBuckets.add(EXAM_TYPE_TO_BUCKET[inferred]);
+    }
+  }
 
-  const { data: aRowsRaw, error: aErr } = await admin
-    .from("teacher_gradebook_assignments")
-    .select("id, title, max_score, subject, term")
-    .eq("teacher_id", user.id)
-    .eq("class_id", params.classId);
-
-  if (aErr) {
+  let aRowsRaw:
+    | {
+        id: string;
+        title: string;
+        exam_type: string | null;
+        max_score: number;
+        subject: string;
+        term: string | null;
+      }[]
+    | null = null;
+  try {
+    aRowsRaw = await fetchAllRows({
+      label: "report-cards:loadStudentGradebookExamScores assignments",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_gradebook_assignments")
+          .select("id, title, exam_type, max_score, subject, term")
+          .eq("teacher_id", user.id)
+          .eq("class_id", params.classId)
+          .range(from, to),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error(
       "[loadStudentGradebookExamScores] teacher_gradebook_assignments query failed",
-      aErr
+      msg
     );
-    return { ok: false, error: aErr.message };
+    return { ok: false, error: msg };
   }
 
   const termForAssignFilter = (params.term ?? "").trim();
@@ -1081,15 +1123,20 @@ export async function loadStudentGradebookExamScores(params: {
     const r = row as {
       id: string;
       title: string;
+      exam_type: string | null;
       max_score: number;
       subject: string;
     };
     const canonical = subjectKeyByLower.get(r.subject.trim().toLowerCase());
     if (!canonical) continue;
-    const nt = normalizeGradebookAssignmentTitle(r.title);
-    if (!allowedNorm.has(nt)) continue;
-    const bucket = NORM_TITLE_TO_BUCKET[nt];
+    const parsedType = parseGradebookExamType(r.exam_type);
+    const inferredType = parsedType ?? inferMajorExamTypeFromTitle(r.title);
+    const bucket =
+      inferredType != null
+        ? EXAM_TYPE_TO_BUCKET[inferredType]
+        : NORM_TITLE_TO_BUCKET[normalizeGradebookAssignmentTitle(r.title)];
     if (!bucket) continue;
+    if (allowedBuckets.size > 0 && !allowedBuckets.has(bucket)) continue;
     metaByAssignmentId.set(r.id, {
       subject: canonical,
       maxScore: Number(r.max_score),
@@ -1108,18 +1155,27 @@ export async function loadStudentGradebookExamScores(params: {
     return { ok: true, scoresBySubject };
   }
 
-  const { data: scRows, error: scErr } = await admin
-    .from("teacher_scores")
-    .select("assignment_id, score")
-    .eq("student_id", params.studentId)
-    .in("assignment_id", assignmentIds);
-
-  if (scErr) {
-    console.error(
-      "[loadStudentGradebookExamScores] teacher_scores query failed",
-      scErr
-    );
-    return { ok: false, error: scErr.message };
+  let scRows:
+    | {
+        assignment_id: string;
+        score: unknown;
+      }[]
+    | null = null;
+  try {
+    scRows = await fetchAllRows({
+      label: "report-cards:loadStudentGradebookExamScores scores",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_scores")
+          .select("assignment_id, score")
+          .eq("student_id", params.studentId)
+          .in("assignment_id", assignmentIds)
+          .range(from, to),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[loadStudentGradebookExamScores] teacher_scores query failed", msg);
+    return { ok: false, error: msg };
   }
 
   for (const srow of scRows ?? []) {

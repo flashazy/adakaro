@@ -50,7 +50,7 @@ export default async function PaymentsPage() {
         .select("id, student_id, amount, payment_method, payment_date, reference_number, notes, fee_structure_id, receipt:receipts(id, receipt_number)")
         .in("student_id", studentIds)
         .order("payment_date", { ascending: false })
-        .limit(50)
+        .limit(500)
     : { data: [], error: null };
 
   const fetchError = combineSupabaseErrors([

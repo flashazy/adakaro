@@ -13,6 +13,7 @@ import { shareReportCardWithParent } from "../report-cards/actions";
 import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { persistAcademicPerformanceReport } from "@/lib/academic-performance-report";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -471,13 +472,18 @@ export async function generateReportCardsForClassAction(
   //    + teacher comments backfilled in step 8b so the coordinator's "Generate
   //    Report Cards" button can be re-run to refresh those columns without first
   //    deleting the cards by hand.
-  const { data: existing } = await admin
-    .from("report_cards")
-    .select("id, student_id")
-    .eq("class_id", classId)
-    .eq("term", term)
-    .eq("academic_year", academicYear)
-    .in("student_id", studentIds);
+  const existing = await fetchAllRows<{ id: string; student_id: string }>({
+    label: "coordinator:generate existing report_cards by class/term/year",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("report_cards")
+        .select("id, student_id")
+        .eq("class_id", classId)
+        .eq("term", term)
+        .eq("academic_year", academicYear)
+        .in("student_id", studentIds)
+        .range(from, to),
+  });
   const existingCardByStudent = new Map<string, string>();
   for (const r of (existing ?? []) as { id: string; student_id: string }[]) {
     existingCardByStudent.set(r.student_id, r.id);
@@ -487,10 +493,22 @@ export async function generateReportCardsForClassAction(
   //    Use the admin client — coordinators aren't necessarily the teacher who owns
   //    these rows, so we can't filter by teacher_id.
   const wanted = TERM_EXAM_KEYS[term];
-  const { data: gbRowsRaw } = await admin
-    .from("teacher_gradebook_assignments")
-    .select("id, title, exam_type, subject, max_score, academic_year")
-    .in("class_id", classIdsForData);
+  const gbRowsRaw = await fetchAllRows<{
+    id: string;
+    title: string;
+    exam_type: string | null;
+    subject: string;
+    max_score: number | string;
+    academic_year: string | null;
+  }>({
+    label: "coordinator:generate gradebook assignments",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_gradebook_assignments")
+        .select("id, title, exam_type, subject, max_score, academic_year")
+        .in("class_id", classIdsForData)
+        .range(from, to),
+  });
 
   const gbRows = ((gbRowsRaw ?? []) as {
     id: string;
@@ -568,12 +586,23 @@ export async function generateReportCardsForClassAction(
   // teacher_report_card_comments row for the same (student, subject, term, year).
   const teacherCommentByStudentSubject = new Map<string, string>();
   if (allAssignmentIds.length > 0) {
-    const { data: scoreRows } = await admin
-      .from("teacher_scores")
-      .select("assignment_id, student_id, score, remarks, updated_at")
-      .in("assignment_id", allAssignmentIds)
-      .in("student_id", studentIds)
-      .order("updated_at", { ascending: false });
+    const scoreRows = await fetchAllRows<{
+      assignment_id: string;
+      student_id: string;
+      score: unknown;
+      remarks: string | null;
+      updated_at: string | null;
+    }>({
+      label: "coordinator:generate teacher_scores for assignments+students",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_scores")
+          .select("assignment_id, student_id, score, remarks, updated_at")
+          .in("assignment_id", allAssignmentIds)
+          .in("student_id", studentIds)
+          .order("updated_at", { ascending: false })
+          .range(from, to),
+    });
 
     for (const s of (scoreRows ?? []) as {
       assignment_id: string;
@@ -605,14 +634,24 @@ export async function generateReportCardsForClassAction(
   // is the most reliable source of the comment column the coordinator's
   // "Teacher comment" column should display.
   {
-    const { data: priorComments } = await admin
-      .from("teacher_report_card_comments")
-      .select("student_id, subject, comment, updated_at")
-      .eq("term", term)
-      .eq("academic_year", academicYear)
-      .in("student_id", studentIds)
-      .not("comment", "is", null)
-      .order("updated_at", { ascending: false });
+    const priorComments = await fetchAllRows<{
+      student_id: string;
+      subject: string;
+      comment: string | null;
+      updated_at: string | null;
+    }>({
+      label: "coordinator:generate prior teacher_report_card_comments",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_report_card_comments")
+          .select("student_id, subject, comment, updated_at")
+          .eq("term", term)
+          .eq("academic_year", academicYear)
+          .in("student_id", studentIds)
+          .not("comment", "is", null)
+          .order("updated_at", { ascending: false })
+          .range(from, to),
+    });
 
     for (const r of (priorComments ?? []) as {
       student_id: string;

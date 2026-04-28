@@ -5,7 +5,6 @@ import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import {
   defaultCoordinatorAcademicYear,
   defaultCoordinatorTerm,
-  loadCoordinatorOverview,
 } from "./data";
 import { CoordinatorDashboardClient } from "./coordinator-client";
 
@@ -44,33 +43,10 @@ export default async function CoordinatorDashboardPage({
   const term = parseTermParam(params.term);
   const academicYear = parseYearParam(params.year);
 
-  const overview = await loadCoordinatorOverview({
-    userId: user.id,
-    term,
-    academicYear,
-  });
-
   return (
     <>
       <div className="mx-auto max-w-5xl space-y-8 px-0 pb-8 sm:px-1">
-        {overview.classes.length === 0 ? (
-          <>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-              Coordinator Dashboard
-            </h1>
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-              You are not currently assigned as coordinator for any classes. Ask
-              your school administrator to promote you to Coordinator from the
-              Teachers page (requires the Academic role).
-            </section>
-          </>
-        ) : (
-          <CoordinatorDashboardClient
-            overview={overview}
-            term={term}
-            academicYear={academicYear}
-          />
-        )}
+        <CoordinatorDashboardClient term={term} academicYear={academicYear} />
       </div>
       <div className="print:hidden">
         <SmartFloatingScrollButton sectionIds={[]} />

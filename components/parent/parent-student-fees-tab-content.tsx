@@ -294,7 +294,7 @@ export function ParentStudentFeesTabContent({
             />
           </svg>
           <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-            No payments recorded yet.
+            {sTotalFee === 0 ? "No payment records available." : "No payments recorded yet."}
           </p>
         </div>
       )}

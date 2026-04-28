@@ -18,6 +18,7 @@ import {
   parseSubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
 import { getStudentsForSubject } from "@/lib/student-subject-enrollment-queries";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { getTeacherTeachingClasses } from "./data";
 import { TeacherDashboardLocked } from "./components/TeacherDashboardLocked";
 import { TeacherDocuments } from "./components/TeacherDocuments";
@@ -169,11 +170,20 @@ export default async function TeacherDashboardPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data: attTodayRows } = await admin
-    .from("teacher_attendance")
-    .select("student_id, attendance_date, subject_id")
-    .eq("teacher_id", user.id)
-    .eq("attendance_date", today);
+  const attTodayRows = await fetchAllRows<{
+    student_id: string;
+    attendance_date: string;
+    subject_id: string | null;
+  }>({
+    label: "teacher-dashboard:page today attendance",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_attendance")
+        .select("student_id, attendance_date, subject_id")
+        .eq("teacher_id", user.id)
+        .eq("attendance_date", today)
+        .range(from, to),
+  });
 
   const todayAttendanceCount = dedupeTeacherAttendanceByStudentAndDate(
     (attTodayRows ?? []) as {
@@ -183,10 +193,21 @@ export default async function TeacherDashboardPage() {
     }[]
   ).length;
 
-  const { data: gradebookRowsRaw } = await admin
-    .from("teacher_gradebook_assignments")
-    .select("id, class_id, subject, academic_year, term")
-    .eq("teacher_id", user.id);
+  const gradebookRowsRaw = await fetchAllRows<{
+    id: string;
+    class_id: string;
+    subject: string;
+    academic_year: string | null;
+    term: string | null;
+  }>({
+    label: "teacher-dashboard:page gradebook assignments",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_gradebook_assignments")
+        .select("id, class_id, subject, academic_year, term")
+        .eq("teacher_id", user.id)
+        .range(from, to),
+  });
 
   const gradebookRows = (gradebookRowsRaw ?? []) as {
     id: string;
@@ -257,10 +278,19 @@ export default async function TeacherDashboardPage() {
   const assignmentIds = gradebookRows.map((r) => r.id);
   const scoresByAssignment = new Map<string, Map<string, unknown>>();
   if (assignmentIds.length > 0) {
-    const { data: scoreRows } = await admin
-      .from("teacher_scores")
-      .select("assignment_id, student_id, score")
-      .in("assignment_id", assignmentIds);
+    const scoreRows = await fetchAllRows<{
+      assignment_id: string;
+      student_id: string;
+      score: unknown;
+    }>({
+      label: "teacher-dashboard:page scores by assignment ids",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_scores")
+          .select("assignment_id, student_id, score")
+          .in("assignment_id", assignmentIds)
+          .range(from, to),
+    });
     for (const r of scoreRows ?? []) {
       const sr = r as {
         assignment_id: string;

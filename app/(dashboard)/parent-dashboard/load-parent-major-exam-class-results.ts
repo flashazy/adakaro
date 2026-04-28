@@ -15,6 +15,7 @@ import type {
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { subjectTextKey } from "@/lib/subject-text-key";
 
 type AssignmentRow = {
@@ -82,10 +83,32 @@ export async function listParentClassResultSubjects(
 ): Promise<string[]> {
   const admin = createAdminClient();
   const cluster = await resolveClassCluster(admin, classId);
-  const { data: rawAssign, error: assignErr } = await admin
-    .from("teacher_gradebook_assignments")
-    .select("id, subject, title, max_score, academic_year, term, updated_at")
-    .in("class_id", cluster.classIds);
+  let assignErr: { message?: string } | null = null;
+  let rawAssign:
+    | Pick<
+        AssignmentRow,
+        | "id"
+        | "subject"
+        | "title"
+        | "max_score"
+        | "academic_year"
+        | "term"
+        | "updated_at"
+      >[]
+    | null = null;
+  try {
+    rawAssign = await fetchAllRows({
+      label: "parent-dashboard:listParentClassResultSubjects assignments",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_gradebook_assignments")
+          .select("id, subject, title, max_score, academic_year, term, updated_at")
+          .in("class_id", cluster.classIds)
+          .range(from, to),
+    });
+  } catch (error) {
+    assignErr = { message: error instanceof Error ? error.message : String(error) };
+  }
 
   const allAssign = (rawAssign ?? []) as Pick<
     AssignmentRow,
@@ -119,10 +142,29 @@ export async function listParentClassResultSubjects(
   }
 
   const allAssignmentIds = allAssign.map((m) => m.id);
-  const { data: scoreData, error: scoreErr } = await admin
-    .from("teacher_scores")
-    .select("id, assignment_id, student_id, score, comments")
-    .in("assignment_id", allAssignmentIds);
+  let scoreErr: { message?: string } | null = null;
+  let scoreData:
+    | {
+        id: string;
+        assignment_id: string;
+        student_id: string;
+        score: number | null;
+        comments: string | null;
+      }[]
+    | null = null;
+  try {
+    scoreData = await fetchAllRows({
+      label: "parent-dashboard:listParentClassResultSubjects scores",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_scores")
+          .select("id, assignment_id, student_id, score, comments")
+          .in("assignment_id", allAssignmentIds)
+          .range(from, to),
+    });
+  } catch (error) {
+    scoreErr = { message: error instanceof Error ? error.message : String(error) };
+  }
 
   if (scoreErr && process.env.NODE_ENV === "development") {
     // eslint-disable-next-line no-console
@@ -227,12 +269,17 @@ export async function loadParentMajorExamClassResults(
   }
 
   const cluster = await resolveClassCluster(admin, classId);
-  const { data: rawAssign } = await admin
-    .from("teacher_gradebook_assignments")
-    .select(
-      "id, teacher_id, class_id, subject, title, max_score, academic_year, exam_type, term, updated_at"
-    )
-    .in("class_id", cluster.classIds);
+  const rawAssign = await fetchAllRows<AssignmentRow & { class_id: string }>({
+    label: "parent-dashboard:loadParentMajorExamClassResults assignments",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_gradebook_assignments")
+        .select(
+          "id, teacher_id, class_id, subject, title, max_score, academic_year, exam_type, term, updated_at"
+        )
+        .in("class_id", cluster.classIds)
+        .range(from, to),
+  });
 
   let allAssign = (rawAssign ?? []) as AssignmentRow[];
 
@@ -269,10 +316,20 @@ export async function loadParentMajorExamClassResults(
   }
 
   const allAssignmentIds = allAssign.map((m) => m.id);
-  const { data: scoreData } = await admin
-    .from("teacher_scores")
-    .select("assignment_id, student_id, score, comments")
-    .in("assignment_id", allAssignmentIds);
+  const scoreData = await fetchAllRows<{
+    assignment_id: string;
+    student_id: string;
+    score: number | null;
+    comments: string | null;
+  }>({
+    label: "parent-dashboard:loadParentMajorExamClassResults scores",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_scores")
+        .select("assignment_id, student_id, score, comments")
+        .in("assignment_id", allAssignmentIds)
+        .range(from, to),
+  });
 
   const scoresByAssign = new Map<
     string,

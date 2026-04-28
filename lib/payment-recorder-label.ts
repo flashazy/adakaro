@@ -24,6 +24,11 @@ export function formatPaymentRecorderLine(
   fullName: string | null | undefined,
   role: UserRole | null | undefined
 ): string {
-  const name = fullName?.trim() || "Unknown";
-  return `${name} (${paymentRecorderRoleLabel(role)})`;
+  const name = fullName?.trim() ?? "";
+  const hasName = name.length > 0;
+  const hasRole = role != null;
+  if (!hasName && !hasRole) {
+    return "Legacy payment";
+  }
+  return `${hasName ? name : "Unknown"} (${paymentRecorderRoleLabel(role)})`;
 }

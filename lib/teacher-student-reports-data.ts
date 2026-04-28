@@ -5,6 +5,7 @@ import {
   normalizeSchoolLevel,
   type SchoolLevel,
 } from "@/lib/school-level";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { tanzaniaLetterGrade, tanzaniaPercentFromScore } from "@/lib/tanzania-grades";
 import type { StudentMarksSummaryRow } from "@/lib/teacher-student-reports-types";
 
@@ -83,10 +84,19 @@ export async function loadStudentMarksSummariesForSchools(
   const pctLists = new Map<string, number[]>();
 
   for (const idGroup of chunkIds(studentIds, CHUNK)) {
-    const { data: scoreRows } = await admin
-      .from("teacher_scores")
-      .select("student_id, assignment_id, score")
-      .in("student_id", idGroup);
+    const scoreRows = await fetchAllRows<{
+      student_id: string;
+      assignment_id: string;
+      score: number | null;
+    }>({
+      label: "teacher-student-reports teacher_scores by chunked student ids",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_scores")
+          .select("student_id, assignment_id, score")
+          .in("student_id", idGroup)
+          .range(from, to),
+    });
 
     const scores = (scoreRows ?? []) as {
       student_id: string;
@@ -96,10 +106,19 @@ export async function loadStudentMarksSummariesForSchools(
     if (scores.length === 0) continue;
 
     const assignmentIds = [...new Set(scores.map((s) => s.assignment_id))];
-    const { data: assignRows } = await admin
-      .from("teacher_gradebook_assignments")
-      .select("id, max_score, class_id")
-      .in("id", assignmentIds);
+    const assignRows = await fetchAllRows<{
+      id: string;
+      max_score: number | null;
+      class_id: string;
+    }>({
+      label: "teacher-student-reports assignments by assignment ids",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("teacher_gradebook_assignments")
+          .select("id, max_score, class_id")
+          .in("id", assignmentIds)
+          .range(from, to),
+    });
 
     const assigns = (assignRows ?? []) as {
       id: string;

@@ -507,43 +507,70 @@ export function PaymentClient({
         </form>
       )}
 
-      {/* ─── Recent payments ─── */}
-      {selectedStudentId && studentPayments.length > 0 && (
+      {/* ─── Payment history ─── */}
+      {selectedStudentId && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="border-b border-slate-200 px-6 py-4 dark:border-zinc-800">
             <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-              Recent payments
+              Payment history
             </h2>
           </div>
 
-          <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-            {studentPayments.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between px-6 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium text-slate-900 dark:text-white">
-                    {money(Number(p.amount))}
-                    <span className="ml-2 text-xs font-normal text-slate-500 dark:text-zinc-400">
-                      {p.payment_method?.replace("_", " ") ?? "N/A"} · {p.payment_date}
-                    </span>
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400">
-                    {p.reference_number ? `Ref: ${p.reference_number}` : "Payment"}
-                  </p>
-                </div>
-                {p.receipt && (
-                  <Link
-                    href={`/dashboard/receipts/${p.id}`}
-                    className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                  >
-                    {p.receipt.receipt_number}
-                  </Link>
-                )}
-              </div>
-            ))}
-          </div>
+          {studentPayments.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-800">
+                <thead className="bg-slate-50 dark:bg-zinc-800/80">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-zinc-300">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-zinc-300">
+                      Amount
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-zinc-300">
+                      Method
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-zinc-300">
+                      Receipt #
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-zinc-300">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                  {studentPayments.map((p) => (
+                    <tr key={p.id}>
+                      <td className="whitespace-nowrap px-6 py-3 text-slate-700 dark:text-zinc-300">
+                        {p.payment_date}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-3 font-medium text-slate-900 dark:text-white">
+                        {money(Number(p.amount))}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-3 text-slate-700 dark:text-zinc-300">
+                        {p.payment_method?.replace(/_/g, " ") ?? "N/A"}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-3 font-mono text-slate-700 dark:text-zinc-300">
+                        {p.receipt?.receipt_number ?? "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-3 text-right">
+                        <Link
+                          href={`/dashboard/receipts/${p.id}`}
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                        >
+                          View receipt
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="px-6 py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
+              No payment records available.
+            </p>
+          )}
         </div>
       )}
     </div>

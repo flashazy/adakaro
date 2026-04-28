@@ -138,13 +138,16 @@ function formatPaymentDateDisplay(iso: string): string {
 
 function paymentStatusBadgeLabel(status: string): string {
   const s = status.trim().toLowerCase();
+  if (s.includes("fully") && s.includes("paid")) {
+    return "FULLY PAID";
+  }
   if (
     s === "completed" ||
     s === "paid" ||
     s === "success" ||
     s === "succeeded"
   ) {
-    return "Payment Completed";
+    return "PAID";
   }
   return status.replace(/_/g, " ");
 }

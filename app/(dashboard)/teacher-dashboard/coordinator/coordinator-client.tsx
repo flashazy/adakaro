@@ -194,22 +194,64 @@ function SubmitForApprovalButton() {
 }
 
 interface CoordinatorDashboardClientProps {
-  overview: CoordinatorOverview;
   term: "Term 1" | "Term 2";
   academicYear: string;
 }
 
 export function CoordinatorDashboardClient({
-  overview,
   term,
   academicYear,
 }: CoordinatorDashboardClientProps) {
-  const {
-    coordinatorSignatureUrl,
-    coordinatorSignatureVersion,
-  } = overview;
+  const [overview, setOverview] = useState<CoordinatorOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const router = useRouter();
   const feedback = useOptionalDashboardFeedback();
+
+  useEffect(() => {
+    const ac = new AbortController();
+    setLoading(true);
+    setLoadError(null);
+
+    const load = async () => {
+      try {
+        const sp = new URLSearchParams({
+          term,
+          year: academicYear,
+        });
+        const res = await fetch(
+          `/api/teacher-dashboard/coordinator-data?${sp.toString()}`,
+          {
+            method: "GET",
+            cache: "no-store",
+            signal: ac.signal,
+          }
+        );
+        const json = (await res.json()) as {
+          overview?: CoordinatorOverview;
+          error?: string;
+        };
+        if (!res.ok || !json.overview) {
+          throw new Error(json.error || "Failed to load coordinator data.");
+        }
+        setOverview(json.overview);
+      } catch (error) {
+        if (ac.signal.aborted) return;
+        setOverview(null);
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load coordinator data."
+        );
+      } finally {
+        if (!ac.signal.aborted) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => ac.abort();
+  }, [term, academicYear]);
 
   const changePeriod = (next: { term?: string; year?: string }) => {
     const sp = new URLSearchParams();
@@ -219,6 +261,48 @@ export function CoordinatorDashboardClient({
     router.push(`/teacher-dashboard/coordinator?${sp.toString()}`);
   };
 
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-10 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="flex items-center justify-center gap-3 text-slate-600 dark:text-zinc-300">
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+          <span className="text-sm font-medium">Loading coordinator data...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <>
+        <header className="space-y-1 text-center sm:text-left">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+            Coordinator Dashboard
+          </h1>
+        </header>
+        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800 shadow-sm dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+          {loadError}
+        </section>
+      </>
+    );
+  }
+
+  if (!overview || overview.classes.length === 0) {
+    return (
+      <>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          Coordinator Dashboard
+        </h1>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+          You are not currently assigned as coordinator for any classes. Ask your
+          school administrator to promote you to Coordinator from the Teachers page
+          (requires the Academic role).
+        </section>
+      </>
+    );
+  }
+
+  const { coordinatorSignatureUrl, coordinatorSignatureVersion } = overview;
   const singleClass = overview.classes.length === 1 ? overview.classes[0] : null;
   const termLongLabel =
     REPORT_TERM_OPTIONS.find((t) => t.value === term)?.label ?? term;

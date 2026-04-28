@@ -5,6 +5,7 @@ import type { Database } from "@/types/supabase";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveClassCluster, type ClusterDb } from "@/lib/class-cluster";
 import { subjectTextKey } from "@/lib/subject-text-key";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import {
   initialEmptySubjectResultsUnread,
   type SubjectResultsUnreadState,
@@ -121,10 +122,20 @@ export async function loadParentSubjectResultsUnread(
   );
 
   const cluster = await resolveClassCluster(admin, classId);
-  const { data: rawAssign } = await admin
-    .from("teacher_gradebook_assignments")
-    .select("id, subject, created_at, updated_at")
-    .in("class_id", cluster.classIds);
+  const rawAssign = await fetchAllRows<{
+    id: string;
+    subject: string;
+    created_at: string;
+    updated_at: string;
+  }>({
+    label: "parent-subject-results-unread assignments",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_gradebook_assignments")
+        .select("id, subject, created_at, updated_at")
+        .in("class_id", cluster.classIds)
+        .range(from, to),
+  });
 
   const allAssign = (rawAssign ?? []) as {
     id: string;
@@ -137,10 +148,19 @@ export async function loadParentSubjectResultsUnread(
   }
 
   const allAssignmentIds = allAssign.map((a) => a.id);
-  const { data: scoreData } = await admin
-    .from("teacher_scores")
-    .select("assignment_id, created_at, updated_at")
-    .in("assignment_id", allAssignmentIds);
+  const scoreData = await fetchAllRows<{
+    assignment_id: string;
+    created_at: string;
+    updated_at: string;
+  }>({
+    label: "parent-subject-results-unread scores",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_scores")
+        .select("assignment_id, created_at, updated_at")
+        .in("assignment_id", allAssignmentIds)
+        .range(from, to),
+  });
 
   const scoreRows = (scoreData ?? []) as (ScoreTimes & { assignment_id: string })[];
   const byAssignScores = new Map<string, ScoreTimes[]>();
