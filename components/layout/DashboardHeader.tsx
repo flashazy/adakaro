@@ -44,8 +44,6 @@ interface DashboardHeaderProps {
   schoolLogoVersion?: number | null;
   /** School display name — used for title and initials when there is no logo. */
   schoolName?: string | null;
-  /** School currency code (e.g. UGX) for title line. */
-  schoolCurrency?: string | null;
   /** Profile avatar URL when set. */
   avatarUrl?: string | null;
   /** Teacher + school admin: switch between admin and teacher dashboards. */
@@ -59,7 +57,6 @@ export function DashboardHeader({
   schoolLogoUrl = null,
   schoolLogoVersion = null,
   schoolName = null,
-  schoolCurrency = null,
   avatarUrl = null,
   showDashboardRoleToggle = false,
 }: DashboardHeaderProps) {
@@ -80,10 +77,7 @@ export function DashboardHeader({
     !isSuper &&
     (Boolean(schoolLogoUrl?.trim()) || Boolean(schoolName?.trim()));
 
-  const schoolTitleLine =
-    schoolName?.trim() && schoolCurrency?.trim()
-      ? `${schoolName.trim()} (${schoolCurrency.trim()})`
-      : schoolName?.trim() ?? "Your school";
+  const schoolTitleLine = schoolName?.trim() ?? "Your school";
 
   const schoolInitial =
     schoolName?.trim() ? schoolInitials(schoolName) : "";

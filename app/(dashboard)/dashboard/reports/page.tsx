@@ -124,7 +124,7 @@ export default async function ReportsPage() {
               Reports
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
-              {schoolName} ({currencyCode}) — Generate and export school reports
+              {schoolName} — Generate and export school reports
             </p>
           </div>
           <BackButton

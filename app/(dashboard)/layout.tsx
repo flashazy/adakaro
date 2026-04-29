@@ -126,7 +126,6 @@ export default async function DashboardGroupLayout({
             schoolLogoUrl={schoolDisplay?.logo_url ?? null}
             schoolLogoVersion={schoolDisplay?.logo_version ?? null}
             schoolName={schoolDisplay?.name ?? null}
-            schoolCurrency={schoolDisplay?.currency ?? null}
             avatarUrl={profileRow?.avatar_url ?? null}
             hasDepartmentRole={hasDepartmentRole}
             hasAcademicDepartmentRole={hasAcademicDepartmentRole}
@@ -195,7 +194,6 @@ export default async function DashboardGroupLayout({
           schoolLogoUrl={schoolDisplay?.logo_url ?? null}
           schoolLogoVersion={schoolDisplay?.logo_version ?? null}
           schoolName={schoolDisplay?.name ?? null}
-          schoolCurrency={schoolDisplay?.currency ?? null}
           avatarUrl={profileRow?.avatar_url ?? null}
           showDashboardRoleToggle={
             dualSchoolDashboard && profileRow?.role === "teacher"

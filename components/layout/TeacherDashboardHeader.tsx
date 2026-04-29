@@ -41,7 +41,6 @@ interface TeacherDashboardHeaderProps {
   schoolName?: string | null;
   schoolLogoUrl?: string | null;
   schoolLogoVersion?: number | null;
-  schoolCurrency?: string | null;
   avatarUrl?: string | null;
   /**
    * True when the teacher has at least one department role (e.g. Discipline).
@@ -72,7 +71,6 @@ export function TeacherDashboardHeader({
   schoolName = null,
   schoolLogoUrl = null,
   schoolLogoVersion = null,
-  schoolCurrency = null,
   avatarUrl = null,
   hasDepartmentRole = false,
   hasAcademicDepartmentRole = false,
@@ -85,10 +83,7 @@ export function TeacherDashboardHeader({
     Boolean(showClassTeacherNav)
   );
   const messagesHref = "/teacher-dashboard/class-teacher/messages";
-  const schoolTitleLine =
-    schoolName?.trim() && schoolCurrency?.trim()
-      ? `${schoolName.trim()} (${schoolCurrency.trim()})`
-      : schoolName?.trim() ?? "Your school";
+  const schoolTitleLine = schoolName?.trim() ?? "Your school";
   const schoolInitial = schoolName?.trim() ? schoolInitials(schoolName) : "";
   const hasSchoolBranding =
     Boolean(schoolLogoUrl?.trim()) || Boolean(schoolName?.trim());
