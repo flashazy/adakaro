@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ClassRow } from "./class-row";
+import { ClassCard, ClassRow } from "./class-row";
 import { EditClassModal } from "./edit-class-modal";
 import type { Class } from "@/types/supabase";
 import type { SchoolTeacherOption } from "@/lib/class-teacher";
@@ -114,8 +114,8 @@ export function ClassesList({
         />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-6 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
+      <div className="md:overflow-hidden md:rounded-xl md:border md:border-slate-200 md:bg-white md:shadow-sm dark:md:border-zinc-800 dark:md:bg-zinc-900">
+        <div className="flex flex-col gap-3 px-1 py-2 sm:flex-row sm:items-center sm:justify-between md:border-b md:border-slate-200 md:px-6 md:py-3 dark:md:border-zinc-800">
           <p className="text-xs text-slate-500 dark:text-zinc-400">
             {total === 0
               ? normalizedQuery
@@ -154,7 +154,7 @@ export function ClassesList({
           ) : null}
         </div>
 
-        <div className="hidden border-b border-slate-200 px-6 py-3 sm:grid sm:grid-cols-[1fr_1fr_1fr_auto] sm:gap-4 dark:border-zinc-800">
+        <div className="hidden md:grid md:grid-cols-[1fr_1fr_1fr_auto] md:gap-4 md:border-b md:border-slate-200 md:px-6 md:py-3 dark:md:border-zinc-800">
           <p className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-zinc-400">
             Name
           </p>
@@ -170,24 +170,40 @@ export function ClassesList({
         </div>
 
         {visibleItems.length > 0 ? (
-          <div className="divide-y divide-slate-200 dark:divide-zinc-800">
-            {visibleItems.map(({ cls, isStream, streamCount }) => (
-              <ClassRow
-                key={cls.id}
-                cls={cls}
-                isStream={isStream}
-                streamCount={streamCount}
-                classTeacherLabel={
-                  cls.class_teacher_id
-                    ? classTeacherNameById.get(cls.class_teacher_id) ?? "—"
-                    : null
-                }
-                onEdit={setEditingClass}
-              />
-            ))}
-          </div>
+          <>
+            {/* Mobile: stacked cards (<768px) */}
+            <div className="space-y-3 md:hidden">
+              {visibleItems.map(({ cls, isStream, streamCount }) => (
+                <ClassCard
+                  key={`mobile-${cls.id}`}
+                  cls={cls}
+                  isStream={isStream}
+                  streamCount={streamCount}
+                  onEdit={setEditingClass}
+                />
+              ))}
+            </div>
+
+            {/* Desktop: divided list (≥768px) */}
+            <div className="hidden md:block md:divide-y md:divide-slate-200 dark:md:divide-zinc-800">
+              {visibleItems.map(({ cls, isStream, streamCount }) => (
+                <ClassRow
+                  key={cls.id}
+                  cls={cls}
+                  isStream={isStream}
+                  streamCount={streamCount}
+                  classTeacherLabel={
+                    cls.class_teacher_id
+                      ? classTeacherNameById.get(cls.class_teacher_id) ?? "—"
+                      : null
+                  }
+                  onEdit={setEditingClass}
+                />
+              ))}
+            </div>
+          </>
         ) : (
-          <div className="px-6 py-12 text-center">
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center md:rounded-none md:border-0 md:border-b md:border-solid md:border-slate-200 md:bg-transparent dark:border-zinc-700 dark:bg-zinc-900 dark:md:border-zinc-800 dark:md:bg-transparent">
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               {normalizedQuery
                 ? `No classes match "${query.trim()}".`
@@ -197,7 +213,7 @@ export function ClassesList({
         )}
 
         {totalPages > 1 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-3 dark:border-zinc-800">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 md:mt-0 md:border-t md:border-slate-200 md:px-6 md:py-3 dark:md:border-zinc-800">
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}

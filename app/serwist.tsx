@@ -12,17 +12,23 @@ import { useEffect } from "react";
  * itself; the provider only handled registration + a couple of optional
  * client-side helpers (cache-on-navigation, reload-on-online).
  *
- * Registration is gated to production builds so the SW never installs in
- * `next dev` (matches the `disable={NODE_ENV === "development"}` semantic
- * the official provider uses).
+ * Registration is gated to production builds. In development we proactively
+ * unregister any worker (and wipe its caches) left behind by an earlier
+ * `npm run build && npm start` session — otherwise the stale SW would keep
+ * serving its precached HTML in dev and React would throw "Hydration failed
+ * because the server rendered HTML didn't match the client".
  */
 export function SerwistProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (
       typeof window === "undefined" ||
-      !("serviceWorker" in navigator) ||
-      process.env.NODE_ENV !== "production"
+      !("serviceWorker" in navigator)
     ) {
+      return;
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      void cleanupLeftoverServiceWorker();
       return;
     }
 
@@ -38,4 +44,35 @@ export function SerwistProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return <>{children}</>;
+}
+
+/**
+ * Unregister every controlling SW and delete every Cache Storage bucket
+ * Serwist (or any other prior worker) created. Safe to call repeatedly.
+ *
+ * If a worker was actually still controlling this page we force a one-shot
+ * reload so the next request goes straight to the dev server instead of the
+ * killed worker's stale precache — that's the only way to clear a hydration
+ * mismatch on the *current* navigation.
+ */
+async function cleanupLeftoverServiceWorker(): Promise<void> {
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    if (registrations.length === 0 && !navigator.serviceWorker.controller) {
+      return;
+    }
+
+    await Promise.all(registrations.map((reg) => reg.unregister()));
+
+    if (typeof caches !== "undefined") {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+
+    if (navigator.serviceWorker.controller) {
+      window.location.reload();
+    }
+  } catch (err) {
+    console.warn("Service worker cleanup failed:", err);
+  }
 }
