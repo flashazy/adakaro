@@ -97,16 +97,32 @@ function ExampleRow({
   yearlyTotal: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-gray-100 py-4 last:border-b-0 dark:border-zinc-800">
-      <span className="min-w-0 shrink font-semibold text-gray-900 dark:text-white">
-        {label}
-      </span>
-      <span className="shrink-0 text-right text-sm tabular-nums text-gray-600 dark:text-zinc-400">
-        {monthlyTotal}
-        <span className="mx-2 text-gray-400 dark:text-zinc-500">•</span>
-        {yearlyTotal}
-      </span>
-    </div>
+    <>
+      {/* Mobile: each example is a self-contained card (<768px) */}
+      <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:hidden dark:border-zinc-800 dark:bg-zinc-900">
+        <p className="text-base font-semibold text-gray-900 break-words dark:text-white">
+          {label}
+        </p>
+        <p className="mt-2 text-sm tabular-nums text-gray-600 dark:text-zinc-400">
+          {monthlyTotal}
+        </p>
+        <p className="mt-1 text-sm tabular-nums text-gray-600 dark:text-zinc-400">
+          {yearlyTotal}
+        </p>
+      </article>
+
+      {/* Desktop: inline row inside the parent container card (≥768px) */}
+      <div className="hidden items-center justify-between gap-4 border-b border-gray-100 py-4 last:border-b-0 md:flex dark:border-zinc-800">
+        <span className="min-w-0 shrink font-semibold text-gray-900 dark:text-white">
+          {label}
+        </span>
+        <span className="shrink-0 text-right text-sm tabular-nums text-gray-600 dark:text-zinc-400">
+          {monthlyTotal}
+          <span className="mx-2 text-gray-400 dark:text-zinc-500">•</span>
+          {yearlyTotal}
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -269,7 +285,7 @@ export default function PricingPage() {
           <p className="mt-2 text-sm text-gray-600 dark:text-zinc-400">
             Totals are before any separate payment-provider fees.
           </p>
-          <div className="mt-6 rounded-xl border border-gray-200 bg-white p-8 shadow-sm transition-shadow duration-200 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="mt-6 space-y-3 md:space-y-0 md:rounded-xl md:border md:border-gray-200 md:bg-white md:p-8 md:shadow-sm md:transition-shadow md:duration-200 md:hover:shadow-md dark:md:border-zinc-800 dark:md:bg-zinc-900">
             <ExampleRow
               label="Small school (100 students)"
               monthlyTotal="TSh 50,000 / month"

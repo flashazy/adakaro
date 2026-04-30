@@ -552,7 +552,68 @@ export function TeamPageClient({
             </select>
           </label>
         </div>
-        <div className="overflow-x-auto">
+        {/* Mobile: stacked cards (<768px) */}
+        <div className="divide-y divide-slate-100 md:hidden dark:divide-zinc-800">
+          {pageSlice.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
+              {members.length === 0
+                ? "No administrators yet."
+                : "No members match your search."}
+            </p>
+          ) : (
+            pageSlice.map((m) => (
+              <article key={`mobile-${m.membershipId}`} className="px-4 py-4">
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="min-w-0 flex-1 break-words text-base font-semibold text-slate-900 dark:text-white">
+                    {m.fullName}
+                  </h4>
+                  <span className="shrink-0 rounded-full bg-school-primary/15 px-2.5 py-0.5 text-xs font-medium text-school-primary dark:bg-school-primary/20 dark:text-school-primary">
+                    Admin
+                  </span>
+                </div>
+
+                {m.isCreator || m.promotedFromTeacher ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {m.isCreator ? (
+                      <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
+                        Creator
+                      </span>
+                    ) : null}
+                    {m.promotedFromTeacher ? (
+                      <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
+                        Promoted from teacher
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <p className="mt-2 truncate text-sm text-slate-600 dark:text-zinc-400">
+                  {m.email ?? "No email"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">
+                  Joined {m.joinedAtLabel}
+                </p>
+
+                <div className="mt-3 flex justify-end">
+                  <RemoveAdminButton
+                    userId={m.userId}
+                    label={m.fullName}
+                    disabled={!m.canRemove}
+                    disabledTitle={
+                      !m.canRemove
+                        ? (m.removeDisabledTooltip ?? undefined)
+                        : undefined
+                    }
+                    promotedFromTeacher={m.promotedFromTeacher}
+                  />
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+
+        {/* Desktop: table (≥768px) */}
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50">

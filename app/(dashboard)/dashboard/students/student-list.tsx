@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { StudentRow } from "./student-row";
+import { StudentCard, StudentRow } from "./student-row";
 import {
   getStudentSubjects,
   getSubjectsForClass,
@@ -417,7 +417,47 @@ export function StudentList({ students, classes }: StudentListProps) {
       {/* Results */}
       {filtered.length > 0 ? (
         <>
-          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          {/* Mobile: stacked cards (<768px) */}
+          <div className="mt-3 space-y-3 md:hidden">
+            {pageSlice.map((student) => (
+              <StudentCard
+                key={student.id}
+                student={student}
+                classes={classes}
+                editingId={editingId}
+                editValues={editValues}
+                onInlineEdit={handleEdit}
+                onInlineChange={handleChange}
+                onInlineSave={handleInlineSave}
+                onInlineCancel={handleInlineCancel}
+                isSaving={isSaving}
+                onDeleted={() => {
+                  if (editingId === student.id) {
+                    handleInlineCancel();
+                  }
+                  router.refresh();
+                }}
+                subjectEnrollmentEdit={
+                  editingId === student.id
+                    ? {
+                        academicYear: editSubjectYear,
+                        term: editSubjectTerm,
+                        classSubjects: editClassSubjects,
+                        selectedIds: editSubjectIds,
+                        loading: editSubjectsLoading,
+                        onYearChange: setEditSubjectYear,
+                        onTermChange: setEditSubjectTerm,
+                        onToggleSubject: toggleEditSubject,
+                        onToggleAllSubjects: toggleAllEditSubjects,
+                      }
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+
+          {/* Desktop: table (≥768px) */}
+          <div className="mt-3 hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block dark:border-zinc-800 dark:bg-zinc-900">
             <div className="max-h-[min(70vh,720px)] overflow-x-auto overflow-y-auto">
               <table className="w-full table-fixed border-collapse">
                 <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 [&_th]:bg-white dark:[&_th]:bg-zinc-900">

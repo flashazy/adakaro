@@ -2,9 +2,11 @@
   "name": "adakaro",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npm run build:sw",
+    "build:sw": "node node_modules/@serwist/cli/dist/bin.mjs build",
     "start": "next start",
     "lint": "eslint"
   },

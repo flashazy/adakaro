@@ -118,12 +118,12 @@ export function AssignSingleClassSubjectForm({
         {flash(flashState)}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm sm:col-span-2">
-            <span className="text-slate-700">Teacher</span>
+            <span className="text-slate-700 dark:text-zinc-300">Teacher</span>
             <input type="hidden" name="teacher_id" value={assignTeacherId} />
             <div className="relative mt-1 flex gap-1.5">
               <div className="relative min-w-0 flex-1">
                 <Search
-                  className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
                   aria-hidden
                 />
                 <input
@@ -155,17 +155,17 @@ export function AssignSingleClassSubjectForm({
                   aria-autocomplete="list"
                   placeholder="Search or select a teacher…"
                   disabled={assignableTeachers.length === 0}
-                  className="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-400 dark:focus:border-zinc-500 dark:focus:ring-zinc-500"
                 />
                 {assignTeacherListOpen ? (
                   <ul
                     id={ASSIGN_SINGLE_TEACHER_LISTBOX_ID}
                     role="listbox"
-                    className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                    className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-800"
                   >
                     {assignableTeachers.length === 0 ? (
                       <li
-                        className="px-3 py-2 text-sm text-slate-500"
+                        className="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400"
                         role="presentation"
                       >
                         No teachers have activated their account yet. They must
@@ -174,7 +174,7 @@ export function AssignSingleClassSubjectForm({
                       </li>
                     ) : filteredAssignTeachers.length === 0 ? (
                       <li
-                        className="px-3 py-2 text-sm text-slate-500"
+                        className="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400"
                         role="presentation"
                       >
                         No teachers match your search.
@@ -186,9 +186,9 @@ export function AssignSingleClassSubjectForm({
                             type="button"
                             role="option"
                             aria-selected={assignTeacherId === t.userId}
-                            className={`flex w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                            className={`flex w-full px-3 py-2 text-left text-sm text-slate-900 hover:bg-gray-50 dark:text-white dark:hover:bg-zinc-700 ${
                               assignTeacherId === t.userId
-                                ? "bg-gray-100 font-medium"
+                                ? "bg-gray-100 font-medium dark:bg-zinc-700"
                                 : ""
                             }`}
                             onMouseDown={(e) => e.preventDefault()}
@@ -217,7 +217,7 @@ export function AssignSingleClassSubjectForm({
                   assignableTeachers.length === 0 ||
                   (assignTeacherId === "" && assignTeacherQuery === "")
                 }
-                className="shrink-0 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                className="shrink-0 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
                 aria-label="Clear teacher selection"
               >
                 <X className="h-4 w-4" aria-hidden />
@@ -225,7 +225,7 @@ export function AssignSingleClassSubjectForm({
             </div>
           </label>
           <label className="block text-sm">
-            <span className="text-slate-700">Class</span>
+            <span className="text-slate-700 dark:text-zinc-300">Class</span>
             <select
               name="class_id"
               required
@@ -234,7 +234,7 @@ export function AssignSingleClassSubjectForm({
                 setAssignClassId(e.target.value);
                 setAssignSubjectId("");
               }}
-              className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
+              className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             >
               <option value="">Select…</option>
               {classOptions.map((c) => (
@@ -248,7 +248,7 @@ export function AssignSingleClassSubjectForm({
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-slate-700">Subject</span>
+            <span className="text-slate-700 dark:text-zinc-300">Subject</span>
             <select
               name="subject_id"
               required
@@ -258,7 +258,7 @@ export function AssignSingleClassSubjectForm({
                 !subjectOptionsByClassId ||
                 Object.keys(subjectOptionsByClassId).length === 0
               }
-              className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             >
               <option value="">
                 {!assignClassId
@@ -276,7 +276,7 @@ export function AssignSingleClassSubjectForm({
             </select>
           </label>
           <label className="block text-sm sm:col-span-2">
-            <span className="text-slate-700">
+            <span className="text-slate-700 dark:text-zinc-300">
               Academic year <span className="text-red-600">*</span>
             </span>
             <select
@@ -284,7 +284,7 @@ export function AssignSingleClassSubjectForm({
               required
               value={assignYear}
               onChange={(e) => setAssignYear(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
+              className="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             >
               {academicYearSelectValues().map((y) => (
                 <option key={y} value={y}>

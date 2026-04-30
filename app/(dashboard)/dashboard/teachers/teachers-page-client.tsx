@@ -131,6 +131,11 @@ export function TeachersPageClient({
     name: string;
   } | null>(null);
   const [resetPasswordModalKey, setResetPasswordModalKey] = useState(0);
+  const [removeConfirm, setRemoveConfirm] = useState<{
+    membershipId: string;
+    userId: string;
+    name: string;
+  } | null>(null);
 
   const [addState, addAction, addPending] = useActionState(
     addTeacherAction,
@@ -179,6 +184,13 @@ export function TeachersPageClient({
       setCoordinatorModal(null);
     }
   }, [coordinatorState]);
+
+  useEffect(() => {
+    if (removeTeacherState?.ok) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRemoveConfirm(null);
+    }
+  }, [removeTeacherState]);
 
   const teachersTabList = useMemo(
     () =>
@@ -408,7 +420,148 @@ export function TeachersPageClient({
               </p>
             ) : (
               <>
-                <ul className="mt-4 divide-y divide-slate-200 dark:divide-zinc-800">
+                {/* Mobile: stacked cards (<768px) */}
+                <div className="mt-4 space-y-3 md:hidden">
+                  {teacherAccountsPageRows.map((t) => (
+                    <article
+                      key={`mobile-${t.userId}`}
+                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="min-w-0 flex-1 break-words text-base font-semibold text-slate-900 dark:text-white">
+                          {t.fullName}
+                        </h3>
+                        {!t.passwordChanged ? (
+                          <span className="shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
+                            Pending first login
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <p className="mt-1 truncate text-sm text-slate-500 dark:text-zinc-400">
+                        {isSyntheticTeacherListEmail(t.email) ? (
+                          t.joinedAtLabel ? `joined ${t.joinedAtLabel}` : null
+                        ) : (
+                          <>
+                            {t.email ?? "No email"}
+                            {t.joinedAtLabel
+                              ? ` · joined ${t.joinedAtLabel}`
+                              : ""}
+                          </>
+                        )}
+                      </p>
+
+                      <div className="mt-3">
+                        <p className="text-xs font-medium text-slate-500 dark:text-zinc-500">
+                          Department roles
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {t.departmentRoles.length === 0 ? (
+                            <span className="text-xs text-slate-400 dark:text-zinc-500">
+                              None
+                            </span>
+                          ) : (
+                            t.departmentRoles.map((d) => (
+                              <span
+                                key={d}
+                                className="rounded-md bg-[rgb(var(--school-primary-rgb)/0.10)] px-2 py-0.5 text-xs font-medium text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.20)] dark:text-school-primary"
+                              >
+                                {DEPARTMENT_LABELS[d]}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {t.departmentRoles.includes("academic") &&
+                      t.coordinatorClassIds.length > 0 ? (
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-slate-500 dark:text-zinc-500">
+                            Coordinator for
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {t.coordinatorClassIds.map((cid) => {
+                              const name =
+                                coordinatorClassOptions.find(
+                                  (c) => c.id === cid
+                                )?.name ?? "Class";
+                              return (
+                                <span
+                                  key={cid}
+                                  className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200"
+                                >
+                                  {name}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRolesModal({
+                              userId: t.userId,
+                              name: t.fullName,
+                              initial: t.departmentRoles,
+                            })
+                          }
+                          className="rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] px-3 py-1.5 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
+                        >
+                          Manage Roles
+                        </button>
+                        {t.departmentRoles.includes("academic") ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCoordinatorModal({
+                                userId: t.userId,
+                                name: t.fullName,
+                                initial: t.coordinatorClassIds,
+                              })
+                            }
+                            className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                          >
+                            {t.coordinatorClassIds.length > 0
+                              ? "Coordinator classes"
+                              : "Assign as Coordinator"}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResetPasswordModal({
+                              userId: t.userId,
+                              name: t.fullName,
+                            });
+                            setResetPasswordModalKey((k) => k + 1);
+                          }}
+                          className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-950/50"
+                        >
+                          Reset password
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRemoveConfirm({
+                              membershipId: t.membershipId,
+                              userId: t.userId,
+                              name: t.fullName,
+                            })
+                          }
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
+                        >
+                          Remove from school
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+
+                {/* Desktop: divided list (≥768px) */}
+                <ul className="mt-4 hidden divide-y divide-slate-200 md:block dark:divide-zinc-800">
                   {teacherAccountsPageRows.map((t) => (
                     <li
                       key={t.userId}
@@ -532,27 +685,19 @@ export function TeachersPageClient({
                         >
                           Reset password
                         </button>
-                        <form action={removeTeacherAction}>
-                          <input
-                            type="hidden"
-                            name="membership_id"
-                            value={t.membershipId}
-                          />
-                          <input
-                            type="hidden"
-                            name="teacher_user_id"
-                            value={t.userId}
-                          />
-                          <button
-                            type="submit"
-                            disabled={removeTeacherPending}
-                            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
-                          >
-                            {removeTeacherPending
-                              ? "Removing…"
-                              : "Remove from school"}
-                          </button>
-                        </form>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRemoveConfirm({
+                              membershipId: t.membershipId,
+                              userId: t.userId,
+                              name: t.fullName,
+                            })
+                          }
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
+                        >
+                          Remove from school
+                        </button>
                       </div>
                     </li>
                   ))}
@@ -698,6 +843,75 @@ export function TeachersPageClient({
           teacherUserId={resetPasswordModal.userId}
           teacherName={resetPasswordModal.name}
         />
+      ) : null}
+
+      {removeConfirm ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="remove-teacher-confirm-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50 disabled:cursor-not-allowed"
+            aria-label="Close dialog"
+            onClick={() => setRemoveConfirm(null)}
+            disabled={removeTeacherPending}
+          />
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+            <h2
+              id="remove-teacher-confirm-title"
+              className="text-lg font-semibold text-slate-900 dark:text-white"
+            >
+              Remove {removeConfirm.name}?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
+              This action cannot be undone. All class assignments will also be
+              removed.
+            </p>
+
+            {removeTeacherState && !removeTeacherState.ok ? (
+              <p
+                className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
+                role="alert"
+              >
+                {removeTeacherState.error}
+              </p>
+            ) : null}
+
+            <form
+              action={removeTeacherAction}
+              className="mt-5 flex flex-wrap justify-end gap-2"
+            >
+              <input
+                type="hidden"
+                name="membership_id"
+                value={removeConfirm.membershipId}
+              />
+              <input
+                type="hidden"
+                name="teacher_user_id"
+                value={removeConfirm.userId}
+              />
+              <button
+                type="button"
+                onClick={() => setRemoveConfirm(null)}
+                disabled={removeTeacherPending}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={removeTeacherPending}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 disabled:opacity-50"
+              >
+                {removeTeacherPending ? "Removing…" : "Yes, Remove"}
+              </button>
+            </form>
+          </div>
+        </div>
       ) : null}
     </div>
   );
