@@ -14,6 +14,8 @@ import { fetchClassesWhereUserIsClassTeacher } from "@/lib/class-teacher";
 import { SchoolPrimaryCssVars } from "@/components/school-branding/school-primary-css-vars";
 import { DashboardFeedbackProvider } from "@/components/dashboard/dashboard-feedback-provider";
 import { invalidateExpiredTeacherTempPasswordIfNeeded } from "@/lib/teacher-temp-password-expiry";
+import { getDashboardBlockState } from "@/lib/dashboard/dashboard-block";
+import { BlockedDashboard } from "@/components/dashboard/blocked-dashboard";
 
 export default async function DashboardGroupLayout({
   children,
@@ -177,6 +179,14 @@ export default async function DashboardGroupLayout({
     }
   }
 
+  // Tier gate: re-evaluated on every dashboard load. Super admins bypass it
+  // (they need access to manage everything). Schools with no resolved id
+  // also bypass — they're either onboarding or have no school yet, both
+  // handled elsewhere. Schools on any paid plan never block.
+  const blockState = isSuperAdmin
+    ? null
+    : await getDashboardBlockState(supabase, schoolDisplay?.schoolId ?? null);
+
   return (
     <>
       <SchoolPrimaryCssVars primaryColor={schoolDisplay?.primary_color} />
@@ -206,8 +216,20 @@ export default async function DashboardGroupLayout({
           className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
         >
           <DashboardFeedbackProvider>
-            <BroadcastBanner showBroadcasts={showSchoolAdminBroadcasts} />
-            {children}
+            {blockState?.blocked && blockState.schoolId ? (
+              <BlockedDashboard
+                schoolId={blockState.schoolId}
+                studentCount={blockState.studentCount}
+                freeLimit={blockState.freeLimit}
+                initialPendingRequest={blockState.pendingRequest}
+                lastRejected={blockState.lastRejected}
+              />
+            ) : (
+              <>
+                <BroadcastBanner showBroadcasts={showSchoolAdminBroadcasts} />
+                {children}
+              </>
+            )}
           </DashboardFeedbackProvider>
         </div>
       </div>

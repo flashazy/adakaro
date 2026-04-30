@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatDate } from "@/lib/format-date";
-import { planDisplayName } from "@/lib/plans";
+import { binaryPlanLabel, isPaidPlanId } from "@/lib/plans";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -58,16 +58,16 @@ export function SuperAdminDashboardClient({
 
   const filteredSchools = initialData.schools.filter((school) => {
     const matchesSearch = school.name.toLowerCase().includes(search.toLowerCase());
-    const matchesPlan = planFilter === "all" || school.plan === planFilter;
+    // Two-state filter: "free" matches the free plan; "paid" matches any
+    // non-free plan (basic / pro / enterprise) under the new tier model.
+    const matchesPlan =
+      planFilter === "all"
+        ? true
+        : planFilter === "paid"
+          ? isPaidPlanId(school.plan)
+          : !isPaidPlanId(school.plan);
     return matchesSearch && matchesPlan;
   });
-
-  const planNames: Record<string, string> = {
-    free: "Free",
-    basic: "Basic",
-    pro: "Pro",
-    enterprise: "Enterprise",
-  };
 
   async function reviewRequest(requestId: string, approve: boolean) {
     setReviewBusyId(requestId);
@@ -181,8 +181,8 @@ export function SuperAdminDashboardClient({
                       {row.requester_display}
                     </td>
                     <td className="px-3 py-2">
-                      {planDisplayName(row.current_plan)} →{" "}
-                      {planDisplayName(row.requested_plan)}
+                      {binaryPlanLabel(row.current_plan)} →{" "}
+                      {binaryPlanLabel(row.requested_plan)}
                     </td>
                     <td className="px-3 py-2 text-slate-600 dark:text-zinc-400">
                       {formatDate(row.created_at)}
@@ -230,9 +230,7 @@ export function SuperAdminDashboardClient({
         >
           <option value="all">All plans</option>
           <option value="free">Free</option>
-          <option value="basic">Basic</option>
-          <option value="pro">Pro</option>
-          <option value="enterprise">Enterprise</option>
+          <option value="paid">Paid</option>
         </select>
       </div>
 
@@ -252,7 +250,7 @@ export function SuperAdminDashboardClient({
             {filteredSchools.map((school) => (
               <tr key={school.id} className="border-b">
                 <td className="px-4 py-3">{school.name}</td>
-                <td className="px-4 py-3">{planNames[school.plan] || school.plan}</td>
+                <td className="px-4 py-3">{binaryPlanLabel(school.plan)}</td>
                 <td className="px-4 py-3">{school.admin_count}</td>
                 <td className="px-4 py-3">{school.student_count}</td>
                 <td className="px-4 py-3">{formatDate(school.created_at)}</td>

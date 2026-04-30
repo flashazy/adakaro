@@ -4,10 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatLocaleDateTime, formatShortLocaleDate } from "@/lib/format-date";
-import { normalizePlanId, planDisplayName } from "@/lib/plans";
+import {
+  binaryPlanLabel,
+  isPaidPlanId,
+  normalizePlanId,
+  type PlanId,
+} from "@/lib/plans";
 import { SchoolCurrencySelect } from "@/components/SchoolCurrencySelect";
-
-const PLANS = ["free", "basic", "pro", "enterprise"] as const;
 
 export interface SchoolDetail {
   id: string;
@@ -143,39 +146,45 @@ export function SchoolDetailClient({
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
   const [invitePending, setInvitePending] = useState(false);
 
-  const [plan, setPlan] = useState(() => normalizePlanId(school.plan));
-  useEffect(() => {
-    setPlan(normalizePlanId(school.plan));
-  }, [school.plan]);
-
   const [editPlan, setEditPlan] = useState(() => normalizePlanId(school.plan));
   useEffect(() => {
     setEditPlan(normalizePlanId(school.plan));
   }, [school.plan]);
 
+  const [planSubmitting, setPlanSubmitting] = useState(false);
+
   async function refresh() {
     router.refresh();
   }
 
-  async function submitPlan(e: React.FormEvent) {
-    e.preventDefault();
-    const res = await fetch("/api/super-admin/schools/plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ schoolId: school.id, plan }),
-      credentials: "same-origin",
-    });
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      alert(body.error || "Could not update plan");
-      return;
+  /**
+   * Toggle the school between the binary "Free" and "Paid" UX states.
+   * Backend still accepts the four granular plan ids — Free maps to "free",
+   * Paid maps to "basic" (the cheapest paid tier; every paid tier behaves
+   * identically under the new model).
+   */
+  async function applyPlanChange(targetPlan: PlanId) {
+    setPlanSubmitting(true);
+    try {
+      const res = await fetch("/api/super-admin/schools/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ schoolId: school.id, plan: targetPlan }),
+        credentials: "same-origin",
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        alert(body.error || "Could not update plan");
+        return;
+      }
+      const nextPlan = normalizePlanId(targetPlan);
+      setSchool((s) => ({ ...s, plan: nextPlan }));
+      setEditPlan(nextPlan);
+      closePlanModal();
+      await refresh();
+    } finally {
+      setPlanSubmitting(false);
     }
-    const nextPlan = normalizePlanId(plan);
-    setSchool((s) => ({ ...s, plan: nextPlan }));
-    setPlan(nextPlan);
-    setEditPlan(nextPlan);
-    closePlanModal();
-    await refresh();
   }
 
   async function submitEdit(e: React.FormEvent<HTMLFormElement>) {
@@ -207,7 +216,6 @@ export function SchoolDetailClient({
       currency: String(fd.get("currency") ?? "").toUpperCase(),
       plan: nextPlan,
     }));
-    setPlan(nextPlan);
     setEditPlan(nextPlan);
     closeEditModal();
     await refresh();
@@ -379,9 +387,13 @@ export function SchoolDetailClient({
           <button
             type="button"
             onClick={() => setPlanOpen(true)}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+            className={
+              isPaidPlanId(school.plan)
+                ? "rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-zinc-900 dark:text-red-300 dark:hover:bg-red-950/40"
+                : "rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+            }
           >
-            Change plan
+            {isPaidPlanId(school.plan) ? "Downgrade to Free" : "Upgrade to Paid"}
           </button>
           <button
             type="button"
@@ -445,7 +457,7 @@ export function SchoolDetailClient({
             <div>
               <dt className="text-slate-500 dark:text-zinc-400">Plan</dt>
               <dd className="font-medium text-slate-900 dark:text-white">
-                {planDisplayName(school.plan)}
+                {binaryPlanLabel(school.plan)}
               </dd>
             </div>
             <div>
@@ -628,40 +640,58 @@ export function SchoolDetailClient({
       </main>
 
       {planOpen ? (
-        <ModalShell title="Change plan" onClose={closePlanModal}>
-          <form onSubmit={submitPlan} className="space-y-4">
-            <select
-              value={plan}
-              onChange={(e) => setPlan(normalizePlanId(e.target.value))}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+        (() => {
+          const onPaid = isPaidPlanId(school.plan);
+          const targetPlan: PlanId = onPaid ? "free" : "basic";
+          return (
+            <ModalShell
+              title={onPaid ? "Downgrade to Free" : "Upgrade to Paid"}
+              onClose={() => {
+                if (!planSubmitting) closePlanModal();
+              }}
             >
-              {PLANS.map((p) => (
-                <option key={p} value={p}>
-                  {planDisplayName(p)}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-slate-500 dark:text-zinc-400">
-              Choose any tier (upgrade or downgrade). Saving updates plan limits
-              immediately.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={closePlanModal}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-zinc-600"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
-              >
-                Save
-              </button>
-            </div>
-          </form>
-        </ModalShell>
+              <div className="space-y-4">
+                <p className="text-sm text-slate-600 dark:text-zinc-400">
+                  Current plan:{" "}
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {binaryPlanLabel(school.plan)}
+                  </span>
+                </p>
+                <p className="text-sm text-slate-600 dark:text-zinc-400">
+                  {onPaid
+                    ? "This school will move to the Free tier (max 20 students, 1 admin). If the school already has more than 20 students, the school admin's dashboard will be locked until they upgrade again."
+                    : "This school will move to the Paid tier with unlimited students, unlimited admins, and every feature unlocked. The dashboard unlocks immediately."}
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closePlanModal}
+                    disabled={planSubmitting}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:opacity-50 dark:border-zinc-600"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void applyPlanChange(targetPlan)}
+                    disabled={planSubmitting}
+                    className={
+                      onPaid
+                        ? "rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                        : "rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                    }
+                  >
+                    {planSubmitting
+                      ? "Saving…"
+                      : onPaid
+                        ? "Downgrade to Free"
+                        : "Upgrade to Paid"}
+                  </button>
+                </div>
+              </div>
+            </ModalShell>
+          );
+        })()
       ) : null}
 
       {suspendOpen ? (
@@ -765,29 +795,65 @@ export function SchoolDetailClient({
                 defaultValue={school.currency}
               />
             </div>
-            <div>
-              <label
-                htmlFor={`detail-edit-plan-${school.id}`}
-                className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-              >
+            <fieldset>
+              <legend className="block text-sm font-medium text-slate-700 dark:text-zinc-300">
                 Plan
-              </label>
-              <select
-                id={`detail-edit-plan-${school.id}`}
-                value={editPlan}
-                onChange={(e) => setEditPlan(normalizePlanId(e.target.value))}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
-              >
-                {PLANS.map((p) => (
-                  <option key={p} value={p}>
-                    {planDisplayName(p)}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                You can set any tier; limits update automatically when you save.
+              </legend>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <label
+                  className={`flex cursor-pointer items-start gap-2 rounded-lg border p-3 transition-colors ${
+                    !isPaidPlanId(editPlan)
+                      ? "border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-950/30"
+                      : "border-slate-300 dark:border-zinc-600"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={`detail-edit-plan-${school.id}`}
+                    value="free"
+                    checked={!isPaidPlanId(editPlan)}
+                    onChange={() => setEditPlan("free")}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm">
+                    <span className="block font-medium text-slate-900 dark:text-white">
+                      Free
+                    </span>
+                    <span className="block text-xs text-slate-500 dark:text-zinc-400">
+                      Capped at 20 students.
+                    </span>
+                  </span>
+                </label>
+                <label
+                  className={`flex cursor-pointer items-start gap-2 rounded-lg border p-3 transition-colors ${
+                    isPaidPlanId(editPlan)
+                      ? "border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-950/30"
+                      : "border-slate-300 dark:border-zinc-600"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={`detail-edit-plan-${school.id}`}
+                    value="basic"
+                    checked={isPaidPlanId(editPlan)}
+                    onChange={() => setEditPlan("basic")}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm">
+                    <span className="block font-medium text-slate-900 dark:text-white">
+                      Paid
+                    </span>
+                    <span className="block text-xs text-slate-500 dark:text-zinc-400">
+                      Unlimited students and admins.
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
+                Free → saved as <code>free</code>. Paid → saved as{" "}
+                <code>basic</code> (any paid tier behaves identically).
               </p>
-            </div>
+            </fieldset>
             <div className="flex justify-end gap-2">
               <button
                 type="button"

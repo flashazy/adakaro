@@ -8,17 +8,7 @@ import {
   showAdminSuccessToast,
 } from "@/components/dashboard/dashboard-feedback-provider";
 import { createClient } from "@/lib/supabase/client";
-import {
-  normalizePlanId,
-  planDisplayName,
-  type PlanId,
-} from "@/lib/plans";
-
-const PLANS: PlanId[] = ["free", "basic", "pro", "enterprise"];
-
-function planRank(p: PlanId): number {
-  return PLANS.indexOf(p);
-}
+import { isPaidPlanId } from "@/lib/plans";
 
 const plansIcon = (
   <svg
@@ -79,7 +69,6 @@ export function RequestUpgradeQuickAction({
 }: RequestUpgradeQuickActionProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [target, setTarget] = useState<PlanId>("basic");
   const [msg, setMsg] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
@@ -87,6 +76,8 @@ export function RequestUpgradeQuickAction({
 
   const effectiveSchoolId = typeof schoolId === "string" ? schoolId.trim() : "";
 
+  // Re-fetch the authoritative plan once on mount so the card reflects any
+  // server-side approval that happened while the user had this page open.
   useEffect(() => {
     if (!effectiveSchoolId) {
       setLivePlanRaw(null);
@@ -107,19 +98,16 @@ export function RequestUpgradeQuickAction({
     };
   }, [effectiveSchoolId]);
 
-  const current = normalizePlanId(livePlanRaw ?? currentPlan);
-  const atMax = current === "enterprise";
-  const higherPlans = PLANS.filter((p) => planRank(p) > planRank(current));
+  const onPaid = isPaidPlanId(livePlanRaw ?? currentPlan);
 
   return (
     <>
       <button
         type="button"
-        disabled={atMax}
+        disabled={onPaid}
         onClick={() => {
           setMsg(null);
           setSuccess(false);
-          setTarget(higherPlans[0] ?? "basic");
           setOpen(true);
         }}
         className="group flex w-full touch-manipulation items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
@@ -129,12 +117,12 @@ export function RequestUpgradeQuickAction({
         </div>
         <div>
           <p className="text-sm font-semibold text-slate-900 group-hover:text-school-primary dark:text-white dark:group-hover:text-school-primary">
-            Request upgrade
+            {onPaid ? "You are on the paid plan" : "Upgrade to Paid"}
           </p>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-            {atMax
-              ? "You are on the highest plan."
-              : "Ask a platform admin to approve a higher plan."}
+            {onPaid
+              ? "Unlimited students and admins are unlocked."
+              : "Free tier is capped at 20 students. Request an upgrade to go unlimited."}
           </p>
         </div>
       </button>
@@ -152,7 +140,7 @@ export function RequestUpgradeQuickAction({
           />
           <div className="relative z-10 w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Request plan upgrade
+              Upgrade to Paid
             </h2>
             {!effectiveSchoolId ? (
               <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
@@ -160,27 +148,11 @@ export function RequestUpgradeQuickAction({
               </p>
             ) : (
               <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
-                Current plan:{" "}
-                <span className="font-medium text-slate-900 dark:text-white">
-                  {planDisplayName(current)}
-                </span>
-                . Super admins will review your request.
+                Submit a request and a platform admin will review it. Once
+                approved, your school moves from <strong>Free</strong> to{" "}
+                <strong>Paid</strong> with unlimited students and admins.
               </p>
             )}
-            <label className="mt-4 block text-sm font-medium text-slate-700 dark:text-zinc-300">
-              Desired plan
-            </label>
-            <select
-              value={target}
-              onChange={(e) => setTarget(normalizePlanId(e.target.value))}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
-            >
-              {higherPlans.map((p) => (
-                <option key={p} value={p}>
-                  {planDisplayName(p)}
-                </option>
-              ))}
-            </select>
             {success ? (
               <p className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-400">
                 Request submitted. A platform admin will review it shortly.
@@ -220,10 +192,13 @@ export function RequestUpgradeQuickAction({
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       credentials: "same-origin",
+                      // Backend still expects a specific tier > current. Any
+                      // paid tier works under the new model; "basic" is the
+                      // minimum that satisfies the rank check.
                       body: JSON.stringify({
                         schoolId: effectiveSchoolId,
-                        requestedPlan: target,
-                        currentPlan: current,
+                        requestedPlan: "basic",
+                        currentPlan: "free",
                       }),
                     });
                     const body = (await res.json().catch(() => ({}))) as {

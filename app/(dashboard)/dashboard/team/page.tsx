@@ -9,7 +9,7 @@ import {
   normalizeServiceRoleKey,
 } from "@/lib/supabase/admin";
 import { formatShortLocaleDate } from "@/lib/format-date";
-import { normalizePlanId, planDisplayName } from "@/lib/plans";
+import { binaryPlanLabel, normalizePlanId } from "@/lib/plans";
 import { effectiveAdminLimit } from "@/lib/plan-limits";
 import {
   canRemoveSchoolTeamAdmin,
@@ -379,7 +379,7 @@ export default async function TeamPage() {
       <main className="mx-auto max-w-4xl space-y-6 py-8">
         <TeamPageClient
           members={members}
-          planLabel={planDisplayName(plan)}
+          planLabel={binaryPlanLabel(plan)}
           adminCount={adminCount}
           maxAdmins={maxAdmins}
           usedSlots={usedSlots}

@@ -1,21 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { PLANS, planDisplayName, type PlanId } from "@/lib/plans";
+import type { PlanId } from "@/lib/plans";
 
 interface UpgradeModalProps {
   open: boolean;
   onClose: () => void;
-  requiredPlan: PlanId;
+  /**
+   * Kept in the prop signature for backwards compatibility with existing
+   * call sites (student import / advanced reports). The new UI no longer
+   * shows tier-specific copy — every paid plan unlocks every feature, so
+   * the modal just nudges the school admin toward upgrading to "Paid".
+   */
+  requiredPlan?: PlanId;
   featureName: string;
 }
-
-const PLAN_ORDER: PlanId[] = ["free", "basic", "pro", "enterprise"];
 
 export function UpgradeModal({
   open,
   onClose,
-  requiredPlan,
   featureName,
 }: UpgradeModalProps) {
   if (!open) return null;
@@ -33,57 +36,32 @@ export function UpgradeModal({
         aria-label="Close"
         onClick={onClose}
       />
-      <div className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
         <h2
           id="upgrade-modal-title"
           className="text-lg font-semibold text-slate-900 dark:text-white"
         >
-          Upgrade to {planDisplayName(requiredPlan)}
+          Upgrade to Paid
         </h2>
         <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
-          {featureName} is available on the{" "}
-          <strong className="text-slate-800 dark:text-zinc-200">
-            {planDisplayName(requiredPlan)}
-          </strong>{" "}
-          plan or higher. Compare plans and upgrade when you are ready.
+          {featureName} is a paid feature. Free schools are limited to 20
+          students; upgrading to <strong>Paid</strong> unlocks unlimited
+          students, unlimited admins, and every feature.
         </p>
 
-        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-800">
-          <table className="w-full min-w-[280px] text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50">
-                <th className="px-3 py-2 font-semibold text-slate-700 dark:text-zinc-300">
-                  Plan
-                </th>
-                <th className="px-3 py-2 font-semibold text-slate-700 dark:text-zinc-300">
-                  Students
-                </th>
-                <th className="px-3 py-2 font-semibold text-slate-700 dark:text-zinc-300">
-                  Admins
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-              {PLAN_ORDER.map((id) => {
-                const p = PLANS[id];
-                const highlight =
-                  id === requiredPlan ? "bg-[rgb(var(--school-primary-rgb)/0.10)]/80 dark:bg-[rgb(var(--school-primary-rgb)/0.14)]" : "";
-                return (
-                  <tr key={id} className={highlight}>
-                    <td className="px-3 py-2 font-medium text-slate-900 dark:text-white">
-                      {p.name}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400">
-                      {p.studentLimit == null ? "Unlimited" : p.studentLimit}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400">
-                      {p.adminLimit == null ? "Custom" : p.adminLimit}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="mt-4 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-800/40">
+          <div className="flex items-start justify-between gap-3">
+            <span className="text-slate-700 dark:text-zinc-300">Free</span>
+            <span className="text-right font-medium text-slate-900 dark:text-white">
+              Up to 20 students
+            </span>
+          </div>
+          <div className="flex items-start justify-between gap-3 border-t border-slate-200 pt-2 dark:border-zinc-800">
+            <span className="text-slate-700 dark:text-zinc-300">Paid</span>
+            <span className="text-right font-medium text-slate-900 dark:text-white">
+              Unlimited + every feature
+            </span>
+          </div>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
