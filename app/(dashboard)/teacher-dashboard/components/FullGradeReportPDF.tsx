@@ -56,6 +56,20 @@ export interface FullGradeReportPdfInput {
   }[];
 }
 
+/**
+ * Helvetica has no emoji / pictograph glyphs — strip them plus joiners/variation selectors
+ * so PDFs stay clean while keeping ordinary letters (including accented), digits, and punctuation.
+ */
+function sanitizeMarksReportPdfText(value: string): string {
+  if (!value) return "";
+  let s = value.normalize("NFC");
+  s = s.replace(
+    /\uFE0F|\u200D|\u231A|\u231B|[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F100}-\u{1F251}]|[\u{1F1E6}-\u{1F1FF}]/gu,
+    ""
+  );
+  return s.replace(/\s+/g, " ").trim();
+}
+
 function writePassRates(
   doc: jsPDF,
   margin: number,
@@ -81,7 +95,7 @@ function writePassRates(
     `Girls pass rate: ${seg.girlsLine}`,
   ];
   for (const line of lines) {
-    doc.text(line, margin, y);
+    doc.text(sanitizeMarksReportPdfText(line), margin, y);
     y += 4;
   }
   return y + 2;
@@ -112,7 +126,7 @@ function writeFailRates(
     `Girls fail rate: ${seg.girlsLine}`,
   ];
   for (const line of lines) {
-    doc.text(line, margin, y);
+    doc.text(sanitizeMarksReportPdfText(line), margin, y);
     y += 4;
   }
   return y + 2;
@@ -132,28 +146,38 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
    */
   const contentW = doc.internal.pageSize.getWidth() - margin * 2;
 
+  const schoolLine = sanitizeMarksReportPdfText(data.schoolName);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(data.schoolName.toUpperCase(), doc.internal.pageSize.getWidth() / 2, y, {
+  doc.text(schoolLine.toUpperCase(), doc.internal.pageSize.getWidth() / 2, y, {
     align: "center",
   });
   y += 7;
   doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
-  doc.text(`${data.className} — ${data.subject}`, doc.internal.pageSize.getWidth() / 2, y, {
-    align: "center",
-  });
+  doc.text(
+    sanitizeMarksReportPdfText(`${data.className} — ${data.subject}`),
+    doc.internal.pageSize.getWidth() / 2,
+    y,
+    {
+      align: "center",
+    }
+  );
   y += 5;
   doc.setFontSize(10);
-  doc.text(`Teacher: ${data.teacherName}`, margin, y);
+  doc.text(
+    `Teacher: ${sanitizeMarksReportPdfText(data.teacherName)}`,
+    margin,
+    y
+  );
   y += 5;
-  doc.text(`Term: ${data.termLabel}`, margin, y);
+  doc.text(`Term: ${sanitizeMarksReportPdfText(data.termLabel)}`, margin, y);
   y += 5;
-  doc.text(`Date: ${data.dateLabel}`, margin, y);
+  doc.text(`Date: ${sanitizeMarksReportPdfText(data.dateLabel)}`, margin, y);
   y += 5;
   doc.setFont("helvetica", "bold");
   doc.text(
-    `Assignment: ${data.assignmentTitle} (max ${data.assignmentMaxScore})`,
+    `Assignment: ${sanitizeMarksReportPdfText(data.assignmentTitle)} (max ${data.assignmentMaxScore})`,
     margin,
     y
   );
@@ -208,49 +232,26 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
     doc.text("No scores entered for this assignment.", margin, y);
     y += 6;
   } else {
-    /**
-     * The ranking section was previously rendered as
-     *   `${rank}. ${name}  ${scorePct} (${grade})  ${badge}`
-     * concatenated into a single `doc.text(...)` line. Because names
-     * vary in width, the score / grade / badge columns visibly drifted
-     * left and right from row to row — the so-called "snake movement".
-     *
-     * Switching to `autoTable` with fixed column widths and explicit
-     * alignments fixes that, and also gives us automatic page breaks
-     * + repeated headers for free.
-     */
-    autoTable(doc, {
-      startY: y,
-      // Four columns: #, Student, Score %, Grade.
-      // The "Highlight" / badge column was removed earlier because it
-      // printed special glyphs (medals, ⚠️ etc.) that didn't render
-      // cleanly in the PDF font. The badge values still surface on
-      // screen via `RankingRow.badge` — only the printed table omits
-      // them.
-      head: [["#", "Student", "Score %", "Grade"]],
-      body: data.ranking.map((r) => [
-        String(r.rank),
-        r.name,
-        r.scorePct,
-        r.grade,
-      ]),
-      // `theme: "grid"` draws a full border + cell grid on every row,
-      // turning the table from spaced text into a real ruled table.
-      // Combined with the percentage-based column widths below, the
-      // table also spans edge-to-edge on every page size.
-      //   #        : 10% (rank)
-      //   Student  : 50%
-      //   Score %  : 20%
-      //   Grade    : 20%
-      //   Σ        : 100%
-      theme: "grid",
+    /** Left column ranks 1 … ceil(N/2); right column the rest. Same data as UI. */
+    const nLen = data.ranking.length;
+    const leftCount = Math.ceil(nLen / 2);
+    const leftRows = data.ranking.slice(0, leftCount);
+    const rightRows = data.ranking.slice(leftCount);
+    const rankStartY = y;
+    const rankGapMm = 3;
+    const rankColW = (contentW - rankGapMm) / 2;
+    const numW = rankColW * 0.14;
+
+    const rankGrid = {
+      theme: "grid" as const,
+      showHead: "everyPage" as const,
+      startY: rankStartY,
+      head: [["#", "Student"]] as [[string, string]],
       styles: {
         fontSize: 9,
         cellPadding: 2,
         overflow: "linebreak",
-        // Hairline black border on every cell — gives us both
-        // horizontal lines between rows AND vertical lines between
-        // columns without further configuration.
+        valign: "top",
         lineWidth: 0.1,
         lineColor: [0, 0, 0],
       },
@@ -259,34 +260,45 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
         textColor: [255, 255, 255],
         fontStyle: "bold",
         halign: "center",
-        // Match the body line so the header doesn't look stitched
-        // onto the table.
         lineWidth: 0.1,
         lineColor: [0, 0, 0],
       },
-      // Subtle zebra striping on the body rows for scanability.
       alternateRowStyles: { fillColor: [245, 245, 245] },
       columnStyles: {
-        // Rank — right-aligned, monospace for tabular numerals.
-        0: { cellWidth: contentW * 0.1, halign: "right", font: "courier" },
-        // Student name — left-aligned, the widest column.
-        1: { cellWidth: contentW * 0.5, halign: "left" },
-        // Score % — right-aligned + monospace so digits line up
-        // perfectly down the column.
-        2: { cellWidth: contentW * 0.2, halign: "right", font: "courier" },
-        // Grade letter — centered, bold.
-        3: { cellWidth: contentW * 0.2, halign: "center", fontStyle: "bold" },
+        0: {
+          cellWidth: numW,
+          halign: "right",
+          font: "courier",
+        },
+        1: { cellWidth: rankColW - numW, halign: "left" },
       },
-      margin: { left: margin, right: margin },
+    };
+
+    autoTable(doc, {
+      ...rankGrid,
+      margin: { left: margin, right: margin + rankColW + rankGapMm },
+      tableWidth: rankColW,
+      body: leftRows.map((r) => [
+        String(r.rank),
+        sanitizeMarksReportPdfText(r.name),
+      ]),
     });
 
-    /* `lastAutoTable` is the documented way autoTable reports where it
-       stopped drawing. Cast through unknown to keep the local jsPDF
-       type clean without pulling in a separate jspdf-autotable
-       declaration shim. */
-    const after = (doc as unknown as { lastAutoTable?: { finalY: number } })
-      .lastAutoTable;
-    y = (after?.finalY ?? y) + 6;
+    const docExt = doc as unknown as { lastAutoTable?: { finalY: number } };
+    const leftFinalY = docExt.lastAutoTable?.finalY ?? rankStartY;
+
+    autoTable(doc, {
+      ...rankGrid,
+      margin: { left: margin + rankColW + rankGapMm, right: margin },
+      tableWidth: rankColW,
+      body: rightRows.map((r) => [
+        String(r.rank),
+        sanitizeMarksReportPdfText(r.name),
+      ]),
+    });
+
+    const rightFinalY = docExt.lastAutoTable?.finalY ?? rankStartY;
+    y = Math.max(leftFinalY, rightFinalY) + 6;
   }
 
   if (y > pageH - 40) {
@@ -296,15 +308,16 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
 
   const head = [["Student", "Gender", "Score", "Grade", "Remarks"]];
   const body = data.rows.map((r) => [
-    r.name,
-    r.gender,
-    r.scorePct,
-    r.grade,
-    r.remarks,
+    sanitizeMarksReportPdfText(r.name),
+    sanitizeMarksReportPdfText(r.gender),
+    sanitizeMarksReportPdfText(r.scorePct),
+    sanitizeMarksReportPdfText(r.grade),
+    sanitizeMarksReportPdfText(r.remarks || "—") || "—",
   ]);
 
   autoTable(doc, {
     startY: y,
+    showHead: "everyPage",
     head,
     body,
     // Same percentage-of-content-width strategy as the ranking table
@@ -321,6 +334,7 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
       fontSize: 9,
       cellPadding: 2,
       overflow: "linebreak",
+      valign: "top",
       // Hairline border on every cell → horizontal lines between
       // rows AND vertical lines between columns.
       lineWidth: 0.1,

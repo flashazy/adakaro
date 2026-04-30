@@ -4,13 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   BarChart3,
-  Copy,
   Download,
   Printer,
   X,
 } from "lucide-react";
 import { downloadFullGradeReportPdf } from "./FullGradeReportPDF";
-import { cn } from "@/lib/utils";
 import { passingThresholdPercent } from "@/lib/tanzania-grades";
 import type { SchoolLevel } from "@/lib/school-level";
 import {
@@ -23,7 +21,6 @@ import {
   type PassRateStats,
   type FailRateStats,
   type RankingRow,
-  buildPlainTextReport,
   buildStudentRanking,
   computeReportStatsForAssignment,
   emptyPassFailStats,
@@ -122,21 +119,15 @@ export function FullGradeReport({
   schoolLevel?: SchoolLevel;
   /**
    * Display format for score values (Percentage / Marks / Both). Mirrors the
-   * Marks page toggle so the on-screen ranking, scores table, and copied
-   * plain-text export match what the teacher sees in the matrix. The PDF
-   * export intentionally stays on "percentage" for now.
+   * Marks page toggle so the on-screen ranking and scores table match what
+   * the teacher sees in the matrix. The PDF export intentionally stays on
+   * "percentage" for now.
    */
   displayFormat?: GradeDisplayFormat;
 }) {
   const reportRef = useRef<HTMLDivElement>(null);
-  const [copyDone, setCopyDone] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>("");
-  // Ranking pagination — screen only. The print stylesheet swaps in
-  // the full ranking list, so these only affect what the teacher sees
-  // on screen, not what comes out of the printer / saved PDF.
-  const [rankingPageSize, setRankingPageSize] = useState(20);
-  const [rankingPageIndex, setRankingPageIndex] = useState(0);
 
   useEffect(() => {
     if (!assignments.length) {
@@ -180,40 +171,18 @@ export function FullGradeReport({
     );
   }, [students, selectedAssignment, classDraft, schoolLevel, displayFormat]);
 
-  // Derived ranking-pagination values. We keep them as plain
-  // `useMemo`s so the page slice and total page count stay in lockstep
-  // with the underlying `ranking` array.
-  const rankingTotalPages = Math.max(
-    1,
-    Math.ceil(ranking.length / rankingPageSize)
-  );
-  // Clamp the active page when the ranking shrinks (e.g. teacher
-  // switches assignments and the new one has fewer students with
-  // scores). Always silently fall back to page 0 in that case.
-  useEffect(() => {
-    if (rankingPageIndex >= rankingTotalPages) {
-      setRankingPageIndex(0);
+  /** Top half (ranks 1 … ceil(N/2)) vs bottom half; e.g. N=7 → 4 + 3. */
+  const rankingSplit = useMemo(() => {
+    const n = ranking.length;
+    if (n === 0) {
+      return { left: [] as RankingRow[], right: [] as RankingRow[] };
     }
-  }, [rankingPageIndex, rankingTotalPages]);
-  // Switching assignments resets the ranking entirely, so always send
-  // the teacher back to page 1.
-  useEffect(() => {
-    setRankingPageIndex(0);
-  }, [selectedAssignmentId]);
-
-  const rankingPageSafe = Math.min(rankingPageIndex, rankingTotalPages - 1);
-  const rankingPageStart = rankingPageSafe * rankingPageSize;
-  const rankingPageSlice = useMemo(
-    () =>
-      ranking.slice(rankingPageStart, rankingPageStart + rankingPageSize),
-    [ranking, rankingPageStart, rankingPageSize]
-  );
-  const rankingRangeStart =
-    ranking.length === 0 ? 0 : rankingPageStart + 1;
-  const rankingRangeEnd =
-    ranking.length === 0
-      ? 0
-      : Math.min(rankingPageStart + rankingPageSize, ranking.length);
+    const leftCount = Math.ceil(n / 2);
+    return {
+      left: ranking.slice(0, leftCount),
+      right: ranking.slice(leftCount),
+    };
+  }, [ranking]);
 
   const dateLabel = useMemo(
     () =>
@@ -222,36 +191,6 @@ export function FullGradeReport({
       ),
     []
   );
-
-  const handleCopy = useCallback(async () => {
-    if (!meta || !selectedAssignment) return;
-    const text = buildPlainTextReport(
-      meta,
-      selectedAssignment,
-      students,
-      classDraft,
-      stats,
-      ranking,
-      schoolLevel,
-      displayFormat
-    );
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopyDone(true);
-      window.setTimeout(() => setCopyDone(false), 2000);
-    } catch {
-      /* ignore */
-    }
-  }, [
-    meta,
-    selectedAssignment,
-    students,
-    classDraft,
-    stats,
-    ranking,
-    schoolLevel,
-    displayFormat,
-  ]);
 
   const handlePrint = useCallback(() => {
     if (!reportRef.current) return;
@@ -574,227 +513,59 @@ export function FullGradeReport({
 
                     <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900/40">
                       <h3 className="text-sm font-bold uppercase tracking-wide text-slate-800 dark:text-zinc-200">
-                        🏆 Student ranking (highest to lowest)
+                        Student ranking (highest to lowest)
                       </h3>
                       {ranking.length === 0 ? (
                         <p className="mt-2 text-sm text-slate-500 dark:text-zinc-500">
                           No scores entered for this assignment yet.
                         </p>
                       ) : (
-                        <>
-                          {/* SCREEN-ONLY paginated lists.
-                            * Wrapped in `print:hidden` so the printed
-                            * version uses the full list further below.
-                            * Both the desktop single-line list and the
-                            * mobile card list iterate the SAME
-                            * `rankingPageSlice` — pagination is shared. */}
-                          <div className="print:hidden">
-                            {/* Desktop (≥768px): keep the existing
-                              * single-line layout. */}
-                            <ol className="mt-3 hidden list-none space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-700 md:block">
-                              {rankingPageSlice.map((r) => (
-                                <li
-                                  key={`${r.rank}-${r.name}`}
-                                  className="flex flex-nowrap items-baseline gap-x-2 overflow-x-auto text-sm text-slate-800 dark:text-zinc-200"
-                                >
-                                  <span className="w-7 shrink-0 tabular-nums font-semibold text-slate-600 dark:text-zinc-400">
-                                    {r.rank}.
-                                  </span>
-                                  <span className="min-w-[8rem] flex-1 font-medium">
-                                    {r.name}
-                                  </span>
-                                  <span className="tabular-nums text-slate-700 dark:text-zinc-300">
-                                    {r.scorePct}{" "}
-                                    <span className="font-semibold">
-                                      ({r.grade})
-                                    </span>
-                                  </span>
-                                  {r.badge ? (
-                                    <span className="text-xs text-slate-600 dark:text-zinc-400 sm:text-sm">
-                                      {r.badge}
-                                    </span>
-                                  ) : null}
-                                </li>
-                              ))}
-                            </ol>
-
-                            {/* Mobile (<768px): card-based list. */}
-                            <ol className="mt-3 list-none space-y-2 md:hidden">
-                              {rankingPageSlice.map((r) => {
-                                // Pick a tint based on the existing
-                                // badge text so the highlight line
-                                // still reads distinctly:
-                                //   medal/top  → emerald
-                                //   needs-improvement → amber
-                                //   anything else → neutral slate
-                                const isTop = /Top Performer/i.test(r.badge);
-                                const isNeedsWork = /Needs Improvement/i.test(
-                                  r.badge
-                                );
-                                const badgeTone = isTop
-                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                                  : isNeedsWork
-                                    ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
-                                    : "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300";
-                                return (
-                                  <li
-                                    key={`${r.rank}-${r.name}`}
-                                    className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900"
-                                  >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="flex min-w-0 items-center gap-2">
-                                        <span className="inline-flex h-7 min-w-[2.25rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-semibold tabular-nums text-slate-700 dark:bg-zinc-800 dark:text-zinc-200">
-                                          #{r.rank}
-                                        </span>
-                                        <span className="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                                          {r.name}
-                                        </span>
-                                      </div>
-                                      <span className="inline-flex shrink-0 items-center rounded-full bg-slate-900/90 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-white dark:bg-white dark:text-slate-900">
-                                        {r.grade}
-                                      </span>
-                                    </div>
-                                    <div className="mt-2 text-base font-semibold tabular-nums text-slate-800 dark:text-zinc-200">
-                                      {r.scorePct}
-                                    </div>
-                                    {r.badge ? (
-                                      <div className="mt-2">
-                                        <span
-                                          className={cn(
-                                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                                            badgeTone
-                                          )}
-                                        >
-                                          {r.badge}
-                                        </span>
-                                      </div>
-                                    ) : null}
-                                  </li>
-                                );
-                              })}
-                            </ol>
-
-                            {/* Pagination footer.
-                              * Always shows the "Showing X–Y of Z"
-                              * range and the rows-per-page selector.
-                              * The Previous/Next buttons only render
-                              * when there's more than one page. The
-                              * whole footer is `print:hidden` thanks to
-                              * the wrapper above. */}
-                            <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 dark:border-zinc-700 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-zinc-400">
-                                <span>
-                                  Showing{" "}
-                                  <span className="font-medium text-slate-700 dark:text-zinc-200">
-                                    {rankingRangeStart}–{rankingRangeEnd}
-                                  </span>{" "}
-                                  of{" "}
-                                  <span className="font-medium text-slate-700 dark:text-zinc-200">
-                                    {ranking.length}
-                                  </span>
-                                </span>
-                                <label className="flex items-center gap-2">
-                                  <span className="shrink-0 text-[11px] uppercase tracking-wide text-slate-400 dark:text-zinc-500">
-                                    Rows
-                                  </span>
-                                  <select
-                                    value={rankingPageSize}
-                                    onChange={(e) => {
-                                      setRankingPageSize(
-                                        Number(e.target.value)
-                                      );
-                                      setRankingPageIndex(0);
-                                    }}
-                                    className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
-                                    aria-label="Ranking rows per page"
-                                  >
-                                    {[10, 20, 50, 100].map((n) => (
-                                      <option key={n} value={n}>
-                                        {n}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                              </div>
-                              {rankingTotalPages > 1 ? (
-                                <div className="flex items-center justify-between gap-2 sm:justify-end">
-                                  <span className="text-xs tabular-nums text-slate-500 dark:text-zinc-400">
-                                    Page {rankingPageSafe + 1} of{" "}
-                                    {rankingTotalPages}
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setRankingPageIndex((i) =>
-                                          Math.max(0, i - 1)
-                                        )
-                                      }
-                                      disabled={rankingPageSafe <= 0}
-                                      className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                                    >
-                                      Previous
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setRankingPageIndex((i) =>
-                                          Math.min(
-                                            rankingTotalPages - 1,
-                                            i + 1
-                                          )
-                                        )
-                                      }
-                                      disabled={
-                                        rankingPageSafe >=
-                                        rankingTotalPages - 1
-                                      }
-                                      className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                                    >
-                                      Next
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          {/* PRINT-ONLY full list.
-                            * Hidden on screen (`hidden`), visible only
-                            * when printing (`print:block`). Renders the
-                            * complete `ranking` array — pagination is
-                            * irrelevant here. We use the compact
-                            * single-line layout because it prints more
-                            * predictably across pages, and tag each
-                            * <li> with `break-inside-avoid` so a card
-                            * never gets split between two physical
-                            * pages. */}
-                          <ol className="mt-3 hidden list-none space-y-1 border-t border-slate-100 pt-3 print:block">
-                            {ranking.map((r) => (
-                              <li
-                                key={`print-${r.rank}-${r.name}`}
-                                className="flex items-baseline gap-x-2 break-inside-avoid text-sm text-slate-800"
-                                style={{ pageBreakInside: "avoid" }}
+                        <div className="mt-3 border-t border-slate-100 pt-3 dark:border-zinc-700">
+                          {/* Left column: ranks 1 … ceil(N/2); right column: remainder.
+                              Same markup for screen + print/PDF-portal surfaces. */}
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            {(
+                              [
+                                rankingSplit.left,
+                                rankingSplit.right,
+                              ] as const
+                            ).map((rows, idx) => (
+                              <div
+                                key={idx === 0 ? "rank-col-left" : "rank-col-right"}
+                                className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700"
                               >
-                                <span className="w-7 shrink-0 tabular-nums font-semibold">
-                                  {r.rank}.
-                                </span>
-                                <span className="flex-1 font-medium">
-                                  {r.name}
-                                </span>
-                                <span className="tabular-nums">
-                                  {r.scorePct}{" "}
-                                  <span className="font-semibold">
-                                    ({r.grade})
-                                  </span>
-                                </span>
-                                {r.badge ? (
-                                  <span className="text-xs">{r.badge}</span>
-                                ) : null}
-                              </li>
+                                <table className="w-full min-w-0 border-collapse text-left text-xs sm:text-sm">
+                                  <thead>
+                                    <tr className="bg-slate-800 text-white dark:bg-slate-800">
+                                      <th className="w-14 border border-slate-600 px-2 py-2 font-semibold">
+                                        #
+                                      </th>
+                                      <th className="border border-slate-600 px-2 py-2 font-semibold">
+                                        Student
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rows.map((r) => (
+                                      <tr
+                                        key={`${idx}-${r.rank}-${r.name}`}
+                                        className="break-inside-avoid odd:bg-white even:bg-slate-50/90 dark:odd:bg-zinc-900/80 dark:even:bg-zinc-900/50"
+                                        style={{ pageBreakInside: "avoid" }}
+                                      >
+                                        <td className="border border-slate-200 px-2 py-1.5 tabular-nums font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                                          {r.rank}
+                                        </td>
+                                        <td className="border border-slate-200 px-2 py-1.5 font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                                          {r.name}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
                             ))}
-                          </ol>
-                        </>
+                          </div>
+                        </div>
                       )}
                     </section>
 
@@ -889,15 +660,6 @@ export function FullGradeReport({
                 >
                   <Printer className="h-4 w-4" />
                   Print
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCopy()}
-                  disabled={!selectedAssignment}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-                >
-                  <Copy className="h-4 w-4" />
-                  {copyDone ? "Copied!" : "Copy to clipboard"}
                 </button>
               </div>
             </>
