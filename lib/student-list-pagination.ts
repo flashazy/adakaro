@@ -57,6 +57,10 @@ export const TEAM_MEMBERS_ROWS_STORAGE_KEY =
 export const TEACHER_ASSIGNMENTS_ROWS_STORAGE_KEY =
   "adakaro:teacherAssignments:rowsPerPage";
 
+/** Teacher attendance · student list rows-per-page (per browser). */
+export const TEACHER_ATTENDANCE_ROWS_STORAGE_KEY =
+  "adakaro:teacherAttendance:rowsPerPage";
+
 /** Coordinator dashboard · report cards roster (subset of student list options). */
 export const COORDINATOR_REPORT_CARDS_ROW_OPTIONS = [5, 10, 25, 50] as const;
 

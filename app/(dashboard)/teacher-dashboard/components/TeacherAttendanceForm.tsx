@@ -15,6 +15,19 @@ import {
 } from "@/lib/school-timezone";
 import type { TeacherClassOption } from "../data";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
+import {
+  STUDENT_LIST_ROW_OPTIONS,
+  TEACHER_ATTENDANCE_ROWS_STORAGE_KEY,
+  parseStudentListRowsPerPage,
+  type StudentListRowOption,
+} from "@/lib/student-list-pagination";
+import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+
+/** Recent history is paginated at a fixed page size — the user
+ * specifically asked for 5 entries per page, no rows-per-page
+ * selector. Bumping this is a one-line change if the requirement
+ * shifts later. */
+const HISTORY_PAGE_SIZE = 5;
 
 type Status = "present" | "absent" | "late";
 
@@ -157,6 +170,15 @@ export function TeacherAttendanceForm({
     () => new Set()
   );
   const [hasChanges, setHasChanges] = useState(false);
+  // Student-list pagination. Default is 10/page; the user can pick
+  // 5 (good for phones) or larger sizes via the rows-per-page select.
+  // The choice persists per browser via localStorage.
+  const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(10);
+  const [studentPage, setStudentPage] = useState(1);
+  // Recent history — fixed 5 per page + optional date-range filter.
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyFromDate, setHistoryFromDate] = useState("");
+  const [historyToDate, setHistoryToDate] = useState("");
   /** Per attendance_date: max(updated_at, else created_at) among all rows for that day (ISO). */
   const [historyLastModifiedIsoByDate, setHistoryLastModifiedIsoByDate] =
     useState<Record<string, string>>({});
@@ -217,6 +239,15 @@ export function TeacherAttendanceForm({
         : null;
     if (saved === "text" || saved === "symbol") {
       setViewMode(saved);
+    }
+    // Rehydrate the student-list page size from the previous session.
+    // Falls back to the default 10 when nothing is stored or the value
+    // is no longer in `STUDENT_LIST_ROW_OPTIONS`.
+    if (typeof window !== "undefined") {
+      const storedRows = parseStudentListRowsPerPage(
+        localStorage.getItem(TEACHER_ATTENDANCE_ROWS_STORAGE_KEY)
+      );
+      if (storedRows != null) setRowsPerPage(storedRows);
     }
   }, []);
 
@@ -434,9 +465,96 @@ export function TeacherAttendanceForm({
     return list.filter((s) => s.full_name.toLowerCase().includes(q));
   }, [students, studentSearch, statusFilter, statusByStudent]);
 
+  // Pagination derived state. Page numbers are 1-indexed; `pageSlice`
+  // is what we actually render. The compact page list (with ellipses)
+  // mirrors the rest of the dashboard.
+  const totalFilteredStudents = filteredStudents.length;
+  const studentTotalPages = Math.max(
+    1,
+    Math.ceil(totalFilteredStudents / rowsPerPage)
+  );
+  // If the user lands on a page that no longer exists (e.g. they
+  // searched and the results shrank), pull them back to page 1 silently
+  // rather than rendering an empty page.
+  useEffect(() => {
+    if (studentPage > studentTotalPages) setStudentPage(1);
+  }, [studentPage, studentTotalPages]);
+  // Search/filter/class/subject/date changes invalidate the current
+  // page — reset to 1 so the user always sees the start of the new
+  // result set.
+  useEffect(() => {
+    setStudentPage(1);
+  }, [studentSearch, statusFilter, classId, subjectChoiceKey, date]);
+
+  const studentPageSafe = Math.min(studentPage, studentTotalPages);
+  const studentPageStart = (studentPageSafe - 1) * rowsPerPage;
+  const studentPageSlice = useMemo(
+    () =>
+      filteredStudents.slice(studentPageStart, studentPageStart + rowsPerPage),
+    [filteredStudents, studentPageStart, rowsPerPage]
+  );
+  const studentRangeStart =
+    totalFilteredStudents === 0 ? 0 : studentPageStart + 1;
+  const studentRangeEnd =
+    totalFilteredStudents === 0
+      ? 0
+      : Math.min(studentPageStart + rowsPerPage, totalFilteredStudents);
+  const studentPageNumbers = useMemo(
+    () => getCompactPaginationItems(studentPageSafe, studentTotalPages),
+    [studentPageSafe, studentTotalPages]
+  );
+
+  // Recent history filter + pagination.
+  //   1. `historyFiltered` honours the optional from/to date range —
+  //      both ends are inclusive; either bound can be empty.
+  //   2. We slice 5 entries per page, then group THAT slice by month
+  //      so the existing collapsible month UI stays intact for the
+  //      visible page (a page may contain dates from 1–3 months).
+  const historyFiltered = useMemo(() => {
+    if (!historyFromDate && !historyToDate) return historyDates;
+    return historyDates.filter((d) => {
+      if (historyFromDate && d < historyFromDate) return false;
+      if (historyToDate && d > historyToDate) return false;
+      return true;
+    });
+  }, [historyDates, historyFromDate, historyToDate]);
+
+  const historyTotalPages = Math.max(
+    1,
+    Math.ceil(historyFiltered.length / HISTORY_PAGE_SIZE)
+  );
+  // Same self-correction pattern as the student page.
+  useEffect(() => {
+    if (historyPage > historyTotalPages) setHistoryPage(1);
+  }, [historyPage, historyTotalPages]);
+  // Filter changes → restart from page 1.
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [historyFromDate, historyToDate]);
+
+  const historyPageSafe = Math.min(historyPage, historyTotalPages);
+  const historyPageStart = (historyPageSafe - 1) * HISTORY_PAGE_SIZE;
+  const historyPageDates = useMemo(
+    () =>
+      historyFiltered.slice(
+        historyPageStart,
+        historyPageStart + HISTORY_PAGE_SIZE
+      ),
+    [historyFiltered, historyPageStart]
+  );
+  const historyRangeStart =
+    historyFiltered.length === 0 ? 0 : historyPageStart + 1;
+  const historyRangeEnd =
+    historyFiltered.length === 0
+      ? 0
+      : Math.min(
+          historyPageStart + HISTORY_PAGE_SIZE,
+          historyFiltered.length
+        );
+
   const historyMonthGroups = useMemo(
-    () => groupHistoryDatesByMonth(historyDates),
-    [historyDates]
+    () => groupHistoryDatesByMonth(historyPageDates),
+    [historyPageDates]
   );
 
   const frequentAbsenteeIds = useMemo(() => {
@@ -844,23 +962,30 @@ export function TeacherAttendanceForm({
               </p>
             ) : (
               <div>
-                {filteredStudents.map((s) => {
+                {studentPageSlice.map((s) => {
                   const currentStatus = getStatusForStudent(s.id);
                   return (
                     <div
                       key={s.id}
                       className={cn(
                         "flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 transition hover:bg-gray-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50",
-                        currentStatus === "present" && "bg-green-50",
-                        currentStatus === "absent" && "bg-red-50",
-                        currentStatus === "late" && "bg-yellow-50"
+                        // Status-tinted row backgrounds need explicit dark
+                        // variants — without them the bg-{color}-50 classes
+                        // stay light in dark mode and the white name text
+                        // becomes unreadable against them.
+                        currentStatus === "present" &&
+                          "bg-green-50 dark:bg-green-950/30",
+                        currentStatus === "absent" &&
+                          "bg-red-50 dark:bg-red-950/30",
+                        currentStatus === "late" &&
+                          "bg-yellow-50 dark:bg-yellow-950/30"
                       )}
                     >
                       <div className="min-w-0 flex-1">
                         <span className="inline-flex flex-wrap items-center gap-y-1 font-medium text-gray-900 dark:text-white">
                           {s.full_name}
                           {frequentAbsenteeIds.has(s.id) ? (
-                            <span className="ml-2 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                            <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-300">
                               Frequent Absentee
                             </span>
                           ) : null}
@@ -875,6 +1000,112 @@ export function TeacherAttendanceForm({
               </div>
             )}
           </div>
+
+          {/* Pagination footer.
+            * Always shows the "Showing X–Y of Z" range and the
+            * rows-per-page selector when there's at least one student;
+            * the page-number buttons only render when there's more
+            * than one page. */}
+          {students.length > 0 ? (
+            <div className="border-t border-gray-100 px-4 py-3 dark:border-zinc-700">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 dark:text-zinc-400">
+                  <span>
+                    Showing{" "}
+                    <span className="font-medium text-slate-900 dark:text-white">
+                      {studentRangeStart}–{studentRangeEnd}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-medium text-slate-900 dark:text-white">
+                      {totalFilteredStudents}
+                    </span>
+                  </span>
+                  <label className="flex items-center gap-2">
+                    <span className="shrink-0 text-xs uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                      Rows
+                    </span>
+                    <select
+                      value={rowsPerPage}
+                      onChange={(e) => {
+                        const n = Number(
+                          e.target.value
+                        ) as StudentListRowOption;
+                        setRowsPerPage(n);
+                        setStudentPage(1);
+                        try {
+                          localStorage.setItem(
+                            TEACHER_ATTENDANCE_ROWS_STORAGE_KEY,
+                            String(n)
+                          );
+                        } catch {
+                          // localStorage may be unavailable in private
+                          // mode — failing silently is the right call.
+                        }
+                      }}
+                      className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-900 dark:text-white"
+                    >
+                      {STUDENT_LIST_ROW_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {studentTotalPages > 1 ? (
+                  <div className="flex flex-wrap items-center justify-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStudentPage((p) => Math.max(1, p - 1))
+                      }
+                      disabled={studentPageSafe <= 1}
+                      className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    >
+                      Previous
+                    </button>
+                    {studentPageNumbers.map((item, idx) =>
+                      item === "ellipsis" ? (
+                        <span
+                          key={`e-${idx}`}
+                          className="px-2 text-sm text-slate-400 dark:text-zinc-500"
+                        >
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setStudentPage(item)}
+                          className={cn(
+                            "min-w-[2.25rem] rounded-md border px-3 py-1 text-sm dark:border-zinc-600",
+                            studentPageSafe === item
+                              ? "border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-600"
+                              : "border-slate-300 bg-white text-slate-700 hover:bg-gray-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                          )}
+                        >
+                          {item}
+                        </button>
+                      )
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStudentPage((p) =>
+                          Math.min(studentTotalPages, p + 1)
+                        )
+                      }
+                      disabled={studentPageSafe >= studentTotalPages}
+                      className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className="sticky bottom-0 z-10 mt-4 rounded-b-lg border-t border-gray-100 bg-white pt-3 dark:border-zinc-700 dark:bg-zinc-900">
             <div className="px-4 pb-4">
@@ -912,12 +1143,66 @@ export function TeacherAttendanceForm({
             ? `Latest saved days for ${selectedSubjectMeta.label} in this class (most recent first).`
             : "Latest saved days for this class (class-wide attendance, most recent first)."}
         </p>
+
+        {/* Optional date-range filter. Both bounds are inclusive and
+          * either can be left blank, e.g. "from June 1" with no upper
+          * bound, or "anything before June 30". */}
+        {historyDates.length > 0 ? (
+          <div className="mt-3 flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-zinc-700 dark:bg-zinc-900 sm:flex-row sm:items-center sm:gap-3">
+            <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+              Filter by date
+            </span>
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+              <label className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 dark:text-zinc-400">
+                  From
+                </span>
+                <input
+                  type="date"
+                  value={historyFromDate}
+                  max={historyToDate || undefined}
+                  onChange={(e) => setHistoryFromDate(e.target.value)}
+                  className="h-9 rounded-md border border-gray-200 bg-white px-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:[color-scheme:dark]"
+                />
+              </label>
+              <label className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 dark:text-zinc-400">
+                  To
+                </span>
+                <input
+                  type="date"
+                  value={historyToDate}
+                  min={historyFromDate || undefined}
+                  onChange={(e) => setHistoryToDate(e.target.value)}
+                  className="h-9 rounded-md border border-gray-200 bg-white px-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:[color-scheme:dark]"
+                />
+              </label>
+              {historyFromDate || historyToDate ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHistoryFromDate("");
+                    setHistoryToDate("");
+                  }}
+                  className="text-xs font-medium text-school-primary hover:opacity-90"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-4 space-y-3">
           {historyDates.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               {selectedSubjectMeta?.subjectId
                 ? "No attendance recorded yet for this subject."
                 : "No attendance recorded yet for this class."}
+            </p>
+          ) : historyFiltered.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-zinc-400">
+              No saved days match the selected date range.
             </p>
           ) : (
             historyMonthGroups.map(({ monthKey, dates }) => {
@@ -946,40 +1231,80 @@ export function TeacherAttendanceForm({
                     </span>
                   </button>
                   {expanded ? (
-                    <div className="space-y-2 border-t border-gray-200 bg-white px-4 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+                    <div className="space-y-2 border-t border-gray-200 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900 md:px-4">
                       {dates.map((d) => {
                         const rows = historyByDate[d] ?? [];
                         const { present, absent, late } =
                           countAttendanceRollup(rows);
+                        // `formatDateTimeInSchoolZone` returns
+                        // "30 Apr 2026 - 7:27 am". Split for the mobile
+                        // card so the date and time render on separate
+                        // lines; falls back to the attendance date
+                        // when there's no save timestamp on file.
                         const lastModLabel = formatDateTimeInSchoolZone(
                           historyLastModifiedIsoByDate[d],
                           historyDisplayTimeZone
                         );
+                        const [savedDateLabel, savedTimeLabel] = (
+                          lastModLabel ?? ""
+                        )
+                          .split(" - ")
+                          .map((s) => s.trim());
+                        const dateLine = savedDateLabel || formatDisplayDate(d);
                         return (
                           <div
                             key={d}
-                            className="flex items-center justify-between gap-3 py-2 text-sm"
+                            className="text-sm"
                           >
-                            <span className="font-medium text-slate-800 dark:text-zinc-200">
-                              {lastModLabel ?? formatDisplayDate(d)}
-                            </span>
-                            <span className="text-right text-slate-600 dark:text-zinc-400">
-                              <span className="text-green-600 dark:text-green-400">
-                                {present} present
+                            {/* Mobile card (<768px) — vertical stack */}
+                            <div className="flex flex-col gap-1.5 rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-800/50 md:hidden">
+                              <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                                {dateLine}
+                              </p>
+                              {savedTimeLabel ? (
+                                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                                  Saved {savedTimeLabel}
+                                </p>
+                              ) : null}
+                              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                  ✓ Saved
+                                </span>
+                                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950/40 dark:text-green-300">
+                                  {present} present
+                                </span>
+                                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                                  {absent} absent
+                                </span>
+                                <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300">
+                                  {late} late
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Desktop row (≥768px) — unchanged horizontal layout */}
+                            <div className="hidden items-center justify-between gap-3 py-2 md:flex">
+                              <span className="font-medium text-slate-800 dark:text-zinc-200">
+                                {lastModLabel ?? formatDisplayDate(d)}
                               </span>
-                              <span className="mx-1.5 text-gray-300 dark:text-zinc-600">
-                                ·
+                              <span className="text-right text-slate-600 dark:text-zinc-400">
+                                <span className="text-green-600 dark:text-green-400">
+                                  {present} present
+                                </span>
+                                <span className="mx-1.5 text-gray-300 dark:text-zinc-600">
+                                  ·
+                                </span>
+                                <span className="text-red-600 dark:text-red-400">
+                                  {absent} absent
+                                </span>
+                                <span className="mx-1.5 text-gray-300 dark:text-zinc-600">
+                                  ·
+                                </span>
+                                <span className="text-yellow-600 dark:text-yellow-400">
+                                  {late} late
+                                </span>
                               </span>
-                              <span className="text-red-600 dark:text-red-400">
-                                {absent} absent
-                              </span>
-                              <span className="mx-1.5 text-gray-300 dark:text-zinc-600">
-                                ·
-                              </span>
-                              <span className="text-yellow-600 dark:text-yellow-400">
-                                {late} late
-                              </span>
-                            </span>
+                            </div>
                           </div>
                         );
                       })}
@@ -990,6 +1315,50 @@ export function TeacherAttendanceForm({
             })
           )}
         </div>
+
+        {/* Previous / Next pagination — only renders when the filtered
+          * history actually spans more than one page (5 entries each).
+          * The "Page X of Y · showing N–M of T" line keeps the user
+          * oriented even when the page-number list is hidden. */}
+        {historyFiltered.length > HISTORY_PAGE_SIZE ? (
+          <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-3 dark:border-zinc-700 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Page{" "}
+              <span className="font-medium text-slate-700 dark:text-zinc-200">
+                {historyPageSafe}
+              </span>{" "}
+              of{" "}
+              <span className="font-medium text-slate-700 dark:text-zinc-200">
+                {historyTotalPages}
+              </span>{" "}
+              · showing{" "}
+              <span className="font-medium text-slate-700 dark:text-zinc-200">
+                {historyRangeStart}–{historyRangeEnd}
+              </span>{" "}
+              of {historyFiltered.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                disabled={historyPageSafe <= 1}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setHistoryPage((p) => Math.min(historyTotalPages, p + 1))
+                }
+                disabled={historyPageSafe >= historyTotalPages}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );
