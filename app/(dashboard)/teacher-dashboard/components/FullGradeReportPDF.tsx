@@ -1,7 +1,13 @@
 "use client";
 
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import autoTable, {
+  type FontStyle,
+  type HAlignType,
+  type OverflowType,
+  type StandardFontType,
+  type VAlignType,
+} from "jspdf-autotable";
 import { passingThresholdPercent } from "@/lib/tanzania-grades";
 import type { SchoolLevel } from "@/lib/school-level";
 
@@ -250,27 +256,32 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
       styles: {
         fontSize: 9,
         cellPadding: 2,
-        overflow: "linebreak",
-        valign: "top",
+        overflow: "linebreak" as OverflowType,
+        valign: "top" as VAlignType,
         lineWidth: 0.1,
-        lineColor: [0, 0, 0],
+        lineColor: [0, 0, 0] as [number, number, number],
       },
       headStyles: {
-        fillColor: [51, 65, 85],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        halign: "center",
+        fillColor: [51, 65, 85] as [number, number, number],
+        textColor: [255, 255, 255] as [number, number, number],
+        fontStyle: "bold" as FontStyle,
+        halign: "center" as HAlignType,
         lineWidth: 0.1,
-        lineColor: [0, 0, 0],
+        lineColor: [0, 0, 0] as [number, number, number],
       },
-      alternateRowStyles: { fillColor: [245, 245, 245] },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245] as [number, number, number],
+      },
       columnStyles: {
         0: {
           cellWidth: numW,
-          halign: "right",
-          font: "courier",
+          halign: "right" as HAlignType,
+          font: "courier" as StandardFontType,
         },
-        1: { cellWidth: rankColW - numW, halign: "left" },
+        1: {
+          cellWidth: rankColW - numW,
+          halign: "left" as HAlignType,
+        },
       },
     };
 
@@ -333,8 +344,8 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
     styles: {
       fontSize: 9,
       cellPadding: 2,
-      overflow: "linebreak",
-      valign: "top",
+      overflow: "linebreak" as OverflowType,
+      valign: "top" as VAlignType,
       // Hairline border on every cell → horizontal lines between
       // rows AND vertical lines between columns.
       lineWidth: 0.1,
