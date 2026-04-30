@@ -9,6 +9,7 @@ import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRo
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { TeacherAcademicNavDropdown } from "@/components/layout/TeacherAcademicNavDropdown";
 import { useChatInboxUnreadCount } from "@/components/layout/teacher-chat-unread-count";
+import { SyncIndicator } from "@/components/offline/sync-indicator";
 
 function schoolInitials(name: string): string {
   const t = name.trim();
@@ -202,6 +203,7 @@ export function TeacherDashboardHeader({
               </div>
             </Link>
             <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0 sm:gap-3">
+              <SyncIndicator />
               <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
               {userAvatar}
               <ThemeToggle />
@@ -288,6 +290,7 @@ export function TeacherDashboardHeader({
             Adakaro
           </Link>
           <div className="flex flex-wrap items-center gap-2">
+            <SyncIndicator />
             <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
             {userAvatar}
             <ThemeToggle />

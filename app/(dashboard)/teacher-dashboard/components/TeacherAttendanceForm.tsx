@@ -14,6 +14,7 @@ import {
   formatDateTimeInSchoolZone,
 } from "@/lib/school-timezone";
 import type { TeacherClassOption } from "../data";
+import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 
 type Status = "present" | "absent" | "late";
 
@@ -145,6 +146,7 @@ export function TeacherAttendanceForm({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
+  const [savedOffline, setSavedOffline] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [isSaving, setIsSaving] = useState(false);
 
@@ -332,26 +334,61 @@ export function TeacherAttendanceForm({
     if (!classId) return;
     setSaveError(null);
     setSaveOk(false);
+    setSavedOffline(false);
     setIsSaving(true);
     try {
       const records = students.map((s) => ({
         studentId: s.id,
         status: statusByStudent[s.id] ?? "present",
       }));
+      const payload = {
+        classId,
+        date,
+        subjectId: selectedSubjectMeta?.subjectId ?? null,
+        assignmentAcademicYear: selectedSubjectMeta?.academicYear ?? null,
+        records,
+      };
       console.log("[TeacherAttendanceForm] saving", {
         classId,
         date,
         subjectId: selectedSubjectMeta?.subjectId ?? null,
         studentCount: students.length,
         recordCount: records.length,
+        online:
+          typeof navigator !== "undefined" ? navigator.onLine : "unknown",
       });
-      const res = await saveAttendanceAction({
-        classId,
-        date,
-        subjectId: selectedSubjectMeta?.subjectId ?? null,
-        assignmentAcademicYear: selectedSubjectMeta?.academicYear ?? null,
-        records,
+
+      // Offline-aware path: enqueueOrRun calls the action immediately when
+      // online and queues to IndexedDB when offline (or when the call
+      // throws a network error mid-flight).
+      const wrapped = await enqueueOrRun({
+        kind: "save-attendance",
+        payload,
+        run: () => saveAttendanceAction(payload),
+        hint: {
+          label: `${selectedClassName || classId} · ${date}`,
+          attendance: {
+            classId,
+            date,
+            recordCount: records.length,
+          },
+        },
       });
+
+      if (!wrapped.ok) {
+        console.error("[TeacherAttendanceForm] enqueue failed", wrapped.error);
+        setSaveError(wrapped.error);
+        return;
+      }
+
+      if (wrapped.queued) {
+        console.log("[TeacherAttendanceForm] saved locally", wrapped.uuid);
+        setSavedOffline(true);
+        setHasChanges(false);
+        return;
+      }
+
+      const res = wrapped.result;
       if (!res.ok) {
         console.error("[TeacherAttendanceForm] save failed", res.error);
         setSaveError(res.error);
@@ -614,6 +651,17 @@ export function TeacherAttendanceForm({
         {saveOk && (
           <p className="text-sm text-emerald-700 dark:text-emerald-400">
             Attendance saved for {selectedLabel} on {date}.
+          </p>
+        )}
+        {savedOffline && (
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            Saved locally — will sync when you&apos;re back online.{" "}
+            <a
+              href="/teacher-dashboard/sync-status"
+              className="font-medium underline decoration-dotted underline-offset-2 hover:opacity-80"
+            >
+              View pending
+            </a>
           </p>
         )}
 

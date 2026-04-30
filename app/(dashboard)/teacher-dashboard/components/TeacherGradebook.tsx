@@ -32,6 +32,7 @@ import {
   tanzaniaPercentFromScore,
 } from "./GradeReportPDF";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
+import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import {
   duplicateMajorExamMessage,
   resolvedMajorExamKindForDuplicateCheck,
@@ -762,10 +763,41 @@ export function TeacherGradebook({
           remarks: scores[s.id]?.remarks?.trim() || null,
         };
       });
-      const res = await saveScoresAction({
+      const payload = {
         assignmentId: matrix.assignment.id,
         scores: list,
+      };
+      // Offline-aware path: when online → server action runs as before;
+      // when offline → payload is queued in IndexedDB and replayed once
+      // the network returns.
+      const wrapped = await enqueueOrRun({
+        kind: "save-scores",
+        payload,
+        run: () => saveScoresAction(payload),
+        hint: {
+          label: `Marks · ${matrix.assignment.title || matrix.assignment.id.slice(0, 8)}`,
+          grades: {
+            kind: "scores",
+            classId: classId || null,
+            assignmentId: matrix.assignment.id,
+            studentCount: list.length,
+          },
+        },
       });
+
+      if (!wrapped.ok) {
+        setError(wrapped.error);
+        return;
+      }
+
+      if (wrapped.queued) {
+        setToastMessage("Saved locally — will sync when online");
+        setScoresSaveButtonState("saved");
+        window.setTimeout(() => setScoresSaveButtonState("idle"), 2000);
+        return;
+      }
+
+      const res = wrapped.result;
       if (!res.ok) {
         setError(res.error);
         return;
