@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import Link from "next/link";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import {
   parseStudentListRowsPerPage,
   STUDENT_LIST_ROW_OPTIONS,
@@ -21,6 +21,12 @@ export interface TeacherProfileStudentRow {
 function genderAbbrev(g: string | null | undefined): string {
   if (g === "male") return "M";
   if (g === "female") return "F";
+  return "—";
+}
+
+function genderLabel(g: string | null | undefined): string {
+  if (g === "male") return "Male";
+  if (g === "female") return "Female";
   return "—";
 }
 
@@ -164,7 +170,44 @@ export function TeacherStudentProfilesClient({
 
       {filtered.length > 0 ? (
         <>
-          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          {/* Mobile: stacked cards (<md) */}
+          <div className="mt-3 space-y-3 md:hidden">
+            {pageSlice.map((s) => (
+              <div
+                key={s.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                <p className="text-base font-semibold text-slate-900 dark:text-white">
+                  {s.full_name}
+                </p>
+                <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
+                  <dt className="text-slate-500 dark:text-zinc-400">ADM #</dt>
+                  <dd className="text-slate-900 dark:text-white">
+                    {s.admission_number?.trim() || "—"}
+                  </dd>
+                  <dt className="text-slate-500 dark:text-zinc-400">Class</dt>
+                  <dd className="text-slate-900 dark:text-white">
+                    {s.class_name || "—"}
+                  </dd>
+                  <dt className="text-slate-500 dark:text-zinc-400">Gender</dt>
+                  <dd className="text-slate-900 dark:text-white">
+                    {genderLabel(s.gender)}
+                  </dd>
+                </dl>
+                <div className="mt-4">
+                  <NavLinkWithLoading
+                    href={`/dashboard/students/${s.id}/profile`}
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] px-4 py-2 text-sm font-semibold text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
+                  >
+                    View Profile
+                  </NavLinkWithLoading>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: table (≥md) */}
+          <div className="mt-3 hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block dark:border-zinc-800 dark:bg-zinc-900">
             <div className="max-h-[min(70vh,720px)] overflow-x-auto overflow-y-auto">
               <table className="w-full table-fixed border-collapse">
                 <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 [&_th]:bg-white dark:[&_th]:bg-zinc-900">
@@ -202,12 +245,12 @@ export function TeacherStudentProfilesClient({
                         {genderAbbrev(s.gender)}
                       </td>
                       <td className="sticky right-0 z-20 border-l border-slate-200 bg-white px-2 py-3 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
-                        <Link
+                        <NavLinkWithLoading
                           href={`/dashboard/students/${s.id}/profile`}
                           className="inline-flex rounded-md border border-[rgb(var(--school-primary-rgb)/0.25)] px-3 py-1.5 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
                         >
                           View Profile
-                        </Link>
+                        </NavLinkWithLoading>
                       </td>
                     </tr>
                   ))}

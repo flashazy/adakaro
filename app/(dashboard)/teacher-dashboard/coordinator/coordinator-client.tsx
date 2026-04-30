@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { useRouter } from "next/navigation";
 import { Check, Eye, Loader2, Printer, Send, X } from "lucide-react";
 import { useFormStatus } from "react-dom";
@@ -791,14 +791,14 @@ function CoordinatorClassCard({
         ) : null}
 
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link
+          <NavLinkWithLoading
             href={reportSettingsHref}
             onClick={() => feedback?.startNavigation()}
             className="inline-flex min-h-[44px] min-w-[10rem] items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline focus-visible:ring-2 focus-visible:ring-school-primary dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
           >
             <span aria-hidden>📝</span>
             Report Settings
-          </Link>
+          </NavLinkWithLoading>
           <button
             type="button"
             onClick={() => setShowGenerateModal(true)}

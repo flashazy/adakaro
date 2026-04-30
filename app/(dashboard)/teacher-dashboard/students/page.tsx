@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -100,12 +100,12 @@ export default async function TeacherStudentProfilesListPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link
+        <NavLinkWithLoading
           href="/teacher-dashboard"
           className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
         >
           ← Back to dashboard
-        </Link>
+        </NavLinkWithLoading>
       </div>
 
       <div>

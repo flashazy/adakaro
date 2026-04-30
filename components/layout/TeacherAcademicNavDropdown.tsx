@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { usePathname } from "next/navigation";
 import {
   useCallback,
@@ -142,22 +142,22 @@ export function TeacherAcademicNavDropdown() {
           zIndex: 100,
         }}
       >
-        <Link
+        <NavLinkWithLoading
           href={HREF_STUDENT_REPORTS}
           role="menuitem"
           className={itemClass(HREF_STUDENT_REPORTS)}
           onClick={() => setOpen(false)}
         >
           Student reports
-        </Link>
-        <Link
+        </NavLinkWithLoading>
+        <NavLinkWithLoading
           href={HREF_ACADEMIC_REPORTS}
           role="menuitem"
           className={itemClass(HREF_ACADEMIC_REPORTS)}
           onClick={() => setOpen(false)}
         >
           Academic reports
-        </Link>
+        </NavLinkWithLoading>
       </div>
     ) : null;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -216,7 +216,7 @@ export function TeacherDashboardHeader({
       <header className={teacherHeaderOuterClass}>
         <div className="w-full px-4 py-4 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-            <Link
+            <NavLinkWithLoading
               href="/teacher-dashboard"
               className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4"
             >
@@ -229,7 +229,7 @@ export function TeacherDashboardHeader({
                   Teacher: {fullName}
                 </p>
               </div>
-            </Link>
+            </NavLinkWithLoading>
             <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0 sm:gap-3">
               <SyncIndicator />
               <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
@@ -244,39 +244,39 @@ export function TeacherDashboardHeader({
             aria-label="Teacher navigation"
           >
             {NAV.map(({ href, label }) => (
-              <Link key={href} href={href} className={navLinkClass(href)}>
+              <NavLinkWithLoading key={href} href={href} className={navLinkClass(href)}>
                 {label}
-              </Link>
+              </NavLinkWithLoading>
             ))}
             {hasAcademicDepartmentRole ? (
               <TeacherAcademicNavDropdown />
             ) : null}
-            <Link
+            <NavLinkWithLoading
               href="/teacher-dashboard#my-documents"
               onClick={onMyDocumentsNavClick}
               className={navLinkClass("/teacher-dashboard/my-documents")}
             >
               My Documents
-            </Link>
+            </NavLinkWithLoading>
             {isCoordinator ? (
-              <Link
+              <NavLinkWithLoading
                 href="/teacher-dashboard/coordinator"
                 className={navLinkClass("/teacher-dashboard/coordinator")}
               >
                 Coordinator
-              </Link>
+              </NavLinkWithLoading>
             ) : null}
             {showClassTeacherNav ? (
               <>
-                <Link
+                <NavLinkWithLoading
                   href="/teacher-dashboard/class-teacher"
                   className={navLinkClass("/teacher-dashboard/class-teacher", {
                     inactiveWhenPathStartsWith: messagesHref,
                   })}
                 >
                   Class teacher
-                </Link>
-                <Link
+                </NavLinkWithLoading>
+                <NavLinkWithLoading
                   href={messagesHref}
                   className={navLinkClass(messagesHref)}
                 >
@@ -284,12 +284,12 @@ export function TeacherDashboardHeader({
                   {classTeacherMessagesUnread > 0
                     ? ` (${classTeacherMessagesUnread})`
                     : ""}
-                </Link>
+                </NavLinkWithLoading>
               </>
             ) : null}
-            <Link href="/" className={navHomeLinkClass}>
+            <NavLinkWithLoading href="/" className={navHomeLinkClass}>
               Home
-            </Link>
+            </NavLinkWithLoading>
           </nav>
         </div>
       </header>
@@ -300,7 +300,7 @@ export function TeacherDashboardHeader({
     <header className={teacherHeaderOuterClass}>
       <div className="w-full px-4 py-3 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link
+          <NavLinkWithLoading
             href="/teacher-dashboard"
             className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-white"
             aria-label="Adakaro"
@@ -313,7 +313,7 @@ export function TeacherDashboardHeader({
               className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
             />
             Adakaro
-          </Link>
+          </NavLinkWithLoading>
           <div className="flex flex-wrap items-center gap-2">
             <SyncIndicator />
             <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
@@ -370,39 +370,39 @@ export function TeacherDashboardHeader({
           aria-label="Teacher navigation"
         >
           {NAV.map(({ href, label }) => (
-            <Link key={href} href={href} className={navLinkClass(href)}>
+            <NavLinkWithLoading key={href} href={href} className={navLinkClass(href)}>
               {label}
-            </Link>
+            </NavLinkWithLoading>
           ))}
           {hasAcademicDepartmentRole ? (
             <TeacherAcademicNavDropdown />
           ) : null}
-          <Link
+          <NavLinkWithLoading
             href="/teacher-dashboard#my-documents"
             onClick={onMyDocumentsNavClick}
             className={navLinkClass("/teacher-dashboard/my-documents")}
           >
             My Documents
-          </Link>
+          </NavLinkWithLoading>
           {isCoordinator ? (
-            <Link
+            <NavLinkWithLoading
               href="/teacher-dashboard/coordinator"
               className={navLinkClass("/teacher-dashboard/coordinator")}
             >
               Coordinator
-            </Link>
+            </NavLinkWithLoading>
           ) : null}
           {showClassTeacherNav ? (
             <>
-              <Link
+              <NavLinkWithLoading
                 href="/teacher-dashboard/class-teacher"
                 className={navLinkClass("/teacher-dashboard/class-teacher", {
                   inactiveWhenPathStartsWith: messagesHref,
                 })}
               >
                 Class teacher
-              </Link>
-              <Link
+              </NavLinkWithLoading>
+              <NavLinkWithLoading
                 href={messagesHref}
                 className={navLinkClass(messagesHref)}
               >
@@ -410,12 +410,12 @@ export function TeacherDashboardHeader({
                 {classTeacherMessagesUnread > 0
                   ? ` (${classTeacherMessagesUnread})`
                   : ""}
-              </Link>
+              </NavLinkWithLoading>
             </>
           ) : null}
-          <Link href="/" className={navHomeLinkClass}>
+          <NavLinkWithLoading href="/" className={navHomeLinkClass}>
             Home
-          </Link>
+          </NavLinkWithLoading>
         </nav>
       </div>
     </header>
