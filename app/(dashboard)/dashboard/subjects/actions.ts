@@ -9,9 +9,25 @@ import {
   resolveSubjectCodeForSave,
   subjectCodePrefixFromName,
 } from "@/lib/subject-code";
+import { getCurrentAcademicYearAndTerm } from "@/lib/student-subject-enrollment";
+import { todayIsoLocal } from "@/lib/enrollment-date";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- admin client update typing
 type Db = any;
+
+export interface BulkStudentOption {
+  id: string;
+  full_name: string;
+  class_id: string;
+  class_name: string;
+}
+
+export interface BulkAssignSubjectsInput {
+  classIds: string[];
+  subjectIds: string[];
+  assignAllStudentsInSelectedClasses: boolean;
+  studentIds: string[];
+}
 
 export type SubjectActionState =
   | { ok: true; message?: string }
@@ -583,6 +599,298 @@ export async function bulkCreateSubjectsAction(
     );
   }
   return { ok: true, message: parts.join(" ") };
+}
+
+/**
+ * Students in the given leaf classes — for the bulk-assign-subjects picker.
+ */
+export async function fetchStudentsForBulkSubjectAssign(
+  classIds: string[]
+): Promise<BulkStudentOption[]> {
+  const uniqueClassIds = [...new Set(classIds.map((id) => id.trim()).filter(Boolean))];
+  if (uniqueClassIds.length === 0) return [];
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const schoolId = await getSchoolIdForUserWithAdmin(user.id);
+  if (!schoolId) return [];
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return [];
+  }
+
+  const admin = createAdminClient();
+  if (!(await assertClassIdsForSchool(admin, schoolId, uniqueClassIds))) {
+    return [];
+  }
+
+  const { data: students } = await admin
+    .from("students")
+    .select("id, full_name, class_id")
+    .eq("school_id", schoolId)
+    .eq("status", "active")
+    .in("class_id", uniqueClassIds)
+    .order("full_name", { ascending: true });
+
+  if (!(students ?? []).length) return [];
+
+  const { data: classRows } = await admin
+    .from("classes")
+    .select("id, name")
+    .eq("school_id", schoolId)
+    .in("id", uniqueClassIds);
+
+  const nameByClass = new Map(
+    (classRows ?? []).map((r) => {
+      const row = r as { id: string; name: string };
+      return [row.id, row.name];
+    })
+  );
+
+  return (students as { id: string; full_name: string; class_id: string }[]).map((s) => ({
+    id: s.id,
+    full_name: s.full_name.trim() || "Student",
+    class_id: s.class_id,
+    class_name: nameByClass.get(s.class_id) ?? "Class",
+  }));
+}
+
+const ENROLLMENT_INSERT_CHUNK = 150;
+
+function cartesianPairs(
+  classIds: string[],
+  subjectIds: string[]
+): { subject_id: string; class_id: string }[] {
+  const out: { subject_id: string; class_id: string }[] = [];
+  for (const class_id of classIds) {
+    for (const subject_id of subjectIds) {
+      out.push({ subject_id, class_id });
+    }
+  }
+  return out;
+}
+
+/**
+ * Ensures subjects are listed for the selected classes, then enrols students
+ * (whole class rosters or a chosen subset) in those subjects for the current
+ * academic year and term. Does **not** remove existing links or enrolments —
+ * additive only, unlike {@link assignSubjectClassesAction}.
+ */
+export async function bulkAssignSubjectsAction(
+  input: BulkAssignSubjectsInput
+): Promise<SubjectActionState> {
+  const classIds = [...new Set((input.classIds ?? []).map((id) => id.trim()).filter(Boolean))];
+  const subjectIds = [...new Set((input.subjectIds ?? []).map((id) => id.trim()).filter(Boolean))];
+  const studentIdsRequested = [...new Set((input.studentIds ?? []).map((id) => id.trim()).filter(Boolean))];
+
+  if (classIds.length === 0) {
+    return { ok: false, error: "Select at least one class." };
+  }
+  if (subjectIds.length === 0) {
+    return { ok: false, error: "Select at least one subject." };
+  }
+  if (!input.assignAllStudentsInSelectedClasses && studentIdsRequested.length === 0) {
+    return { ok: false, error: "Select at least one student, or assign to entire classes." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized." };
+
+  const schoolId = await getSchoolIdForUserWithAdmin(user.id);
+  if (!schoolId) return { ok: false, error: "No school found." };
+
+  if (!(await assertSchoolAdminForUser(user.id, schoolId))) {
+    return { ok: false, error: "Only school administrators can manage subjects." };
+  }
+
+  const admin = createAdminClient();
+
+  if (!(await assertClassIdsForSchool(admin, schoolId, classIds))) {
+    return { ok: false, error: "One or more selected classes are invalid for your school." };
+  }
+
+  const { data: subjRows } = await admin
+    .from("subjects")
+    .select("id")
+    .eq("school_id", schoolId)
+    .in("id", subjectIds);
+
+  const foundSubjects = new Set(
+    (subjRows ?? []).map((r) => (r as { id: string }).id)
+  );
+  if (subjectIds.some((id) => !foundSubjects.has(id))) {
+    return { ok: false, error: "One or more subjects are invalid for your school." };
+  }
+
+  /** Step A — additive subject_class links only */
+  const desiredPairs = cartesianPairs(classIds, subjectIds);
+  const pairKey = (p: { subject_id: string; class_id: string }) =>
+    `${p.subject_id}|${p.class_id}`;
+  const existingPairKeys = new Set<string>();
+
+  const { data: existingLinks } = await admin
+    .from("subject_classes")
+    .select("subject_id, class_id")
+    .in("subject_id", subjectIds)
+    .in("class_id", classIds);
+
+  for (const r of existingLinks ?? []) {
+    const row = r as { subject_id: string; class_id: string };
+    existingPairKeys.add(pairKey(row));
+  }
+
+  const pairsToInsert = desiredPairs.filter((p) => !existingPairKeys.has(pairKey(p)));
+
+  if (pairsToInsert.length > 0) {
+    const { error: linkErr } = await (admin as Db)
+      .from("subject_classes")
+      .insert(pairsToInsert as never);
+    if (linkErr) {
+      const code = (linkErr as { code?: string }).code;
+      if (code === "23505") {
+        return {
+          ok: false,
+          error: "One or more subject–class pairs could not be added (duplicate).",
+        };
+      }
+      return {
+        ok: false,
+        error: linkErr.message || "Could not link subjects to classes.",
+      };
+    }
+  }
+
+  const { academicYear, term } = getCurrentAcademicYearAndTerm();
+  const enrolledFrom = todayIsoLocal();
+
+  /** Resolve target students (id + class_id) */
+  let targetRows: { id: string; class_id: string }[] = [];
+
+  if (input.assignAllStudentsInSelectedClasses) {
+    const { data: studs } = await admin
+      .from("students")
+      .select("id, class_id")
+      .eq("school_id", schoolId)
+      .eq("status", "active")
+      .in("class_id", classIds);
+
+    targetRows =
+      ((studs ?? []) as { id: string; class_id: string }[]).filter((s) =>
+        classIds.includes(s.class_id)
+      );
+  } else {
+    const { data: studs } = await admin
+      .from("students")
+      .select("id, class_id")
+      .eq("school_id", schoolId)
+      .in("id", studentIdsRequested);
+
+    const fetched = ((studs ?? []) as { id: string; class_id: string }[]).filter(
+      (s) => classIds.includes(s.class_id)
+    );
+    const fetchedIds = new Set(fetched.map((s) => s.id));
+    if (studentIdsRequested.some((sid) => !fetchedIds.has(sid))) {
+      return {
+        ok: false,
+        error:
+          "One or more selected students could not be found in the chosen classes.",
+      };
+    }
+    targetRows = fetched;
+  }
+
+  if (targetRows.length === 0) {
+    const linkMsg =
+      pairsToInsert.length > 0
+        ? ` Added ${pairsToInsert.length} class offering${pairsToInsert.length === 1 ? "" : "s"}.`
+        : "";
+    revalidatePath("/dashboard/subjects");
+    revalidatePath("/dashboard/students");
+    revalidatePath("/dashboard/teachers");
+    return {
+      ok: true,
+      message: `Subjects are offered on the selected classes.${linkMsg} No active students matched; no enrolments were created.`,
+    };
+  }
+
+  const targetStudentIds = targetRows.map((r) => r.id);
+  const enrollmentRows: Array<{
+    student_id: string;
+    subject_id: string;
+    class_id: string;
+    academic_year: number;
+    term: "Term 1" | "Term 2";
+    enrolled_from: string;
+  }> = [];
+
+  const { data: existingEnroll } = await admin
+    .from("student_subject_enrollment")
+    .select("student_id, subject_id")
+    .in("student_id", targetStudentIds)
+    .in("subject_id", subjectIds)
+    .eq("academic_year", academicYear)
+    .eq("term", term);
+
+  const enrollmentExists = new Set(
+    ((existingEnroll ?? []) as { student_id: string; subject_id: string }[]).map(
+      (r) => `${r.student_id}|${r.subject_id}`
+    )
+  );
+
+  const classByStudent = new Map(targetRows.map((r) => [r.id, r.class_id]));
+
+  for (const studentId of targetStudentIds) {
+    const cid = classByStudent.get(studentId);
+    if (!cid) continue;
+    for (const subjectId of subjectIds) {
+      const k = `${studentId}|${subjectId}`;
+      if (enrollmentExists.has(k)) continue;
+      enrollmentRows.push({
+        student_id: studentId,
+        subject_id: subjectId,
+        class_id: cid,
+        academic_year: academicYear,
+        term,
+        enrolled_from: enrolledFrom,
+      });
+    }
+  }
+
+  let enrolledCount = 0;
+  if (enrollmentRows.length > 0) {
+    for (let i = 0; i < enrollmentRows.length; i += ENROLLMENT_INSERT_CHUNK) {
+      const chunk = enrollmentRows.slice(i, i + ENROLLMENT_INSERT_CHUNK);
+      const { error: insErr } = await (admin as Db)
+        .from("student_subject_enrollment")
+        .insert(chunk as never);
+      if (insErr) {
+        const msg =
+          insErr.message ||
+          "Could not create student subject enrolments (check class offerings and roster).";
+        return { ok: false, error: msg };
+      }
+      enrolledCount += chunk.length;
+    }
+  }
+
+  revalidatePath("/dashboard/subjects");
+  revalidatePath("/dashboard/students");
+  revalidatePath("/dashboard/teachers");
+
+  const linkPart =
+    pairsToInsert.length > 0
+      ? `Added ${pairsToInsert.length} new subject–class link${pairsToInsert.length === 1 ? "" : "s"}.`
+      : "Subject–class links were already in place.";
+  const enrollPart = `Created ${enrolledCount} new student enrolment${enrolledCount === 1 ? "" : "s"} for ${term} ${academicYear} (existing enrolments were left unchanged).`;
+
+  return { ok: true, message: `${linkPart} ${enrollPart}` };
 }
 
 export async function deleteSubjectAction(

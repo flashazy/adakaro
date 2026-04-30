@@ -23,6 +23,7 @@ import {
   type SubjectActionState,
   type SubjectRow,
 } from "./actions";
+import { BulkAssignSubjectsModal } from "./bulk-assign-subjects-modal";
 import {
   formatNativeSelectClassOptionLabel,
   sortClassRowsByHierarchy,
@@ -497,6 +498,8 @@ export function SubjectsPageClient({
   const [editing, setEditing] = useState<SubjectRow | null>(null);
   const [deleting, setDeleting] = useState<SubjectRow | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+  const [bulkAssignModalKey, setBulkAssignModalKey] = useState(0);
   const [addMode, setAddMode] = useState<"existing" | "new">("new");
   const [multipleSubjectIds, setMultipleSubjectIds] = useState<string[]>([]);
   /** Bump to remount subject pickers + class picker (clears local search / class chips). */
@@ -550,6 +553,15 @@ export function SubjectsPageClient({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [bulkOpen]);
+
+  useEffect(() => {
+    if (!bulkAssignOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setBulkAssignOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [bulkAssignOpen]);
 
   const closeEditModal = () => setEditing(null);
 
@@ -777,22 +789,32 @@ export function SubjectsPageClient({
                 />
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex w-full flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
               <button
                 type="submit"
                 disabled={
                   assignPending || multipleSubjectIds.length === 0
                 }
-                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50 md:w-auto md:min-h-0"
               >
                 {assignPending ? "Saving…" : "Save assignments"}
               </button>
               <button
                 type="button"
                 onClick={() => setBulkOpen(true)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 md:w-auto md:min-h-0"
               >
                 Bulk Add Subjects
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkAssignModalKey((k) => k + 1);
+                  setBulkAssignOpen(true);
+                }}
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 md:w-auto md:min-h-0"
+              >
+                Bulk Assign Subjects
               </button>
             </div>
           </form>
@@ -852,20 +874,30 @@ export function SubjectsPageClient({
                 )}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex w-full flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
               <button
                 type="submit"
                 disabled={createPending}
-                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50 md:w-auto md:min-h-0"
               >
                 {createPending ? "Saving…" : "Add subject"}
               </button>
               <button
                 type="button"
                 onClick={() => setBulkOpen(true)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 md:w-auto md:min-h-0"
               >
                 Bulk Add Subjects
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkAssignModalKey((k) => k + 1);
+                  setBulkAssignOpen(true);
+                }}
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 md:w-auto md:min-h-0"
+              >
+                Bulk Assign Subjects
               </button>
             </div>
           </form>
@@ -1290,6 +1322,15 @@ export function SubjectsPageClient({
           </div>
         </div>
       ) : null}
+
+      <BulkAssignSubjectsModal
+        key={bulkAssignModalKey}
+        open={bulkAssignOpen}
+        onClose={() => setBulkAssignOpen(false)}
+        classOptions={classOptions}
+        subjects={rows}
+        onSuccess={() => router.refresh()}
+      />
     </div>
   );
 }
