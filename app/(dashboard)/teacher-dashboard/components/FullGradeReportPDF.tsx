@@ -123,6 +123,14 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
   const margin = 14;
   let y = margin;
   const pageH = doc.internal.pageSize.getHeight();
+  /**
+   * Width available for tables on every page = page width minus the
+   * left/right margins. We use this as the basis for percentage-based
+   * column widths so the tables stretch edge-to-edge instead of
+   * collapsing to the sum of their fixed mm widths and leaving big
+   * empty space on the right.
+   */
+  const contentW = doc.internal.pageSize.getWidth() - margin * 2;
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
@@ -192,24 +200,93 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.text("Student ranking (highest to lowest)", margin, y);
-  y += 5;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  y += 4;
+
   if (data.ranking.length === 0) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
     doc.text("No scores entered for this assignment.", margin, y);
     y += 6;
   } else {
-    for (const r of data.ranking) {
-      if (y > pageH - 28) {
-        doc.addPage();
-        y = margin;
-      }
-      const line = `${r.rank}. ${r.name}  ${r.scorePct} (${r.grade})  ${r.badge}`.trim();
-      const split = doc.splitTextToSize(line, doc.internal.pageSize.getWidth() - 2 * margin);
-      doc.text(split, margin, y);
-      y += 3.5 * split.length + 1;
-    }
-    y += 4;
+    /**
+     * The ranking section was previously rendered as
+     *   `${rank}. ${name}  ${scorePct} (${grade})  ${badge}`
+     * concatenated into a single `doc.text(...)` line. Because names
+     * vary in width, the score / grade / badge columns visibly drifted
+     * left and right from row to row — the so-called "snake movement".
+     *
+     * Switching to `autoTable` with fixed column widths and explicit
+     * alignments fixes that, and also gives us automatic page breaks
+     * + repeated headers for free.
+     */
+    autoTable(doc, {
+      startY: y,
+      // Four columns: #, Student, Score %, Grade.
+      // The "Highlight" / badge column was removed earlier because it
+      // printed special glyphs (medals, ⚠️ etc.) that didn't render
+      // cleanly in the PDF font. The badge values still surface on
+      // screen via `RankingRow.badge` — only the printed table omits
+      // them.
+      head: [["#", "Student", "Score %", "Grade"]],
+      body: data.ranking.map((r) => [
+        String(r.rank),
+        r.name,
+        r.scorePct,
+        r.grade,
+      ]),
+      // `theme: "grid"` draws a full border + cell grid on every row,
+      // turning the table from spaced text into a real ruled table.
+      // Combined with the percentage-based column widths below, the
+      // table also spans edge-to-edge on every page size.
+      //   #        : 10% (rank)
+      //   Student  : 50%
+      //   Score %  : 20%
+      //   Grade    : 20%
+      //   Σ        : 100%
+      theme: "grid",
+      styles: {
+        fontSize: 9,
+        cellPadding: 2,
+        overflow: "linebreak",
+        // Hairline black border on every cell — gives us both
+        // horizontal lines between rows AND vertical lines between
+        // columns without further configuration.
+        lineWidth: 0.1,
+        lineColor: [0, 0, 0],
+      },
+      headStyles: {
+        fillColor: [51, 65, 85],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        halign: "center",
+        // Match the body line so the header doesn't look stitched
+        // onto the table.
+        lineWidth: 0.1,
+        lineColor: [0, 0, 0],
+      },
+      // Subtle zebra striping on the body rows for scanability.
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      columnStyles: {
+        // Rank — right-aligned, monospace for tabular numerals.
+        0: { cellWidth: contentW * 0.1, halign: "right", font: "courier" },
+        // Student name — left-aligned, the widest column.
+        1: { cellWidth: contentW * 0.5, halign: "left" },
+        // Score % — right-aligned + monospace so digits line up
+        // perfectly down the column.
+        2: { cellWidth: contentW * 0.2, halign: "right", font: "courier" },
+        // Grade letter — centered, bold.
+        3: { cellWidth: contentW * 0.2, halign: "center", fontStyle: "bold" },
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    /* `lastAutoTable` is the documented way autoTable reports where it
+       stopped drawing. Cast through unknown to keep the local jsPDF
+       type clean without pulling in a separate jspdf-autotable
+       declaration shim. */
+    const after = (doc as unknown as { lastAutoTable?: { finalY: number } })
+      .lastAutoTable;
+    y = (after?.finalY ?? y) + 6;
   }
 
   if (y > pageH - 40) {
@@ -230,14 +307,46 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
     startY: y,
     head,
     body,
-    styles: { fontSize: 9, cellPadding: 2, overflow: "linebreak" },
-    headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: "bold" },
+    // Same percentage-of-content-width strategy as the ranking table
+    // so the scores table also fills the page edge-to-edge on every
+    // page, with cells aligned exactly under their headers.
+    //   Student : 30%
+    //   Gender  : 12%
+    //   Score   : 15%
+    //   Grade   : 13%
+    //   Remarks : 30%
+    //   Σ       : 100%
+    theme: "grid",
+    styles: {
+      fontSize: 9,
+      cellPadding: 2,
+      overflow: "linebreak",
+      // Hairline border on every cell → horizontal lines between
+      // rows AND vertical lines between columns.
+      lineWidth: 0.1,
+      lineColor: [0, 0, 0],
+    },
+    headStyles: {
+      fillColor: [51, 65, 85],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      halign: "center",
+      lineWidth: 0.1,
+      lineColor: [0, 0, 0],
+    },
+    alternateRowStyles: { fillColor: [245, 245, 245] },
     columnStyles: {
-      0: { cellWidth: 42 },
-      1: { cellWidth: 22 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 14 },
-      4: { cellWidth: "auto" as unknown as number },
+      // Student — left-aligned, the widest text column.
+      0: { cellWidth: contentW * 0.3, halign: "left" },
+      // Gender — centered.
+      1: { cellWidth: contentW * 0.12, halign: "center" },
+      // Score — right-aligned + monospace so the digits line up
+      // perfectly down the column.
+      2: { cellWidth: contentW * 0.15, halign: "right", font: "courier" },
+      // Grade letter — centered, bold.
+      3: { cellWidth: contentW * 0.13, halign: "center", fontStyle: "bold" },
+      // Remarks — left-aligned, takes the remaining 30%.
+      4: { cellWidth: contentW * 0.3, halign: "left" },
     },
     margin: { left: margin, right: margin },
   });

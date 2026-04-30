@@ -296,6 +296,13 @@ export function TeacherGradebook({
   const [classMatrixSaving, setClassMatrixSaving] = useState(false);
   const [matrixPageSize, setMatrixPageSize] = useState(5);
   const [matrixPageIndex, setMatrixPageIndex] = useState(0);
+  /** Mobile (<768px) marks-matrix focus assignment.
+   * The full matrix is too wide for phones, so on mobile we show a
+   * single-assignment editor. This holds the id of the assignment
+   * the teacher is currently editing. Defaults to the first
+   * assignment when data loads (see effect below). */
+  const [mobileMatrixAssignmentId, setMobileMatrixAssignmentId] =
+    useState<string>("");
   const [enterScoresSearch, setEnterScoresSearch] = useState("");
   const [enterScoresPageSize, setEnterScoresPageSize] = useState(5);
   const [enterScoresPageIndex, setEnterScoresPageIndex] = useState(0);
@@ -545,6 +552,24 @@ export function TeacherGradebook({
     );
     setMatrixPageIndex((i) => Math.min(i, maxPage));
   }, [matrixStudentTotal, matrixPageSize]);
+
+  /** Keep the mobile-only "focus assignment" selection valid:
+   *   - Default to the first assignment when data first loads, or
+   *     when the previously-selected id is no longer in the list
+   *     (e.g. teacher deleted that assignment, or switched class /
+   *     subject / term).
+   *   - Clear the selection if there are no assignments. */
+  useEffect(() => {
+    if (!classMatrixData) return;
+    const ids = classMatrixData.assignments.map((a) => a.id);
+    if (ids.length === 0) {
+      if (mobileMatrixAssignmentId !== "") setMobileMatrixAssignmentId("");
+      return;
+    }
+    if (!ids.includes(mobileMatrixAssignmentId)) {
+      setMobileMatrixAssignmentId(ids[0] ?? "");
+    }
+  }, [classMatrixData, mobileMatrixAssignmentId]);
 
   const goMatrixPrev = useCallback(() => {
     setMatrixPageIndex((i) => Math.max(0, i - 1));
@@ -1369,7 +1394,11 @@ export function TeacherGradebook({
                   </button>
                 </div>
               </div>
-              <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+              {/* Desktop (≥768px): full marks matrix table.
+                * Hidden on mobile because the table needs horizontal
+                * scrolling per assignment column — phones get the
+                * single-assignment editor below instead. */}
+              <div className="hidden overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700 md:block">
                 <table className="w-max min-w-full border-collapse text-left text-xs sm:text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900">
@@ -1492,6 +1521,126 @@ export function TeacherGradebook({
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile (<768px): single-assignment editor.
+                * Lives inside the same <form> so the existing "Save
+                * matrix marks" submit button below saves everything
+                * (across all assignments) — the mobile UI is purely a
+                * narrower window onto the same `classDraft` state.
+                * The teacher picks one assignment from the dropdown,
+                * scores each student in the paginated student list,
+                * and uses the bottom Save button. */}
+              <div className="space-y-3 md:hidden">
+                <label className="block">
+                  <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                    Assignment
+                  </span>
+                  <select
+                    value={mobileMatrixAssignmentId}
+                    onChange={(e) =>
+                      setMobileMatrixAssignmentId(e.target.value)
+                    }
+                    className="mt-1 h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                    aria-label="Select assignment to edit on mobile"
+                  >
+                    {classMatrixData.assignments.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {(a.title?.trim() || "Assignment") +
+                          ` (max ${a.max_score})`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {(() => {
+                  const selected = classMatrixData.assignments.find(
+                    (a) => a.id === mobileMatrixAssignmentId
+                  );
+                  if (!selected) return null;
+                  return (
+                    <div className="space-y-2">
+                      {matrixTablePaging.rows.map((s) => {
+                        const persisted =
+                          classMatrixData.scoreMatrix[selected.id]?.[s.id];
+                        const draft =
+                          classDraft[selected.id]?.[s.id];
+                        return (
+                          <div
+                            key={`${selected.id}-${s.id}`}
+                            className={cn(
+                              "rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900",
+                              persisted &&
+                                "border-emerald-200 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20"
+                            )}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                                {s.full_name}
+                              </span>
+                              {persisted ? (
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                                  <Check
+                                    className="h-3 w-3"
+                                    aria-hidden
+                                  />
+                                  Saved
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-2 flex items-stretch gap-2">
+                              <input
+                                type="number"
+                                step={0.01}
+                                inputMode="decimal"
+                                aria-label={`Score for ${s.full_name}, ${selected.title?.trim() || "assignment"}`}
+                                placeholder={`/ ${selected.max_score}`}
+                                value={draft?.score ?? ""}
+                                onChange={(e) =>
+                                  setClassDraft((prev) => ({
+                                    ...prev,
+                                    [selected.id]: {
+                                      ...prev[selected.id],
+                                      [s.id]: {
+                                        score: e.target.value,
+                                        remarks:
+                                          prev[selected.id]?.[s.id]
+                                            ?.remarks ?? "",
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-11 w-24 rounded-lg border border-slate-300 bg-white px-2 text-center text-sm text-slate-900 placeholder:text-xs placeholder:text-slate-400 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                              />
+                              <input
+                                type="text"
+                                aria-label={`Remarks for ${s.full_name}`}
+                                placeholder="Remarks (optional)"
+                                value={draft?.remarks ?? ""}
+                                onChange={(e) =>
+                                  setClassDraft((prev) => ({
+                                    ...prev,
+                                    [selected.id]: {
+                                      ...prev[selected.id],
+                                      [s.id]: {
+                                        score:
+                                          prev[selected.id]?.[s.id]
+                                            ?.score ?? "",
+                                        remarks: e.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="submit"
@@ -1875,7 +2024,11 @@ export function TeacherGradebook({
               </label>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+            {/* Desktop (≥768px): table stays exactly as designed —
+              * the overflow-x-auto handles narrow desktop viewports.
+              * On mobile we hide it entirely and render the
+              * stacked-card layout below. */}
+            <div className="hidden overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700 md:block">
               <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-zinc-700">
                 <thead className="bg-slate-50 dark:bg-zinc-900">
                   <tr>
@@ -2059,6 +2212,187 @@ export function TeacherGradebook({
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile (<768px): stacked cards.
+              * One card per paged student. Score and Remarks are
+              * full-width inputs sized for touch. The computed marks /
+              * percentage / Tanzania grade letter are kept as a small
+              * footer line so the teacher still sees the same context
+              * the desktop table provides — only the Gender column is
+              * intentionally hidden as it isn't useful for data entry.
+              * The same `enterScoresTablePaging.rows` slice is used so
+              * pagination at the bottom keeps working unchanged. */}
+            <div className="space-y-3 md:hidden">
+              {matrix.students.length === 0 ? (
+                <p className="rounded-lg border border-slate-200 px-3 py-4 text-sm text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+                  No active students in this class.
+                </p>
+              ) : enterScoresFilteredStudents.length === 0 ? (
+                <p className="rounded-lg border border-slate-200 px-3 py-4 text-sm text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+                  No students match your search.
+                </p>
+              ) : (
+                enterScoresTablePaging.rows.map((s) => {
+                  const raw = scores[s.id]?.score?.trim() ?? "";
+                  const n = raw === "" ? null : Number(raw);
+                  const p =
+                    n != null && Number.isFinite(n)
+                      ? pct(n, matrix.assignment.max_score)
+                      : null;
+                  const tanzPct =
+                    n != null && Number.isFinite(n)
+                      ? tanzaniaPercentFromScore(
+                          n,
+                          matrix.assignment.max_score
+                        )
+                      : null;
+                  const letter = tanzaniaLetterGrade(tanzPct, schoolLevel);
+                  const persisted = hasPersistedScore(
+                    matrix.scoreByStudent[s.id]
+                  );
+                  const isFlashing = flashedStudentRowIds.has(s.id);
+                  const computedLine = formatMarksCellLabel({
+                    score: n,
+                    maxScore: matrix.assignment.max_score,
+                    percent: p,
+                    letter: null,
+                    format: displayFormat,
+                  });
+                  return (
+                    <div
+                      key={s.id}
+                      className={cn(
+                        "rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900",
+                        persisted &&
+                          "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-950/20",
+                        isFlashing &&
+                          "ring-2 ring-emerald-400/70 dark:ring-emerald-500/50"
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                          {s.full_name}
+                        </span>
+                        {persisted && (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                            <Check className="h-3 w-3" aria-hidden />
+                            Saved
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 flex flex-col gap-2">
+                        <input
+                          type="number"
+                          step={0.01}
+                          inputMode="decimal"
+                          aria-label={`Score for ${s.full_name}`}
+                          placeholder="Score"
+                          value={scores[s.id]?.score ?? ""}
+                          onChange={(e) =>
+                            setScores((prev) => ({
+                              ...prev,
+                              [s.id]: {
+                                score: e.target.value,
+                                remarks: prev[s.id]?.remarks ?? "",
+                              },
+                            }))
+                          }
+                          className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                        />
+                        <div
+                          className="flex items-start gap-2"
+                          ref={
+                            quickRemarkOpenId === s.id
+                              ? quickMenuRef
+                              : undefined
+                          }
+                        >
+                          <input
+                            value={scores[s.id]?.remarks ?? ""}
+                            onChange={(e) =>
+                              setScores((prev) => ({
+                                ...prev,
+                                [s.id]: {
+                                  score: prev[s.id]?.score ?? "",
+                                  remarks: e.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="Remarks"
+                            aria-label={`Remarks for ${s.full_name}`}
+                            className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                          />
+                          <div className="relative shrink-0">
+                            <button
+                              type="button"
+                              aria-expanded={quickRemarkOpenId === s.id}
+                              aria-label="Quick remarks"
+                              className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQuickRemarkOpenId((id) =>
+                                  id === s.id ? null : s.id
+                                );
+                              }}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                            {quickRemarkOpenId === s.id && (
+                              <ul
+                                className="absolute right-0 z-40 mt-1 max-h-56 w-64 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 text-xs shadow-lg dark:border-zinc-600 dark:bg-zinc-900"
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                {QUICK_REMARK_PHRASES.map((phrase) => (
+                                  <li key={phrase}>
+                                    <button
+                                      type="button"
+                                      className="w-full px-3 py-1.5 text-left text-slate-800 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                      onClick={() => {
+                                        setScores((prev) => ({
+                                          ...prev,
+                                          [s.id]: {
+                                            score:
+                                              prev[s.id]?.score ?? "",
+                                            remarks: phrase,
+                                          },
+                                        }));
+                                        setQuickRemarkOpenId(null);
+                                      }}
+                                    >
+                                      {phrase}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Compact context line: marks · % · grade.
+                        * Only renders when at least one of those values
+                        * is non-empty, so an empty card stays clean. */}
+                      {(computedLine || letter) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+                          {computedLine ? (
+                            <span className="tabular-nums">
+                              {computedLine}
+                            </span>
+                          ) : null}
+                          {letter ? (
+                            <span className={tanzaniaGradeBadgeClass(letter)}>
+                              {letter}
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
             {matrix.students.length > 0 &&
               enterScoresFilteredStudents.length > 0 && (
                 <div className="flex flex-wrap items-center justify-center gap-2 py-2 sm:justify-end">

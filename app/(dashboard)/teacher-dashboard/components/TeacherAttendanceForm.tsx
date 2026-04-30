@@ -251,6 +251,24 @@ export function TeacherAttendanceForm({
     }
   }, []);
 
+  // Force Symbols view on mobile (<768px). The "Text" labels
+  // (Present / Absent / Late) wrap badly at 375px, so on small
+  // screens we lock the view to the symbol-only buttons regardless
+  // of any stored preference. We deliberately use `setViewMode`
+  // directly (not `handleViewModeChange`) so we don't overwrite the
+  // user's stored desktop preference in localStorage.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = (matches: boolean) => {
+      if (matches) setViewMode("symbol");
+    };
+    apply(mq.matches);
+    const listener = (e: MediaQueryListEvent) => apply(e.matches);
+    mq.addEventListener("change", listener);
+    return () => mq.removeEventListener("change", listener);
+  }, []);
+
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (hasChanges) {
@@ -787,8 +805,13 @@ export function TeacherAttendanceForm({
           <div className="sticky top-0 z-10 rounded-t-lg border-b border-gray-100 bg-white dark:border-zinc-700 dark:bg-zinc-900">
             <div className="space-y-4 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* The Text/Symbols segmented toggle. The "Present /
+                  * Absent / Late" labels in Text mode wrap on narrow
+                  * phones, so we hide the entire toggle on mobile and
+                  * lock the form to Symbols view there (see the
+                  * matchMedia effect above). */}
                 <div
-                  className="inline-flex rounded-lg bg-gray-100 p-1 dark:bg-zinc-800"
+                  className="hidden rounded-lg bg-gray-100 p-1 dark:bg-zinc-800 md:inline-flex"
                   role="group"
                   aria-label="Attendance view"
                 >
@@ -849,75 +872,111 @@ export function TeacherAttendanceForm({
               </div>
 
               <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-2">
+                {/* Bulk actions row.
+                  * Mobile (<768px): "Mark all present" + "Mark all
+                  *   absent" share a 2-col grid, with "Reset" stacked
+                  *   full-width below. The label sits on its own row
+                  *   above the grid.
+                  * Desktop (≥768px): the inner grid uses `md:contents`
+                  *   so the buttons become direct children of the outer
+                  *   flex-wrap, restoring the original horizontal
+                  *   layout pixel-for-pixel. */}
+                <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
                   <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">
                     Bulk actions:
                   </span>
-                  <button
-                    type="button"
-                    onClick={markAllPresent}
-                    className="h-9 rounded-lg bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200/80 dark:bg-green-950/40 dark:text-green-400 dark:hover:bg-green-950/60"
-                  >
-                    Mark all present
-                  </button>
-                  <button
-                    type="button"
-                    onClick={markAllAbsent}
-                    className="h-9 rounded-lg bg-red-100 px-3 text-sm font-medium text-red-700 transition-colors hover:bg-red-200/80 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/60"
-                  >
-                    Mark all absent
-                  </button>
+                  <div className="grid grid-cols-2 gap-2 md:contents">
+                    <button
+                      type="button"
+                      onClick={markAllPresent}
+                      className="h-11 rounded-lg bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200/80 dark:bg-green-950/40 dark:text-green-400 dark:hover:bg-green-950/60 md:h-9"
+                    >
+                      Mark all present
+                    </button>
+                    <button
+                      type="button"
+                      onClick={markAllAbsent}
+                      className="h-11 rounded-lg bg-red-100 px-3 text-sm font-medium text-red-700 transition-colors hover:bg-red-200/80 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/60 md:h-9"
+                    >
+                      Mark all absent
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={resetToSavedAttendance}
                     disabled={!classId || students.length === 0 || isPending}
-                    className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    className="h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 md:h-9"
                   >
                     Reset
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="sr-only">Filter by attendance status</span>
+                {/* Status filter pills.
+                  * Mobile (<768px): equal-width 4-col grid so the pills
+                  *   line up neatly and never wrap onto a second row.
+                  * Desktop (≥768px): original flex-wrap with content
+                  *   widths is preserved.
+                  * `min-h-[44px]` ensures comfortable touch targets on
+                  *   mobile; `md:min-h-0` releases that on desktop so
+                  *   the pills keep their compact `py-1` size. */}
+                <div
+                  className="grid grid-cols-4 gap-2 md:flex md:flex-wrap"
+                  role="group"
+                  aria-label="Filter by attendance status"
+                >
                   {(
                     [
                       {
                         key: "all" as const,
                         label: "All",
+                        // No mobile abbreviation — "All" is already
+                        // short enough to fit the 4-col grid cleanly.
+                        mobileLabel: "All",
                         title: "Show all students",
                       },
                       {
                         key: "present" as const,
                         label: "Present",
+                        mobileLabel: "Pres",
                         title: "Show only Present",
                       },
                       {
                         key: "absent" as const,
                         label: "Absent",
+                        mobileLabel: "Abs",
                         title: "Show only Absent",
                       },
                       {
                         key: "late" as const,
                         label: "Late",
+                        mobileLabel: "Late",
                         title: "Show only Late",
                       },
                     ] as const
-                  ).map(({ key, label, title }) => {
+                  ).map(({ key, label, mobileLabel, title }) => {
                     const active = statusFilter === key;
+                    // We render BOTH spans and toggle visibility with
+                    // responsive utilities so the abbreviation never
+                    // leaks onto desktop and vice-versa. The full
+                    // `title` attribute still shows the long form on
+                    // hover for users on touch devices that map taps
+                    // to tooltips.
                     return (
                       <button
                         key={key}
                         type="button"
                         title={title}
+                        aria-label={label}
                         aria-pressed={active}
                         onClick={() => setStatusFilter(key)}
                         className={cn(
-                          "rounded-full border px-3 py-1 text-sm transition-colors",
+                          "min-h-[44px] rounded-full border px-3 py-1 text-sm transition-colors md:min-h-0",
                           active
                             ? "border-transparent bg-school-primary text-white hover:bg-school-primary dark:bg-school-primary"
                             : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
                         )}
                       >
-                        {label}
+                        <span className="md:hidden">{mobileLabel}</span>
+                        <span className="hidden md:inline">{label}</span>
                       </button>
                     );
                   })}
