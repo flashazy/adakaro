@@ -62,70 +62,73 @@ export function TeachingLearningProcessTable({
   );
 
   return (
-    <div className="space-y-3">
+    <div className="max-w-full min-w-0 space-y-3">
       <input
         type="hidden"
         name="teaching_learning_process"
         value={jsonPayload}
         aria-hidden
       />
-      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
-        <table className="min-w-[720px] w-full border-collapse text-left text-sm">
-          <thead>
+      <div className="max-w-full min-w-0 rounded-lg border border-slate-200 dark:border-zinc-700 md:overflow-x-auto">
+        <table className="block w-full min-w-0 max-w-full border-collapse text-left text-sm print:table md:table md:w-full md:min-w-[720px] [&_td]:min-w-0 [&_th]:min-w-0">
+          <thead className="hidden print:table-header-group md:table-header-group">
             <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-600 dark:bg-zinc-800/80">
               <th
                 scope="col"
-                className="border-r border-slate-200 px-2 py-2 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100 w-[140px]"
+                className="min-w-0 border-r border-slate-200 px-2 py-2 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100 md:w-[140px]"
               >
                 Stage
               </th>
               <th
                 scope="col"
-                className="border-r border-slate-200 px-2 py-2 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100 w-[88px]"
+                className="min-w-0 border-r border-slate-200 px-2 py-2 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100 md:w-[88px]"
               >
                 Time (minutes)
               </th>
               <th
                 scope="col"
-                className="border-r border-slate-200 px-2 py-2 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100 min-w-[140px]"
+                className="min-w-0 border-r border-slate-200 px-2 py-2 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100 md:min-w-[140px]"
               >
                 Teaching Activities
               </th>
               <th
                 scope="col"
-                className="border-r border-slate-200 px-2 py-2 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100 min-w-[140px]"
+                className="min-w-0 border-r border-slate-200 px-2 py-2 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100 md:min-w-[140px]"
               >
                 Learning Activities
               </th>
               <th
                 scope="col"
-                className="px-2 py-2 font-semibold text-slate-800 dark:text-zinc-100 min-w-[140px]"
+                className="min-w-0 px-2 py-2 font-semibold text-slate-800 dark:text-zinc-100 md:min-w-[140px]"
               >
                 Assessment Criteria
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="block space-y-4 p-4 print:table-row-group print:space-y-0 print:p-0 md:table-row-group md:space-y-0 md:p-0">
             {TEACHING_LEARNING_PROCESS_STAGES.map(({ key, label }) => {
               const row = data[key];
               return (
                 <tr
                   key={key}
-                  className="border-b border-slate-100 last:border-b-0 dark:border-zinc-700"
+                  className="block rounded-lg border border-slate-200 bg-slate-50/60 p-4 last:mb-0 dark:border-zinc-700 dark:bg-zinc-800/30 print:table-row print:border-0 print:border-b print:border-slate-100 print:bg-transparent print:p-0 md:table-row md:rounded-none md:border-0 md:border-b md:border-slate-100 md:bg-transparent md:p-0 md:last:border-b-0 dark:md:border-zinc-700"
                 >
                   <th
                     scope="row"
-                    className="border-r border-slate-100 bg-slate-50/80 px-2 py-2 align-top font-medium text-slate-800 dark:border-zinc-700 dark:bg-zinc-800/40 dark:text-zinc-200"
+                    className="block w-full min-w-0 bg-transparent px-0 pb-3 text-left text-base font-semibold text-slate-800 print:table-cell print:border-r print:border-slate-100 print:bg-slate-50/80 print:px-2 print:py-2 print:pb-2 print:text-sm print:font-medium md:table-cell md:w-auto md:border-r md:border-slate-100 md:bg-slate-50/80 md:px-2 md:py-2 md:text-sm md:font-medium md:align-top dark:border-zinc-700 dark:text-zinc-200 dark:md:bg-zinc-800/40"
                   >
                     {label}
                   </th>
-                  <td className="border-r border-slate-100 px-1 py-1 align-top dark:border-zinc-700">
+                  <td className="block w-full min-w-0 max-w-full border-0 py-2 print:table-cell print:border-r print:border-slate-100 print:px-2 print:py-2 md:table-cell md:border-r md:border-slate-100 md:px-1 md:py-1 dark:md:border-zinc-700">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600 print:hidden md:hidden dark:text-zinc-400">
+                      Time (minutes)
+                    </span>
                     <input
                       type="number"
                       min={0}
                       step="any"
                       inputMode="decimal"
-                      className="w-full min-w-0 rounded border border-gray-200 bg-white px-2 py-1.5 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                      className="w-full min-w-0 max-w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                       value={
                         row.time === null || row.time === undefined
                           ? ""
@@ -136,10 +139,13 @@ export function TeachingLearningProcessTable({
                       aria-label={`${label} — time in minutes`}
                     />
                   </td>
-                  <td className="border-r border-slate-100 px-1 py-1 align-top dark:border-zinc-700">
+                  <td className="block w-full min-w-0 max-w-full border-0 py-2 print:table-cell print:border-r print:border-slate-100 print:px-2 print:py-2 md:table-cell md:border-r md:border-slate-100 md:px-1 md:py-1 dark:md:border-zinc-700">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600 print:hidden md:hidden dark:text-zinc-400">
+                      Teaching activities
+                    </span>
                     <textarea
                       rows={3}
-                      className="w-full min-w-0 resize-y rounded border border-gray-200 bg-white px-2 py-1.5 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                      className="max-w-full min-w-0 w-full resize-y rounded border border-gray-200 bg-white px-2 py-1.5 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                       value={row.teaching_activities}
                       onChange={(e) =>
                         onTextChange(key, "teaching_activities", e.target.value)
@@ -147,10 +153,13 @@ export function TeachingLearningProcessTable({
                       aria-label={`${label} — teaching activities`}
                     />
                   </td>
-                  <td className="border-r border-slate-100 px-1 py-1 align-top dark:border-zinc-700">
+                  <td className="block w-full min-w-0 max-w-full border-0 py-2 print:table-cell print:border-r print:border-slate-100 print:px-2 print:py-2 md:table-cell md:border-r md:border-slate-100 md:px-1 md:py-1 dark:md:border-zinc-700">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600 print:hidden md:hidden dark:text-zinc-400">
+                      Learning activities
+                    </span>
                     <textarea
                       rows={3}
-                      className="w-full min-w-0 resize-y rounded border border-gray-200 bg-white px-2 py-1.5 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                      className="max-w-full min-w-0 w-full resize-y rounded border border-gray-200 bg-white px-2 py-1.5 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                       value={row.learning_activities}
                       onChange={(e) =>
                         onTextChange(key, "learning_activities", e.target.value)
@@ -158,10 +167,13 @@ export function TeachingLearningProcessTable({
                       aria-label={`${label} — learning activities`}
                     />
                   </td>
-                  <td className="px-1 py-1 align-top">
+                  <td className="block w-full min-w-0 max-w-full border-0 py-2 print:table-cell print:px-2 print:py-2 md:table-cell md:px-1 md:py-1">
+                    <span className="mb-1 block text-xs font-semibold text-slate-600 print:hidden md:hidden dark:text-zinc-400">
+                      Assessment criteria
+                    </span>
                     <textarea
                       rows={3}
-                      className="w-full min-w-0 resize-y rounded border border-gray-200 bg-white px-2 py-1.5 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                      className="max-w-full min-w-0 w-full resize-y rounded border border-gray-200 bg-white px-2 py-1.5 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                       value={row.assessment_criteria}
                       onChange={(e) =>
                         onTextChange(key, "assessment_criteria", e.target.value)

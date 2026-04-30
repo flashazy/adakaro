@@ -227,17 +227,17 @@ export function LessonPlanForm({
       : createLessonPlan;
 
   return (
-    <form action={formAction} className="space-y-8">
+    <form action={formAction} className="max-w-full min-w-0 space-y-8">
 
-      <div className="grid grid-cols-1 gap-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 xl:grid-cols-[minmax(0,47fr)_minmax(0,53fr)] xl:items-stretch">
+      <div className="grid min-w-0 max-w-full grid-cols-1 gap-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 xl:grid-cols-[minmax(0,47fr)_minmax(0,53fr)] xl:items-stretch">
       {/* Section 1 — Basic info */}
-      <section className="flex h-full min-h-0 flex-col border-b border-slate-200 p-6 dark:border-zinc-700 xl:border-b-0 xl:border-r">
+      <section className="flex h-full min-h-0 min-w-0 max-w-full flex-col border-b border-slate-200 p-6 dark:border-zinc-700 xl:border-b-0 xl:border-r">
         <h2 className="mb-4 shrink-0 text-lg font-semibold text-slate-900 dark:text-white">
           Section 1 — Basic information
         </h2>
-        <div className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden rounded-lg border border-slate-200 dark:border-zinc-700">
-          <table className="w-full min-w-full border-collapse text-sm">
-            <thead>
+        <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-x-auto overflow-y-visible rounded-lg border border-slate-200 dark:border-zinc-700 md:overflow-y-hidden">
+          <table className="block w-full min-w-0 max-w-full border-collapse text-sm print:table md:table md:min-w-[36rem] [&_td]:min-w-0">
+            <thead className="hidden print:table-header-group md:table-header-group">
               <tr className="bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
                 <th className="border-b border-r border-slate-200 px-3 py-2 text-left font-semibold text-slate-900 last:border-r-0 dark:border-zinc-700 dark:text-white">
                   Date <span className="text-red-600">*</span>
@@ -256,9 +256,12 @@ export function LessonPlanForm({
                 </th>
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
+            <tbody className="block print:table-row-group md:table-row-group">
+              <tr className="flex flex-col print:table-row md:table-row">
+                <td className="block w-full min-w-0 max-w-full border-b border-slate-200 px-3 py-3 align-top dark:border-zinc-700 print:table-cell print:border-r print:border-b print:py-2 md:table-cell md:border-r md:border-b md:py-2">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-900 print:hidden md:hidden dark:text-white">
+                    Date <span className="text-red-600">*</span>
+                  </span>
                   <label className="sr-only">Date</label>
                   <input
                     type="date"
@@ -266,17 +269,20 @@ export function LessonPlanForm({
                     required
                     value={lessonDate}
                     onChange={(e) => setLessonDate(e.target.value)}
-                    className="h-10 w-full min-w-[10rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                    className="h-10 w-full max-w-full min-w-0 rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                   />
                 </td>
-                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
+                <td className="block w-full min-w-0 max-w-full border-b border-slate-200 px-3 py-3 align-top dark:border-zinc-700 print:table-cell print:border-r print:border-b print:py-2 md:table-cell md:border-r md:border-b md:py-2">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-900 print:hidden md:hidden dark:text-white">
+                    Class <span className="text-red-600">*</span>
+                  </span>
                   <label className="sr-only">Class</label>
                   <select
                     name="class_id"
                     required
                     value={classId}
                     onChange={(e) => setClassId(e.target.value)}
-                    className="h-10 w-full min-w-[8rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                    className="h-10 w-full max-w-full min-w-0 rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                   >
                     <option value="">Select class</option>
                     {classList.map((c) => (
@@ -286,7 +292,10 @@ export function LessonPlanForm({
                     ))}
                   </select>
                 </td>
-                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
+                <td className="block w-full min-w-0 max-w-full border-b border-slate-200 px-3 py-3 align-top dark:border-zinc-700 print:table-cell print:border-r print:border-b print:py-2 md:table-cell md:border-r md:border-b md:py-2">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-900 print:hidden md:hidden dark:text-white">
+                    Subject <span className="text-red-600">*</span>
+                  </span>
                   <label className="sr-only">Subject</label>
                   <select
                     name="subject_id"
@@ -294,7 +303,7 @@ export function LessonPlanForm({
                     value={subjectId}
                     onChange={(e) => setSubjectId(e.target.value)}
                     disabled={!classId || subjectOptionsForClass.length === 0}
-                    className="h-10 w-full min-w-[8rem] rounded-lg border border-gray-200 px-2 text-slate-900 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                    className="h-10 w-full max-w-full min-w-0 rounded-lg border border-gray-200 px-2 text-slate-900 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                   >
                     <option value="">
                       {!classId
@@ -310,7 +319,10 @@ export function LessonPlanForm({
                     ))}
                   </select>
                 </td>
-                <td className="border-b border-r border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
+                <td className="block w-full min-w-0 max-w-full border-b border-slate-200 px-3 py-3 align-top dark:border-zinc-700 print:table-cell print:border-r print:border-b print:py-2 md:table-cell md:border-r md:border-b md:py-2">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-900 print:hidden md:hidden dark:text-white">
+                    Period <span className="text-red-600">*</span>
+                  </span>
                   <label className="sr-only">Period</label>
                   <input
                     type="hidden"
@@ -353,7 +365,10 @@ export function LessonPlanForm({
                     </div>
                   </div>
                 </td>
-                <td className="border-b border-slate-200 px-3 py-2 align-top dark:border-zinc-700">
+                <td className="block w-full min-w-0 max-w-full border-b border-slate-200 px-3 py-3 align-top dark:border-zinc-700 print:table-cell print:border-b print:py-2 md:table-cell md:border-b md:py-2">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-900 print:hidden md:hidden dark:text-white">
+                    Time <span className="text-red-600">*</span>
+                  </span>
                   <label className="sr-only">Time (minutes)</label>
                   <input
                     type="hidden"
@@ -372,7 +387,7 @@ export function LessonPlanForm({
                       }
                       setDurationKind(v);
                     }}
-                    className="h-10 w-full min-w-[7rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                    className="h-10 w-full max-w-full min-w-0 rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                   >
                     <option value="40">40 minutes</option>
                     <option value="60">60 minutes</option>
@@ -387,7 +402,7 @@ export function LessonPlanForm({
                       max={999}
                       value={customMinutes}
                       onChange={(e) => setCustomMinutes(e.target.value)}
-                      className="mt-2 h-10 w-full min-w-[7rem] rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+                      className="mt-2 h-10 w-full max-w-full min-w-0 rounded-lg border border-gray-200 px-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                       placeholder="Minutes"
                       aria-label="Custom duration in minutes"
                     />
@@ -397,7 +412,7 @@ export function LessonPlanForm({
             </tbody>
           </table>
           <div
-            className="grid min-h-0 flex-1 grid-cols-5"
+            className="hidden min-h-0 flex-1 grid-cols-5 xl:grid"
             aria-hidden
           >
             <div className="border-r border-slate-200 dark:border-zinc-700" />
@@ -410,7 +425,7 @@ export function LessonPlanForm({
       </section>
 
       {/* Section 2 — Demographics (read-only, auto) */}
-      <section className="flex h-full min-h-0 flex-col p-6">
+      <section className="flex h-full min-h-0 min-w-0 max-w-full flex-col p-6">
         <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
           Section 2 — Class profile (auto-filled)
         </h2>
@@ -419,8 +434,8 @@ export function LessonPlanForm({
           counts students marked present or late in saved attendance for the
           selected date (0 if none recorded), split by gender where known.
         </p>
-        <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
-          <table className="min-w-full text-sm">
+        <div className="mt-4 max-w-full min-w-0 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+          <table className="w-full min-w-0 border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 dark:border-zinc-700 dark:bg-zinc-800/80">
                 <th
@@ -523,12 +538,12 @@ export function LessonPlanForm({
       <input type="hidden" name="present_count" value={presentCount} />
 
       {/* Section 3 — Competences, then required activities & resources (Tanzania format) */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+      <section className="max-w-full min-w-0 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
         <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
           Section 3 — Competences, activities &amp; resources
         </h2>
-        <div className="space-y-4">
-          <label className="flex flex-col gap-1 text-sm">
+        <div className="min-w-0 max-w-full space-y-4">
+          <label className="flex min-w-0 max-w-full flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Main competence
             </span>
@@ -536,11 +551,11 @@ export function LessonPlanForm({
               name="main_competence"
               rows={3}
               defaultValue={initialData?.main_competence ?? ""}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+              className="max-w-full min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
               placeholder="Main competence…"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex min-w-0 max-w-full flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Specific competence
             </span>
@@ -548,11 +563,11 @@ export function LessonPlanForm({
               name="specific_competence"
               rows={3}
               defaultValue={initialData?.specific_competence ?? ""}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+              className="max-w-full min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
               placeholder="Specific competence…"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex min-w-0 max-w-full flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Main Activity <span className="text-red-600">*</span>
             </span>
@@ -561,11 +576,11 @@ export function LessonPlanForm({
               rows={4}
               required
               defaultValue={initialData?.main_activities ?? ""}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+              className="max-w-full min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
               placeholder="Main activity…"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex min-w-0 max-w-full flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Specific Activities <span className="text-red-600">*</span>
             </span>
@@ -574,11 +589,11 @@ export function LessonPlanForm({
               rows={4}
               required
               defaultValue={initialData?.specific_activities ?? ""}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+              className="max-w-full min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
               placeholder="Specific activities…"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex min-w-0 max-w-full flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               Teaching and Learning Resources <span className="text-red-600">*</span>
             </span>
@@ -587,12 +602,12 @@ export function LessonPlanForm({
               rows={3}
               required
               defaultValue={initialData?.teaching_resources ?? ""}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+              className="max-w-full min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
               placeholder="Teaching and learning resources…"
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex min-w-0 max-w-full flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
               References <span className="text-red-600">*</span>
             </span>
@@ -601,12 +616,12 @@ export function LessonPlanForm({
               rows={2}
               required
               defaultValue={initialData?.references ?? ""}
-              className="rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+              className="max-w-full min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
               placeholder="References…"
             />
           </label>
 
-          <div>
+          <div className="min-w-0 max-w-full">
             <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
               Section 4 — Teaching and Learning Process
             </h2>
@@ -619,11 +634,11 @@ export function LessonPlanForm({
       </section>
 
       {/* Section 4 — Evaluation */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+      <section className="max-w-full min-w-0 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
         <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">
           Section 5 — Remarks
         </h2>
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex min-w-0 max-w-full flex-col gap-1 text-sm">
           <span className="font-medium text-slate-700 dark:text-zinc-300">
             Remarks / evaluation
           </span>
@@ -631,7 +646,7 @@ export function LessonPlanForm({
             name="remarks"
             rows={3}
             defaultValue={initialData?.remarks ?? ""}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
+            className="max-w-full min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
           />
         </label>
       </section>

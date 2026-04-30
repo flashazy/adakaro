@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -74,6 +75,12 @@ const MATRIX_PAGE_SIZE_CHOICES = [5, 10, 15, 20, 25, 50] as const;
 const ENTER_SCORES_PAGE_STORAGE_KEY =
   "teacherGradebook:enterScores:rowsPerPage";
 const ENTER_SCORES_PAGE_CHOICES = [5, 10, 15, 20, 25, 50] as const;
+
+const NEW_ASSIGNMENT_FORM_EXPANDED_STORAGE_KEY =
+  "teacherGradebook:newAssignmentFormExpanded";
+
+const MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY =
+  "teacherGradebook:marksMatrixSectionExpanded";
 
 function readStoredEnterScoresPageSize(): number {
   if (typeof window === "undefined") return 5;
@@ -322,6 +329,11 @@ export function TeacherGradebook({
   const matrixCellInputRef = useRef<HTMLInputElement>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [newAssignmentFormExpanded, setNewAssignmentFormExpanded] =
+    useState(false);
+  /** When true, Marks matrix chrome + table are visible (mutually exclusive with new-assignment panel). */
+  const [marksMatrixSectionExpanded, setMarksMatrixSectionExpanded] =
+    useState(true);
   const [assignmentCreateError, setAssignmentCreateError] = useState<
     string | null
   >(null);
@@ -500,6 +512,35 @@ export function TeacherGradebook({
   useEffect(() => {
     setMatrixPageSize(readStoredMatrixPageSize());
     setEnterScoresPageSize(readStoredEnterScoresPageSize());
+    try {
+      const newExpanded =
+        localStorage.getItem(NEW_ASSIGNMENT_FORM_EXPANDED_STORAGE_KEY) ===
+        "true";
+      const matrixRaw = localStorage.getItem(
+        MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY
+      );
+      const matrixExpanded =
+        matrixRaw === null ? true : matrixRaw === "true";
+
+      let newOpen = newExpanded;
+      let matrixOpen = matrixExpanded;
+      if (newOpen && matrixOpen) {
+        matrixOpen = false;
+      }
+
+      setNewAssignmentFormExpanded(newOpen);
+      setMarksMatrixSectionExpanded(matrixOpen);
+      localStorage.setItem(
+        NEW_ASSIGNMENT_FORM_EXPANDED_STORAGE_KEY,
+        newOpen ? "true" : "false"
+      );
+      localStorage.setItem(
+        MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY,
+        matrixOpen ? "true" : "false"
+      );
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
@@ -513,6 +554,21 @@ export function TeacherGradebook({
   useEffect(() => {
     setEnterScoresSearch("");
     setEnterScoresPageIndex(0);
+  }, [assignmentId]);
+
+  /** Marks matrix stays visible whenever no assignment is selected for Enter scores. */
+  useEffect(() => {
+    if (!assignmentId) {
+      setMarksMatrixSectionExpanded(true);
+      try {
+        localStorage.setItem(
+          MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY,
+          "true"
+        );
+      } catch {
+        /* ignore */
+      }
+    }
   }, [assignmentId]);
 
   const matrixStudentTotal = classMatrixData?.students.length ?? 0;
@@ -765,6 +821,20 @@ export function TeacherGradebook({
       await fetchAssignments();
       await fetchClassMatrix();
       if (res.assignmentId) setAssignmentId(res.assignmentId);
+      setNewAssignmentFormExpanded(false);
+      setMarksMatrixSectionExpanded(true);
+      try {
+        localStorage.setItem(
+          NEW_ASSIGNMENT_FORM_EXPANDED_STORAGE_KEY,
+          "false"
+        );
+        localStorage.setItem(
+          MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY,
+          "true"
+        );
+      } catch {
+        /* ignore */
+      }
       router.refresh();
     } finally {
       setIsCreatingAssignment(false);
@@ -861,6 +931,18 @@ export function TeacherGradebook({
         setScores(next);
       }
       await fetchClassMatrix();
+      setAssignmentId("");
+      setMarksMatrixSectionExpanded(true);
+      setNewAssignmentFormExpanded(false);
+      try {
+        localStorage.setItem(MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY, "true");
+        localStorage.setItem(
+          NEW_ASSIGNMENT_FORM_EXPANDED_STORAGE_KEY,
+          "false"
+        );
+      } catch {
+        /* ignore */
+      }
       router.refresh();
     } finally {
       setIsSaving(false);
@@ -1075,6 +1157,56 @@ export function TeacherGradebook({
     } catch {
       /* ignore */
     }
+  }, []);
+
+  const toggleNewAssignmentForm = useCallback(() => {
+    setNewAssignmentFormExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(
+          NEW_ASSIGNMENT_FORM_EXPANDED_STORAGE_KEY,
+          next ? "true" : "false"
+        );
+        if (next) {
+          setMarksMatrixSectionExpanded(false);
+          localStorage.setItem(
+            MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY,
+            "false"
+          );
+        } else {
+          setMarksMatrixSectionExpanded(true);
+          localStorage.setItem(
+            MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY,
+            "true"
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleMarksMatrixSection = useCallback(() => {
+    setMarksMatrixSectionExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(
+          MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY,
+          next ? "true" : "false"
+        );
+        if (next) {
+          setNewAssignmentFormExpanded(false);
+          localStorage.setItem(
+            NEW_ASSIGNMENT_FORM_EXPANDED_STORAGE_KEY,
+            "false"
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   }, []);
 
   const enterScoresPageButtonIndices = useMemo(() => {
@@ -1325,8 +1457,27 @@ export function TeacherGradebook({
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/60">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-            Marks matrix (all assignments)
+          <h2 className="min-w-0 flex-1 text-base font-semibold text-slate-900 dark:text-white">
+            <button
+              type="button"
+              id="marks-matrix-section-heading"
+              onClick={toggleMarksMatrixSection}
+              aria-expanded={marksMatrixSectionExpanded}
+              aria-controls="marks-matrix-section-panel"
+              className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800/80"
+            >
+              <span
+                aria-hidden
+                className="inline-flex w-6 shrink-0 justify-center"
+              >
+                {marksMatrixSectionExpanded ? (
+                  <ChevronDown className="h-5 w-5" strokeWidth={2.25} />
+                ) : (
+                  <ChevronRight className="h-5 w-5" strokeWidth={2.25} />
+                )}
+              </span>
+              <span>Marks matrix (all assignments)</span>
+            </button>
           </h2>
           {classMatrixLoading && (
             <span className="text-xs text-slate-500 dark:text-zinc-400">
@@ -1334,6 +1485,12 @@ export function TeacherGradebook({
             </span>
           )}
         </div>
+        <div
+          id="marks-matrix-section-panel"
+          role="region"
+          aria-labelledby="marks-matrix-section-heading"
+          hidden={!marksMatrixSectionExpanded}
+        >
         <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
           Click any cell to enter or edit a score. Cells show percentage and
           letter grade. Save when finished.
@@ -1681,12 +1838,35 @@ export function TeacherGradebook({
             No assignments yet for this class and subject. Create one below.
           </p>
         )}
+        </div>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-zinc-700 dark:bg-zinc-900/40">
         <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-          New assignment
+          <button
+            type="button"
+            id="new-assignment-form-heading"
+            onClick={toggleNewAssignmentForm}
+            aria-expanded={newAssignmentFormExpanded}
+            aria-controls="new-assignment-form-panel"
+            className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-200/70 dark:hover:bg-zinc-800/80"
+          >
+            <span aria-hidden className="inline-flex w-6 shrink-0 justify-center">
+              {newAssignmentFormExpanded ? (
+                <ChevronDown className="h-5 w-5" strokeWidth={2.25} />
+              ) : (
+                <ChevronRight className="h-5 w-5" strokeWidth={2.25} />
+              )}
+            </span>
+            <span>New assignment</span>
+          </button>
         </h2>
+        <div
+          id="new-assignment-form-panel"
+          role="region"
+          aria-labelledby="new-assignment-form-heading"
+          hidden={!newAssignmentFormExpanded}
+        >
         <form onSubmit={handleCreateAssignment} className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm sm:col-span-2">
             <span className="font-medium text-slate-700 dark:text-zinc-300">
@@ -1837,6 +2017,7 @@ export function TeacherGradebook({
             )}
           </div>
         </form>
+        </div>
       </section>
 
       <section className="space-y-4">
@@ -1856,7 +2037,26 @@ export function TeacherGradebook({
             </span>
             <select
               value={assignmentId}
-              onChange={(e) => setAssignmentId(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setAssignmentId(v);
+                if (v) {
+                  setMarksMatrixSectionExpanded(false);
+                  setNewAssignmentFormExpanded(false);
+                  try {
+                    localStorage.setItem(
+                      MARKS_MATRIX_SECTION_EXPANDED_STORAGE_KEY,
+                      "false"
+                    );
+                    localStorage.setItem(
+                      NEW_ASSIGNMENT_FORM_EXPANDED_STORAGE_KEY,
+                      "false"
+                    );
+                  } catch {
+                    /* ignore */
+                  }
+                }
+              }}
               className="w-full max-w-xl rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
               <option value="">Select assignment…</option>

@@ -137,10 +137,10 @@ export default async function DashboardGroupLayout({
             showDashboardRoleToggle={dualSchoolDashboard}
           />
         </div>
-        <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:bg-white">
+        <div className="min-h-screen max-w-full min-w-0 overflow-x-hidden bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:overflow-visible print:bg-white">
           <div
             id="page-content"
-            className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
+            className="w-full max-w-full min-w-0 overflow-x-hidden px-4 pb-12 pt-6 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0 print:overflow-visible"
           >
             <DashboardFeedbackProvider>
               <SyncProvider>{children}</SyncProvider>

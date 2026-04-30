@@ -16,7 +16,7 @@ export default async function LessonPlansPage() {
   const lessonPlans = (await getLessonPlans()) as PlanRow[];
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="max-w-full min-w-0 space-y-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Lesson Plans</h1>
         <Link

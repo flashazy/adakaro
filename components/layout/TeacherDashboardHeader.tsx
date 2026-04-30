@@ -186,7 +186,7 @@ export function TeacherDashboardHeader({
   if (hasSchoolBranding) {
     return (
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
+        <div className="w-full px-4 py-4 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
             <Link
               href="/teacher-dashboard"
@@ -273,7 +273,7 @@ export function TeacherDashboardHeader({
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
+      <div className="w-full px-4 py-3 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/teacher-dashboard"

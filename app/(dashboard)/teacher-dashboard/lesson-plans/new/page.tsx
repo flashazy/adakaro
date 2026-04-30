@@ -42,15 +42,15 @@ export default async function NewLessonPlanPage() {
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="max-w-full min-w-0 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0 max-w-full flex-1">
             <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
               New lesson plan
             </h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-              Choose a class first, then a subject you teach for that class. Class
-              and date drive pupil counts and present total.
+              Choose a class first, then a subject you teach for that class.
+              Class and date drive pupil counts and present total.
             </p>
           </div>
           <Link
@@ -61,11 +61,13 @@ export default async function NewLessonPlanPage() {
           </Link>
         </div>
 
-        <LessonPlanForm
-          mode="create"
-          classes={classes}
-          subjectsByClassId={subjectsByClassId}
-        />
+        <div className="max-w-full min-w-0 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <LessonPlanForm
+            mode="create"
+            classes={classes}
+            subjectsByClassId={subjectsByClassId}
+          />
+        </div>
       </div>
       <div className="print:hidden">
         <SmartFloatingScrollButton sectionIds={[]} />

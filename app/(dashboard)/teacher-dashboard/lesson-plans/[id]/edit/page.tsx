@@ -106,7 +106,7 @@ export default async function EditLessonPlanPage({
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="max-w-full min-w-0 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
