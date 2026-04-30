@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
 import { SignOutButton } from "@/components/auth/sign-out-button";
@@ -80,6 +81,22 @@ export function TeacherDashboardHeader({
   showDashboardRoleToggle = false,
 }: TeacherDashboardHeaderProps) {
   const pathname = usePathname();
+  const [headerElevated, setHeaderElevated] = useState(false);
+
+  useEffect(() => {
+    function onScroll() {
+      setHeaderElevated(window.scrollY > 4);
+    }
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const teacherHeaderOuterClass = [
+    "sticky top-0 z-50 border-b border-gray-200 bg-white transition-shadow duration-200 dark:border-zinc-800 dark:bg-zinc-900",
+    headerElevated ? "shadow-sm dark:shadow-black/25" : "shadow-none",
+  ].join(" ");
+
   const classTeacherMessagesUnread = useChatInboxUnreadCount(
     Boolean(showClassTeacherNav)
   );
@@ -88,6 +105,12 @@ export function TeacherDashboardHeader({
   const schoolInitial = schoolName?.trim() ? schoolInitials(schoolName) : "";
   const hasSchoolBranding =
     Boolean(schoolLogoUrl?.trim()) || Boolean(schoolName?.trim());
+
+  const navShellClass =
+    "relative mt-4 flex gap-x-3 overflow-x-auto overflow-y-visible pb-0.5 md:flex-wrap md:gap-x-6 md:overflow-visible md:pb-0";
+
+  const navUnderlineActive =
+    "after:pointer-events-none after:absolute after:bottom-0 after:left-1/2 after:h-0.5 after:w-[min(50%,10rem)] after:-translate-x-1/2 after:rounded-full after:bg-school-primary";
 
   const navLinkClass = (
     href: string,
@@ -103,13 +126,18 @@ export function TeacherDashboardHeader({
     ) {
       active = false;
     }
+    const base =
+      "relative inline-flex shrink-0 min-h-[44px] items-center whitespace-nowrap rounded-md px-3 pb-3 text-sm font-medium transition-colors duration-200";
     return [
-      "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+      base,
       active
-        ? "bg-school-primary text-white dark:bg-school-primary"
-        : "text-slate-600 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
+        ? `text-school-primary font-semibold dark:text-school-primary ${navUnderlineActive}`
+        : "text-slate-600 hover:bg-gray-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
     ].join(" ");
   };
+
+  const navHomeLinkClass =
+    "relative inline-flex shrink-0 min-h-[44px] items-center whitespace-nowrap rounded-md px-3 pb-3 text-sm font-medium text-slate-500 transition-colors duration-200 hover:bg-gray-100 hover:text-slate-800 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200";
 
   const onMyDocumentsNavClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (
@@ -185,7 +213,7 @@ export function TeacherDashboardHeader({
 
   if (hasSchoolBranding) {
     return (
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <header className={teacherHeaderOuterClass}>
         <div className="w-full px-4 py-4 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
             <Link
@@ -212,7 +240,7 @@ export function TeacherDashboardHeader({
           </div>
 
           <nav
-            className="mt-4 flex flex-wrap gap-1"
+            className={navShellClass}
             aria-label="Teacher navigation"
           >
             {NAV.map(({ href, label }) => (
@@ -259,10 +287,7 @@ export function TeacherDashboardHeader({
                 </Link>
               </>
             ) : null}
-            <Link
-              href="/"
-              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-zinc-800"
-            >
+            <Link href="/" className={navHomeLinkClass}>
               Home
             </Link>
           </nav>
@@ -272,7 +297,7 @@ export function TeacherDashboardHeader({
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+    <header className={teacherHeaderOuterClass}>
       <div className="w-full px-4 py-3 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
@@ -341,7 +366,7 @@ export function TeacherDashboardHeader({
         </div>
 
         <nav
-          className="mt-4 flex flex-wrap gap-1"
+          className={navShellClass}
           aria-label="Teacher navigation"
         >
           {NAV.map(({ href, label }) => (
@@ -388,10 +413,7 @@ export function TeacherDashboardHeader({
               </Link>
             </>
           ) : null}
-          <Link
-            href="/"
-            className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-zinc-500 dark:hover:bg-zinc-800"
-          >
+          <Link href="/" className={navHomeLinkClass}>
             Home
           </Link>
         </nav>
