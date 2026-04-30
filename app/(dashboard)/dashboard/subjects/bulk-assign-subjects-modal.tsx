@@ -15,11 +15,13 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   bulkAssignSubjectsAction,
   fetchStudentsForBulkSubjectAssign,
   type BulkStudentOption,
   type SubjectRow,
+  type SubjectActionState,
 } from "./actions";
 import { sortClassRowsByHierarchy } from "@/lib/class-options";
 import { getCurrentAcademicYearAndTerm } from "@/lib/student-subject-enrollment";
@@ -39,9 +41,7 @@ interface BulkAssignSubjectsModalProps {
   onSuccess: () => void;
 }
 
-function flashMessage(
-  state: { ok: true; message?: string } | { ok: false; error: string } | null
-) {
+function flashMessage(state: SubjectActionState | null) {
   if (!state) return null;
   if (state.ok && state.message) {
     return (
@@ -173,9 +173,9 @@ export function BulkAssignSubjectsModal({
   const [assignEntireClasses, setAssignEntireClasses] = useState(true);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [studentOptions, setStudentOptions] = useState<BulkStudentOption[]>([]);
-  const [submitState, setSubmitState] = useState<
-    { ok: true; message?: string } | { ok: false; error: string } | null
-  >(null);
+  const [submitState, setSubmitState] = useState<SubjectActionState | null>(
+    null
+  );
   const [isPending, startTransition] = useTransition();
   const [loadStudentsPending, setLoadStudentsPending] = useState(false);
   const loadGeneration = useRef(0);
@@ -289,6 +289,13 @@ export function BulkAssignSubjectsModal({
       }).then((res) => {
         setSubmitState(res);
         if (res.ok) {
+          if (res.enrollmentSummary) {
+            const { created, skipped } = res.enrollmentSummary;
+            toast.success(
+              `${created} new assignment${created === 1 ? "" : "s"} created. ${skipped} skipped (already existed).`,
+              { duration: 5000 }
+            );
+          }
           onSuccess();
           onClose();
         }

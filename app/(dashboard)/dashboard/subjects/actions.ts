@@ -29,8 +29,13 @@ export interface BulkAssignSubjectsInput {
   studentIds: string[];
 }
 
+export interface BulkAssignEnrollmentSummary {
+  created: number;
+  skipped: number;
+}
+
 export type SubjectActionState =
-  | { ok: true; message?: string }
+  | { ok: true; message?: string; enrollmentSummary?: BulkAssignEnrollmentSummary }
   | { ok: false; error: string };
 
 export interface SubjectRow {
@@ -817,6 +822,7 @@ export async function bulkAssignSubjectsAction(
     return {
       ok: true,
       message: `Subjects are offered on the selected classes.${linkMsg} No active students matched; no enrolments were created.`,
+      enrollmentSummary: { created: 0, skipped: 0 },
     };
   }
 
@@ -846,12 +852,16 @@ export async function bulkAssignSubjectsAction(
 
   const classByStudent = new Map(targetRows.map((r) => [r.id, r.class_id]));
 
+  let skippedEnrollmentPairs = 0;
   for (const studentId of targetStudentIds) {
     const cid = classByStudent.get(studentId);
     if (!cid) continue;
     for (const subjectId of subjectIds) {
       const k = `${studentId}|${subjectId}`;
-      if (enrollmentExists.has(k)) continue;
+      if (enrollmentExists.has(k)) {
+        skippedEnrollmentPairs += 1;
+        continue;
+      }
       enrollmentRows.push({
         student_id: studentId,
         subject_id: subjectId,
@@ -863,7 +873,7 @@ export async function bulkAssignSubjectsAction(
     }
   }
 
-  let enrolledCount = 0;
+  let createdCount = 0;
   if (enrollmentRows.length > 0) {
     for (let i = 0; i < enrollmentRows.length; i += ENROLLMENT_INSERT_CHUNK) {
       const chunk = enrollmentRows.slice(i, i + ENROLLMENT_INSERT_CHUNK);
@@ -876,7 +886,7 @@ export async function bulkAssignSubjectsAction(
           "Could not create student subject enrolments (check class offerings and roster).";
         return { ok: false, error: msg };
       }
-      enrolledCount += chunk.length;
+      createdCount += chunk.length;
     }
   }
 
@@ -888,9 +898,19 @@ export async function bulkAssignSubjectsAction(
     pairsToInsert.length > 0
       ? `Added ${pairsToInsert.length} new subject–class link${pairsToInsert.length === 1 ? "" : "s"}.`
       : "Subject–class links were already in place.";
-  const enrollPart = `Created ${enrolledCount} new student enrolment${enrolledCount === 1 ? "" : "s"} for ${term} ${academicYear} (existing enrolments were left unchanged).`;
+  const enrolPart =
+    skippedEnrollmentPairs === 0
+      ? `Assignments: ${createdCount} created for ${term} ${academicYear}.`
+      : `Assignments: ${createdCount} created, ${skippedEnrollmentPairs} skipped (already existed) for ${term} ${academicYear}.`;
 
-  return { ok: true, message: `${linkPart} ${enrollPart}` };
+  return {
+    ok: true,
+    message: `${linkPart} ${enrolPart}`,
+    enrollmentSummary: {
+      created: createdCount,
+      skipped: skippedEnrollmentPairs,
+    },
+  };
 }
 
 export async function deleteSubjectAction(
