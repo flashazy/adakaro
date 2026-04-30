@@ -228,10 +228,14 @@ export default async function DashboardGroupLayout({
                 lastRejected={blockState.lastRejected}
               />
             ) : (
-              <>
+              // SyncProvider wraps the school-admin/parent branch too so
+              // offline payments, student CRUD, and chat have a sync
+              // runtime. The provider is a no-op on the server and only
+              // does work after hydration in the browser.
+              <SyncProvider>
                 <BroadcastBanner showBroadcasts={showSchoolAdminBroadcasts} />
                 {children}
-              </>
+              </SyncProvider>
             )}
           </DashboardFeedbackProvider>
         </div>

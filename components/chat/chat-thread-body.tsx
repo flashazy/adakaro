@@ -8,6 +8,14 @@ export type ChatLine = {
   message: string;
   created_at: string;
   sender_id: string;
+  /**
+   * Set when the line is an offline-queued message that hasn't been
+   * sent yet. Drawn with a small "pending" badge and slightly lower
+   * opacity so the user can distinguish it from confirmed messages.
+   * Once sync succeeds the underlying `messages_offline` row is removed
+   * and the next poll surfaces the real server message in its place.
+   */
+  pending?: boolean;
 };
 
 function formatChatTimestamp(iso: string) {
@@ -115,17 +123,32 @@ export function ChatThreadBody({
                 "max-w-[min(100%,28rem)] rounded-2xl px-3 py-2 text-sm shadow-sm",
                 mine
                   ? "rounded-br-md bg-school-primary text-white"
-                  : "rounded-bl-md border border-slate-200 bg-white text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  : "rounded-bl-md border border-slate-200 bg-white text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100",
+                m.pending ? "opacity-70" : null
               )}
             >
               <p className="whitespace-pre-wrap break-words">{m.message}</p>
               <p
                 className={cn(
-                  "mt-1 text-[0.65rem] tabular-nums",
+                  "mt-1 flex items-center gap-1 text-[0.65rem] tabular-nums",
                   mine ? "text-white/80" : "text-slate-500 dark:text-zinc-400"
                 )}
               >
-                {formatChatTimestamp(m.created_at)}
+                <span>{formatChatTimestamp(m.created_at)}</span>
+                {m.pending ? (
+                  <span
+                    className={cn(
+                      "ml-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[0.6rem] font-medium",
+                      mine
+                        ? "bg-white/20 text-white"
+                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                    )}
+                    title="This message is queued and will send when online"
+                  >
+                    <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
+                    pending
+                  </span>
+                ) : null}
               </p>
             </div>
           </div>

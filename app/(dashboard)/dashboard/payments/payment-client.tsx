@@ -1,10 +1,18 @@
 "use client";
 
-import { useState, useEffect, useMemo, useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useTransition,
+  type FormEvent,
+} from "react";
 import { recordPayment, type PaymentActionState } from "./actions";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
+import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
+import { makeTempReceiptNumber } from "@/lib/offline/temp-ids";
+import { useOfflinePaymentByUuid } from "@/lib/offline/use-sync";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import {
   RECORD_PAYMENT_STUDENTS_ROWS_STORAGE_KEY,
@@ -61,8 +69,7 @@ const METHODS = [
 
 // ─── Submit button ───────────────────────────────────────
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
+function SubmitButton({ pending }: { pending: boolean }) {
   return (
     <button
       type="submit"
@@ -76,7 +83,19 @@ function SubmitButton() {
 
 // ─── Main component ──────────────────────────────────────
 
-const initialState: PaymentActionState = {};
+/**
+ * Local extension of `PaymentActionState` for the offline-aware UI:
+ *   - `queuedUuid` ties the current success message to the offline row
+ *     so the receipt-swap effect can find it.
+ *   - `tempReceipt` is the `OFFLINE-…` number shown until sync replaces
+ *     it with the real `RCP-…` number.
+ */
+type LocalPaymentState = PaymentActionState & {
+  queuedUuid?: string;
+  tempReceipt?: string;
+};
+
+const initialState: LocalPaymentState = {};
 
 export function PaymentClient({
   students,
@@ -91,7 +110,95 @@ export function PaymentClient({
   const [studentRowsPerPage, setStudentRowsPerPage] =
     useState<StudentListRowOption>(5);
   const [selectedFeeId, setSelectedFeeId] = useState("");
-  const [state, formAction] = useActionState(recordPayment, initialState);
+  const [state, setState] = useState<LocalPaymentState>(initialState);
+  const [submitting, startSubmit] = useTransition();
+
+  // When a payment is queued, watch the corresponding offline row. Once
+  // sync runs and the server returns the real receipt number, swap it in
+  // place of the temporary `OFFLINE-…` so the UI stays accurate without
+  // requiring a navigation.
+  const offlinePaymentRow = useOfflinePaymentByUuid(state.queuedUuid ?? null);
+  useEffect(() => {
+    if (!offlinePaymentRow?.realReceipt) return;
+    setState((prev) =>
+      prev.queuedUuid === offlinePaymentRow.uuid
+        ? {
+            ...prev,
+            success: `Synced — receipt ${offlinePaymentRow.realReceipt}.`,
+            receiptNumber: offlinePaymentRow.realReceipt ?? undefined,
+            // Keep tempReceipt around so the conditional banner clearly
+            // shows "OFFLINE-… → RCP-…" if you're inspecting later.
+          }
+        : prev
+    );
+  }, [offlinePaymentRow]);
+
+  /**
+   * Offline-aware submit. When online, calls `recordPayment` directly
+   * and surfaces the server result. When offline (or when the call
+   * throws a network error mid-flight), enqueues with a temp receipt so
+   * the user gets immediate feedback.
+   */
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    // Capture the field values up-front so we can both reconstruct
+    // payload-as-object (for the offline replay) and call the server
+    // action with the original FormData (for the online happy path).
+    const payload: Record<string, string> = {};
+    formData.forEach((v, k) => {
+      if (typeof v === "string") payload[k] = v;
+    });
+
+    const tempReceipt = makeTempReceiptNumber();
+    const studentId = payload["student_id"] ?? "";
+    const amountNum = Number(payload["amount"] ?? "0");
+
+    setState({});
+    startSubmit(() => {
+      void (async () => {
+        try {
+          const wrapped = await enqueueOrRun({
+            kind: "record-payment",
+            payload,
+            run: () => recordPayment({}, formData),
+            hint: {
+              label: `Payment · ${studentId.slice(0, 8)} · ${amountNum.toLocaleString()}`,
+              payments: {
+                studentId,
+                amount: amountNum,
+                tempReceipt,
+              },
+            },
+          });
+
+          if (!wrapped.ok) {
+            setState({ error: wrapped.error });
+            return;
+          }
+
+          if (wrapped.queued) {
+            setState({
+              success: `Saved offline – will sync when online. Temporary receipt: ${tempReceipt}.`,
+              receiptNumber: tempReceipt,
+              queuedUuid: wrapped.uuid,
+              tempReceipt,
+            });
+            return;
+          }
+
+          // Online happy path — surface the real server state.
+          setState(wrapped.result);
+        } catch (e) {
+          setState({
+            error: e instanceof Error ? e.message : "Something went wrong.",
+          });
+        }
+      })();
+    });
+  };
 
   useEffect(() => {
     const stored = parseStudentListRowsPerPage(
@@ -375,7 +482,7 @@ export function PaymentClient({
       {/* ─── Payment form ─── */}
       {selectedFeeId && selectedBalance && (
         <form
-          action={formAction}
+          onSubmit={handleSubmit}
           className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
         >
           <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -481,7 +588,7 @@ export function PaymentClient({
           </div>
 
           <div className="mt-5">
-            <SubmitButton />
+            <SubmitButton pending={submitting} />
           </div>
 
           {state.error && (
@@ -490,10 +597,30 @@ export function PaymentClient({
             </p>
           )}
           {state.success && (
-            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
-              <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+            <div
+              className={`mt-3 rounded-lg border p-3 ${
+                state.queuedUuid && !offlinePaymentRow?.realReceipt
+                  ? "border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20"
+                  : "border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/20"
+              }`}
+            >
+              <p
+                className={`text-sm font-medium ${
+                  state.queuedUuid && !offlinePaymentRow?.realReceipt
+                    ? "text-amber-800 dark:text-amber-200"
+                    : "text-emerald-700 dark:text-emerald-300"
+                }`}
+              >
                 {state.success}
               </p>
+              {state.queuedUuid && !offlinePaymentRow?.realReceipt && (
+                <Link
+                  href="/teacher-dashboard/sync-status"
+                  className="mt-1 inline-block text-sm font-medium text-school-primary underline hover:opacity-90 dark:text-school-primary"
+                >
+                  View pending sync →
+                </Link>
+              )}
               {state.paymentId && (
                 <Link
                   href={`/dashboard/receipts/${state.paymentId}`}

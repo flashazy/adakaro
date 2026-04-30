@@ -17,13 +17,18 @@
 import {
   type AttendanceOfflineRow,
   type GradesOfflineRow,
+  type MessagesOfflineRow,
   type PaymentsOfflineRow,
   type PendingSyncRow,
+  type StudentsOfflineRow,
+  KIND_PRIORITY,
   type SyncItemKind,
   generateUuid,
   getOfflineDB,
 } from "./db";
 import { dispatchSyncItem } from "./sync-dispatcher";
+import { recordIdMapping, lookupManyIdMappings } from "./id-map";
+import { collectTempIds, rewritePayload } from "./rewrite-ids";
 
 const MAX_RETRIES = 8;
 /** Cap the retry interval at 5 minutes so failed items still get a try
@@ -65,7 +70,24 @@ export interface EnqueueHint {
     assignmentId: string | null;
     studentCount: number;
   };
-  payments?: { studentId: string; amount: number };
+  payments?: {
+    studentId: string;
+    amount: number;
+    /** Pre-generated `OFFLINE-…` receipt to display in the UI. */
+    tempReceipt: string;
+  };
+  messages?: {
+    conversationId: string;
+    senderId: string;
+    body: string;
+  };
+  students?: {
+    tempStudentId: string;
+    fullName: string;
+    classId: string | null;
+    parentPhone: string | null;
+    op: StudentsOfflineRow["op"];
+  };
 }
 
 export async function enqueueSyncItem(
@@ -96,6 +118,8 @@ export async function enqueueSyncItem(
       db.attendance_offline,
       db.grades_offline,
       db.payments_offline,
+      db.messages_offline,
+      db.students_offline,
     ],
     async () => {
       await db.pending_sync.add(row);
@@ -125,9 +149,32 @@ export async function enqueueSyncItem(
           uuid,
           studentId: hint.payments.studentId,
           amount: hint.payments.amount,
+          tempReceipt: hint.payments.tempReceipt,
           createdAt: now,
         };
         await db.payments_offline.put(pr);
+      }
+      if (hint.messages) {
+        const mr: MessagesOfflineRow = {
+          uuid,
+          conversationId: hint.messages.conversationId,
+          senderId: hint.messages.senderId,
+          body: hint.messages.body,
+          createdAt: now,
+        };
+        await db.messages_offline.put(mr);
+      }
+      if (hint.students) {
+        const sr: StudentsOfflineRow = {
+          uuid,
+          tempStudentId: hint.students.tempStudentId,
+          fullName: hint.students.fullName,
+          classId: hint.students.classId,
+          parentPhone: hint.students.parentPhone,
+          op: hint.students.op,
+          createdAt: now,
+        };
+        await db.students_offline.put(sr);
       }
     }
   );
@@ -229,15 +276,45 @@ export async function drainQueue(
       skippedDueToInFlight: false,
     };
 
-    // Pull pending + failed (manual retry) items oldest-first.
+    // Pull pending items, then sort by [kind priority, createdAt]. The
+    // priority puts `create-student` ahead of every dependent kind so its
+    // id mapping is recorded before downstream items dispatch. Within
+    // the same priority, oldest-first matches user intent (the order
+    // they actually saved).
     const candidates = await db.pending_sync
       .where("status")
-      .anyOf("pending")
+      .equals("pending")
       .toArray();
+    candidates.sort((a, b) => {
+      const pa = KIND_PRIORITY[a.kind] ?? 10;
+      const pb = KIND_PRIORITY[b.kind] ?? 10;
+      if (pa !== pb) return pa - pb;
+      return a.createdAt - b.createdAt;
+    });
 
     for (const item of candidates) {
       if (!opts.force && !isDue(item, now)) continue;
       if (item.id == null) continue;
+
+      // Phase 3: rewrite temp ids → real ids. Items whose payload
+      // references an unresolved temp id are deferred — left as
+      // `pending` with no retry-count bump — so they get a fresh attempt
+      // after the create-student that produces the mapping drains.
+      const tempRefs = collectTempIds(item.kind, item.payload);
+      let rewrittenPayload = item.payload;
+      if (tempRefs.length > 0) {
+        const uniqueRefs = Array.from(new Set(tempRefs));
+        const mapping = await lookupManyIdMappings(uniqueRefs);
+        const unresolved = uniqueRefs.filter((id) => !mapping.has(id));
+        if (unresolved.length > 0) {
+          // Defer — but only if at least one create-student is still
+          // pending. If no create-student is queued the temp id will
+          // never resolve; skip on this pass and let the user resolve
+          // manually (the status page already shows the stuck item).
+          continue;
+        }
+        rewrittenPayload = rewritePayload(item.kind, item.payload, mapping);
+      }
 
       result.attempted += 1;
 
@@ -248,9 +325,37 @@ export async function drainQueue(
         lastAttemptAt: Date.now(),
       });
 
-      const dispatch = await dispatchSyncItem(item.kind, item.payload);
+      const dispatch = await dispatchSyncItem(
+        item.kind,
+        rewrittenPayload,
+        item.uuid
+      );
 
       if (dispatch.ok) {
+        // Side effects of a successful dispatch:
+        //   - create-student → record id mapping so dependent items can
+        //     rewrite their payloads on the next pass of THIS drain.
+        //   - record-payment → swap the temp receipt for the real one
+        //     in `payments_offline`. We *keep* the row so the UI can show
+        //     "synced — receipt RCP-…" briefly before the next page load.
+        if (dispatch.idMapping) {
+          await recordIdMapping(
+            dispatch.idMapping.tempId,
+            dispatch.idMapping.realId
+          );
+          // Update the students_offline row with the real id so the UI
+          // badge can flip from "pending" to the real student row.
+          await db.students_offline
+            .where("uuid")
+            .equals(item.uuid)
+            .modify({ realStudentId: dispatch.idMapping.realId });
+        }
+        if (dispatch.paymentReceipt) {
+          await db.payments_offline
+            .where("uuid")
+            .equals(item.uuid)
+            .modify({ realReceipt: dispatch.paymentReceipt.receiptNumber });
+        }
         await db.transaction(
           "rw",
           [
@@ -258,12 +363,20 @@ export async function drainQueue(
             db.attendance_offline,
             db.grades_offline,
             db.payments_offline,
+            db.messages_offline,
+            db.students_offline,
           ],
           async () => {
             await db.pending_sync.delete(item.id!);
             await db.attendance_offline.delete(item.uuid);
             await db.grades_offline.delete(item.uuid);
-            await db.payments_offline.delete(item.uuid);
+            // Payments + students keep their offline rows around briefly
+            // so the UI can render the "just synced" state. They're
+            // garbage-collected by `vacuumOfflineCaches()`. Messages are
+            // deleted immediately because the chat client merges from
+            // both server polls and `messages_offline` — leaving the
+            // row would cause a duplicate.
+            await db.messages_offline.delete(item.uuid);
           }
         );
         result.succeeded += 1;
@@ -332,6 +445,8 @@ export async function discardItem(uuid: string): Promise<void> {
       db.attendance_offline,
       db.grades_offline,
       db.payments_offline,
+      db.messages_offline,
+      db.students_offline,
     ],
     async () => {
       const row = await db.pending_sync.where("uuid").equals(uuid).first();
@@ -339,24 +454,116 @@ export async function discardItem(uuid: string): Promise<void> {
       await db.attendance_offline.delete(uuid);
       await db.grades_offline.delete(uuid);
       await db.payments_offline.delete(uuid);
+      await db.messages_offline.delete(uuid);
+      await db.students_offline.delete(uuid);
     }
   );
 }
 
 /**
  * Conflict resolution: user chooses to push their local version anyway.
- * Re-queues the item with retry counters reset; the next drain pass will
- * send it again (server may still reject, in which case the conflict flag
- * comes back).
+ *
+ * For payment + student create/update conflicts the server detects
+ * duplicates by content. To override, we re-queue with `force_duplicate=1`
+ * appended to the FormData payload — the server actions look for this
+ * flag and skip the duplicate check on the second pass.
  */
 export async function keepLocalOverServer(uuid: string): Promise<void> {
-  await forceRetry(uuid);
+  const db = getOfflineDB();
+  const row = await db.pending_sync.where("uuid").equals(uuid).first();
+  if (!row || row.id == null) return;
+
+  // Patch the payload: only payment + student create/update use
+  // `force_duplicate`. Other kinds reset and retry as-is.
+  let nextPayload = row.payload;
+  if (
+    row.kind === "record-payment" ||
+    row.kind === "create-student" ||
+    row.kind === "update-student"
+  ) {
+    if (nextPayload && typeof nextPayload === "object") {
+      nextPayload = {
+        ...(nextPayload as Record<string, unknown>),
+        force_duplicate: "1",
+      };
+    }
+  }
+
+  await db.pending_sync.update(row.id, {
+    payload: nextPayload,
+    status: "pending",
+    retryCount: 0,
+    lastAttemptAt: 0,
+    lastError: null,
+    serverState: undefined,
+  });
 }
 
 /**
- * Conflict resolution: user accepts the server version. The local payload
- * is discarded entirely.
+ * Conflict resolution: user accepts the server version.
+ *
+ * For student-create conflicts there's a special path: we don't just
+ * discard, we record an id mapping pointing the temp id at the existing
+ * server student. That way any queued attendance/grades/payment items
+ * referencing the temp id will rewrite to the existing student instead
+ * of waiting forever for a create that won't happen.
+ *
+ * Caller passes `existingRealId` for this case; pass `null` (or omit)
+ * for the simple discard.
  */
-export async function acceptServerVersion(uuid: string): Promise<void> {
+export async function acceptServerVersion(
+  uuid: string,
+  existingRealId?: string | null
+): Promise<void> {
+  const db = getOfflineDB();
+  const row = await db.pending_sync.where("uuid").equals(uuid).first();
+  if (row && row.kind === "create-student" && existingRealId) {
+    const studentRow = await db.students_offline.where("uuid").equals(uuid).first();
+    if (studentRow?.tempStudentId) {
+      await recordIdMapping(studentRow.tempStudentId, existingRealId);
+      // Update the students_offline row so badges flip immediately.
+      await db.students_offline
+        .where("uuid")
+        .equals(uuid)
+        .modify({ realStudentId: existingRealId });
+    }
+  }
   await discardItem(uuid);
+}
+
+/**
+ * Vacuum old "completed" offline rows. The drain loop keeps payments +
+ * students rows around briefly so the UI can render the "just synced"
+ * state without flickering. This runs them out after 24h.
+ *
+ * Safe to call from anywhere; idempotent. The `SyncProvider` calls it
+ * once per mount.
+ */
+export async function vacuumOfflineCaches(): Promise<void> {
+  const db = getOfflineDB();
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  await db.transaction(
+    "rw",
+    [db.payments_offline, db.students_offline, db.id_mappings],
+    async () => {
+      // Only delete payments rows that have a `realReceipt` (i.e. the
+      // sync succeeded) — otherwise a long-pending offline payment would
+      // get nuked just because the user took a day to come back online.
+      await db.payments_offline
+        .where("createdAt")
+        .below(cutoff)
+        .filter((row) => typeof row.realReceipt === "string" && row.realReceipt.length > 0)
+        .delete();
+      await db.students_offline
+        .where("createdAt")
+        .below(cutoff)
+        .filter(
+          (row) =>
+            typeof row.realStudentId === "string" && row.realStudentId.length > 0
+        )
+        .delete();
+      // Keep id_mappings forever — they're tiny, and a reinstall could
+      // still find queued items in another db. Vacuum nothing here.
+    }
+  );
 }

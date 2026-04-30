@@ -9,6 +9,9 @@ import {
   updateStudent,
   updateStudentSubjects,
 } from "./actions";
+import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
+import { useOfflineStudents } from "@/lib/offline/use-sync";
+import { isTempId } from "@/lib/offline/temp-ids";
 import {
   currentAcademicYear,
   type SubjectEnrollmentTerm,
@@ -82,6 +85,61 @@ export function StudentList({ students, classes }: StudentListProps) {
     return map;
   }, [classes]);
 
+  // Offline-pending student rows. Three flavors here:
+  //   - `op === "create"` with no `realStudentId` → render an optimistic
+  //     placeholder row at the top of the list (so the user sees the
+  //     student they just added even though the server hasn't issued
+  //     the real id yet).
+  //   - `op === "create"` WITH `realStudentId` (just synced) → suppress
+  //     the placeholder (the server-fetched students prop now contains
+  //     the real row).
+  //   - `op === "update"` / `op === "delete"` → flag the matching real
+  //     student row with `pendingSync` so the badge appears.
+  const offlineStudents = useOfflineStudents();
+  const optimisticStudents = useMemo<StudentData[]>(() => {
+    return offlineStudents
+      .filter(
+        (row) =>
+          row.op === "create" &&
+          !row.realStudentId &&
+          isTempId(row.tempStudentId)
+      )
+      .map<StudentData>((row) => ({
+        id: row.tempStudentId,
+        full_name: row.fullName,
+        admission_number: null,
+        class_id: row.classId ?? "",
+        class: row.classId
+          ? {
+              id: row.classId,
+              name: classNameMap.get(row.classId) ?? "",
+            }
+          : null,
+        gender: null,
+        enrollment_date: new Date(row.createdAt).toISOString().slice(0, 10),
+        parent_name: null,
+        parent_email: null,
+        parent_phone: row.parentPhone,
+        subject_enrollment_count: 0,
+      }));
+  }, [offlineStudents, classNameMap]);
+
+  // Map of "real-student-id → has a pending update/delete" so the row
+  // renderer can flip on the badge.
+  const pendingByRealId = useMemo(() => {
+    const m = new Set<string>();
+    for (const row of offlineStudents) {
+      if (
+        (row.op === "update" || row.op === "delete") &&
+        row.tempStudentId &&
+        !isTempId(row.tempStudentId)
+      ) {
+        m.add(row.tempStudentId);
+      }
+    }
+    return m;
+  }, [offlineStudents]);
+
   useEffect(() => {
     const stored = parseStudentListRowsPerPage(
       localStorage.getItem(DASHBOARD_STUDENTS_ROWS_STORAGE_KEY)
@@ -89,10 +147,18 @@ export function StudentList({ students, classes }: StudentListProps) {
     if (stored != null) setRowsPerPage(stored);
   }, []);
 
+  // Source list = server-fetched students PLUS optimistic offline-create
+  // placeholders. Optimistic rows go to the top so the user spots the
+  // student they just added.
+  const sourceStudents = useMemo<StudentData[]>(
+    () => [...optimisticStudents, ...students],
+    [optimisticStudents, students]
+  );
+
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
 
-    return students.filter((s) => {
+    return sourceStudents.filter((s) => {
       if (classFilter && s.class_id !== classFilter) return false;
 
       if (!q) return true;
@@ -117,7 +183,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         parentPhone.includes(q)
       );
     });
-  }, [students, query, classFilter, classNameMap]);
+  }, [sourceStudents, query, classFilter, classNameMap]);
 
   const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
@@ -252,7 +318,52 @@ export function StudentList({ students, classes }: StudentListProps) {
 
     setIsSaving(true);
     try {
-      const result = await updateStudent(editingId, fd);
+      // Edit goes through the offline queue. Subject enrolment, however,
+      // is its own action that doesn't have offline support yet — when
+      // online we still call it inline; when offline we just inform the
+      // user that subjects won't update until they sync.
+      const editPayload: Record<string, string> = {
+        _targetStudentId: editingId,
+      };
+      fd.forEach((v, k) => {
+        if (typeof v === "string") editPayload[k] = v;
+      });
+
+      const wrapped = await enqueueOrRun({
+        kind: "update-student",
+        payload: editPayload,
+        run: () => updateStudent(editingId, fd),
+        hint: {
+          label: `Edit · ${fullName}`,
+          students: {
+            // Edits keep the original id in `tempStudentId` so the row
+            // shows up in `students_offline` for badge rendering.
+            tempStudentId: editingId,
+            fullName,
+            classId,
+            parentPhone: (editValues.parent_phone ?? "").trim() || null,
+            op: "update",
+          },
+        },
+      });
+
+      if (!wrapped.ok) {
+        setInlineSaveError(wrapped.error);
+        return;
+      }
+
+      if (wrapped.queued) {
+        setInlineSaveSuccess(
+          `Saved offline – "${fullName}" will sync when online.`
+        );
+        setEditingId(null);
+        setEditValues({});
+        setEditClassSubjects([]);
+        setEditSubjectIds([]);
+        return;
+      }
+
+      const result = wrapped.result;
       if (result.error) {
         setInlineSaveError(result.error);
         return;
@@ -431,6 +542,9 @@ export function StudentList({ students, classes }: StudentListProps) {
                 onInlineSave={handleInlineSave}
                 onInlineCancel={handleInlineCancel}
                 isSaving={isSaving}
+                pendingSync={
+                  isTempId(student.id) || pendingByRealId.has(student.id)
+                }
                 onDeleted={() => {
                   if (editingId === student.id) {
                     handleInlineCancel();
@@ -501,6 +615,9 @@ export function StudentList({ students, classes }: StudentListProps) {
                       onInlineSave={handleInlineSave}
                       onInlineCancel={handleInlineCancel}
                       isSaving={isSaving}
+                      pendingSync={
+                        isTempId(student.id) || pendingByRealId.has(student.id)
+                      }
                       onDeleted={() => {
                         if (editingId === student.id) {
                           handleInlineCancel();

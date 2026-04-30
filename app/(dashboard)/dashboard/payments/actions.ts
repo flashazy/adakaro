@@ -21,6 +21,23 @@ export interface PaymentActionState {
   success?: string;
   paymentId?: string;
   receiptNumber?: string;
+  /**
+   * True when the action stopped because a payment with the same
+   * (student_id, fee_structure_id, payment_date, amount) already exists.
+   * The offline sync layer surfaces this in the conflict UI; the user
+   * can re-submit with `force_duplicate=1` to record anyway.
+   */
+  conflict?: boolean;
+  /** Existing rows that triggered the duplicate match — used to render
+   * "Possible duplicate payment" details. Only when conflict === true. */
+  duplicateCandidates?: Array<{
+    id: string;
+    amount: number;
+    payment_method: PaymentMethod;
+    payment_date: string;
+    reference_number: string | null;
+    receipt_number: string | null;
+  }>;
 }
 
 export async function recordPayment(
@@ -76,6 +93,51 @@ export async function recordPayment(
     const schoolForPerm = userSchoolId ?? studentSchoolId;
     if (!(await canUserRecordStudentPayment(supabase, user.id, schoolForPerm))) {
       return { error: "You do not have permission to record payments." };
+    }
+
+    // Duplicate detection (Phase 3 offline sync). Definition: same
+    // (student_id, fee_structure_id, amount) on the same payment_date.
+    // This catches the most common offline-replay scenario — the network
+    // dropped after the server committed but before the response reached
+    // the client, so the queue retried and a manual submit raced. The
+    // user can bypass with `force_duplicate=1` (e.g. legitimate split
+    // payments on the same day).
+    const forceDuplicate =
+      String(formData.get("force_duplicate") ?? "") === "1";
+    if (!forceDuplicate) {
+      const checkDate = paymentDate ?? new Date().toISOString().slice(0, 10);
+      const { data: existing, error: dupErr } = await supabase
+        .from("payments")
+        .select(
+          "id, amount, payment_method, payment_date, reference_number, receipts(receipt_number)"
+        )
+        .eq("student_id", studentId)
+        .eq("fee_structure_id", feeStructureId)
+        .eq("amount", amount)
+        .eq("payment_date", checkDate)
+        .limit(5);
+      if (!dupErr && existing && existing.length > 0) {
+        const candidates = (existing as Array<{
+          id: string;
+          amount: number;
+          payment_method: PaymentMethod;
+          payment_date: string;
+          reference_number: string | null;
+          receipts: Array<{ receipt_number: string }> | null;
+        }>).map((r) => ({
+          id: r.id,
+          amount: r.amount,
+          payment_method: r.payment_method,
+          payment_date: r.payment_date,
+          reference_number: r.reference_number,
+          receipt_number: r.receipts?.[0]?.receipt_number ?? null,
+        }));
+        return {
+          conflict: true,
+          duplicateCandidates: candidates,
+          error: `A payment of ${amount.toLocaleString()} for this fee on ${checkDate} already exists.`,
+        };
+      }
     }
 
     // Insert payment

@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { drainQueue, getMsUntilNextRetry } from "./sync-queue";
+import {
+  drainQueue,
+  getMsUntilNextRetry,
+  vacuumOfflineCaches,
+} from "./sync-queue";
 
 /**
  * Top-level mount that drives the offline-write queue.
@@ -113,6 +117,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     void drainAndReschedule();
+    // One-shot vacuum on mount — clears synced payment + student rows
+    // older than 24h that were kept around for the brief "just synced"
+    // UI state.
+    void vacuumOfflineCaches().catch((err) => {
+      console.warn("[sync] vacuum failed:", err);
+    });
     startInterval();
     window.addEventListener("online", handleOnline);
     document.addEventListener("visibilitychange", handleVisibility);

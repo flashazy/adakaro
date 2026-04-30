@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Pencil, Trash2, UserCircle } from "lucide-react";
 import { deleteStudent } from "./actions";
+import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
 import {
   SUBJECT_ENROLLMENT_TERMS,
@@ -241,6 +242,26 @@ interface StudentRowProps {
   subjectEnrollmentEdit?: SubjectEnrollmentEditProps;
   /** Called after a successful delete (parent should refresh data). */
   onDeleted?: () => void;
+  /** True when this row represents an offline-queued create or edit
+   * that hasn't synced yet. Renders a "Pending sync" badge next to the
+   * name. */
+  pendingSync?: boolean;
+}
+
+/**
+ * Small reusable badge — same style for both desktop row and mobile card.
+ * Kept in this module so changes to the badge propagate everywhere.
+ */
+function PendingSyncBadge() {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[0.65rem] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+      title="Saved offline – will sync when online"
+    >
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      Pending sync
+    </span>
+  );
 }
 
 export function StudentRow({
@@ -255,6 +276,7 @@ export function StudentRow({
   isSaving = false,
   subjectEnrollmentEdit,
   onDeleted,
+  pendingSync = false,
 }: StudentRowProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -264,7 +286,33 @@ export function StudentRow({
 
   function handleDelete() {
     startTransition(async () => {
-      const result = await deleteStudent(student.id);
+      const wrapped = await enqueueOrRun({
+        kind: "delete-student",
+        payload: { _targetStudentId: student.id },
+        run: () => deleteStudent(student.id),
+        hint: {
+          label: `Delete · ${student.full_name}`,
+          students: {
+            tempStudentId: student.id,
+            fullName: student.full_name,
+            classId: student.class_id ?? null,
+            parentPhone: student.parent_phone ?? null,
+            op: "delete",
+          },
+        },
+      });
+      if (!wrapped.ok) {
+        setError(wrapped.error);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      if (wrapped.queued) {
+        setError(null);
+        setShowDeleteConfirm(false);
+        onDeleted?.();
+        return;
+      }
+      const result = wrapped.result;
       if (result.error) {
         setError(result.error);
         setShowDeleteConfirm(false);
@@ -309,8 +357,9 @@ export function StudentRow({
             />
           ) : (
             <div className="flex min-w-0 flex-col">
-              <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                {student.full_name}
+              <span className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                <span className="truncate">{student.full_name}</span>
+                {pendingSync ? <PendingSyncBadge /> : null}
               </span>
               <span className="text-xs text-gray-500 dark:text-zinc-400">
                 ADM: {student.admission_number || "—"}
@@ -533,6 +582,7 @@ export function StudentCard({
   isSaving = false,
   subjectEnrollmentEdit,
   onDeleted,
+  pendingSync = false,
 }: StudentCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -542,7 +592,33 @@ export function StudentCard({
 
   function handleDelete() {
     startTransition(async () => {
-      const result = await deleteStudent(student.id);
+      const wrapped = await enqueueOrRun({
+        kind: "delete-student",
+        payload: { _targetStudentId: student.id },
+        run: () => deleteStudent(student.id),
+        hint: {
+          label: `Delete · ${student.full_name}`,
+          students: {
+            tempStudentId: student.id,
+            fullName: student.full_name,
+            classId: student.class_id ?? null,
+            parentPhone: student.parent_phone ?? null,
+            op: "delete",
+          },
+        },
+      });
+      if (!wrapped.ok) {
+        setError(wrapped.error);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      if (wrapped.queued) {
+        setError(null);
+        setShowDeleteConfirm(false);
+        onDeleted?.();
+        return;
+      }
+      const result = wrapped.result;
       if (result.error) {
         setError(result.error);
         setShowDeleteConfirm(false);
@@ -661,8 +737,9 @@ export function StudentCard({
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h3 className="truncate text-base font-semibold text-gray-900 dark:text-white">
-                {student.full_name}
+              <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold text-gray-900 dark:text-white">
+                <span className="truncate">{student.full_name}</span>
+                {pendingSync ? <PendingSyncBadge /> : null}
               </h3>
               <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500 dark:text-zinc-400">
                 <span>

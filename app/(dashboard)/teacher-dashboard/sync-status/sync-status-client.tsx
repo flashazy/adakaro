@@ -28,6 +28,27 @@ const KIND_LABELS: Record<SyncItemKind, string> = {
   "save-scores": "Marks",
   "create-gradebook-assignment": "New assignment",
   "delete-gradebook-assignment": "Deleted assignment",
+  "record-payment": "Payment",
+  "send-message": "Message",
+  "create-student": "New student",
+  "update-student": "Edit student",
+  "delete-student": "Delete student",
+};
+
+/**
+ * Emoji icon per kind. Plain glyphs (no lucide) so they render with the
+ * full color treatment users expect at the type column.
+ */
+const KIND_ICONS: Record<SyncItemKind, string> = {
+  "save-attendance": "📋",
+  "save-scores": "✏️",
+  "create-gradebook-assignment": "🗓️",
+  "delete-gradebook-assignment": "🗑️",
+  "record-payment": "💰",
+  "send-message": "💬",
+  "create-student": "👤",
+  "update-student": "👤",
+  "delete-student": "👤",
 };
 
 function formatTimestamp(ms: number): string {
@@ -53,6 +74,22 @@ function describeItem(item: PendingSyncRow): string {
     const aid = (p["assignmentId"] as string | undefined) ?? "";
     const scores = Array.isArray(p["scores"]) ? p["scores"].length : 0;
     return `Assignment ${aid.slice(0, 8) || "?"} · ${scores} mark${scores === 1 ? "" : "s"}`;
+  }
+  if (item.kind === "record-payment" && p) {
+    const amt = p["amount"] as string | undefined;
+    const sid = (p["student_id"] as string | undefined) ?? "";
+    return `${amt ?? "?"} for student ${sid.slice(0, 8) || "?"}`;
+  }
+  if (item.kind === "send-message" && p) {
+    const body = String(p["message"] ?? "");
+    return body.length > 60 ? `${body.slice(0, 60)}…` : body || "(empty message)";
+  }
+  if (item.kind === "create-student" && p) {
+    return String(p["full_name"] ?? "(unnamed student)");
+  }
+  if ((item.kind === "update-student" || item.kind === "delete-student") && p) {
+    const sid = String(p["_targetStudentId"] ?? "");
+    return `Student ${sid.slice(0, 8) || "?"}`;
   }
   return KIND_LABELS[item.kind];
 }
@@ -161,10 +198,14 @@ export function SyncStatusClient() {
     }
   }
 
-  async function handleAcceptServer(uuid: string) {
+  async function handleAcceptServer(uuid: string, existingRealId?: string | null) {
     setBusyUuid(uuid);
     try {
-      await acceptServerVersion(uuid);
+      // For student-create conflicts the caller can pass the existing
+      // server student's id — we record a temp→real mapping so any
+      // queued attendance/grades/payment items referencing the temp id
+      // resolve to the existing student instead of waiting forever.
+      await acceptServerVersion(uuid, existingRealId ?? null);
       setConflictView(null);
     } finally {
       setBusyUuid(null);
@@ -301,13 +342,32 @@ export function SyncStatusClient() {
       />
 
       {conflictView ? (
-        <ConflictModal
-          item={conflictView}
-          busy={busyUuid === conflictView.uuid}
-          onClose={() => setConflictView(null)}
-          onKeepLocal={() => handleKeepLocal(conflictView.uuid)}
-          onAcceptServer={() => handleAcceptServer(conflictView.uuid)}
-        />
+        // Two flavors of conflict modal:
+        //   - "duplicate" UX for student-create + payment kinds — shows
+        //     candidate matches and offers Use Existing / Force / Discard.
+        //   - the original generic conflict modal for the other kinds
+        //     (attendance, grades — currently dormant on the server).
+        conflictView.kind === "create-student" ||
+        conflictView.kind === "record-payment" ? (
+          <DuplicateConflictModal
+            item={conflictView}
+            busy={busyUuid === conflictView.uuid}
+            onClose={() => setConflictView(null)}
+            onForce={() => handleKeepLocal(conflictView.uuid)}
+            onUseExisting={(existingId) =>
+              handleAcceptServer(conflictView.uuid, existingId)
+            }
+            onDiscard={() => handleDiscard(conflictView.uuid)}
+          />
+        ) : (
+          <ConflictModal
+            item={conflictView}
+            busy={busyUuid === conflictView.uuid}
+            onClose={() => setConflictView(null)}
+            onKeepLocal={() => handleKeepLocal(conflictView.uuid)}
+            onAcceptServer={() => handleAcceptServer(conflictView.uuid)}
+          />
+        )
       ) : null}
     </div>
   );
@@ -368,8 +428,11 @@ function SyncSection({
           <li key={row.uuid} className="space-y-2 p-4">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                  {KIND_LABELS[row.kind]}
+                <p className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                  <span aria-hidden className="text-base leading-none">
+                    {KIND_ICONS[row.kind]}
+                  </span>
+                  <span>{KIND_LABELS[row.kind]}</span>
                 </p>
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
                   {describeItem(row)}
@@ -407,7 +470,12 @@ function SyncSection({
             {rows.map((row) => (
               <tr key={row.uuid}>
                 <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
-                  {KIND_LABELS[row.kind]}
+                  <span className="inline-flex items-center gap-2">
+                    <span aria-hidden className="text-base leading-none">
+                      {KIND_ICONS[row.kind]}
+                    </span>
+                    <span>{KIND_LABELS[row.kind]}</span>
+                  </span>
                 </td>
                 <td className="px-4 py-2 text-slate-600 dark:text-zinc-300">
                   {describeItem(row)}
@@ -569,6 +637,182 @@ function ConflictModal({
             className="inline-flex items-center gap-1.5 rounded-md bg-school-primary px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Push my version anyway
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Specialised conflict modal for kinds that detect duplicates server-side
+ * (currently `create-student` and `record-payment`).
+ *
+ * The server returns `serverState` as an array of candidate matches:
+ *   - student: `{ id, full_name, admission_number, parent_phone, class_id }`
+ *   - payment: `{ id, amount, payment_method, payment_date,
+ *     reference_number, receipt_number }`
+ *
+ * The user picks one of three actions per item:
+ *   1. **Use existing** (students only) — point the temp id at the
+ *      existing real id; downstream items rewrite to it.
+ *   2. **Force record/create anyway** — re-queue with `force_duplicate=1`
+ *      so the server skips the duplicate check on the next attempt.
+ *   3. **Discard** — drop this offline write entirely.
+ */
+interface DuplicateCandidate {
+  id: string;
+  // Student fields:
+  full_name?: string;
+  admission_number?: string | null;
+  parent_phone?: string | null;
+  class_id?: string | null;
+  // Payment fields:
+  amount?: number;
+  payment_method?: string;
+  payment_date?: string;
+  reference_number?: string | null;
+  receipt_number?: string | null;
+}
+
+function DuplicateConflictModal({
+  item,
+  busy,
+  onClose,
+  onForce,
+  onUseExisting,
+  onDiscard,
+}: {
+  item: PendingSyncRow;
+  busy: boolean;
+  onClose: () => void;
+  onForce: () => void;
+  onUseExisting: (existingRealId: string) => void;
+  onDiscard: () => void;
+}) {
+  const candidates: DuplicateCandidate[] = Array.isArray(item.serverState)
+    ? (item.serverState as DuplicateCandidate[])
+    : [];
+  const isStudent = item.kind === "create-student";
+  const localPayload = item.payload as Record<string, unknown> | null;
+  const localName =
+    isStudent && localPayload
+      ? String(localPayload["full_name"] ?? "")
+      : "";
+  const localAmount =
+    !isStudent && localPayload
+      ? String(localPayload["amount"] ?? "")
+      : "";
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dup-conflict-title"
+    >
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
+        <header className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-zinc-800">
+          <h3
+            id="dup-conflict-title"
+            className="text-base font-semibold text-slate-900 dark:text-white"
+          >
+            {isStudent ? "Possible duplicate student" : "Possible duplicate payment"}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+        <div className="space-y-4 px-5 py-4 text-sm">
+          <p className="text-slate-600 dark:text-zinc-300">
+            {isStudent
+              ? `A student with a similar name (${localName || "—"}) already exists in this school. Pick what to do:`
+              : `A payment with the same fee, amount (${localAmount || "—"}) and date already exists. Pick what to do:`}
+          </p>
+
+          {candidates.length > 0 ? (
+            <ul className="space-y-2">
+              {candidates.map((c) => (
+                <li
+                  key={c.id}
+                  className="rounded-lg border border-slate-200 p-3 dark:border-zinc-700"
+                >
+                  {isStudent ? (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 text-xs text-slate-700 dark:text-zinc-200">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          {c.full_name ?? "(unnamed)"}
+                        </p>
+                        <p className="mt-0.5 text-slate-500 dark:text-zinc-400">
+                          {c.admission_number ? `ADM ${c.admission_number}` : "No ADM"}
+                          {c.parent_phone ? ` · 📞 ${c.parent_phone}` : ""}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onUseExisting(c.id)}
+                        disabled={busy}
+                        className="shrink-0 rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-200 dark:hover:bg-emerald-900/30"
+                      >
+                        Use this student
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-700 dark:text-zinc-200">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        {c.amount ?? "?"}
+                        <span className="ml-2 font-normal text-slate-500 dark:text-zinc-400">
+                          on {c.payment_date ?? "?"}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-slate-500 dark:text-zinc-400">
+                        {c.payment_method ?? "—"}
+                        {c.reference_number ? ` · Ref ${c.reference_number}` : ""}
+                        {c.receipt_number ? ` · Receipt ${c.receipt_number}` : ""}
+                      </p>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded border border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+              No detailed candidates returned.
+            </p>
+          )}
+
+          {item.lastError ? (
+            <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+              {item.lastError}
+            </p>
+          ) : null}
+        </div>
+        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-zinc-800">
+          <button
+            type="button"
+            onClick={onDiscard}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/50 dark:text-red-200 dark:hover:bg-red-950/30"
+          >
+            Discard my version
+          </button>
+          <button
+            type="button"
+            onClick={onForce}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-md bg-school-primary px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isStudent ? "Create anyway" : "Record anyway"}
           </button>
         </footer>
       </div>

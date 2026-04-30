@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import {
   ensureChatConversationAction,
@@ -11,6 +11,8 @@ import {
 import type { ParentThreadPollOk } from "@/lib/chat/poll-data";
 import { ChatThreadBody, type ChatLine } from "@/components/chat/chat-thread-body";
 import { cn } from "@/lib/utils";
+import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
+import { useOfflineMessagesForConversation } from "@/lib/offline/use-sync";
 
 const POLL_MS = 15_000;
 
@@ -237,7 +239,25 @@ export function ParentClassTeacherMessagesTabClient({
     const text = draft.trim();
     if (!text || !conversationId) return;
     setError(null);
-    const r = await insertChatMessageAction(conversationId, text);
+    const wrapped = await enqueueOrRun({
+      kind: "send-message",
+      payload: { conversationId, message: text },
+      run: () => insertChatMessageAction(conversationId, text),
+      hint: {
+        label: `Message · ${conversationId.slice(0, 8)}`,
+        messages: { conversationId, senderId: parentId, body: text },
+      },
+    });
+
+    if (!wrapped.ok) {
+      setError(wrapped.error);
+      return;
+    }
+    if (wrapped.queued) {
+      setDraft("");
+      return;
+    }
+    const r = wrapped.result;
     if (!r.ok) {
       setError(r.error);
       return;
@@ -247,6 +267,22 @@ export function ParentClassTeacherMessagesTabClient({
     const ac = new AbortController();
     await fetchParentPoll(ac.signal, conversationId, { ignoreVisibility: true });
   };
+
+  // Pending-bubble merge — same pattern as the teacher client.
+  const offlinePending = useOfflineMessagesForConversation(conversationId);
+  const mergedMessages = useMemo<ChatLine[]>(() => {
+    if (offlinePending.length === 0) return messages;
+    return [
+      ...messages,
+      ...offlinePending.map<ChatLine>((row) => ({
+        id: `pending:${row.uuid}`,
+        message: row.body,
+        created_at: new Date(row.createdAt).toISOString(),
+        sender_id: row.senderId,
+        pending: true,
+      })),
+    ];
+  }, [messages, offlinePending]);
 
   if (!classTeacherId?.trim()) {
     return (
@@ -295,7 +331,7 @@ export function ParentClassTeacherMessagesTabClient({
       </div>
       <div className="h-[400px] min-h-0 w-full shrink-0 overflow-hidden">
         <ChatThreadBody
-          lines={messages}
+          lines={mergedMessages}
           currentUserId={parentId}
           alwaysStickToBottom
         />

@@ -14,6 +14,8 @@ import {
 import type { TeacherInboxPollOk } from "@/lib/chat/poll-data";
 import { ChatThreadBody, type ChatLine } from "@/components/chat/chat-thread-body";
 import { cn } from "@/lib/utils";
+import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
+import { useOfflineMessagesForConversation } from "@/lib/offline/use-sync";
 
 type ConversationRow = {
   id: string;
@@ -280,13 +282,61 @@ export function ClassTeacherMessagesClient({
     }
   }, [fetchTeacherPoll, pollRefreshing]);
 
+  // Merge server-confirmed messages with locally-queued ones for the
+  // active conversation. Queued messages render with a "pending" badge
+  // and disappear once `messages_offline` removes them after sync.
+  const offlinePending = useOfflineMessagesForConversation(conversationId);
+  const mergedMessages = useMemo<ChatLine[]>(() => {
+    if (offlinePending.length === 0) return messages;
+    const pendingLines: ChatLine[] = offlinePending.map((row) => ({
+      id: `pending:${row.uuid}`,
+      message: row.body,
+      created_at: new Date(row.createdAt).toISOString(),
+      sender_id: row.senderId,
+      pending: true,
+    }));
+    return [...messages, ...pendingLines];
+  }, [messages, offlinePending]);
+
   const send = async () => {
     const text = draft.trim();
     if (!text || !conversationId || sending) return;
     setSending(true);
     setSendError(null);
     try {
-      const r = await insertChatMessageAction(conversationId, text);
+      // Offline-aware path: when online → server action runs as before;
+      // when offline → message is queued in IndexedDB and rendered as a
+      // pending bubble. The dispatcher replays it once the network
+      // returns.
+      const wrapped = await enqueueOrRun({
+        kind: "send-message",
+        payload: { conversationId, message: text },
+        run: () => insertChatMessageAction(conversationId, text),
+        hint: {
+          label: `Message · ${conversationId.slice(0, 8)}`,
+          messages: {
+            conversationId,
+            senderId: teacherId,
+            body: text,
+          },
+        },
+      });
+
+      if (!wrapped.ok) {
+        setSendError(wrapped.error);
+        toast.error(wrapped.error);
+        return;
+      }
+
+      if (wrapped.queued) {
+        // Pending bubble appears via the live-query merge below; just
+        // clear the draft and inform the user.
+        setDraft("");
+        toast.message("Saved offline – will sync when online");
+        return;
+      }
+
+      const r = wrapped.result;
       if (!r.ok) {
         setSendError(r.error);
         toast.error(r.error);
@@ -404,7 +454,7 @@ export function ClassTeacherMessagesClient({
               ) : (
                 <ChatThreadBody
                   key={conversationId ?? "none"}
-                  lines={messages}
+                  lines={mergedMessages}
                   currentUserId={teacherId}
                 />
               )}

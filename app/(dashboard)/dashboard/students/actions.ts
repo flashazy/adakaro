@@ -287,6 +287,82 @@ export async function updateStudentSubjects(
 export interface StudentActionState {
   error?: string;
   success?: string;
+  /**
+   * Real server-issued id of the just-created student. Filled in by
+   * `addStudent`. Required by the offline sync queue (Phase 3) so the
+   * client can map a `temp_…` id to the real UUID and rewrite any
+   * downstream queued mutations (attendance, grades, payments).
+   */
+  studentId?: string;
+  /**
+   * True when the action stopped because a likely duplicate already
+   * exists in the same school. The offline sync layer surfaces this in
+   * the conflict UI; the user can then either accept the existing row
+   * (point the temp id at it) or force-create by submitting again with
+   * `force_duplicate=1`.
+   */
+  conflict?: boolean;
+  /**
+   * Existing rows that triggered the duplicate match — used to render
+   * "Possible duplicate of …" in the conflict modal. Only populated
+   * when `conflict === true`.
+   */
+  duplicateCandidates?: Array<{
+    id: string;
+    full_name: string;
+    admission_number: string | null;
+    parent_phone: string | null;
+    class_id: string | null;
+  }>;
+}
+
+/**
+ * Find existing students that look like the one we're about to create,
+ * matched by (school_id, lower(full_name)) and (school_id, parent_phone)
+ * if a phone was provided. Returns up to 5 matches.
+ *
+ * This is the *minimum-friction* duplicate definition — exact name match
+ * within the same school. Same surname siblings get caught only when
+ * parent_phone is also provided AND matches.
+ */
+async function findStudentDuplicateCandidates(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  schoolId: string,
+  fullName: string,
+  parentPhone: string | null
+): Promise<
+  Array<{
+    id: string;
+    full_name: string;
+    admission_number: string | null;
+    parent_phone: string | null;
+    class_id: string | null;
+  }>
+> {
+  const trimmedName = fullName.trim();
+  if (!trimmedName) return [];
+
+  // Build OR filter: name match always, phone match if available.
+  const filters: string[] = [`full_name.ilike.${trimmedName.replace(/[%_]/g, "")}`];
+  if (parentPhone && parentPhone.trim()) {
+    filters.push(`parent_phone.eq.${parentPhone.trim()}`);
+  }
+
+  const { data, error } = await supabase
+    .from("students")
+    .select("id, full_name, admission_number, parent_phone, class_id")
+    .eq("school_id", schoolId)
+    .or(filters.join(","))
+    .limit(5);
+
+  if (error || !data) return [];
+  return data as Array<{
+    id: string;
+    full_name: string;
+    admission_number: string | null;
+    parent_phone: string | null;
+    class_id: string | null;
+  }>;
 }
 
 export async function addStudent(
@@ -413,6 +489,28 @@ export async function addStudent(
       };
     }
 
+    // Duplicate check (Phase 3 offline sync). The client can bypass this
+    // by submitting `force_duplicate=1` (e.g. via the conflict modal's
+    // "Force create anyway" button). When omitted, possible matches are
+    // returned to the client without inserting.
+    const forceDuplicate =
+      String(formData.get("force_duplicate") ?? "") === "1";
+    if (!forceDuplicate) {
+      const candidates = await findStudentDuplicateCandidates(
+        supabase,
+        schoolId,
+        fullName,
+        parentPhone
+      );
+      if (candidates.length > 0) {
+        return {
+          conflict: true,
+          duplicateCandidates: candidates,
+          error: `Possible duplicate: a student named "${candidates[0].full_name}" already exists in this school.`,
+        };
+      }
+    }
+
     const { data: inserted, error } = await supabase
       .from("students")
       .insert({
@@ -467,7 +565,13 @@ export async function addStudent(
       schoolId
     );
 
-    return { success: `Student "${fullName}" added.` };
+    return {
+      success: `Student "${fullName}" added.`,
+      // Returned for the offline sync queue — see the field comment in
+      // `StudentActionState`. Existing callers that ignore extra fields
+      // (the standard `useActionState` pattern) are unaffected.
+      studentId: newId ?? undefined,
+    };
   } catch (e) {
     return { error: (e as Error).message };
   }

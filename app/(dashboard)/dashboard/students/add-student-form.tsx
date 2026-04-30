@@ -1,9 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { useRef, useEffect, useMemo, useState } from "react";
+import {
+  useRef,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import { Pencil } from "lucide-react";
 import { addStudent, getSubjectsForClass, type StudentActionState } from "./actions";
 import { todayIsoLocal } from "@/lib/enrollment-date";
@@ -12,6 +17,8 @@ import {
   currentAcademicYear,
 } from "@/lib/student-subject-enrollment";
 import { formatNativeSelectClassOptionLabel } from "@/lib/class-options";
+import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
+import { makeTempStudentId } from "@/lib/offline/temp-ids";
 
 /** Title-case one segment (handles O'Connor-style apostrophes). */
 function capitalizeNameSegment(segment: string): string {
@@ -59,8 +66,7 @@ function syncAdmissionFromPreview(
   return { value: v, snapshot: v };
 }
 
-function SubmitButton({ disabled }: { disabled?: boolean }) {
-  const { pending } = useFormStatus();
+function SubmitButton({ disabled, pending }: { disabled?: boolean; pending: boolean }) {
   return (
     <button
       type="submit"
@@ -100,7 +106,10 @@ export function AddStudentForm({
   const hasAdmissionPrefix = effectivePrefix.length > 0;
 
   const router = useRouter();
-  const [state, formAction] = useActionState(addStudent, initialState);
+  const [state, setState] = useState<
+    StudentActionState & { queued?: boolean }
+  >(initialState);
+  const [submitting, startSubmit] = useTransition();
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const admissionInputRef = useRef<HTMLInputElement>(null);
@@ -190,6 +199,101 @@ export function AddStudentForm({
     }
   }, [state.success, router]);
 
+  /**
+   * Offline-aware submit. The wrinkle: the server action currently
+   * decides what fields to use, so we must hand it a real `FormData`.
+   * For the offline path we serialize the same FormData into a plain
+   * record and tag it with `_tempStudentId` so the dispatcher can map
+   * the temp id → real UUID once the create succeeds.
+   */
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (atStudentLimit) return;
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const tempStudentId = makeTempStudentId();
+
+    // Plain-object copy for replay. `subject_ids` may repeat — collect as
+    // string[] under the same key so `buildFormData` (in the dispatcher)
+    // re-emits one entry per id.
+    const payload: Record<string, string | string[]> = {
+      _tempStudentId: tempStudentId,
+    };
+    formData.forEach((value, key) => {
+      if (typeof value !== "string") return;
+      const existing = payload[key];
+      if (existing == null) {
+        payload[key] = value;
+      } else if (Array.isArray(existing)) {
+        existing.push(value);
+      } else {
+        payload[key] = [existing, value];
+      }
+    });
+
+    const fullName =
+      typeof payload["full_name"] === "string"
+        ? (payload["full_name"] as string)
+        : "(new student)";
+    const parentPhone =
+      typeof payload["parent_phone"] === "string"
+        ? (payload["parent_phone"] as string)
+        : null;
+    const classId =
+      typeof payload["class_id"] === "string"
+        ? (payload["class_id"] as string)
+        : null;
+
+    setState({});
+    startSubmit(() => {
+      void (async () => {
+        try {
+          const wrapped = await enqueueOrRun({
+            kind: "create-student",
+            payload,
+            run: () => addStudent({}, formData),
+            hint: {
+              label: `Student · ${fullName}`,
+              students: {
+                tempStudentId,
+                fullName,
+                classId,
+                parentPhone,
+                op: "create",
+              },
+            },
+          });
+
+          if (!wrapped.ok) {
+            setState({ error: wrapped.error });
+            return;
+          }
+          if (wrapped.queued) {
+            setState({
+              success: `Saved offline – "${fullName}" will sync when online.`,
+              queued: true,
+            });
+            // Reset + close the form just like a normal success so the
+            // user can keep adding students. The pending row appears in
+            // the list below via the live-query merge.
+            formRef.current?.reset();
+            setSelectedClassId("");
+            setClassSubjectOptions([]);
+            setSelectedSubjectIds([]);
+            setOpen(false);
+            return;
+          }
+          setState(wrapped.result);
+        } catch (e) {
+          setState({
+            error: e instanceof Error ? e.message : "Something went wrong.",
+          });
+        }
+      })();
+    });
+  };
+
   const atStudentLimit =
     studentLimit != null && studentCount >= studentLimit;
   const approachingLimit =
@@ -222,7 +326,7 @@ export function AddStudentForm({
       {open && (
         <form
           ref={formRef}
-          action={formAction}
+          onSubmit={handleSubmit}
           className="border-t border-slate-200 px-6 pb-6 pt-4 dark:border-zinc-800"
         >
           {atStudentLimit ? (
@@ -555,7 +659,7 @@ export function AddStudentForm({
           </div>
 
           <div className="mt-4 flex items-center justify-between">
-            <SubmitButton disabled={atStudentLimit} />
+            <SubmitButton disabled={atStudentLimit} pending={submitting} />
           </div>
 
           {state.error && (
