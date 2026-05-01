@@ -7,6 +7,13 @@ import {
   type FeeStructureActionState,
 } from "./actions";
 import { formatCurrency as formatMoney } from "@/lib/currency";
+import {
+  blockInvalidKeyDownAmount,
+  HINT_ONLY_NUMBERS,
+  hasInvalidAmountInput,
+  isValidNumericAmountInput,
+  onlyNumericAmount,
+} from "@/lib/validation";
 
 interface Option {
   id: string;
@@ -52,6 +59,7 @@ export function FeeStructureRow({
     structure.student_id ? "student" : "class"
   );
   const [error, setError] = useState<string | null>(null);
+  const [amountCharHint, setAmountCharHint] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleUpdate(formData: FormData) {
@@ -65,6 +73,7 @@ export function FeeStructureRow({
       } else {
         setEditing(false);
         setError(null);
+        setAmountCharHint(null);
       }
     });
   }
@@ -86,7 +95,22 @@ export function FeeStructureRow({
 
   if (editing) {
     return (
-      <form action={handleUpdate} className="px-6 py-4">
+      <form
+        className="px-6 py-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          const raw = String(fd.get("amount") ?? "");
+          const clean = onlyNumericAmount(raw);
+          fd.set("amount", clean);
+          if (!isValidNumericAmountInput(clean)) {
+            setError(HINT_ONLY_NUMBERS);
+            return;
+          }
+          setError(null);
+          handleUpdate(fd);
+        }}
+      >
         <input type="hidden" name="target_type" value={targetType} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
@@ -113,13 +137,31 @@ export function FeeStructureRow({
             </label>
             <input
               name="amount"
-              type="number"
-              min="1"
-              step="0.01"
-              defaultValue={structure.amount}
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              defaultValue={String(structure.amount)}
               required
+              onChange={(e) => {
+                const el = e.currentTarget;
+                const raw = el.value;
+                const v = onlyNumericAmount(raw);
+                setAmountCharHint(
+                  hasInvalidAmountInput(raw) ? HINT_ONLY_NUMBERS : null
+                );
+                if (v !== raw) el.value = v;
+              }}
+              onKeyDown={blockInvalidKeyDownAmount}
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
             />
+            {amountCharHint ? (
+              <p
+                className="mt-0.5 text-[10px] leading-tight text-red-500"
+                role="alert"
+              >
+                {amountCharHint}
+              </p>
+            ) : null}
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-zinc-400">
@@ -205,6 +247,7 @@ export function FeeStructureRow({
             onClick={() => {
               setEditing(false);
               setError(null);
+              setAmountCharHint(null);
             }}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
@@ -236,7 +279,10 @@ export function FeeStructureRow({
         </p>
         <div className="flex gap-2">
           <button
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setAmountCharHint(null);
+              setEditing(true);
+            }}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Edit
@@ -272,7 +318,10 @@ export function FeeStructureRow({
         )}
         <div className="flex gap-2 pt-1">
           <button
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setAmountCharHint(null);
+              setEditing(true);
+            }}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Edit

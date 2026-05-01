@@ -4,6 +4,13 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRef, useEffect, useState } from "react";
 import { addFeeStructure, type FeeStructureActionState } from "./actions";
+import {
+  blockInvalidKeyDownAmount,
+  HINT_ONLY_NUMBERS,
+  hasInvalidAmountInput,
+  isValidNumericAmountInput,
+  onlyNumericAmount,
+} from "@/lib/validation";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -35,6 +42,8 @@ export function AddFeeStructureForm({
   currencyCode,
 }: Props) {
   const [state, formAction] = useActionState(addFeeStructure, initialState);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const [amountCharHint, setAmountCharHint] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [targetType, setTargetType] = useState<"class" | "student">("class");
   const [studentSearch, setStudentSearch] = useState("");
@@ -45,6 +54,8 @@ export function AddFeeStructureForm({
       formRef.current?.reset();
       setOpen(false);
       setStudentSearch("");
+      setClientError(null);
+      setAmountCharHint(null);
     }
   }, [state.success]);
 
@@ -62,7 +73,13 @@ export function AddFeeStructureForm({
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          setOpen((was) => {
+            const next = !was;
+            if (!next) setAmountCharHint(null);
+            return next;
+          });
+        }}
         className="flex w-full items-center justify-between px-6 py-4 text-left"
       >
         <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -83,7 +100,19 @@ export function AddFeeStructureForm({
       {open && (
         <form
           ref={formRef}
-          action={formAction}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setClientError(null);
+            const fd = new FormData(e.currentTarget);
+            const raw = String(fd.get("amount") ?? "");
+            const clean = onlyNumericAmount(raw);
+            fd.set("amount", clean);
+            if (!isValidNumericAmountInput(clean)) {
+              setClientError(HINT_ONLY_NUMBERS);
+              return;
+            }
+            formAction(fd);
+          }}
           className="border-t border-slate-200 px-6 pb-6 pt-4 dark:border-zinc-800"
         >
           <input type="hidden" name="target_type" value={targetType} />
@@ -123,13 +152,28 @@ export function AddFeeStructureForm({
               <input
                 id="amount"
                 name="amount"
-                type="number"
-                min="1"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 required
+                onChange={(e) => {
+                  const el = e.currentTarget;
+                  const raw = el.value;
+                  const v = onlyNumericAmount(raw);
+                  setAmountCharHint(
+                    hasInvalidAmountInput(raw) ? HINT_ONLY_NUMBERS : null
+                  );
+                  if (v !== raw) el.value = v;
+                }}
+                onKeyDown={blockInvalidKeyDownAmount}
                 className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="e.g. 15000"
               />
+              {amountCharHint ? (
+                <p className="mt-1 text-xs text-red-500" role="alert">
+                  {amountCharHint}
+                </p>
+              ) : null}
             </div>
 
             {/* Target toggle */}
@@ -248,6 +292,11 @@ export function AddFeeStructureForm({
             <SubmitButton />
           </div>
 
+          {clientError && (
+            <p className="mt-3 text-sm text-red-600 dark:text-red-400">
+              {clientError}
+            </p>
+          )}
           {state.error && (
             <p className="mt-3 text-sm text-red-600 dark:text-red-400">
               {state.error}

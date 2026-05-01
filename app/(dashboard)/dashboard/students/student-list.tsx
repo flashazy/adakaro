@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { StudentCard, StudentRow } from "./student-row";
 import {
@@ -10,6 +10,17 @@ import {
   updateStudentSubjects,
 } from "./actions";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
+import {
+  HINT_ALPHANUM_HYPHEN,
+  HINT_LETTERS_AND_SPACES,
+  HINT_ONLY_NUMBERS,
+  hasInvalidAdmissionInput,
+  hasInvalidLettersNameInput,
+  hasInvalidPhoneInput,
+  onlyAlphanumericHyphen,
+  onlyLettersAndSpaces,
+  onlyNumbers,
+} from "@/lib/validation";
 import { useOfflineStudents } from "@/lib/offline/use-sync";
 import { isTempId } from "@/lib/offline/temp-ids";
 import {
@@ -69,6 +80,55 @@ export function StudentList({ students, classes }: StudentListProps) {
   const [inlineSaveSuccess, setInlineSaveSuccess] = useState<string | null>(
     null
   );
+  const [inlineFieldErrors, setInlineFieldErrors] = useState<
+    Partial<
+      Record<
+        "full_name" | "admission_number" | "parent_name" | "parent_phone",
+        string
+      >
+    >
+  >({});
+
+  type InlineHintKey =
+    | "full_name"
+    | "admission_number"
+    | "parent_name"
+    | "parent_phone";
+  const inlineFieldHintTimeoutsRef = useRef<
+    Partial<Record<InlineHintKey, ReturnType<typeof setTimeout>>>
+  >({});
+
+  function clearInlineFieldHintTimeout(key: InlineHintKey) {
+    const t = inlineFieldHintTimeoutsRef.current[key];
+    if (t != null) {
+      clearTimeout(t);
+      delete inlineFieldHintTimeoutsRef.current[key];
+    }
+  }
+
+  function armInlineFieldHintDismiss(key: InlineHintKey) {
+    clearInlineFieldHintTimeout(key);
+    inlineFieldHintTimeoutsRef.current[key] = setTimeout(() => {
+      delete inlineFieldHintTimeoutsRef.current[key];
+      setInlineFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }, 2000);
+  }
+
+  function clearAllInlineFieldHintTimeouts() {
+    const m = inlineFieldHintTimeoutsRef.current;
+    for (const k of Object.keys(m) as InlineHintKey[]) {
+      const t = m[k];
+      if (t != null) clearTimeout(t);
+    }
+    inlineFieldHintTimeoutsRef.current = {};
+  }
+
+  useEffect(() => () => clearAllInlineFieldHintTimeouts(), []);
+
   const [isSaving, setIsSaving] = useState(false);
   const [editClassSubjects, setEditClassSubjects] = useState<
     { id: string; name: string }[]
@@ -217,6 +277,8 @@ export function StudentList({ students, classes }: StudentListProps) {
   const handleEdit = useCallback((student: StudentData) => {
     setInlineSaveError(null);
     setInlineSaveSuccess(null);
+    clearAllInlineFieldHintTimeouts();
+    setInlineFieldErrors({});
     setEditClassSubjects([]);
     setEditSubjectIds([]);
     setEditingId(student.id);
@@ -259,7 +321,59 @@ export function StudentList({ students, classes }: StudentListProps) {
   }, [editingId, editValues.class_id, editSubjectYear, editSubjectTerm]);
 
   function handleChange(field: string, value: string) {
-    setEditValues((prev) => ({ ...prev, [field]: value }));
+    setInlineFieldErrors((prev) => {
+      const nextHints = { ...prev };
+      if (field === "full_name" || field === "parent_name") {
+        if (hasInvalidLettersNameInput(value)) {
+          nextHints[field] = HINT_LETTERS_AND_SPACES;
+        } else {
+          delete nextHints[field];
+        }
+      } else if (field === "parent_phone") {
+        if (hasInvalidPhoneInput(value)) {
+          nextHints.parent_phone = HINT_ONLY_NUMBERS;
+        } else {
+          delete nextHints.parent_phone;
+        }
+      } else if (field === "admission_number") {
+        if (hasInvalidAdmissionInput(value)) {
+          nextHints.admission_number = HINT_ALPHANUM_HYPHEN;
+        } else {
+          delete nextHints.admission_number;
+        }
+      }
+      return nextHints;
+    });
+
+    if (field === "full_name" || field === "parent_name") {
+      if (hasInvalidLettersNameInput(value)) {
+        armInlineFieldHintDismiss(field);
+      } else {
+        clearInlineFieldHintTimeout(field);
+      }
+    } else if (field === "parent_phone") {
+      if (hasInvalidPhoneInput(value)) {
+        armInlineFieldHintDismiss("parent_phone");
+      } else {
+        clearInlineFieldHintTimeout("parent_phone");
+      }
+    } else if (field === "admission_number") {
+      if (hasInvalidAdmissionInput(value)) {
+        armInlineFieldHintDismiss("admission_number");
+      } else {
+        clearInlineFieldHintTimeout("admission_number");
+      }
+    }
+
+    let next = value;
+    if (field === "full_name" || field === "parent_name") {
+      next = onlyLettersAndSpaces(value);
+    } else if (field === "parent_phone") {
+      next = onlyNumbers(value);
+    } else if (field === "admission_number") {
+      next = onlyAlphanumericHyphen(value);
+    }
+    setEditValues((prev) => ({ ...prev, [field]: next }));
   }
 
   function toggleEditSubject(subjectId: string, checked: boolean) {
@@ -276,14 +390,43 @@ export function StudentList({ students, classes }: StudentListProps) {
   const handleInlineSave = useCallback(async () => {
     if (!editingId) return;
 
-    const fullName = (editValues.full_name ?? "").trim();
+    const fullNameRaw = (editValues.full_name ?? "").trim();
+    const fullName = onlyLettersAndSpaces(fullNameRaw).trim();
     const genderRaw = (editValues.gender ?? "").trim();
 
     setInlineSaveError(null);
     setInlineSaveSuccess(null);
 
+    if (fullNameRaw !== onlyLettersAndSpaces(fullNameRaw)) {
+      setInlineSaveError(
+        "Student name can only include letters, spaces, hyphens, and apostrophes."
+      );
+      return;
+    }
     if (!fullName) {
       setInlineSaveError("Student name is required.");
+      return;
+    }
+    const parentPhoneRaw = (editValues.parent_phone ?? "").trim();
+    if (parentPhoneRaw !== onlyNumbers(parentPhoneRaw)) {
+      setInlineSaveError("Parent phone can only include numbers.");
+      return;
+    }
+    const admRaw = (editValues.admission_number ?? "").trim();
+    if (admRaw !== onlyAlphanumericHyphen(admRaw)) {
+      setInlineSaveError(
+        "Admission number can only include letters, numbers, hyphens, and underscores."
+      );
+      return;
+    }
+    const parentNameRaw = (editValues.parent_name ?? "").trim();
+    if (
+      parentNameRaw &&
+      parentNameRaw !== onlyLettersAndSpaces(parentNameRaw).trim()
+    ) {
+      setInlineSaveError(
+        "Parent name can only include letters, spaces, hyphens, and apostrophes."
+      );
       return;
     }
     if (genderRaw !== "male" && genderRaw !== "female") {
@@ -305,16 +448,16 @@ export function StudentList({ students, classes }: StudentListProps) {
 
     const fd = new FormData();
     fd.set("full_name", fullName);
-    fd.set(
-      "admission_number",
-      (editValues.admission_number ?? "").trim()
-    );
+    fd.set("admission_number", onlyAlphanumericHyphen(admRaw));
     fd.set("class_id", classId);
     fd.set("gender", genderRaw);
     fd.set("enrollment_date", (editValues.enrollment_date ?? "").trim());
-    fd.set("parent_name", (editValues.parent_name ?? "").trim());
+    fd.set(
+      "parent_name",
+      onlyLettersAndSpaces((editValues.parent_name ?? "").trim()).trim()
+    );
     fd.set("parent_email", (editValues.parent_email ?? "").trim());
-    fd.set("parent_phone", (editValues.parent_phone ?? "").trim());
+    fd.set("parent_phone", onlyNumbers(parentPhoneRaw));
 
     setIsSaving(true);
     try {
@@ -358,6 +501,8 @@ export function StudentList({ students, classes }: StudentListProps) {
         );
         setEditingId(null);
         setEditValues({});
+        clearAllInlineFieldHintTimeouts();
+        setInlineFieldErrors({});
         setEditClassSubjects([]);
         setEditSubjectIds([]);
         return;
@@ -387,6 +532,8 @@ export function StudentList({ students, classes }: StudentListProps) {
       );
       setEditingId(null);
       setEditValues({});
+      clearAllInlineFieldHintTimeouts();
+      setInlineFieldErrors({});
       setEditClassSubjects([]);
       setEditSubjectIds([]);
       router.refresh();
@@ -405,6 +552,8 @@ export function StudentList({ students, classes }: StudentListProps) {
   function handleInlineCancel() {
     setEditingId(null);
     setEditValues({});
+    clearAllInlineFieldHintTimeouts();
+    setInlineFieldErrors({});
     setEditClassSubjects([]);
     setEditSubjectIds([]);
     setInlineSaveError(null);
@@ -551,6 +700,9 @@ export function StudentList({ students, classes }: StudentListProps) {
                   }
                   router.refresh();
                 }}
+                inlineFieldErrors={
+                  editingId === student.id ? inlineFieldErrors : undefined
+                }
                 subjectEnrollmentEdit={
                   editingId === student.id
                     ? {
@@ -624,6 +776,9 @@ export function StudentList({ students, classes }: StudentListProps) {
                         }
                         router.refresh();
                       }}
+                      inlineFieldErrors={
+                        editingId === student.id ? inlineFieldErrors : undefined
+                      }
                       subjectEnrollmentEdit={
                         editingId === student.id
                           ? {

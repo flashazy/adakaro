@@ -25,6 +25,20 @@ import {
 import { formatNativeSelectClassOptionLabel } from "@/lib/class-options";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import { makeTempStudentId } from "@/lib/offline/temp-ids";
+import {
+  blockInvalidKeyDownAdmission,
+  blockInvalidKeyDownLettersName,
+  blockInvalidKeyDownPhone,
+  HINT_ALPHANUM_HYPHEN,
+  HINT_LETTERS_AND_SPACES,
+  HINT_ONLY_NUMBERS,
+  hasInvalidAdmissionInput,
+  hasInvalidLettersNameInput,
+  hasInvalidPhoneInput,
+  onlyAlphanumericHyphen,
+  onlyLettersAndSpaces,
+  onlyNumbers,
+} from "@/lib/validation";
 
 /** Title-case one segment (handles O'Connor-style apostrophes). */
 function capitalizeNameSegment(segment: string): string {
@@ -139,6 +153,49 @@ export function AddStudentForm({
   // checkbox's checked / indeterminate state.
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const [fieldHints, setFieldHints] = useState<{
+    full_name: string | null;
+    admission_number: string | null;
+    parent_name: string | null;
+    parent_phone: string | null;
+  }>({
+    full_name: null,
+    admission_number: null,
+    parent_name: null,
+    parent_phone: null,
+  });
+
+  type FieldHintKey = keyof typeof fieldHints;
+  const fieldHintTimeoutsRef = useRef<
+    Partial<Record<FieldHintKey, ReturnType<typeof setTimeout>>>
+  >({});
+
+  function clearFieldHintTimeout(key: FieldHintKey) {
+    const t = fieldHintTimeoutsRef.current[key];
+    if (t != null) {
+      clearTimeout(t);
+      delete fieldHintTimeoutsRef.current[key];
+    }
+  }
+
+  function armFieldHintDismiss(key: FieldHintKey) {
+    clearFieldHintTimeout(key);
+    fieldHintTimeoutsRef.current[key] = setTimeout(() => {
+      delete fieldHintTimeoutsRef.current[key];
+      setFieldHints((prev) => ({ ...prev, [key]: null }));
+    }, 2000);
+  }
+
+  function clearAllFieldHintTimeouts() {
+    const m = fieldHintTimeoutsRef.current;
+    for (const k of Object.keys(m) as FieldHintKey[]) {
+      const t = m[k];
+      if (t != null) clearTimeout(t);
+    }
+    fieldHintTimeoutsRef.current = {};
+  }
+
+  useEffect(() => () => clearAllFieldHintTimeouts(), []);
 
   useEffect(() => {
     if (!selectedClassId) {
@@ -211,6 +268,13 @@ export function AddStudentForm({
       setOpen(false);
       setNameDuplicateWarning(null);
       setPhoneDuplicateModalName(null);
+      clearAllFieldHintTimeouts();
+      setFieldHints({
+        full_name: null,
+        admission_number: null,
+        parent_name: null,
+        parent_phone: null,
+      });
       router.refresh();
     }
   }, [state.success, router]);
@@ -268,7 +332,57 @@ export function AddStudentForm({
     if (atStudentLimit) return;
 
     const form = event.currentTarget;
+    if (form == null) return;
     const formData = new FormData(form);
+
+    const fullNameRaw = String(formData.get("full_name") ?? "");
+    const fullNameClean = onlyLettersAndSpaces(fullNameRaw).trim();
+    if (!fullNameClean) {
+      setState({ error: "Please enter the student's full name." });
+      return;
+    }
+    if (fullNameRaw !== onlyLettersAndSpaces(fullNameRaw)) {
+      setState({ error: HINT_LETTERS_AND_SPACES });
+      return;
+    }
+    formData.set("full_name", fullNameClean);
+
+    const admissionRaw = String(formData.get("admission_number") ?? "");
+    if (
+      admissionRaw.trim() !== "" &&
+      admissionRaw !== onlyAlphanumericHyphen(admissionRaw)
+    ) {
+      setState({ error: HINT_ALPHANUM_HYPHEN });
+      return;
+    }
+    formData.set(
+      "admission_number",
+      onlyAlphanumericHyphen(admissionRaw).trim()
+    );
+
+    const parentNameRaw = String(formData.get("parent_name") ?? "");
+    if (
+      parentNameRaw.trim() !== "" &&
+      parentNameRaw !== onlyLettersAndSpaces(parentNameRaw)
+    ) {
+      setState({ error: HINT_LETTERS_AND_SPACES });
+      return;
+    }
+    formData.set(
+      "parent_name",
+      onlyLettersAndSpaces(parentNameRaw).trim()
+    );
+
+    const parentPhoneRaw = String(formData.get("parent_phone") ?? "");
+    if (
+      parentPhoneRaw.trim() !== "" &&
+      parentPhoneRaw !== onlyNumbers(parentPhoneRaw)
+    ) {
+      setState({ error: HINT_ONLY_NUMBERS });
+      return;
+    }
+    formData.set("parent_phone", onlyNumbers(parentPhoneRaw));
+
     if (bypassPhoneNextSubmitRef.current) {
       formData.set("force_duplicate_phone", "1");
       bypassPhoneNextSubmitRef.current = false;
@@ -343,6 +457,13 @@ export function AddStudentForm({
             setClassSubjectOptions([]);
             setSelectedSubjectIds([]);
             setOpen(false);
+            clearAllFieldHintTimeouts();
+            setFieldHints({
+              full_name: null,
+              admission_number: null,
+              parent_name: null,
+              parent_phone: null,
+            });
             return;
           }
           const result = wrapped.result;
@@ -382,6 +503,13 @@ export function AddStudentForm({
             if (!next) {
               setNameDuplicateWarning(null);
               setPhoneDuplicateModalName(null);
+              clearAllFieldHintTimeouts();
+              setFieldHints({
+                full_name: null,
+                admission_number: null,
+                parent_name: null,
+                parent_phone: null,
+              });
             }
             return next;
           });
@@ -445,12 +573,48 @@ export function AddStudentForm({
                 required
                 className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="e.g. Jane Doe"
-                onChange={() => scheduleNameDuplicatePeek()}
+                onKeyDown={blockInvalidKeyDownLettersName}
+                onChange={(e) => {
+                  const el = e.currentTarget;
+                  if (el == null) return;
+                  const raw = el.value;
+                  const next = onlyLettersAndSpaces(raw);
+                  if (hasInvalidLettersNameInput(raw)) {
+                    setFieldHints((h) => ({
+                      ...h,
+                      full_name: HINT_LETTERS_AND_SPACES,
+                    }));
+                    armFieldHintDismiss("full_name");
+                  } else {
+                    clearFieldHintTimeout("full_name");
+                    setFieldHints((h) => ({ ...h, full_name: null }));
+                  }
+                  if (next !== raw) el.value = next;
+                  scheduleNameDuplicatePeek();
+                }}
                 onBlur={(e) => {
-                  e.currentTarget.value = toTitleCase(e.currentTarget.value);
+                  const el = e.currentTarget;
+                  if (el == null) return;
+                  el.value = toTitleCase(el.value);
+                  const titled = el.value;
+                  if (hasInvalidLettersNameInput(titled)) {
+                    setFieldHints((h) => ({
+                      ...h,
+                      full_name: HINT_LETTERS_AND_SPACES,
+                    }));
+                    armFieldHintDismiss("full_name");
+                  } else {
+                    clearFieldHintTimeout("full_name");
+                    setFieldHints((h) => ({ ...h, full_name: null }));
+                  }
                   scheduleNameDuplicatePeek();
                 }}
               />
+              {fieldHints.full_name ? (
+                <p className="text-xs text-red-500" role="alert">
+                  {fieldHints.full_name}
+                </p>
+              ) : null}
               {nameDuplicateWarning ? (
                 <p
                   className="text-xs text-amber-800 dark:text-amber-200/90"
@@ -482,7 +646,24 @@ export function AddStudentForm({
                     type="text"
                     autoComplete="off"
                     value={admissionValue}
-                    onChange={(e) => setAdmissionValue(e.target.value)}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (hasInvalidAdmissionInput(raw)) {
+                        setFieldHints((h) => ({
+                          ...h,
+                          admission_number: HINT_ALPHANUM_HYPHEN,
+                        }));
+                        armFieldHintDismiss("admission_number");
+                      } else {
+                        clearFieldHintTimeout("admission_number");
+                        setFieldHints((h) => ({
+                          ...h,
+                          admission_number: null,
+                        }));
+                      }
+                      setAdmissionValue(onlyAlphanumericHyphen(raw));
+                    }}
+                    onKeyDown={blockInvalidKeyDownAdmission}
                     className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                     placeholder={`e.g. ${effectivePrefix}-001`}
                   />
@@ -503,6 +684,27 @@ export function AddStudentForm({
                   id="admission_number"
                   name="admission_number"
                   type="text"
+                  onKeyDown={blockInvalidKeyDownAdmission}
+                  onChange={(e) => {
+                    const el = e.currentTarget;
+                    if (el == null) return;
+                    const raw = el.value;
+                    const next = onlyAlphanumericHyphen(raw);
+                    if (hasInvalidAdmissionInput(raw)) {
+                      setFieldHints((h) => ({
+                        ...h,
+                        admission_number: HINT_ALPHANUM_HYPHEN,
+                      }));
+                      armFieldHintDismiss("admission_number");
+                    } else {
+                      clearFieldHintTimeout("admission_number");
+                      setFieldHints((h) => ({
+                        ...h,
+                        admission_number: null,
+                      }));
+                    }
+                    if (next !== raw) el.value = next;
+                  }}
                   className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                   placeholder="e.g. ADM-001 (optional)"
                 />
@@ -517,6 +719,11 @@ export function AddStudentForm({
                   auto-generated numbers.
                 </p>
               )}
+              {fieldHints.admission_number ? (
+                <p className="mt-0.5 text-xs text-red-500" role="alert">
+                  {fieldHints.admission_number}
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -702,12 +909,48 @@ export function AddStudentForm({
                 id="parent_name"
                 name="parent_name"
                 type="text"
+                onKeyDown={blockInvalidKeyDownLettersName}
+                onChange={(e) => {
+                  const el = e.currentTarget;
+                  if (el == null) return;
+                  const raw = el.value;
+                  const next = onlyLettersAndSpaces(raw);
+                  if (hasInvalidLettersNameInput(raw)) {
+                    setFieldHints((h) => ({
+                      ...h,
+                      parent_name: HINT_LETTERS_AND_SPACES,
+                    }));
+                    armFieldHintDismiss("parent_name");
+                  } else {
+                    clearFieldHintTimeout("parent_name");
+                    setFieldHints((h) => ({ ...h, parent_name: null }));
+                  }
+                  if (next !== raw) el.value = next;
+                }}
                 className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="Parent's full name"
                 onBlur={(e) => {
-                  e.currentTarget.value = toTitleCase(e.currentTarget.value);
+                  const el = e.currentTarget;
+                  if (el == null) return;
+                  el.value = toTitleCase(el.value);
+                  const titled = el.value;
+                  if (hasInvalidLettersNameInput(titled)) {
+                    setFieldHints((h) => ({
+                      ...h,
+                      parent_name: HINT_LETTERS_AND_SPACES,
+                    }));
+                    armFieldHintDismiss("parent_name");
+                  } else {
+                    clearFieldHintTimeout("parent_name");
+                    setFieldHints((h) => ({ ...h, parent_name: null }));
+                  }
                 }}
               />
+              {fieldHints.parent_name ? (
+                <p className="text-xs text-red-500" role="alert">
+                  {fieldHints.parent_name}
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -724,9 +967,9 @@ export function AddStudentForm({
                 className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="parent@example.com"
                 onBlur={(e) => {
-                  e.currentTarget.value = toLowercaseEmail(
-                    e.currentTarget.value
-                  );
+                  const el = e.currentTarget;
+                  if (el == null) return;
+                  el.value = toLowercaseEmail(el.value);
                 }}
               />
             </div>
@@ -741,10 +984,35 @@ export function AddStudentForm({
               <input
                 id="parent_phone"
                 name="parent_phone"
-                type="tel"
+                type="text"
+                inputMode="numeric"
+                autoComplete="tel"
+                onKeyDown={blockInvalidKeyDownPhone}
+                onChange={(e) => {
+                  const el = e.currentTarget;
+                  if (el == null) return;
+                  const raw = el.value;
+                  const next = onlyNumbers(raw);
+                  if (hasInvalidPhoneInput(raw)) {
+                    setFieldHints((h) => ({
+                      ...h,
+                      parent_phone: HINT_ONLY_NUMBERS,
+                    }));
+                    armFieldHintDismiss("parent_phone");
+                  } else {
+                    clearFieldHintTimeout("parent_phone");
+                    setFieldHints((h) => ({ ...h, parent_phone: null }));
+                  }
+                  if (next !== raw) el.value = next;
+                }}
                 className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
-                placeholder="+254 700 000 000"
+                placeholder="254700000000"
               />
+              {fieldHints.parent_phone ? (
+                <p className="text-xs text-red-500" role="alert">
+                  {fieldHints.parent_phone}
+                </p>
+              ) : null}
             </div>
           </div>
 

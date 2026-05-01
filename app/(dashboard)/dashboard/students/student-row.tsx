@@ -11,6 +11,11 @@ import {
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
 import { formatNativeSelectClassOptionLabel } from "@/lib/class-options";
+import {
+  blockInvalidKeyDownAdmission,
+  blockInvalidKeyDownLettersName,
+  blockInvalidKeyDownPhone,
+} from "@/lib/validation";
 
 interface ClassOption {
   id: string;
@@ -246,6 +251,13 @@ interface StudentRowProps {
    * that hasn't synced yet. Renders a "Pending sync" badge next to the
    * name. */
   pendingSync?: boolean;
+  /** Red inline hints under validated fields (only set while input has invalid chars). */
+  inlineFieldErrors?: Partial<
+    Record<
+      "full_name" | "admission_number" | "parent_name" | "parent_phone",
+      string
+    >
+  >;
 }
 
 /**
@@ -277,6 +289,7 @@ export function StudentRow({
   subjectEnrollmentEdit,
   onDeleted,
   pendingSync = false,
+  inlineFieldErrors = {},
 }: StudentRowProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -333,14 +346,25 @@ export function StudentRow({
       <tr>
         <td className="w-[120px] px-4 py-3 align-middle">
           {isInline ? (
-            <input
-              type="text"
-              value={editValues.admission_number ?? ""}
-              onChange={(e) =>
-                onInlineChange("admission_number", e.target.value)
-              }
-              className={inlineCls}
-            />
+            <div className="min-w-0">
+              <input
+                type="text"
+                value={editValues.admission_number ?? ""}
+                onChange={(e) =>
+                  onInlineChange("admission_number", e.target.value)
+                }
+                onKeyDown={blockInvalidKeyDownAdmission}
+                className={inlineCls}
+              />
+              {inlineFieldErrors.admission_number ? (
+                <p
+                  className="mt-0.5 text-[10px] leading-tight text-red-500"
+                  role="alert"
+                >
+                  {inlineFieldErrors.admission_number}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <span className="truncate font-mono text-sm text-gray-700 dark:text-zinc-300">
               {student.admission_number || "—"}
@@ -349,12 +373,23 @@ export function StudentRow({
         </td>
         <td className="w-[220px] px-4 py-3 align-middle">
           {isInline ? (
-            <input
-              type="text"
-              value={editValues.full_name ?? ""}
-              onChange={(e) => onInlineChange("full_name", e.target.value)}
-              className={inlineCls}
-            />
+            <div className="min-w-0">
+              <input
+                type="text"
+                value={editValues.full_name ?? ""}
+                onChange={(e) => onInlineChange("full_name", e.target.value)}
+                onKeyDown={blockInvalidKeyDownLettersName}
+                className={inlineCls}
+              />
+              {inlineFieldErrors.full_name ? (
+                <p
+                  className="mt-0.5 text-[10px] leading-tight text-red-500"
+                  role="alert"
+                >
+                  {inlineFieldErrors.full_name}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <div className="flex min-w-0 flex-col">
               <span className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
@@ -434,9 +469,18 @@ export function StudentRow({
                 type="text"
                 value={editValues.parent_name ?? ""}
                 onChange={(e) => onInlineChange("parent_name", e.target.value)}
+                onKeyDown={blockInvalidKeyDownLettersName}
                 className={inlineCls}
                 placeholder="Parent name"
               />
+              {inlineFieldErrors.parent_name ? (
+                <p
+                  className="text-[10px] leading-tight text-red-500"
+                  role="alert"
+                >
+                  {inlineFieldErrors.parent_name}
+                </p>
+              ) : null}
               <input
                 type="email"
                 value={editValues.parent_email ?? ""}
@@ -448,9 +492,18 @@ export function StudentRow({
                 type="tel"
                 value={editValues.parent_phone ?? ""}
                 onChange={(e) => onInlineChange("parent_phone", e.target.value)}
+                onKeyDown={blockInvalidKeyDownPhone}
                 className={inlineCls}
                 placeholder="Phone"
               />
+              {inlineFieldErrors.parent_phone ? (
+                <p
+                  className="text-[10px] leading-tight text-red-500"
+                  role="alert"
+                >
+                  {inlineFieldErrors.parent_phone}
+                </p>
+              ) : null}
             </div>
           ) : (
             <div className="flex min-w-0 flex-col">
@@ -583,6 +636,7 @@ export function StudentCard({
   subjectEnrollmentEdit,
   onDeleted,
   pendingSync = false,
+  inlineFieldErrors = {},
 }: StudentCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -643,18 +697,30 @@ export function StudentCard({
             type="text"
             value={editValues.full_name ?? ""}
             onChange={(e) => onInlineChange("full_name", e.target.value)}
+            onKeyDown={blockInvalidKeyDownLettersName}
             className={inlineCls}
             placeholder="Full name"
           />
+          {inlineFieldErrors.full_name ? (
+            <p className="text-[10px] leading-tight text-red-500" role="alert">
+              {inlineFieldErrors.full_name}
+            </p>
+          ) : null}
           <input
             type="text"
             value={editValues.admission_number ?? ""}
             onChange={(e) =>
               onInlineChange("admission_number", e.target.value)
             }
+            onKeyDown={blockInvalidKeyDownAdmission}
             className={inlineCls}
             placeholder="Admission #"
           />
+          {inlineFieldErrors.admission_number ? (
+            <p className="text-[10px] leading-tight text-red-500" role="alert">
+              {inlineFieldErrors.admission_number}
+            </p>
+          ) : null}
           <select
             value={editValues.class_id ?? student.class_id}
             onChange={(e) => onInlineChange("class_id", e.target.value)}
@@ -697,9 +763,15 @@ export function StudentCard({
             type="text"
             value={editValues.parent_name ?? ""}
             onChange={(e) => onInlineChange("parent_name", e.target.value)}
+            onKeyDown={blockInvalidKeyDownLettersName}
             className={inlineCls}
             placeholder="Parent name"
           />
+          {inlineFieldErrors.parent_name ? (
+            <p className="text-[10px] leading-tight text-red-500" role="alert">
+              {inlineFieldErrors.parent_name}
+            </p>
+          ) : null}
           <input
             type="email"
             value={editValues.parent_email ?? ""}
@@ -711,9 +783,15 @@ export function StudentCard({
             type="tel"
             value={editValues.parent_phone ?? ""}
             onChange={(e) => onInlineChange("parent_phone", e.target.value)}
+            onKeyDown={blockInvalidKeyDownPhone}
             className={inlineCls}
             placeholder="Parent phone"
           />
+          {inlineFieldErrors.parent_phone ? (
+            <p className="text-[10px] leading-tight text-red-500" role="alert">
+              {inlineFieldErrors.parent_phone}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2 pt-1">
             <button
               type="button"
