@@ -2,7 +2,14 @@
 
 import { Camera, Info, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import {
   STUDENT_AVATAR_MAX_BYTES,
   STUDENT_AVATAR_OUTPUT_SIZE,
@@ -15,6 +22,27 @@ import {
   type StudentAvatarObjectName,
 } from "./profile-actions";
 import { StudentAvatarCropModal } from "./student-avatar-crop-modal";
+
+function canUseLiveCamera(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!window.isSecureContext) return false;
+  return typeof navigator.mediaDevices?.getUserMedia === "function";
+}
+
+function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return true;
+  return (
+    navigator.platform === "MacIntel" && (navigator.maxTouchPoints ?? 0) > 1
+  );
+}
+
+function isCameraPermissionDenied(err: unknown): boolean {
+  if (!(err instanceof DOMException)) return false;
+  return (
+    err.name === "NotAllowedError" || err.name === "PermissionDeniedError"
+  );
+}
 
 interface StudentProfileAvatarProps {
   studentId: string;
@@ -61,6 +89,8 @@ export function StudentProfileAvatar({
   const cameraInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const liveVideoRef = useRef<HTMLVideoElement>(null);
+  const liveStreamRef = useRef<MediaStream | null>(null);
 
   const [cropOpen, setCropOpen] = useState(false);
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
@@ -69,6 +99,105 @@ export function StudentProfileAvatar({
   );
   const [isCompressing, setIsCompressing] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [liveCameraOpen, setLiveCameraOpen] = useState(false);
+  const [liveCameraStarting, setLiveCameraStarting] = useState(false);
+
+  const stopLiveCameraStream = useCallback(() => {
+    const s = liveStreamRef.current;
+    if (s) {
+      s.getTracks().forEach((t) => t.stop());
+      liveStreamRef.current = null;
+    }
+    const v = liveVideoRef.current;
+    if (v) {
+      v.srcObject = null;
+    }
+  }, []);
+
+  const closeLiveCamera = useCallback(() => {
+    stopLiveCameraStream();
+    setLiveCameraOpen(false);
+    setLiveCameraStarting(false);
+  }, [stopLiveCameraStream]);
+
+  const openLiveCamera = useCallback(async () => {
+    if (!canUseLiveCamera()) return;
+    setBanner(null);
+    setLiveCameraStarting(true);
+    try {
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+      } catch (first) {
+        if (
+          first instanceof DOMException &&
+          (first.name === "OverconstrainedError" ||
+            first.name === "ConstraintNotSatisfiedError")
+        ) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        } else {
+          throw first;
+        }
+      }
+      liveStreamRef.current = stream;
+      setLiveCameraOpen(true);
+      queueMicrotask(() => {
+        const v = liveVideoRef.current;
+        if (v) {
+          v.srcObject = stream;
+          void v.play().catch(() => {
+            /* play may fail before visible; retry on mount */
+          });
+        }
+      });
+    } catch (e) {
+      if (isCameraPermissionDenied(e)) {
+        setBanner({
+          type: "err",
+          text: "Camera access denied. Please check browser permissions.",
+        });
+      } else {
+        setBanner({
+          type: "err",
+          text: "Could not open the camera. Try Take photo to use the system camera or gallery.",
+        });
+      }
+    } finally {
+      setLiveCameraStarting(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!liveCameraOpen) return;
+    const v = liveVideoRef.current;
+    const s = liveStreamRef.current;
+    if (v && s) {
+      v.srcObject = s;
+      void v.play().catch(() => {});
+    }
+  }, [liveCameraOpen]);
+
+  useEffect(() => {
+    if (!liveCameraOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeLiveCamera();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [liveCameraOpen, closeLiveCamera]);
+
+  useEffect(() => {
+    return () => {
+      const s = liveStreamRef.current;
+      if (s) s.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   useEffect(() => {
     if (!previewObjectUrl) return;
@@ -85,6 +214,42 @@ export function StudentProfileAvatar({
     setPreviewObjectUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
+    closeLiveCamera();
+  }
+
+  function openTakePhotoPicker() {
+    setBanner(null);
+    cameraInputRef.current?.click();
+  }
+
+  async function captureLiveFrameToFile(): Promise<File | null> {
+    const video = liveVideoRef.current;
+    if (!video || video.readyState < 2) return null;
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (w < 1 || h < 1) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92);
+    });
+    if (!blob || blob.size < 1) return null;
+    return new File([blob], "camera.jpg", { type: "image/jpeg" });
+  }
+
+  async function confirmLiveCapture() {
+    const file = await captureLiveFrameToFile();
+    closeLiveCamera();
+    if (file) void prepareFileAndOpenCrop(file);
+    else
+      setBanner({
+        type: "err",
+        text: "Could not capture this frame. Try again.",
+      });
   }
 
   async function prepareFileAndOpenCrop(file: File) {
@@ -301,7 +466,7 @@ export function StudentProfileAvatar({
 
       {canChangePhoto ? (
         <>
-          <div className="mx-auto grid w-full max-w-xs grid-cols-2 gap-3">
+          <div className="mx-auto grid w-full max-w-xs grid-cols-1 gap-3 sm:grid-cols-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -312,12 +477,29 @@ export function StudentProfileAvatar({
             </button>
             <button
               type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              disabled={pending || isCompressing}
+              onClick={openTakePhotoPicker}
+              disabled={
+                pending || isCompressing || liveCameraStarting || liveCameraOpen
+              }
               className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
             >
               Take photo
             </button>
+            {canUseLiveCamera() ? (
+              <button
+                type="button"
+                onClick={() => void openLiveCamera()}
+                disabled={
+                  pending ||
+                  isCompressing ||
+                  liveCameraStarting ||
+                  liveCameraOpen
+                }
+                className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:col-span-2 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+              >
+                {liveCameraStarting ? "Opening camera…" : "Open camera"}
+              </button>
+            ) : null}
           </div>
           <button
             type="button"
@@ -327,10 +509,24 @@ export function StudentProfileAvatar({
           >
             <Info className="h-4 w-4" strokeWidth={2} aria-hidden />
           </button>
-          <p className="mt-2 max-w-xs text-center text-xs leading-relaxed text-gray-500 dark:text-zinc-500">
-            Take photo opens the camera on supported phones; on desktop you
-            can pick an image file instead.
-          </p>
+          <div className="mt-2 max-w-xs space-y-2 text-center text-xs leading-relaxed text-gray-500 dark:text-zinc-500">
+            {canUseLiveCamera() ? (
+              <p>
+                Open camera uses your browser for a live preview (HTTPS
+                required). Take photo uses your system camera or gallery.
+              </p>
+            ) : (
+              <p>
+                Take photo uses your system camera or gallery when available. On
+                desktop you can pick an image file instead.
+              </p>
+            )}
+            {isIOS() ? (
+              <p className="text-slate-600 dark:text-zinc-400">
+                On iPhone, select &apos;Take Photo&apos; from the menu.
+              </p>
+            ) : null}
+          </div>
         </>
       ) : null}
       {banner ? (
@@ -354,6 +550,55 @@ export function StudentProfileAvatar({
           onConfirm={(canvas) => confirmUploadFromCanvas(canvas)}
           pending={pending}
         />
+      ) : null}
+
+      {liveCameraOpen ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isCompressing) closeLiveCamera();
+          }}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-zinc-700 dark:bg-zinc-900 sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Live camera"
+          >
+            <p className="mb-3 text-center text-sm font-medium text-slate-800 dark:text-zinc-100">
+              Position the student in frame, then capture
+            </p>
+            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-black">
+              <video
+                ref={liveVideoRef}
+                className="h-full w-full object-cover"
+                playsInline
+                muted
+                autoPlay
+              />
+            </div>
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => !isCompressing && closeLiveCamera()}
+                disabled={isCompressing}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => !isCompressing && void confirmLiveCapture()}
+                disabled={isCompressing}
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
+              >
+                Use this frame
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
