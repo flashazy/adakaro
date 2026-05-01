@@ -101,6 +101,12 @@ export function StudentProfileAvatar({
   const [pending, startTransition] = useTransition();
   const [liveCameraOpen, setLiveCameraOpen] = useState(false);
   const [liveCameraStarting, setLiveCameraStarting] = useState(false);
+  /** Avoid hydration mismatch: browser APIs differ from SSR. */
+  const [hasClientEnv, setHasClientEnv] = useState(false);
+
+  useEffect(() => {
+    setHasClientEnv(true);
+  }, []);
 
   const stopLiveCameraStream = useCallback(() => {
     const s = liveStreamRef.current;
@@ -485,7 +491,7 @@ export function StudentProfileAvatar({
             >
               Take photo
             </button>
-            {canUseLiveCamera() ? (
+            {hasClientEnv && canUseLiveCamera() ? (
               <button
                 type="button"
                 onClick={() => void openLiveCamera()}
@@ -510,7 +516,12 @@ export function StudentProfileAvatar({
             <Info className="h-4 w-4" strokeWidth={2} aria-hidden />
           </button>
           <div className="mt-2 max-w-xs space-y-2 text-center text-xs leading-relaxed text-gray-500 dark:text-zinc-500">
-            {canUseLiveCamera() ? (
+            {!hasClientEnv ? (
+              <p>
+                Take photo uses your system camera or gallery when available. On
+                desktop you can pick an image file instead.
+              </p>
+            ) : canUseLiveCamera() ? (
               <p>
                 Open camera uses your browser for a live preview (HTTPS
                 required). Take photo uses your system camera or gallery.
@@ -521,7 +532,7 @@ export function StudentProfileAvatar({
                 desktop you can pick an image file instead.
               </p>
             )}
-            {isIOS() ? (
+            {hasClientEnv && isIOS() ? (
               <p className="text-slate-600 dark:text-zinc-400">
                 On iPhone, select &apos;Take Photo&apos; from the menu.
               </p>
