@@ -2,19 +2,19 @@
 
 import { Camera, Info, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import {
   STUDENT_AVATAR_MAX_BYTES,
   STUDENT_AVATAR_OUTPUT_SIZE,
   canvasToWebpBlob,
   compressStudentAvatarSourceFile,
-  drawStudentAvatarPreview,
   validateStudentAvatarFile,
 } from "@/lib/student-avatar-canvas";
 import {
   uploadStudentAvatar,
   type StudentAvatarObjectName,
 } from "./profile-actions";
+import { StudentAvatarCropModal } from "./student-avatar-crop-modal";
 
 interface StudentProfileAvatarProps {
   studentId: string;
@@ -61,34 +61,14 @@ export function StudentProfileAvatar({
   const cameraInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const sourceImgRef = useRef<HTMLImageElement>(null);
-  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const [cropOpen, setCropOpen] = useState(false);
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
-  const [sourceReady, setSourceReady] = useState(false);
-  const [zoom, setZoom] = useState(1);
   const [banner, setBanner] = useState<{ type: "ok" | "err"; text: string } | null>(
     null
   );
   const [isCompressing, setIsCompressing] = useState(false);
   const [pending, startTransition] = useTransition();
-
-  const redrawPreview = useCallback(() => {
-    const img = sourceImgRef.current;
-    const canvas = previewCanvasRef.current;
-    if (!img?.complete || !canvas || img.naturalWidth < 1) return;
-    drawStudentAvatarPreview(
-      img,
-      canvas,
-      STUDENT_AVATAR_OUTPUT_SIZE,
-      zoom
-    );
-  }, [zoom]);
-
-  useEffect(() => {
-    redrawPreview();
-  }, [redrawPreview, sourceReady]);
 
   useEffect(() => {
     if (!previewObjectUrl) return;
@@ -99,8 +79,6 @@ export function StudentProfileAvatar({
 
   function resetCropState() {
     setCropOpen(false);
-    setSourceReady(false);
-    setZoom(1);
     if (previewObjectUrl) {
       URL.revokeObjectURL(previewObjectUrl);
     }
@@ -138,8 +116,6 @@ export function StudentProfileAvatar({
       if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
       const url = URL.createObjectURL(fileToUse);
       setPreviewObjectUrl(url);
-      setSourceReady(false);
-      setZoom(1);
       setCropOpen(true);
     } catch {
       setBanner({
@@ -158,9 +134,14 @@ export function StudentProfileAvatar({
     void prepareFileAndOpenCrop(file);
   }
 
-  function confirmUpload() {
-    const canvas = previewCanvasRef.current;
-    if (!canvas) return;
+  function confirmUploadFromCanvas(canvas: HTMLCanvasElement | null) {
+    if (!canvas) {
+      setBanner({
+        type: "err",
+        text: "Could not prepare this image. Try again.",
+      });
+      return;
+    }
 
     startTransition(async () => {
       setBanner(null);
@@ -366,88 +347,13 @@ export function StudentProfileAvatar({
       ) : null}
 
       {cropOpen && previewObjectUrl ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !pending) resetCropState();
-          }}
-        >
-          <div
-            className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900 sm:rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="crop-dialog-title"
-          >
-            <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-700">
-              <h3
-                id="crop-dialog-title"
-                className="text-base font-semibold text-slate-900 dark:text-white"
-              >
-                Adjust crop
-              </h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                Preview is {STUDENT_AVATAR_OUTPUT_SIZE}×{STUDENT_AVATAR_OUTPUT_SIZE}px. Use
-                zoom to frame the face, then save.
-              </p>
-            </div>
-            <div className="space-y-4 px-4 py-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                ref={sourceImgRef}
-                src={previewObjectUrl}
-                alt=""
-                className="hidden"
-                onLoad={() => setSourceReady(true)}
-              />
-              <div className="flex justify-center">
-                <canvas
-                  ref={previewCanvasRef}
-                  width={STUDENT_AVATAR_OUTPUT_SIZE}
-                  height={STUDENT_AVATAR_OUTPUT_SIZE}
-                  className="rounded-lg border border-slate-200 shadow-sm dark:border-zinc-700"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="avatar-zoom"
-                  className="text-sm font-medium text-slate-700 dark:text-zinc-300"
-                >
-                  Zoom (crop)
-                </label>
-                <input
-                  id="avatar-zoom"
-                  type="range"
-                  min={1}
-                  max={2.5}
-                  step={0.05}
-                  value={zoom}
-                  disabled={!sourceReady || pending}
-                  onChange={(e) => setZoom(Number(e.target.value))}
-                  className="mt-2 block w-full accent-school-primary"
-                />
-              </div>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => !pending && resetCropState()}
-                  disabled={pending}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmUpload}
-                  disabled={pending || !sourceReady}
-                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-50"
-                >
-                  {pending ? "Uploading…" : "Save photo"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <StudentAvatarCropModal
+          key={previewObjectUrl}
+          imageUrl={previewObjectUrl}
+          onCancel={resetCropState}
+          onConfirm={(canvas) => confirmUploadFromCanvas(canvas)}
+          pending={pending}
+        />
       ) : null}
     </div>
   );

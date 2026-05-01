@@ -152,34 +152,6 @@ export async function compressStudentAvatarSourceFile(
   return { ok: true, file: out };
 }
 
-/**
- * Draw a centered square crop from the image into a square canvas.
- * `zoom` ≥ 1: larger values use a smaller source square (zoom in on the centre).
- */
-export function drawStudentAvatarPreview(
-  img: HTMLImageElement,
-  canvas: HTMLCanvasElement,
-  outSize: number,
-  zoom: number
-): void {
-  const nw = img.naturalWidth;
-  const nh = img.naturalHeight;
-  if (nw < 1 || nh < 1) return;
-
-  const minSide = Math.min(nw, nh);
-  const z = Math.max(1, zoom);
-  const cropSize = Math.min(minSide, minSide / z);
-  const sx = (nw - cropSize) / 2;
-  const sy = (nh - cropSize) / 2;
-
-  canvas.width = outSize;
-  canvas.height = outSize;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  ctx.clearRect(0, 0, outSize, outSize);
-  ctx.drawImage(img, sx, sy, cropSize, cropSize, 0, 0, outSize, outSize);
-}
-
 export function canvasToWebpBlob(
   canvas: HTMLCanvasElement,
   quality = 0.92
