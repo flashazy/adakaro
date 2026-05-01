@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
-import Link from "next/link";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { Pencil, Trash2, UserCircle } from "lucide-react";
 import { deleteStudent } from "./actions";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
@@ -495,14 +495,14 @@ export function StudentRow({
               </>
             ) : (
               <>
-                <Link
+                <NavLinkWithLoading
                   href={`/dashboard/students/${student.id}/profile`}
                   title="View profile"
                   aria-label="View profile"
-                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-school-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-school-primary/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:opacity-90"
+                  className="inline-flex items-center rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-school-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-school-primary/30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:opacity-90"
                 >
                   <UserCircle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                </Link>
+                </NavLinkWithLoading>
                 <button
                   type="button"
                   onClick={() => onInlineEdit(student)}
@@ -803,13 +803,13 @@ export function StudentCard({
           </dl>
 
           <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
-            <Link
+            <NavLinkWithLoading
               href={`/dashboard/students/${student.id}/profile`}
               className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-zinc-600 dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
             >
               <UserCircle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
               View profile
-            </Link>
+            </NavLinkWithLoading>
             <div className="flex items-center gap-1">
               <button
                 type="button"
