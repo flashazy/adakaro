@@ -374,14 +374,18 @@ export function AddStudentForm({
     );
 
     const parentPhoneRaw = String(formData.get("parent_phone") ?? "");
-    if (
-      parentPhoneRaw.trim() !== "" &&
-      parentPhoneRaw !== onlyNumbers(parentPhoneRaw)
-    ) {
+    const parentPhoneClean = onlyNumbers(parentPhoneRaw).trim();
+    if (!parentPhoneClean) {
+      setState({
+        error: "Please enter a parent phone number.",
+      });
+      return;
+    }
+    if (parentPhoneRaw !== onlyNumbers(parentPhoneRaw)) {
       setState({ error: HINT_ONLY_NUMBERS });
       return;
     }
-    formData.set("parent_phone", onlyNumbers(parentPhoneRaw));
+    formData.set("parent_phone", parentPhoneClean);
 
     if (bypassPhoneNextSubmitRef.current) {
       formData.set("force_duplicate_phone", "1");
@@ -534,6 +538,7 @@ export function AddStudentForm({
       {open && (
         <form
           ref={formRef}
+          noValidate
           onSubmit={handleSubmit}
           className="border-t border-slate-200 px-6 pb-6 pt-4 dark:border-zinc-800"
         >
@@ -979,12 +984,13 @@ export function AddStudentForm({
                 htmlFor="parent_phone"
                 className="text-sm font-medium text-slate-700 dark:text-zinc-300"
               >
-                Parent phone
+                Parent phone <span className="text-red-500">*</span>
               </label>
               <input
                 id="parent_phone"
                 name="parent_phone"
                 type="text"
+                required
                 inputMode="numeric"
                 autoComplete="tel"
                 onKeyDown={blockInvalidKeyDownPhone}
@@ -1006,7 +1012,7 @@ export function AddStudentForm({
                   if (next !== raw) el.value = next;
                 }}
                 className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
-                placeholder="254700000000"
+                placeholder="25570000000"
               />
               {fieldHints.parent_phone ? (
                 <p className="text-xs text-red-500" role="alert">
