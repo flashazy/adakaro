@@ -7,6 +7,7 @@ import {
   STUDENT_AVATAR_MAX_BYTES,
   STUDENT_AVATAR_OUTPUT_SIZE,
   canvasToWebpBlob,
+  compressStudentAvatarSourceFile,
   drawStudentAvatarPreview,
   validateStudentAvatarFile,
 } from "@/lib/student-avatar-canvas";
@@ -70,6 +71,7 @@ export function StudentProfileAvatar({
   const [banner, setBanner] = useState<{ type: "ok" | "err"; text: string } | null>(
     null
   );
+  const [isCompressing, setIsCompressing] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const redrawPreview = useCallback(() => {
@@ -107,20 +109,53 @@ export function StudentProfileAvatar({
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   }
 
-  function onFileChosen(file: File | null) {
+  async function prepareFileAndOpenCrop(file: File) {
     setBanner(null);
-    if (!file) return;
-    const err = validateStudentAvatarFile(file);
-    if (err) {
-      setBanner({ type: "err", text: err });
-      return;
+    setIsCompressing(true);
+    try {
+      const comp = await compressStudentAvatarSourceFile(file);
+      let fileToUse: File | null = null;
+      if (comp.ok) {
+        const err = validateStudentAvatarFile(comp.file);
+        if (!err) fileToUse = comp.file;
+      }
+      if (!fileToUse) {
+        const legacyErr = validateStudentAvatarFile(file);
+        if (!legacyErr) fileToUse = file;
+        else {
+          setBanner({
+            type: "err",
+            text:
+              legacyErr ||
+              (!comp.ok ? comp.error : "Could not prepare this image."),
+          });
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          if (cameraInputRef.current) cameraInputRef.current.value = "";
+          return;
+        }
+      }
+
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+      const url = URL.createObjectURL(fileToUse);
+      setPreviewObjectUrl(url);
+      setSourceReady(false);
+      setZoom(1);
+      setCropOpen(true);
+    } catch {
+      setBanner({
+        type: "err",
+        text: "Something went wrong while processing the image.",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+    } finally {
+      setIsCompressing(false);
     }
-    if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
-    const url = URL.createObjectURL(file);
-    setPreviewObjectUrl(url);
-    setSourceReady(false);
-    setZoom(1);
-    setCropOpen(true);
+  }
+
+  function onFileChosen(file: File | null) {
+    if (!file) return;
+    void prepareFileAndOpenCrop(file);
   }
 
   function confirmUpload() {
@@ -183,7 +218,7 @@ export function StudentProfileAvatar({
       avatarUrl.startsWith("http://localhost") ||
       avatarUrl.startsWith("http://127.0.0.1"));
 
-  const photoFrameClass = `group relative mx-auto flex h-[120px] w-[120px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-slate-300 bg-slate-50 shadow-md ring-1 ring-black/5 dark:border-zinc-600 dark:bg-zinc-800/80 dark:ring-white/10 ${
+  const photoFrameClass = `group relative flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-slate-300 bg-slate-50 shadow-md ring-1 ring-black/5 dark:border-zinc-600 dark:bg-zinc-800/80 dark:ring-white/10 ${
     canChangePhoto
       ? "transition hover:border-[rgb(var(--school-primary-rgb)/0.45)] hover:bg-slate-100 hover:shadow-lg disabled:opacity-60 dark:hover:border-school-primary dark:hover:bg-zinc-800"
       : ""
@@ -220,17 +255,28 @@ export function StudentProfileAvatar({
   return (
     <div className="flex w-full min-w-0 flex-col items-center justify-center">
       {canChangePhoto ? (
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={pending}
-          className={photoFrameClass}
-          aria-label="Upload or change student photo"
-        >
-          {photoFrameInner}
-        </button>
+        <div className="relative mx-auto h-[120px] w-[120px] shrink-0">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={pending || isCompressing}
+            className={photoFrameClass}
+            aria-label="Upload or change student photo"
+            aria-busy={isCompressing}
+          >
+            {photoFrameInner}
+          </button>
+          {isCompressing ? (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-full bg-white/90 text-center text-xs font-medium text-slate-700 shadow-inner dark:bg-zinc-950/90 dark:text-zinc-200">
+              Processing photo…
+            </div>
+          ) : null}
+        </div>
       ) : (
-        <div className={photoFrameClass} aria-hidden>
+        <div
+          className={`${photoFrameClass} mx-auto h-[120px] w-[120px]`}
+          aria-hidden
+        >
           {photoFrameInner}
         </div>
       )}
@@ -278,7 +324,7 @@ export function StudentProfileAvatar({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={pending}
+              disabled={pending || isCompressing}
               className="min-h-11 w-full rounded-lg bg-school-primary px-3 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
             >
               Change photo
@@ -286,7 +332,7 @@ export function StudentProfileAvatar({
             <button
               type="button"
               onClick={() => cameraInputRef.current?.click()}
-              disabled={pending}
+              disabled={pending || isCompressing}
               className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
             >
               Take photo
