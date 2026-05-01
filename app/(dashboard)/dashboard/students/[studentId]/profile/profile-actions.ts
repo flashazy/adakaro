@@ -6,8 +6,68 @@ import { createClient } from "@/lib/supabase/server";
 import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
 import { STUDENT_AVATAR_MAX_BYTES } from "@/lib/student-avatar-canvas";
 import type { Database } from "@/types/supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Term = "Term 1" | "Term 2";
+
+/**
+ * School admins / super admins (session client passes RLS), or academic
+ * department teachers (admin client after RPC check — RLS is admin-only for writes).
+ */
+async function requireAcademicRecordEditor(studentId: string): Promise<
+  | { ok: true; client: SupabaseClient<Database>; userId: string }
+  | { ok: false; error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const { data: studentRow, error: stErr } = await supabase
+    .from("students")
+    .select("id, school_id")
+    .eq("id", studentId)
+    .maybeSingle();
+
+  const student = studentRow as { id: string; school_id: string } | null;
+
+  if (stErr || !student) {
+    return { ok: false, error: "Student not found." };
+  }
+
+  const schoolId = student.school_id;
+
+  const [{ data: isAdmin, error: adminErr }, { data: isSuper, error: superErr }] =
+    await Promise.all([
+      supabase.rpc("is_school_admin", { p_school_id: schoolId } as never),
+      supabase.rpc("is_super_admin" as never),
+    ]);
+
+  if (adminErr || superErr) {
+    return { ok: false, error: "Could not verify permissions." };
+  }
+
+  if (isAdmin === true || isSuper === true) {
+    return { ok: true, client: supabase, userId: user.id };
+  }
+
+  const { data: hasAcademic, error: deptErr } = await supabase.rpc(
+    "has_teacher_department_role" as never,
+    { p_school_id: schoolId, p_department: "academic" } as never
+  );
+
+  if (deptErr || hasAcademic !== true) {
+    return {
+      ok: false,
+      error: "You do not have permission to manage academic records.",
+    };
+  }
+
+  return { ok: true, client: createAdminClient(), userId: user.id };
+}
 
 async function requireSchoolAdminForStudent(studentId: string) {
   const supabase = await createClient();
@@ -115,7 +175,7 @@ export async function upsertStudentAcademicRecord(formData: FormData) {
     return { error: "Enter a valid academic year." };
   }
 
-  const gate = await requireSchoolAdminForStudent(studentId);
+  const gate = await requireAcademicRecordEditor(studentId);
   if (!gate.ok) return { error: gate.error };
 
   const row: Database["public"]["Tables"]["student_academic_records"]["Insert"] =
@@ -129,7 +189,7 @@ export async function upsertStudentAcademicRecord(formData: FormData) {
     };
 
   if (id) {
-    const { error } = await gate.supabase
+    const { error } = await gate.client
       .from("student_academic_records")
       .update({
         academic_year: academicYear,
@@ -141,7 +201,7 @@ export async function upsertStudentAcademicRecord(formData: FormData) {
       .eq("student_id", studentId);
     if (error) return { error: error.message };
   } else {
-    const { error } = await gate.supabase
+    const { error } = await gate.client
       .from("student_academic_records")
       .insert(row as never);
     if (error) {

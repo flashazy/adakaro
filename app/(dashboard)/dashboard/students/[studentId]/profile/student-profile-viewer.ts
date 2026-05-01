@@ -6,6 +6,8 @@ export type StudentProfileTabId =
 
 export interface StudentProfileViewerFlags {
   canManageStaffRecords: boolean;
+  /** Academic department teachers may add/edit staff academic notes (same records as admins). */
+  canManageAcademicNotes: boolean;
   canUploadAttachments: boolean;
   canDeleteAttachments: boolean;
   canChangeAvatar: boolean;

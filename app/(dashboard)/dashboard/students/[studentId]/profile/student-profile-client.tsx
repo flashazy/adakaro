@@ -144,6 +144,8 @@ export function StudentProfileClient({
   currentUserFinanceNoteRecorderLine,
 }: StudentProfileClientProps) {
   const router = useRouter();
+  const canEditAcademicStaffNotes =
+    viewer.canManageStaffRecords || viewer.canManageAcademicNotes;
   const visible = viewer.visibleTabs;
   const [tab, setTab] = useState<TabId>(() => {
     if (visible.includes(initialActiveTab)) {
@@ -403,7 +405,7 @@ export function StudentProfileClient({
             >
               Academic
             </h2>
-            {viewer.canManageStaffRecords ? (
+            {canEditAcademicStaffNotes ? (
               <button
                 type="button"
                 onClick={() => {
@@ -793,9 +795,24 @@ export function StudentProfileClient({
               Staff academic notes
             </h3>
             <p className="text-xs text-slate-500 dark:text-zinc-500">
-              Use &quot;Add record&quot; for extra context (special needs, narrative
-              notes) alongside the data above.
+              {viewer.canManageAcademicNotes && !viewer.canManageStaffRecords
+                ? 'Use "Add academic note" for extra context (special needs, narrative notes) alongside the data above.'
+                : 'Use "Add record" for extra context (special needs, narrative notes) alongside the data above.'}
             </p>
+            {viewer.canManageAcademicNotes && !viewer.canManageStaffRecords ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormError(null);
+                    setAcademicModal("new");
+                  }}
+                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
+                >
+                  Add academic note
+                </button>
+              </div>
+            ) : null}
             {academicRecords.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-zinc-400">
                 No staff academic notes yet.
@@ -816,7 +833,7 @@ export function StudentProfileClient({
                           Updated {formatTs(r.updated_at)}
                         </p>
                       </div>
-                      {viewer.canManageStaffRecords ? (
+                      {canEditAcademicStaffNotes ? (
                         <button
                           type="button"
                           onClick={() => {

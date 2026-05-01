@@ -207,6 +207,7 @@ export default async function StudentProfilePage({
 
   const viewer: StudentProfileViewerFlags = {
     canManageStaffRecords: adminOk,
+    canManageAcademicNotes: adminOk || departmentRoles.has("academic"),
     canUploadAttachments: adminOk || teacherOk,
     canDeleteAttachments: adminOk,
     canChangeAvatar: adminOk,
@@ -401,6 +402,11 @@ export default async function StudentProfilePage({
     ? `${typedStudent.full_name} (ADM: ${headerAdmission})`
     : typedStudent.full_name;
 
+  const backToStudentsHref =
+    myProfileRole === "teacher" && !adminOk
+      ? "/teacher-dashboard/students"
+      : "/dashboard/students";
+
   return (
     <>
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -415,7 +421,7 @@ export default async function StudentProfilePage({
             </p>
           </div>
           <BackButton
-            href="/dashboard/students"
+            href={backToStudentsHref}
             className="inline-flex w-fit items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             ← Back to students
