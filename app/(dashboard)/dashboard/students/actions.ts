@@ -303,6 +303,14 @@ export interface StudentActionState {
    */
   conflict?: boolean;
   /**
+   * True when `parent_phone` matches another student; online form shows
+   * Proceed/Cancel. Re-submit with `force_duplicate_phone=1` to insert.
+   * Still sets `conflict` + `duplicateCandidates` for offline sync.
+   */
+  phoneDuplicateConflict?: boolean;
+  /** First matching student's name when `phoneDuplicateConflict` is true. */
+  existingStudentForPhone?: string;
+  /**
    * Existing rows that triggered the duplicate match — used to render
    * "Possible duplicate of …" in the conflict modal. Only populated
    * when `conflict === true`.
@@ -316,19 +324,17 @@ export interface StudentActionState {
   }>;
 }
 
-/**
- * Find existing students that look like the one we're about to create,
- * matched by (school_id, lower(full_name)) and (school_id, parent_phone)
- * if a phone was provided. Returns up to 5 matches.
- *
- * This is the *minimum-friction* duplicate definition — exact name match
- * within the same school. Same surname siblings get caught only when
- * parent_phone is also provided AND matches.
- */
-async function findStudentDuplicateCandidates(
+/** Escape `%` / `_` / `\` for use as an ILIKE pattern (exact match, case-insensitive). */
+function escapeIlikeExact(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
+}
+
+async function findStudentsByParentPhone(
   supabase: Awaited<ReturnType<typeof createClient>>,
   schoolId: string,
-  fullName: string,
   parentPhone: string | null
 ): Promise<
   Array<{
@@ -339,20 +345,14 @@ async function findStudentDuplicateCandidates(
     class_id: string | null;
   }>
 > {
-  const trimmedName = fullName.trim();
-  if (!trimmedName) return [];
-
-  // Build OR filter: name match always, phone match if available.
-  const filters: string[] = [`full_name.ilike.${trimmedName.replace(/[%_]/g, "")}`];
-  if (parentPhone && parentPhone.trim()) {
-    filters.push(`parent_phone.eq.${parentPhone.trim()}`);
-  }
+  const trimmed = parentPhone?.trim();
+  if (!trimmed) return [];
 
   const { data, error } = await supabase
     .from("students")
     .select("id, full_name, admission_number, parent_phone, class_id")
     .eq("school_id", schoolId)
-    .or(filters.join(","))
+    .eq("parent_phone", trimmed)
     .limit(5);
 
   if (error || !data) return [];
@@ -363,6 +363,39 @@ async function findStudentDuplicateCandidates(
     parent_phone: string | null;
     class_id: string | null;
   }>;
+}
+
+/**
+ * Lightweight check for the add-student form: same full name (case-insensitive)
+ * already exists. Does not block creation; used for an inline warning only.
+ */
+export async function peekStudentCreateNameDuplicate(
+  fullName: string
+): Promise<{ matches: string[] }> {
+  const trimmed = fullName.trim();
+  if (trimmed.length < 2) return { matches: [] };
+  try {
+    const { supabase, schoolId } = await getSchoolId();
+    const pattern = escapeIlikeExact(trimmed);
+    const { data, error } = await supabase
+      .from("students")
+      .select("full_name")
+      .eq("school_id", schoolId)
+      .ilike("full_name", pattern)
+      .limit(15);
+
+    if (error || !data?.length) return { matches: [] };
+    const names = [
+      ...new Set(
+        (data as { full_name: string }[])
+          .map((r) => r.full_name.trim())
+          .filter(Boolean)
+      ),
+    ];
+    return { matches: names };
+  } catch {
+    return { matches: [] };
+  }
 }
 
 export async function addStudent(
@@ -489,24 +522,26 @@ export async function addStudent(
       };
     }
 
-    // Duplicate check (Phase 3 offline sync). The client can bypass this
-    // by submitting `force_duplicate=1` (e.g. via the conflict modal's
-    // "Force create anyway" button). When omitted, possible matches are
-    // returned to the client without inserting.
+    // Parent phone duplicate: block until confirmed online (`force_duplicate_phone=1`)
+    // or bypassed for offline (`force_duplicate=1`). Admission uniqueness is
+    // still enforced by the database (23505). Same-name siblings are allowed.
     const forceDuplicate =
       String(formData.get("force_duplicate") ?? "") === "1";
-    if (!forceDuplicate) {
-      const candidates = await findStudentDuplicateCandidates(
+    const forceDuplicatePhone =
+      String(formData.get("force_duplicate_phone") ?? "") === "1";
+    if (!forceDuplicate && !forceDuplicatePhone) {
+      const phoneDupes = await findStudentsByParentPhone(
         supabase,
         schoolId,
-        fullName,
         parentPhone
       );
-      if (candidates.length > 0) {
+      if (phoneDupes.length > 0) {
+        const existingName = phoneDupes[0].full_name;
         return {
           conflict: true,
-          duplicateCandidates: candidates,
-          error: `Possible duplicate: a student named "${candidates[0].full_name}" already exists in this school.`,
+          phoneDuplicateConflict: true,
+          existingStudentForPhone: existingName,
+          duplicateCandidates: phoneDupes,
         };
       }
     }

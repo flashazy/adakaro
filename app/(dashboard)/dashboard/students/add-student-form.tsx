@@ -7,10 +7,16 @@ import {
   useMemo,
   useState,
   useTransition,
+  useCallback,
   type FormEvent,
 } from "react";
 import { Pencil } from "lucide-react";
-import { addStudent, getSubjectsForClass, type StudentActionState } from "./actions";
+import {
+  addStudent,
+  getSubjectsForClass,
+  peekStudentCreateNameDuplicate,
+  type StudentActionState,
+} from "./actions";
 import { todayIsoLocal } from "@/lib/enrollment-date";
 import {
   SUBJECT_ENROLLMENT_TERMS,
@@ -113,6 +119,14 @@ export function AddStudentForm({
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const admissionInputRef = useRef<HTMLInputElement>(null);
+  const namePeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bypassPhoneNextSubmitRef = useRef(false);
+  const [nameDuplicateWarning, setNameDuplicateWarning] = useState<string | null>(
+    null
+  );
+  const [phoneDuplicateModalName, setPhoneDuplicateModalName] = useState<
+    string | null
+  >(null);
   const [admissionValue, setAdmissionValue] = useState("");
   const [admissionSnapshot, setAdmissionSnapshot] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
@@ -195,9 +209,52 @@ export function AddStudentForm({
       setClassSubjectOptions([]);
       setSelectedSubjectIds([]);
       setOpen(false);
+      setNameDuplicateWarning(null);
+      setPhoneDuplicateModalName(null);
       router.refresh();
     }
   }, [state.success, router]);
+
+  useEffect(() => {
+    return () => {
+      if (namePeekTimerRef.current) {
+        clearTimeout(namePeekTimerRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleNameDuplicatePeek = useCallback(() => {
+    if (namePeekTimerRef.current) {
+      clearTimeout(namePeekTimerRef.current);
+    }
+    namePeekTimerRef.current = setTimeout(() => {
+      namePeekTimerRef.current = null;
+      const el = formRef.current?.querySelector<HTMLInputElement>(
+        "#full_name"
+      );
+      const v = el?.value?.trim() ?? "";
+      if (v.length < 2) {
+        setNameDuplicateWarning(null);
+        return;
+      }
+      void peekStudentCreateNameDuplicate(v).then(({ matches }) => {
+        if (matches.length === 0) {
+          setNameDuplicateWarning(null);
+          return;
+        }
+        const first = matches[0];
+        if (matches.length === 1) {
+          setNameDuplicateWarning(
+            `A student named "${first}" is already in this school. You can still add this student if the name is correct.`
+          );
+        } else {
+          setNameDuplicateWarning(
+            `A student named "${first}" is already in this school (same name may appear more than once). You can still add this student if the name is correct.`
+          );
+        }
+      });
+    }, 400);
+  }, []);
 
   /**
    * Offline-aware submit. The wrinkle: the server action currently
@@ -212,6 +269,10 @@ export function AddStudentForm({
 
     const form = event.currentTarget;
     const formData = new FormData(form);
+    if (bypassPhoneNextSubmitRef.current) {
+      formData.set("force_duplicate_phone", "1");
+      bypassPhoneNextSubmitRef.current = false;
+    }
     const tempStudentId = makeTempStudentId();
 
     // Plain-object copy for replay. `subject_ids` may repeat — collect as
@@ -284,7 +345,17 @@ export function AddStudentForm({
             setOpen(false);
             return;
           }
-          setState(wrapped.result);
+          const result = wrapped.result;
+          if (
+            result.phoneDuplicateConflict &&
+            result.existingStudentForPhone
+          ) {
+            setPhoneDuplicateModalName(result.existingStudentForPhone);
+            setState({});
+            return;
+          }
+          setPhoneDuplicateModalName(null);
+          setState(result);
         } catch (e) {
           setState({
             error: e instanceof Error ? e.message : "Something went wrong.",
@@ -305,7 +376,16 @@ export function AddStudentForm({
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          setOpen((prev) => {
+            const next = !prev;
+            if (!next) {
+              setNameDuplicateWarning(null);
+              setPhoneDuplicateModalName(null);
+            }
+            return next;
+          });
+        }}
         className="flex w-full items-center justify-between px-6 py-4 text-left"
       >
         <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -365,10 +445,20 @@ export function AddStudentForm({
                 required
                 className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
                 placeholder="e.g. Jane Doe"
+                onChange={() => scheduleNameDuplicatePeek()}
                 onBlur={(e) => {
                   e.currentTarget.value = toTitleCase(e.currentTarget.value);
+                  scheduleNameDuplicatePeek();
                 }}
               />
+              {nameDuplicateWarning ? (
+                <p
+                  className="text-xs text-amber-800 dark:text-amber-200/90"
+                  role="status"
+                >
+                  {nameDuplicateWarning}
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -674,6 +764,58 @@ export function AddStudentForm({
           )}
         </form>
       )}
+
+      {phoneDuplicateModalName ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPhoneDuplicateModalName(null);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-zinc-700 dark:bg-zinc-900 sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="phone-dup-student-title"
+          >
+            <h3
+              id="phone-dup-student-title"
+              className="text-base font-semibold text-slate-900 dark:text-white"
+            >
+              Phone number already in use
+            </h3>
+            <p className="mt-3 text-sm text-slate-600 dark:text-zinc-300">
+              This phone number is already used for{" "}
+              <span className="font-medium text-slate-900 dark:text-white">
+                {phoneDuplicateModalName}
+              </span>
+              . If this is the same parent or guardian, you can proceed.
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setPhoneDuplicateModalName(null)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  bypassPhoneNextSubmitRef.current = true;
+                  setPhoneDuplicateModalName(null);
+                  formRef.current?.requestSubmit();
+                }}
+                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105"
+              >
+                Proceed anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
