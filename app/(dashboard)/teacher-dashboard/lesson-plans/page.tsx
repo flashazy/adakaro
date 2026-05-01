@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { getLessonPlans } from "./actions";
 import {
   LessonPlansList,
@@ -14,12 +14,12 @@ export default async function LessonPlansPage() {
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
           Lesson Plans
         </h1>
-        <Link
+        <NavLinkWithLoading
           href="/teacher-dashboard/lesson-plans/new"
           className="inline-flex min-h-11 items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white touch-manipulation hover:brightness-105 dark:bg-school-primary"
         >
           + New Lesson Plan
-        </Link>
+        </NavLinkWithLoading>
       </div>
 
       <LessonPlansList initialPlans={lessonPlans} />

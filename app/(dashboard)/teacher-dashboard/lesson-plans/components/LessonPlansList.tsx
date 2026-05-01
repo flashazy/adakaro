@@ -3,6 +3,7 @@
 import { format } from "date-fns";
 import Link from "next/link";
 import { useState } from "react";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { formatPeriodForDisplay } from "@/lib/lesson-plan-period";
 import { LessonPlanDeleteButton } from "./LessonPlanDeleteButton";
 
@@ -29,12 +30,12 @@ export function LessonPlansList({
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50 py-12 text-center dark:border-zinc-800 dark:bg-zinc-950/60">
         <p className="text-slate-500 dark:text-zinc-400">No lesson plans yet.</p>
-        <Link
+        <NavLinkWithLoading
           href="/teacher-dashboard/lesson-plans/new"
           className="mt-3 inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-school-primary hover:underline dark:text-school-primary"
         >
           Create your first lesson plan
-        </Link>
+        </NavLinkWithLoading>
       </div>
     );
   }

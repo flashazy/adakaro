@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { createClient } from "@/lib/supabase/server";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { ensureTeacherHasAssignmentsOrRedirect } from "@/lib/teacher-assignment-status";
@@ -53,12 +53,12 @@ export default async function NewLessonPlanPage() {
               Class and date drive pupil counts and present total.
             </p>
           </div>
-          <Link
+          <NavLinkWithLoading
             href="/teacher-dashboard/lesson-plans"
             className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
           >
             ← Back to lesson plans
-          </Link>
+          </NavLinkWithLoading>
         </div>
 
         <div className="max-w-full min-w-0 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
