@@ -57,7 +57,9 @@ export function StudentProfileAvatar({
 }: StudentProfileAvatarProps) {
   const router = useRouter();
   const inputId = useId();
+  const cameraInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const sourceImgRef = useRef<HTMLImageElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -102,6 +104,7 @@ export function StudentProfileAvatar({
     }
     setPreviewObjectUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
   }
 
   function onFileChosen(file: File | null) {
@@ -180,9 +183,9 @@ export function StudentProfileAvatar({
       avatarUrl.startsWith("http://localhost") ||
       avatarUrl.startsWith("http://127.0.0.1"));
 
-  const photoFrameClass = `group relative flex h-[200px] w-[200px] shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 dark:border-zinc-600 dark:bg-zinc-800/80 ${
+  const photoFrameClass = `group relative mx-auto flex h-[120px] w-[120px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-slate-300 bg-slate-50 shadow-md ring-1 ring-black/5 dark:border-zinc-600 dark:bg-zinc-800/80 dark:ring-white/10 ${
     canChangePhoto
-      ? "transition hover:border-[rgb(var(--school-primary-rgb)/0.45)] hover:bg-slate-100 disabled:opacity-60 dark:hover:border-school-primary dark:hover:bg-zinc-800"
+      ? "transition hover:border-[rgb(var(--school-primary-rgb)/0.45)] hover:bg-slate-100 hover:shadow-lg disabled:opacity-60 dark:hover:border-school-primary dark:hover:bg-zinc-800"
       : ""
   }`;
 
@@ -195,13 +198,13 @@ export function StudentProfileAvatar({
           alt=""
           width={STUDENT_AVATAR_OUTPUT_SIZE}
           height={STUDENT_AVATAR_OUTPUT_SIZE}
-          className="h-full w-full object-cover"
+          className="h-full w-full rounded-full object-cover"
         />
       ) : (
-        <div className="flex flex-col items-center gap-2 text-slate-400 dark:text-zinc-500">
-          <UserRound className="h-16 w-16" strokeWidth={1.25} aria-hidden />
-          <span className="flex items-center gap-1 text-xs font-medium">
-            <Camera className="h-3.5 w-3.5" aria-hidden />
+        <div className="flex flex-col items-center gap-1 text-slate-400 dark:text-zinc-500">
+          <UserRound className="h-11 w-11" strokeWidth={1.25} aria-hidden />
+          <span className="flex items-center gap-1 text-[10px] font-medium leading-none">
+            <Camera className="h-3 w-3" aria-hidden />
             Photo
           </span>
         </div>
@@ -215,82 +218,106 @@ export function StudentProfileAvatar({
   );
 
   return (
-    <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-      <div className="flex shrink-0 flex-col items-center gap-2 sm:items-start">
-        {canChangePhoto ? (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={pending}
-            className={photoFrameClass}
-            aria-label="Upload or change student photo"
-          >
-            {photoFrameInner}
-          </button>
-        ) : (
-          <div className={photoFrameClass} aria-hidden>
-            {photoFrameInner}
-          </div>
-        )}
-        {canChangePhoto ? (
-          <>
-            <label htmlFor={inputId} className="sr-only">
-              Upload student photo
-            </label>
-            <input
-              ref={fileInputRef}
-              id={inputId}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="sr-only"
-              onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                onFileChosen(f);
-              }}
-            />
-          </>
-        ) : null}
-      </div>
-
-      <div className="min-w-0 flex-1 space-y-3">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            {headline}
-          </h2>
+    <div className="flex w-full min-w-0 flex-col items-center justify-center">
+      {canChangePhoto ? (
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={pending}
+          className={photoFrameClass}
+          aria-label="Upload or change student photo"
+        >
+          {photoFrameInner}
+        </button>
+      ) : (
+        <div className={photoFrameClass} aria-hidden>
+          {photoFrameInner}
         </div>
-        {canChangePhoto ? (
-          <div className="flex flex-wrap items-center gap-2">
+      )}
+      {canChangePhoto ? (
+        <>
+          <label htmlFor={inputId} className="sr-only">
+            Upload student photo
+          </label>
+          <input
+            ref={fileInputRef}
+            id={inputId}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              onFileChosen(f);
+            }}
+          />
+          <label htmlFor={cameraInputId} className="sr-only">
+            Take student photo with camera
+          </label>
+          <input
+            ref={cameraInputRef}
+            id={cameraInputId}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              onFileChosen(f);
+            }}
+          />
+        </>
+      ) : null}
+
+      <h2 className="mt-4 mb-4 w-full text-center text-pretty text-lg font-semibold leading-snug tracking-tight text-slate-900 sm:text-xl dark:text-white">
+        {headline}
+      </h2>
+
+      {canChangePhoto ? (
+        <>
+          <div className="mx-auto grid w-full max-w-xs grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={pending}
-              className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
+              className="min-h-11 w-full rounded-lg bg-school-primary px-3 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
             >
               Change photo
             </button>
             <button
               type="button"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-              title={photoRequirementsDescription}
-              aria-label={`Photo requirements: ${photoRequirementsDescription}`}
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={pending}
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
             >
-              <Info className="h-4 w-4" strokeWidth={2} aria-hidden />
+              Take photo
             </button>
           </div>
-        ) : null}
-        {banner ? (
-          <p
-            className={
-              banner.type === "err"
-                ? "text-sm text-red-600 dark:text-red-400"
-                : "text-sm text-emerald-600 dark:text-emerald-400"
-            }
-            role={banner.type === "err" ? "alert" : "status"}
+          <button
+            type="button"
+            className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            title={photoRequirementsDescription}
+            aria-label={`Photo requirements: ${photoRequirementsDescription}`}
           >
-            {banner.text}
+            <Info className="h-4 w-4" strokeWidth={2} aria-hidden />
+          </button>
+          <p className="mt-2 max-w-xs text-center text-xs leading-relaxed text-gray-500 dark:text-zinc-500">
+            Take photo opens the camera on supported phones; on desktop you
+            can pick an image file instead.
           </p>
-        ) : null}
-      </div>
+        </>
+      ) : null}
+      {banner ? (
+        <p
+          className={
+            banner.type === "err"
+              ? "mt-2 w-full text-center text-sm text-red-600 dark:text-red-400"
+              : "mt-2 w-full text-center text-sm text-emerald-600 dark:text-emerald-400"
+          }
+          role={banner.type === "err" ? "alert" : "status"}
+        >
+          {banner.text}
+        </p>
+      ) : null}
 
       {cropOpen && previewObjectUrl ? (
         <div
