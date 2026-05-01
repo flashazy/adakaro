@@ -21,6 +21,7 @@ import { getStudentsForSubject } from "@/lib/student-subject-enrollment-queries"
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { getTeacherTeachingClasses } from "./data";
 import { TeacherDashboardLocked } from "./components/TeacherDashboardLocked";
+import { TeacherDashboardOpenClassTeacherButton } from "./components/TeacherDashboardOpenClassTeacherButton";
 import { TeacherDocuments } from "./components/TeacherDocuments";
 
 export const dynamic = "force-dynamic";
@@ -478,12 +479,7 @@ export default async function TeacherDashboardPage() {
                   </span>
                 ))}
               </div>
-              <Link
-                href="/teacher-dashboard/class-teacher"
-                className="text-sm font-semibold text-indigo-800 underline-offset-2 hover:underline dark:text-indigo-200"
-              >
-                Open class teacher dashboard →
-              </Link>
+              <TeacherDashboardOpenClassTeacherButton />
             </div>
           </section>
         ) : null}

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ClassTeacherClassRow } from "@/lib/class-teacher";
 import type {
   ClassTeacherAcademicBanner,
@@ -12,6 +11,7 @@ import {
 } from "@/components/class-teacher/class-teacher-dashboard-nav-buttons";
 import { ClassTeacherMessageAllParentsButton } from "@/components/class-teacher/class-teacher-message-all-parents-button";
 import { ClassTeacherPhoneSection } from "@/components/class-teacher/class-teacher-phone-section";
+import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 
 function formatRecentWhen(iso: string): string {
   const d = new Date(iso);
@@ -86,12 +86,12 @@ export function ClassTeacherDashboardHomeView(props: {
                 ) : null}
               </>
             </ClassTeacherDashboardNavTextLink>
-            <Link
+            <NavLinkWithLoading
               href="/teacher-dashboard"
               className="text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white"
             >
               ← Teacher home
-            </Link>
+            </NavLinkWithLoading>
           </div>
         </div>
       </div>
@@ -145,7 +145,7 @@ export function ClassTeacherDashboardHomeView(props: {
         <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
           Quick actions
         </h2>
-        <div className="mt-3 flex flex-row flex-nowrap gap-4">
+        <div className="mt-3 flex flex-col gap-3 md:flex-row md:flex-nowrap md:gap-4">
           <ClassTeacherDashboardQuickNavButton
             href={overviewHref}
             icon="👥"

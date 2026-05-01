@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const quickPrimaryClass =
-  "inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter,box-shadow] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:pointer-events-none disabled:opacity-60";
+/** Shared by quick-action nav buttons; mobile: full-width column row; md+: horizontal flex-1 row. */
+export const classTeacherQuickActionButtonClass =
+  "inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter,box-shadow] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:pointer-events-none disabled:opacity-60 md:w-auto md:min-w-0 md:flex-1";
 
 const replyOutlineClass =
   "inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-school-primary shadow-sm transition-colors hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:hover:bg-zinc-700 sm:w-auto";
@@ -34,7 +35,7 @@ export function ClassTeacherDashboardQuickNavButton({
       disabled={pending}
       aria-busy={pending}
       onClick={() => startTransition(() => router.push(href))}
-      className={cn(quickPrimaryClass, relative && "relative")}
+      className={cn(classTeacherQuickActionButtonClass, relative && "relative")}
     >
       {badge}
       {pending ? (
@@ -47,7 +48,7 @@ export function ClassTeacherDashboardQuickNavButton({
           {icon}
         </span>
       )}
-      <span className="truncate">{label}</span>
+      <span className="whitespace-nowrap md:min-w-0 md:truncate">{label}</span>
     </button>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { broadcastClassTeacherMessageToLinkedParentsAction } from "@/lib/chat/chat-server-actions";
+import { classTeacherQuickActionButtonClass } from "@/components/class-teacher/class-teacher-dashboard-nav-buttons";
 
 const NO_LINKED_COPY =
   "No linked parents in this class. Parents must be linked to students before receiving messages.";
@@ -98,7 +99,7 @@ export function ClassTeacherMessageAllParentsButton(props: {
         onClick={handleOpen}
         disabled={sending}
         aria-busy={sending}
-        className="inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter,box-shadow] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:pointer-events-none disabled:opacity-60"
+        className={classTeacherQuickActionButtonClass}
       >
         {sending ? (
           <Loader2
@@ -110,7 +111,9 @@ export function ClassTeacherMessageAllParentsButton(props: {
             📧
           </span>
         )}
-        <span className="truncate">Message all parents</span>
+        <span className="whitespace-nowrap md:min-w-0 md:truncate">
+          Message all parents
+        </span>
       </button>
 
       {rendered ? (
