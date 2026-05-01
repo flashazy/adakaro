@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   useDeferredValue,
   useEffect,
@@ -141,6 +142,100 @@ function TableToolbar(props: {
         <p className="text-xs text-slate-500 dark:text-zinc-400">{summary}</p>
       </div>
     </div>
+  );
+}
+
+const CLASS_TEACHER_SECTION_STORAGE = {
+  students: "classTeacher-studentsSection",
+  attendance: "classTeacher-attendanceSection",
+  marks: "classTeacher-marksSection",
+} as const;
+
+function ClassTeacherCollapsibleSection(props: {
+  sectionDomId: string;
+  storageKey: string;
+  headingId: string;
+  panelId: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  const {
+    sectionDomId,
+    storageKey,
+    headingId,
+    panelId,
+    title,
+    description,
+    children,
+  } = props;
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw === "false") setExpanded(false);
+      else if (raw === "true") setExpanded(true);
+    } catch {
+      /* ignore */
+    }
+  }, [storageKey]);
+
+  const toggle = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(storageKey, next ? "true" : "false");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
+  return (
+    <section
+      id={sectionDomId}
+      className="scroll-mt-24 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+    >
+      <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+          <button
+            type="button"
+            id={headingId}
+            onClick={toggle}
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/80"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block">{title}</span>
+              <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-zinc-400">
+                {description}
+              </span>
+            </span>
+            <span
+              aria-hidden
+              className="inline-flex shrink-0 justify-center text-slate-600 dark:text-zinc-300"
+            >
+              {expanded ? (
+                <ChevronDown className="h-5 w-5" strokeWidth={2.25} />
+              ) : (
+                <ChevronRight className="h-5 w-5" strokeWidth={2.25} />
+              )}
+            </span>
+          </button>
+        </h2>
+      </div>
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={headingId}
+        hidden={!expanded}
+      >
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -321,18 +416,14 @@ export function ClassTeacherClassDetailTablesClient(props: {
 
   return (
     <>
-      <section
-        id="students"
-        className="scroll-mt-24 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      <ClassTeacherCollapsibleSection
+        sectionDomId="students"
+        storageKey={CLASS_TEACHER_SECTION_STORAGE.students}
+        headingId="class-teacher-students-heading"
+        panelId="class-teacher-students-panel"
+        title="Students and guardian contacts"
+        description="Linked parents or guardians from the school directory."
       >
-        <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Students and guardian contacts
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-            Linked parents or guardians from the school directory.
-          </p>
-        </div>
         <TableToolbar
           searchId="class-teacher-students-search"
           searchPlaceholder="Search students, admission, guardians…"
@@ -427,20 +518,16 @@ export function ClassTeacherClassDetailTablesClient(props: {
           totalPages={studentTotalPages}
           onPage={setStudentPage}
         />
-      </section>
+      </ClassTeacherCollapsibleSection>
 
-      <section
-        id="attendance"
-        className="scroll-mt-24 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      <ClassTeacherCollapsibleSection
+        sectionDomId="attendance"
+        storageKey={CLASS_TEACHER_SECTION_STORAGE.attendance}
+        headingId="class-teacher-attendance-heading"
+        panelId="class-teacher-attendance-panel"
+        title="Attendance (all subjects)"
+        description="Recent records from all teachers for this class."
       >
-        <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Attendance (all subjects)
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-            Recent records from all teachers for this class.
-          </p>
-        </div>
         <TableToolbar
           searchId="class-teacher-attendance-search"
           searchPlaceholder="Search student, subject, status, recorded by…"
@@ -513,20 +600,16 @@ export function ClassTeacherClassDetailTablesClient(props: {
           totalPages={attTotalPages}
           onPage={setAttPage}
         />
-      </section>
+      </ClassTeacherCollapsibleSection>
 
-      <section
-        id="grades"
-        className="scroll-mt-24 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      <ClassTeacherCollapsibleSection
+        sectionDomId="grades"
+        storageKey={CLASS_TEACHER_SECTION_STORAGE.marks}
+        headingId="class-teacher-marks-heading"
+        panelId="class-teacher-marks-panel"
+        title="Marks (read-only)"
+        description="Gradebook entries from all subject teachers for this class."
       >
-        <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Marks (read-only)
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-            Gradebook entries from all subject teachers for this class.
-          </p>
-        </div>
         <TableToolbar
           searchId="class-teacher-grades-search"
           searchPlaceholder="Search student, subject, assignment, teacher…"
@@ -601,7 +684,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
           totalPages={gradeTotalPages}
           onPage={setGradePage}
         />
-      </section>
+      </ClassTeacherCollapsibleSection>
     </>
   );
 }
