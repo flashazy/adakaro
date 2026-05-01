@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   removeCoordinatorSignature,
@@ -22,6 +22,9 @@ import { getImageSoftUploadWarningsFromFile } from "@/lib/image-upload-warnings"
 const MAX_BYTES = 2 * 1024 * 1024;
 const ACCEPT =
   "image/png,image/jpeg,image/jpg,image/webp,.png,.jpg,.jpeg,.webp";
+
+const COORDINATOR_MY_SIGNATURE_EXPANDED_STORAGE_KEY =
+  "coordinator-my-signature-section-expanded";
 
 function stripUrlQuery(url: string): string {
   const i = url.indexOf("?");
@@ -71,6 +74,36 @@ export function CoordinatorMySignatureCard({
     url: string;
     file: File;
   } | null>(null);
+  const [signatureSectionExpanded, setSignatureSectionExpanded] =
+    useState(false);
+
+  useEffect(() => {
+    try {
+      if (
+        localStorage.getItem(COORDINATOR_MY_SIGNATURE_EXPANDED_STORAGE_KEY) ===
+        "true"
+      ) {
+        setSignatureSectionExpanded(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggleSignatureSection() {
+    setSignatureSectionExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(
+          COORDINATOR_MY_SIGNATURE_EXPANDED_STORAGE_KEY,
+          next ? "true" : "false"
+        );
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   function closeCropper() {
     setCropSession((prev) => {
@@ -252,16 +285,42 @@ export function CoordinatorMySignatureCard({
           }}
         />
       ) : null}
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-            📝 My Signature
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-            Upload your official signature to appear on report cards for classes
-            you coordinate.
-          </p>
-        </div>
+      <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+        <button
+          type="button"
+          id="coordinator-my-signature-heading"
+          onClick={toggleSignatureSection}
+          aria-expanded={signatureSectionExpanded}
+          aria-controls="coordinator-my-signature-panel"
+          className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800/80"
+        >
+          <span
+            aria-hidden
+            className="inline-flex w-6 shrink-0 justify-center"
+          >
+            {signatureSectionExpanded ? (
+              <ChevronDown className="h-5 w-5" strokeWidth={2.25} />
+            ) : (
+              <ChevronRight className="h-5 w-5" strokeWidth={2.25} />
+            )}
+          </span>
+          <span>
+            <span aria-hidden>📝 </span>
+            My Signature
+          </span>
+        </button>
+      </h2>
+      <div
+        id="coordinator-my-signature-panel"
+        role="region"
+        aria-labelledby="coordinator-my-signature-heading"
+        hidden={!signatureSectionExpanded}
+        className="space-y-4 pt-2"
+      >
+        <p className="text-sm text-slate-600 dark:text-zinc-400">
+          Upload your official signature to appear on report cards for classes
+          you coordinate.
+        </p>
 
         {pickError ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
