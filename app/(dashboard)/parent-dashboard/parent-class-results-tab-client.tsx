@@ -581,20 +581,20 @@ export function ParentClassResultsTabClient({
             <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
               <table className="w-full min-w-[480px] border-collapse text-left text-xs sm:text-sm">
                 <thead>
-                  <tr className="bg-slate-800 text-white dark:bg-zinc-800">
-                    <th className="border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-600">
+                  <tr className="bg-slate-800 text-white dark:bg-zinc-800 dark:text-gray-200">
+                    <th className="border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200">
                       Student
                     </th>
-                    <th className="border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-600">
+                    <th className="border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200">
                       Gender
                     </th>
-                    <th className="border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-600">
+                    <th className="border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200">
                       Score
                     </th>
-                    <th className="border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-600">
+                    <th className="border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200">
                       Grade
                     </th>
-                    <th className="min-w-[12rem] border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-600">
+                    <th className="min-w-[12rem] border border-slate-600 px-2 py-2 font-semibold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200">
                       Remarks
                     </th>
                   </tr>
@@ -603,21 +603,21 @@ export function ParentClassResultsTabClient({
                   {selected.scoreRows.map((row, i) => (
                     <tr
                       key={`${row.name}-${i}`}
-                      className="odd:bg-white even:bg-slate-50/90 dark:odd:bg-zinc-950 dark:even:bg-zinc-900/60"
+                      className="odd:bg-white even:bg-gray-50 dark:odd:bg-zinc-950 dark:even:bg-zinc-800/50"
                     >
-                      <td className="border border-slate-200 px-2 py-1.5 font-medium dark:border-zinc-700">
+                      <td className="border border-slate-200 px-2 py-1.5 font-medium dark:border-zinc-700 dark:text-gray-200">
                         {row.name}
                       </td>
-                      <td className="border border-slate-200 px-2 py-1.5 text-slate-700 dark:border-zinc-700 dark:text-zinc-300">
+                      <td className="border border-slate-200 px-2 py-1.5 text-slate-700 dark:border-zinc-700 dark:text-gray-200">
                         {row.genderLabel}
                       </td>
-                      <td className="border border-slate-200 px-2 py-1.5 tabular-nums text-slate-800 dark:border-zinc-700">
+                      <td className="border border-slate-200 px-2 py-1.5 tabular-nums text-slate-800 dark:border-zinc-700 dark:text-gray-200">
                         {row.scoreLabel}
                       </td>
-                      <td className="border border-slate-200 px-2 py-1.5 font-semibold dark:border-zinc-700">
+                      <td className="border border-slate-200 px-2 py-1.5 font-semibold dark:border-zinc-700 dark:text-gray-200">
                         {row.grade}
                       </td>
-                      <td className="border border-slate-200 px-2 py-1.5 text-slate-700 dark:border-zinc-700">
+                      <td className="border border-slate-200 px-2 py-1.5 text-slate-700 dark:border-zinc-700 dark:text-gray-200">
                         {row.remarks}
                       </td>
                     </tr>
