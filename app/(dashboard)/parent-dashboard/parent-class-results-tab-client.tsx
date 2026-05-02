@@ -13,7 +13,10 @@ import {
 } from "react";
 import { BarChart3 } from "lucide-react";
 import { passingThresholdPercent } from "@/lib/tanzania-grades";
-import type { ParentMajorExamClassResultsPayload } from "@/lib/parent-major-exam-class-results-types";
+import type {
+  ParentMajorExamClassResultOption,
+  ParentMajorExamClassResultsPayload,
+} from "@/lib/parent-major-exam-class-results-types";
 import type { PassRateStats, FailRateStats } from "@/lib/gradebook-full-report-compute";
 import type { SchoolLevel } from "@/lib/school-level";
 import { subjectTextKey } from "@/lib/subject-text-key";
@@ -21,6 +24,93 @@ import type { SubjectResultsUnreadState } from "@/lib/parent-subject-results-unr
 import { markSubjectResultAssignmentsViewed } from "@/lib/parent-subject-results-unread-types";
 import { loadParentClassResultsForSubjectAction } from "./parent-class-results-actions";
 import { recordParentSubjectResultViewedAction } from "./parent-subject-results-view-actions";
+import { RankingPaginationBar } from "@/components/report/ranking-pagination-bar";
+import { useMinWidthMd } from "@/hooks/use-min-width-md";
+import { usePrinting } from "@/hooks/use-printing";
+
+const MOBILE_RANKING_PAGE_SIZE = 10;
+const DESKTOP_RANKING_PAGE_OPTIONS = [20, 30, 50] as const;
+
+function ParentClassResultsRankingBody({
+  option,
+}: {
+  option: ParentMajorExamClassResultOption;
+}) {
+  const isPrinting = usePrinting();
+  const isMd = useMinWidthMd();
+  const [rankingPage, setRankingPage] = useState(0);
+  const [rankingDesktopPageSize, setRankingDesktopPageSize] = useState(20);
+
+  const rankingFull = option.ranking;
+  const screenPageSize = isMd
+    ? rankingDesktopPageSize
+    : MOBILE_RANKING_PAGE_SIZE;
+
+  const maxRankingPage = useMemo(() => {
+    const n = rankingFull.length;
+    if (n === 0) return 0;
+    return Math.max(0, Math.ceil(n / screenPageSize) - 1);
+  }, [rankingFull.length, screenPageSize]);
+
+  const effectivePage = Math.min(rankingPage, maxRankingPage);
+
+  const visibleRanking = useMemo(() => {
+    if (!rankingFull.length) return [];
+    if (isPrinting) return rankingFull;
+    const start = effectivePage * screenPageSize;
+    return rankingFull.slice(start, start + screenPageSize);
+  }, [rankingFull, isPrinting, effectivePage, screenPageSize]);
+
+  const rankingPageCount = useMemo(() => {
+    const n = rankingFull.length;
+    if (n === 0) return 1;
+    return Math.max(1, Math.ceil(n / screenPageSize));
+  }, [rankingFull.length, screenPageSize]);
+
+  if (rankingFull.length === 0) {
+    return (
+      <p className="mt-2 text-sm text-slate-500 dark:text-zinc-500">
+        No scores entered for this exam yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3 dark:border-zinc-700">
+      <div className="mb-3">
+        <RankingPaginationBar
+          total={rankingFull.length}
+          page={effectivePage}
+          pageCount={rankingPageCount}
+          pageSize={screenPageSize}
+          onPageChange={setRankingPage}
+          showRowsPerPage={isMd}
+          rowsPerPageOptions={DESKTOP_RANKING_PAGE_OPTIONS}
+          rowsPerPage={rankingDesktopPageSize}
+          onRowsPerPageChange={(n) => {
+            setRankingDesktopPageSize(n);
+            setRankingPage(0);
+          }}
+        />
+      </div>
+      <ul className="list-none divide-y divide-slate-200 dark:divide-zinc-700">
+        {visibleRanking.map((r) => (
+          <li
+            key={`${r.rank}-${r.name}`}
+            className="flex gap-3 py-2 pr-1 text-sm text-slate-800 dark:text-zinc-200"
+          >
+            <span className="w-9 shrink-0 tabular-nums font-semibold text-slate-600 dark:text-zinc-400">
+              {r.rank}.
+            </span>
+            <span className="min-w-0 flex-1 break-words font-medium text-slate-900 dark:text-zinc-100">
+              {r.name}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function PassRateBlock({
   seg,
@@ -481,36 +571,7 @@ export function ParentClassResultsTabClient({
             <h3 className="text-sm font-bold uppercase tracking-wide text-slate-800 dark:text-zinc-200">
               Student ranking (highest to lowest)
             </h3>
-            {selected.ranking.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500 dark:text-zinc-500">
-                No scores entered for this exam yet.
-              </p>
-            ) : (
-              <ol className="mt-3 list-none space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-700">
-                {selected.ranking.map((r) => (
-                  <li
-                    key={`${r.rank}-${r.name}`}
-                    className="flex flex-nowrap items-baseline gap-x-2 overflow-x-auto text-sm text-slate-800 dark:text-zinc-200"
-                  >
-                    <span className="w-7 shrink-0 tabular-nums font-semibold text-slate-600 dark:text-zinc-400">
-                      {r.rank}.
-                    </span>
-                    <span className="min-w-[8rem] flex-1 font-medium">
-                      {r.name}
-                    </span>
-                    <span className="tabular-nums text-slate-700 dark:text-zinc-300">
-                      {r.scorePct}{" "}
-                      <span className="font-semibold">({r.grade})</span>
-                    </span>
-                    {r.badge ? (
-                      <span className="text-xs text-slate-600 dark:text-zinc-400 sm:text-sm">
-                        {r.badge}
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
-            )}
+            <ParentClassResultsRankingBody key={selected.id} option={selected} />
           </section>
 
           <section className="mt-5">

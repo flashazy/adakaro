@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { RankingPaginationBar } from "@/components/report/ranking-pagination-bar";
+import { useMinWidthMd } from "@/hooks/use-min-width-md";
+import { usePrinting } from "@/hooks/use-printing";
 import {
   BarChart3,
   Download,
@@ -9,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { downloadFullGradeReportPdf } from "./FullGradeReportPDF";
+import { cn } from "@/lib/utils";
 import { passingThresholdPercent } from "@/lib/tanzania-grades";
 import type { SchoolLevel } from "@/lib/school-level";
 import {
@@ -33,6 +37,37 @@ export type {
   RankingRow,
   FullGradeReportMeta,
 } from "@/lib/gradebook-full-report-compute";
+
+const MOBILE_RANKING_PAGE_SIZE = 10;
+const DESKTOP_RANKING_PAGE_OPTIONS = [20, 30, 50] as const;
+
+/** Even sequential chunks for k columns (k ≥ 1). */
+function splitRankingIntoColumns(
+  rows: RankingRow[],
+  columnCount: number
+): RankingRow[][] {
+  const k = Math.max(1, Math.min(3, Math.floor(columnCount)));
+  const n = rows.length;
+  if (n === 0) return [];
+  if (k <= 1) return [rows];
+  const base = Math.floor(n / k);
+  const remainder = n % k;
+  const cols: RankingRow[][] = [];
+  let start = 0;
+  for (let c = 0; c < k; c++) {
+    const size = base + (c < remainder ? 1 : 0);
+    cols.push(rows.slice(start, start + size));
+    start += size;
+  }
+  return cols;
+}
+
+/** Desktop (screen): 1 col if n≤20, 2 if n≤40, else 3. */
+function desktopRankingColumnCount(pageRowCount: number): number {
+  if (pageRowCount <= 20) return 1;
+  if (pageRowCount <= 40) return 2;
+  return 3;
+}
 
 function PassRateBlock({
   seg,
@@ -89,6 +124,186 @@ function FailRateBlock({
         <p>
           <span className="font-medium">Girls fail rate:</span> {seg.girlsLine}
         </p>
+      </div>
+    </div>
+  );
+}
+
+function FullGradeReportRankingBody({ ranking }: { ranking: RankingRow[] }) {
+  const isPrinting = usePrinting();
+  const isMd = useMinWidthMd();
+  const [rankingPage, setRankingPage] = useState(0);
+  const [rankingDesktopPageSize, setRankingDesktopPageSize] = useState(20);
+
+  const screenPageSize = isMd
+    ? rankingDesktopPageSize
+    : MOBILE_RANKING_PAGE_SIZE;
+
+  const maxRankingPage = useMemo(() => {
+    const n = ranking.length;
+    if (n === 0) return 0;
+    return Math.max(0, Math.ceil(n / screenPageSize) - 1);
+  }, [ranking.length, screenPageSize]);
+
+  const effectivePage = Math.min(rankingPage, maxRankingPage);
+
+  const visibleRanking = useMemo(() => {
+    if (ranking.length === 0) return [];
+    if (isPrinting) return ranking;
+    const start = effectivePage * screenPageSize;
+    return ranking.slice(start, start + screenPageSize);
+  }, [ranking, isPrinting, effectivePage, screenPageSize]);
+
+  /** Print: original half / half split (unchanged). */
+  const rankingSplitPrint = useMemo(() => {
+    const list = visibleRanking;
+    const n = list.length;
+    if (n === 0) {
+      return { left: [] as RankingRow[], right: [] as RankingRow[] };
+    }
+    const leftCount = Math.ceil(n / 2);
+    return {
+      left: list.slice(0, leftCount),
+      right: list.slice(leftCount),
+    };
+  }, [visibleRanking]);
+
+  const desktopRankingColumns = useMemo(() => {
+    const list = visibleRanking;
+    const n = list.length;
+    if (n === 0) return [] as RankingRow[][];
+    const k = desktopRankingColumnCount(n);
+    return splitRankingIntoColumns(list, k);
+  }, [visibleRanking]);
+
+  const rankingPageCount = useMemo(() => {
+    if (ranking.length === 0) return 1;
+    return Math.max(1, Math.ceil(ranking.length / screenPageSize));
+  }, [ranking.length, screenPageSize]);
+
+  if (ranking.length === 0) {
+    return (
+      <p className="mt-2 text-sm text-slate-500 dark:text-zinc-500">
+        No scores entered for this assignment yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3 dark:border-zinc-700">
+      <div className="mb-3">
+        <RankingPaginationBar
+          total={ranking.length}
+          page={effectivePage}
+          pageCount={rankingPageCount}
+          pageSize={screenPageSize}
+          onPageChange={setRankingPage}
+          showRowsPerPage={isMd}
+          rowsPerPageOptions={DESKTOP_RANKING_PAGE_OPTIONS}
+          rowsPerPage={rankingDesktopPageSize}
+          onRowsPerPageChange={(n) => {
+            setRankingDesktopPageSize(n);
+            setRankingPage(0);
+          }}
+        />
+      </div>
+      <ul className="list-none divide-y divide-slate-200 md:hidden print:hidden dark:divide-zinc-700">
+        {visibleRanking.map((r) => (
+          <li
+            key={`rank-${r.rank}-${r.name}`}
+            className="flex gap-3 py-2 pr-1 text-sm text-slate-800 dark:text-zinc-200"
+          >
+            <span className="w-9 shrink-0 tabular-nums font-semibold text-slate-600 dark:text-zinc-400">
+              {r.rank}.
+            </span>
+            <span className="min-w-0 flex-1 break-words font-medium text-slate-900 dark:text-zinc-100">
+              {r.name}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div
+        className={cn(
+          "hidden gap-4 print:hidden md:grid",
+          desktopRankingColumns.length === 1 && "md:grid-cols-1",
+          desktopRankingColumns.length === 2 && "md:grid-cols-2",
+          desktopRankingColumns.length === 3 && "md:grid-cols-3"
+        )}
+      >
+        {desktopRankingColumns.map((rows, idx) => (
+          <div
+            key={`rank-screen-${idx}`}
+            className="min-w-0 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700"
+          >
+            <table className="w-full min-w-0 border-collapse text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="bg-slate-800 text-white dark:bg-slate-800">
+                  <th className="w-14 border border-slate-600 px-2 py-2 font-semibold">
+                    #
+                  </th>
+                  <th className="border border-slate-600 px-2 py-2 font-semibold">
+                    Student
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr
+                    key={`${idx}-${r.rank}-${r.name}`}
+                    className="break-inside-avoid odd:bg-white even:bg-slate-50/90 dark:odd:bg-zinc-900/80 dark:even:bg-zinc-900/50"
+                    style={{ pageBreakInside: "avoid" }}
+                  >
+                    <td className="border border-slate-200 px-2 py-1.5 tabular-nums font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                      {r.rank}
+                    </td>
+                    <td className="whitespace-normal break-words border border-slate-200 px-2 py-1.5 font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                      {r.name}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+      <div className="hidden gap-4 print:grid print:grid-cols-2">
+        {(
+          [rankingSplitPrint.left, rankingSplitPrint.right] as const
+        ).map((rows, idx) => (
+          <div
+            key={idx === 0 ? "rank-print-left" : "rank-print-right"}
+            className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700"
+          >
+            <table className="w-full min-w-0 border-collapse text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="bg-slate-800 text-white dark:bg-slate-800">
+                  <th className="w-14 border border-slate-600 px-2 py-2 font-semibold">
+                    #
+                  </th>
+                  <th className="border border-slate-600 px-2 py-2 font-semibold">
+                    Student
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr
+                    key={`print-${idx}-${r.rank}-${r.name}`}
+                    className="break-inside-avoid odd:bg-white even:bg-slate-50/90 dark:odd:bg-zinc-900/80 dark:even:bg-zinc-900/50"
+                    style={{ pageBreakInside: "avoid" }}
+                  >
+                    <td className="border border-slate-200 px-2 py-1.5 tabular-nums font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                      {r.rank}
+                    </td>
+                    <td className="whitespace-normal break-words border border-slate-200 px-2 py-1.5 font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                      {r.name}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -170,19 +385,6 @@ export function FullGradeReport({
       displayFormat
     );
   }, [students, selectedAssignment, classDraft, schoolLevel, displayFormat]);
-
-  /** Top half (ranks 1 … ceil(N/2)) vs bottom half; e.g. N=7 → 4 + 3. */
-  const rankingSplit = useMemo(() => {
-    const n = ranking.length;
-    if (n === 0) {
-      return { left: [] as RankingRow[], right: [] as RankingRow[] };
-    }
-    const leftCount = Math.ceil(n / 2);
-    return {
-      left: ranking.slice(0, leftCount),
-      right: ranking.slice(leftCount),
-    };
-  }, [ranking]);
 
   const dateLabel = useMemo(
     () =>
@@ -515,58 +717,10 @@ export function FullGradeReport({
                       <h3 className="text-sm font-bold uppercase tracking-wide text-slate-800 dark:text-zinc-200">
                         Student ranking (highest to lowest)
                       </h3>
-                      {ranking.length === 0 ? (
-                        <p className="mt-2 text-sm text-slate-500 dark:text-zinc-500">
-                          No scores entered for this assignment yet.
-                        </p>
-                      ) : (
-                        <div className="mt-3 border-t border-slate-100 pt-3 dark:border-zinc-700">
-                          {/* Left column: ranks 1 … ceil(N/2); right column: remainder.
-                              Same markup for screen + print/PDF-portal surfaces. */}
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            {(
-                              [
-                                rankingSplit.left,
-                                rankingSplit.right,
-                              ] as const
-                            ).map((rows, idx) => (
-                              <div
-                                key={idx === 0 ? "rank-col-left" : "rank-col-right"}
-                                className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700"
-                              >
-                                <table className="w-full min-w-0 border-collapse text-left text-xs sm:text-sm">
-                                  <thead>
-                                    <tr className="bg-slate-800 text-white dark:bg-slate-800">
-                                      <th className="w-14 border border-slate-600 px-2 py-2 font-semibold">
-                                        #
-                                      </th>
-                                      <th className="border border-slate-600 px-2 py-2 font-semibold">
-                                        Student
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {rows.map((r) => (
-                                      <tr
-                                        key={`${idx}-${r.rank}-${r.name}`}
-                                        className="break-inside-avoid odd:bg-white even:bg-slate-50/90 dark:odd:bg-zinc-900/80 dark:even:bg-zinc-900/50"
-                                        style={{ pageBreakInside: "avoid" }}
-                                      >
-                                        <td className="border border-slate-200 px-2 py-1.5 tabular-nums font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
-                                          {r.rank}
-                                        </td>
-                                        <td className="border border-slate-200 px-2 py-1.5 font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
-                                          {r.name}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      <FullGradeReportRankingBody
+                        key={selectedAssignmentId}
+                        ranking={ranking}
+                      />
                     </section>
 
                     <section className="mt-6">

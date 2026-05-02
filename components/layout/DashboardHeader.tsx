@@ -7,6 +7,7 @@ import { Building2 } from "lucide-react";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRoleToggle";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { cn } from "@/lib/utils";
 
 function schoolInitials(name: string): string {
   const t = name.trim();
@@ -225,8 +226,38 @@ export function DashboardHeader({
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 sm:gap-5">
+      <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
+        {isParent ? (
+          <div className="flex items-center justify-between gap-3 md:hidden">
+            <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-5">
+              <NavLinkWithLoading
+                href={homeHref}
+                className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-white"
+                aria-label="Adakaro"
+              >
+                <Image
+                  src="/brand/logo-icon.svg"
+                  alt="Adakaro"
+                  width={32}
+                  height={32}
+                  className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
+                />
+                Adakaro
+              </NavLinkWithLoading>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <ThemeToggle />
+              <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />
+            </div>
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            "flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-3",
+            isParent && "max-md:hidden"
+          )}
+        >
+        <div className="flex min-w-0 w-full flex-wrap items-center gap-3 sm:gap-5 md:flex-1 md:w-auto">
           <NavLinkWithLoading
             href={homeHref}
             className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-white"
@@ -280,14 +311,21 @@ export function DashboardHeader({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-          {rightActions}
-          <p className="max-w-[9rem] truncate text-sm text-slate-600 sm:max-w-[14rem] dark:text-zinc-300">
-            <span className="text-slate-400 dark:text-zinc-500">Hi, </span>
-            {fullName}
-          </p>
-          <ThemeToggle />
-          <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />
+        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:flex-wrap md:items-center md:justify-end md:gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 md:contents">
+            {rightActions}
+            {!isParent ? (
+              <p className="max-w-[150px] truncate text-sm text-slate-600 md:max-w-[14rem] dark:text-zinc-300">
+                <span className="text-slate-400 dark:text-zinc-500">Hi, </span>
+                {fullName}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex w-full items-center justify-between gap-3 md:w-auto md:justify-end">
+            <ThemeToggle />
+            <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />
+          </div>
+        </div>
         </div>
       </div>
     </header>
