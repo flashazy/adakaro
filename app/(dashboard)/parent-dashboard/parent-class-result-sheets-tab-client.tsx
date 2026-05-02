@@ -121,14 +121,14 @@ export function ParentClassResultSheetsTabClient({ rows }: { rows: Row[] }) {
                 >
                   Division performance summary
                 </h3>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[28rem] border-collapse border border-slate-300 bg-[rgb(255,251,245)] text-xs dark:border-zinc-600">
+                <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+                  <table className="w-full min-w-[28rem] border-collapse border border-slate-300 bg-[rgb(255,251,245)] text-xs dark:border-zinc-700">
                     <thead>
                       <tr>
                         {view.division.head.map((c) => (
                           <th
                             key={c}
-                            className="border border-slate-300 px-1.5 py-1.5 text-left font-bold dark:border-zinc-600"
+                            className="border border-slate-300 px-1.5 py-1.5 text-left font-bold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200"
                           >
                             {c}
                           </th>
@@ -137,11 +137,14 @@ export function ParentClassResultSheetsTabClient({ rows }: { rows: Row[] }) {
                     </thead>
                     <tbody>
                       {view.division.body.map((r, i) => (
-                        <tr key={i}>
+                        <tr
+                          key={i}
+                          className="even:bg-gray-50 dark:odd:bg-zinc-950 dark:even:bg-zinc-800/50"
+                        >
                           {r.map((c, j) => (
                             <td
                               key={j}
-                              className="border border-slate-300 px-1.5 py-1.5 tabular-nums dark:border-zinc-600"
+                              className="border border-slate-300 px-1.5 py-1.5 tabular-nums dark:border-zinc-700 dark:text-gray-200"
                             >
                               {c}
                             </td>
@@ -158,14 +161,14 @@ export function ParentClassResultSheetsTabClient({ rows }: { rows: Row[] }) {
                 >
                   Main results
                 </h3>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[36rem] border-collapse border border-slate-300 bg-[rgb(255,251,245)] text-[11px] leading-snug dark:border-zinc-600">
+                <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+                  <table className="w-full min-w-[36rem] border-collapse border border-slate-300 bg-[rgb(255,251,245)] text-[11px] leading-snug dark:border-zinc-700">
                     <thead>
                       <tr>
                         {view.main.head.map((c) => (
                           <th
                             key={c}
-                            className="border border-slate-300 px-1 py-1.5 text-left font-bold dark:border-zinc-600"
+                            className="border border-slate-300 px-1 py-1.5 text-left font-bold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200"
                           >
                             {c}
                           </th>
@@ -174,11 +177,14 @@ export function ParentClassResultSheetsTabClient({ rows }: { rows: Row[] }) {
                     </thead>
                     <tbody>
                       {view.main.body.map((r, i) => (
-                        <tr key={i}>
+                        <tr
+                          key={i}
+                          className="even:bg-gray-50 dark:odd:bg-zinc-950 dark:even:bg-zinc-800/50"
+                        >
                           {r.map((c, j) => (
                             <td
                               key={j}
-                              className="max-w-[20rem] border border-slate-300 px-1 py-1.5 align-top break-words dark:border-zinc-600"
+                              className="max-w-[20rem] border border-slate-300 px-1 py-1.5 align-top break-words dark:border-zinc-700 dark:text-gray-200"
                             >
                               {c}
                             </td>
@@ -197,14 +203,14 @@ export function ParentClassResultSheetsTabClient({ rows }: { rows: Row[] }) {
                 >
                   Overall passing grades summary
                 </h3>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[24rem] border-collapse border border-slate-300 bg-[rgb(255,251,245)] text-xs dark:border-zinc-600">
+                <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+                  <table className="w-full min-w-[24rem] border-collapse border border-slate-300 bg-[rgb(255,251,245)] text-xs dark:border-zinc-700">
                     <thead>
                       <tr>
                         {view.overallGrades.head.map((c) => (
                           <th
                             key={c}
-                            className="border border-slate-300 px-1.5 py-1.5 text-left font-bold dark:border-zinc-600"
+                            className="border border-slate-300 px-1.5 py-1.5 text-left font-bold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200"
                           >
                             {c}
                           </th>
@@ -213,11 +219,14 @@ export function ParentClassResultSheetsTabClient({ rows }: { rows: Row[] }) {
                     </thead>
                     <tbody>
                       {view.overallGrades.body.map((r, i) => (
-                        <tr key={i}>
+                        <tr
+                          key={i}
+                          className="even:bg-gray-50 dark:odd:bg-zinc-950 dark:even:bg-zinc-800/50"
+                        >
                           {r.map((c, j) => (
                             <td
                               key={j}
-                              className="border border-slate-300 px-1.5 py-1.5 text-center tabular-nums dark:border-zinc-600"
+                              className="border border-slate-300 px-1.5 py-1.5 text-center tabular-nums dark:border-zinc-700 dark:text-gray-200"
                             >
                               {c}
                             </td>
@@ -233,14 +242,14 @@ export function ParentClassResultSheetsTabClient({ rows }: { rows: Row[] }) {
                 >
                   Main results
                 </h3>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full min-w-[32rem] border-collapse border border-slate-300 bg-[rgb(255,251,245)] text-[11px] leading-snug dark:border-zinc-600">
+                <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">
+                  <table className="w-full min-w-[32rem] border-collapse border border-slate-300 bg-[rgb(255,251,245)] text-[11px] leading-snug dark:border-zinc-700">
                     <thead>
                       <tr>
                         {view.main.head.map((c) => (
                           <th
                             key={c}
-                            className="border border-slate-300 px-1 py-1.5 text-left font-bold dark:border-zinc-600"
+                            className="border border-slate-300 px-1 py-1.5 text-left font-bold dark:border-zinc-700 dark:bg-zinc-800 dark:text-gray-200"
                           >
                             {c}
                           </th>
@@ -249,11 +258,14 @@ export function ParentClassResultSheetsTabClient({ rows }: { rows: Row[] }) {
                     </thead>
                     <tbody>
                       {view.main.body.map((r, i) => (
-                        <tr key={i}>
+                        <tr
+                          key={i}
+                          className="even:bg-gray-50 dark:odd:bg-zinc-950 dark:even:bg-zinc-800/50"
+                        >
                           {r.map((c, j) => (
                             <td
                               key={j}
-                              className="max-w-[24rem] border border-slate-300 px-1 py-1.5 align-top break-words dark:border-zinc-600"
+                              className="max-w-[24rem] border border-slate-300 px-1 py-1.5 align-top break-words dark:border-zinc-700 dark:text-gray-200"
                             >
                               {c}
                             </td>
