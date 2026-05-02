@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import type { AcademicPerformanceReportData } from "@/lib/academic-performance-report-types";
 import type { HistoricalTermSubjectMetrics, AtRiskStudentRow } from "@/lib/academic-report-types";
 import type { SubjectCompareRow } from "@/lib/academic-report-comparison";
+import type { SchoolLevel } from "@/lib/school-level";
 import { downloadAcademicReportPdf } from "./academic-report-pdf";
 
 export function AcademicReportToolbar({
@@ -13,7 +14,7 @@ export function AcademicReportToolbar({
   classTitle,
   generatedAtLabel,
   teacherName,
-  showNectaDivision,
+  displaySchoolLevel,
   compareOptions,
   compareTermId,
   onCompareTermIdChange,
@@ -28,7 +29,7 @@ export function AcademicReportToolbar({
   classTitle: string;
   generatedAtLabel: string;
   teacherName: string;
-  showNectaDivision: boolean;
+  displaySchoolLevel: SchoolLevel;
   compareOptions: { id: string; label: string }[];
   compareTermId: string;
   onCompareTermIdChange: (id: string) => void;
@@ -44,7 +45,7 @@ export function AcademicReportToolbar({
       classTitle,
       generatedAtLabel,
       teacherName,
-      showNectaDivision,
+      displaySchoolLevel,
       compareTermId,
       compareTermLabel,
       atRiskStudents,
@@ -57,7 +58,7 @@ export function AcademicReportToolbar({
     classTitle,
     generatedAtLabel,
     teacherName,
-    showNectaDivision,
+    displaySchoolLevel,
     compareTermId,
     compareTermLabel,
     atRiskStudents,

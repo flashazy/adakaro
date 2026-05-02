@@ -3,10 +3,10 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import { compressSchoolLogoSourceFile } from "@/lib/student-avatar-canvas";
 import { uploadSchoolLogo, removeSchoolLogo } from "./actions";
 import type { SchoolSettingsState } from "./school-settings-shared";
 
-const MAX_BYTES = 2 * 1024 * 1024;
 const ACCEPT =
   "image/png,image/jpeg,image/jpg,image/webp,.png,.jpg,.jpeg,.webp";
 
@@ -27,15 +27,25 @@ function schoolInitials(name: string): string {
   return t.slice(0, 2).toUpperCase();
 }
 
-function UploadSubmitButton({ disabled }: { disabled: boolean }) {
+function UploadSubmitButton({
+  disabled,
+  compressing,
+}: {
+  disabled: boolean;
+  compressing: boolean;
+}) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending || disabled}
+      disabled={pending || disabled || compressing}
       className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary disabled:cursor-not-allowed disabled:opacity-50"
     >
-      {pending ? "Uploading…" : "Save logo"}
+      {compressing
+        ? "Compressing logo..."
+        : pending
+          ? "Uploading…"
+          : "Save logo"}
     </button>
   );
 }
@@ -70,6 +80,7 @@ export function SchoolLogoForm({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [hasSelectedFile, setHasSelectedFile] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
+  const [isCompressingLogo, setIsCompressingLogo] = useState(false);
   const [cacheBust, setCacheBust] = useState(0);
   /** Bytes loaded with fetch(no-store) so CDN/browser cache cannot show an old file at the same URL. */
   const [freshLogoObjectUrl, setFreshLogoObjectUrl] = useState<string | null>(
@@ -205,21 +216,18 @@ export function SchoolLogoForm({
   }
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) {
       setHasSelectedFile(false);
+      setIsCompressingLogo(false);
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
         setPreviewUrl(null);
       }
       return;
     }
-    if (file.size > MAX_BYTES) {
-      setPickError("Logo must be 2 MB or smaller.");
-      setHasSelectedFile(false);
-      e.target.value = "";
-      return;
-    }
+
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     const okExt = ["png", "jpg", "jpeg", "webp"].includes(ext);
     const okMime =
@@ -228,21 +236,52 @@ export function SchoolLogoForm({
     if (!okExt || !okMime) {
       setPickError("Use a PNG, JPG, JPEG, or WebP image.");
       setHasSelectedFile(false);
-      e.target.value = "";
+      input.value = "";
       return;
     }
+
     setPickError(null);
-    setHasSelectedFile(true);
-    setFreshLogoObjectUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(file));
+    setHasSelectedFile(false);
+    setIsCompressingLogo(true);
+
+    void (async () => {
+      try {
+        const result = await compressSchoolLogoSourceFile(file);
+        if (!result.ok) {
+          setPickError(result.error);
+          input.value = "";
+          return;
+        }
+        const outFile = result.file;
+        try {
+          const dt = new DataTransfer();
+          dt.items.add(outFile);
+          input.files = dt.files;
+        } catch {
+          setPickError("Could not attach the processed image. Try another file.");
+          input.value = "";
+          return;
+        }
+
+        setFreshLogoObjectUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return null;
+        });
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(URL.createObjectURL(outFile));
+        setHasSelectedFile(true);
+      } catch {
+        setPickError("Something went wrong while processing the image.");
+        input.value = "";
+      } finally {
+        setIsCompressingLogo(false);
+      }
+    })();
   }
 
   function clearSelection() {
     setPickError(null);
+    setIsCompressingLogo(false);
     setHasSelectedFile(false);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
@@ -307,7 +346,8 @@ export function SchoolLogoForm({
 
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <p className="text-xs text-slate-500 dark:text-zinc-400">
-            PNG, JPG, JPEG, or WebP · max 2 MB
+            PNG, JPG, JPEG, or WebP · max 2 MB (larger or high-resolution images
+            are compressed automatically before upload)
           </p>
 
           <form action={uploadAction} className="flex flex-col gap-3">
@@ -323,11 +363,15 @@ export function SchoolLogoForm({
               <button
                 type="button"
                 onClick={onPickFile}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                disabled={isCompressingLogo}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
                 Upload new logo
               </button>
-              <UploadSubmitButton disabled={!hasSelectedFile} />
+              <UploadSubmitButton
+                disabled={!hasSelectedFile}
+                compressing={isCompressingLogo}
+              />
               {previewUrl ? (
                 <button
                   type="button"

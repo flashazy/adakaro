@@ -4,7 +4,12 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { AcademicPerformanceReportData } from "@/lib/academic-performance-report-types";
 import type { AtRiskStudentRow, HistoricalTermSubjectMetrics } from "@/lib/academic-report-types";
+import {
+  hasDistributionTableData,
+  resolveAcademicReportDistributionRows,
+} from "@/lib/academic-report-distribution-display";
 import { getRecommendedActionLines } from "@/lib/academic-report-recommendations";
+import type { SchoolLevel } from "@/lib/school-level";
 import type { SubjectCompareRow } from "@/lib/academic-report-comparison";
 
 export type { SubjectCompareRow } from "@/lib/academic-report-comparison";
@@ -46,7 +51,7 @@ export function downloadAcademicReportPdf(args: {
   classTitle: string;
   generatedAtLabel: string;
   teacherName: string;
-  showNectaDivision: boolean;
+  displaySchoolLevel: SchoolLevel;
   compareTermLabel: string;
   compareTermId: string;
   atRiskStudents: AtRiskStudentRow[];
@@ -59,13 +64,15 @@ export function downloadAcademicReportPdf(args: {
     classTitle,
     generatedAtLabel,
     teacherName,
-    showNectaDivision,
+    displaySchoolLevel,
     compareTermLabel,
     compareTermId,
     atRiskStudents,
     subjectCompareRows,
     previousTermMetricsBySubject,
   } = args;
+
+  const distributionRubricSecondary = displaySchoolLevel === "secondary";
 
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -192,7 +199,7 @@ export function downloadAcademicReportPdf(args: {
   const recOverall = getRecommendedActionLines({
     section: "overall",
     data,
-    showNectaDivision,
+    showNectaDivision: distributionRubricSecondary,
     compareTermId,
     previousTermMetricsBySubject,
   });
@@ -211,27 +218,51 @@ export function downloadAcademicReportPdf(args: {
   }
   y += 4;
 
-  if (showNectaDivision) {
+  {
+    const distRows = resolveAcademicReportDistributionRows(
+      data,
+      displaySchoolLevel
+    );
+    const distHas = hasDistributionTableData(distRows);
     newPage();
-    subTitle("Division distribution (NECTA)");
-    ensure(60);
-    autoTable(doc, {
-      startY: y,
-      head: [["Division", "Boys", "Girls", "Total"]],
-      body: data.division_distribution.map((r) => [
-        r.division,
-        String(r.boys),
-        String(r.girls),
-        String(r.total),
-      ]),
-      margin: { left: margin, right: margin },
-      styles: { fontSize: 8, cellPadding: 1.5 },
-    });
-    y = tableBottom(doc, y) + 4;
+    subTitle(
+      distributionRubricSecondary
+        ? "Division distribution (NECTA)"
+        : "Grade distribution (Primary)"
+    );
+    if (!distHas) {
+      para(
+        "No distribution data available for this report yet.",
+        8,
+        [80, 80, 80]
+      );
+    } else {
+      ensure(60);
+      autoTable(doc, {
+        startY: y,
+        head: [
+          [
+            distributionRubricSecondary ? "Division" : "Grade",
+            "Boys",
+            "Girls",
+            "Total",
+          ],
+        ],
+        body: distRows.map((r) => [
+          r.division,
+          String(r.boys),
+          String(r.girls),
+          String(r.total),
+        ]),
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 8, cellPadding: 1.5 },
+      });
+      y = tableBottom(doc, y) + 4;
+    }
     const recDiv = getRecommendedActionLines({
       section: "distribution",
       data,
-      showNectaDivision,
+      showNectaDivision: distributionRubricSecondary,
       compareTermId,
       previousTermMetricsBySubject,
     });
@@ -270,7 +301,7 @@ export function downloadAcademicReportPdf(args: {
   const recSub = getRecommendedActionLines({
     section: "subject_ranking",
     data,
-    showNectaDivision,
+    showNectaDivision: distributionRubricSecondary,
     compareTermId,
     previousTermMetricsBySubject,
   });
@@ -309,7 +340,7 @@ export function downloadAcademicReportPdf(args: {
   const recTp = getRecommendedActionLines({
     section: "teacher_performance",
     data,
-    showNectaDivision,
+    showNectaDivision: distributionRubricSecondary,
     compareTermId,
     previousTermMetricsBySubject,
   });

@@ -10,6 +10,10 @@ import {
   nectaDivisionBucketForReportCard,
   type NectaDivisionBucketKey,
 } from "@/lib/necta-class-result-metrics";
+import {
+  sortSubjectRankingInPlace,
+  subjectKeyForRanking,
+} from "@/lib/academic-report-subject-ranking";
 import type { AcademicPerformanceReportData } from "@/lib/academic-performance-report-types";
 
 export type { AcademicPerformanceReportData } from "@/lib/academic-performance-report-types";
@@ -347,15 +351,30 @@ export function buildAcademicPerformanceReportData(args: {
     });
   }
 
-  subject_ranking.sort((a, b) => {
-    const pa = a.pass_rate_pct ?? -1;
-    const pb = b.pass_rate_pct ?? -1;
-    if (pb !== pa) return pb - pa;
-    return a.subject.localeCompare(b.subject, undefined, { sensitivity: "base" });
-  });
-  subject_ranking.forEach((row, i) => {
-    row.rank = i + 1;
-  });
+  const subjectClassAveragePctForRank = new Map<string, number>();
+  for (const row of subject_ranking) {
+    let sumAvg = 0;
+    let nAvg = 0;
+    for (const r of reportCards) {
+      const previewRow = findPreviewSubject(r.preview, row.subject);
+      if (
+        !previewRow?.averagePercentRaw ||
+        !Number.isFinite(previewRow.averagePercentRaw)
+      ) {
+        continue;
+      }
+      sumAvg += previewRow.averagePercentRaw;
+      nAvg += 1;
+    }
+    if (nAvg > 0) {
+      subjectClassAveragePctForRank.set(
+        subjectKeyForRanking(row.subject),
+        Math.round((sumAvg / nAvg) * 10) / 10
+      );
+    }
+  }
+
+  sortSubjectRankingInPlace(subject_ranking, subjectClassAveragePctForRank);
 
   const teacher_performance: AcademicPerformanceReportData["teacher_performance"] =
     [];

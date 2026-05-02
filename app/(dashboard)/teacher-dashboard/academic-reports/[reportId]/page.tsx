@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadAcademicReportLiveSupplement } from "@/lib/academic-report-live-data";
+import { applyCanonicalSubjectRanking } from "@/lib/academic-report-subject-ranking";
 import type { AcademicPerformanceReportData } from "@/lib/academic-performance-report-types";
+import type { SchoolLevel } from "@/lib/school-level";
+import { normalizeSchoolLevel } from "@/lib/school-level";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { AcademicReportPageClient } from "../academic-report-page-client";
@@ -41,14 +44,25 @@ export default async function AcademicReportDetailPage(props: {
   const data = report.report_data as AcademicPerformanceReportData | null;
   if (!data || data.version !== 1) notFound();
 
+  applyCanonicalSubjectRanking(data);
+
   const [{ data: clsRow }, { data: schRow }, { data: profileRow }] = await Promise.all([
     supabase.from("classes").select("name").eq("id", report.class_id).maybeSingle(),
-    supabase.from("schools").select("name").eq("id", report.school_id).maybeSingle(),
+    supabase.from("schools").select("name, school_level").eq("id", report.school_id).maybeSingle(),
     supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
   ]);
   const classTitle =
     (clsRow as { name: string } | null)?.name?.trim() || data.class_name;
-  const schoolName = (schRow as { name: string } | null)?.name?.trim() || "";
+  const schoolRow = schRow as {
+    name?: string | null;
+    school_level?: string | null;
+  } | null;
+  const schoolName = schoolRow?.name?.trim() || "";
+  const rawSchoolLevel = schoolRow?.school_level;
+  const displaySchoolLevel: SchoolLevel =
+    typeof rawSchoolLevel === "string" && rawSchoolLevel.trim() !== ""
+      ? normalizeSchoolLevel(rawSchoolLevel)
+      : data.school_level;
   const teacherName =
     (profileRow as { full_name: string | null } | null)?.full_name?.trim() ||
     "Teacher";
@@ -72,6 +86,7 @@ export default async function AcademicReportDetailPage(props: {
     <AcademicReportPageClient
       reportId={reportId}
       data={data}
+      displaySchoolLevel={displaySchoolLevel}
       schoolName={schoolName}
       classTitle={classTitle}
       generatedAtLabel={when}
