@@ -105,3 +105,15 @@ export function nectaDivisionBucketForReportCard(
   if (div === "ABS" || div === "INC") return div;
   return divisionColumnKey(div);
 }
+
+/** Tanzania / NECTA overall pass: Divisions I–IV. Fail: 0, INC, ABS. */
+export function isNectaDivisionOverallPass(
+  bucket: NectaDivisionBucketKey
+): boolean {
+  return (
+    bucket === "I" ||
+    bucket === "II" ||
+    bucket === "III" ||
+    bucket === "IV"
+  );
+}

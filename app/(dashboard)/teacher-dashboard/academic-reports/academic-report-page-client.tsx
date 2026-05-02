@@ -439,8 +439,8 @@ export function AcademicReportPageClient({
             </p>
           ) : (
             <p className="mt-3 text-xs text-slate-500 dark:text-zinc-500">
-              Pass: Divisions I–III. Fail: IV, 0, incomplete (INC), or absent
-              (ABS), per NECTA-style rules on the class result sheet.
+              Pass: Divisions I–IV. Fail: 0, incomplete (INC), or absent (ABS),
+              per NECTA-style rules on the class result sheet.
             </p>
           )}
           <SubjectCompareTable

@@ -6,6 +6,7 @@ import type { ReportCardPreviewData } from "@/app/(dashboard)/teacher-dashboard/
 import type { SchoolLevel } from "@/lib/school-level";
 import { tanzaniaLetterGrade } from "@/lib/tanzania-grades";
 import {
+  isNectaDivisionOverallPass,
   nectaDivisionBucketForReportCard,
   type NectaDivisionBucketKey,
 } from "@/lib/necta-class-result-metrics";
@@ -211,7 +212,6 @@ export function buildAcademicPerformanceReportData(args: {
     [];
 
   if (schoolLevel === "secondary") {
-    const passBuckets = new Set<NectaDivisionBucketKey>(["I", "II", "III"]);
     let pass = 0,
       fail = 0;
     let mTotal = 0,
@@ -231,7 +231,7 @@ export function buildAcademicPerformanceReportData(args: {
       if (r.gender === "female") divF[key] += 1;
       else if (r.gender === "male") divM[key] += 1;
 
-      const isPass = passBuckets.has(key);
+      const isPass = isNectaDivisionOverallPass(key);
       if (isPass) pass += 1;
       else fail += 1;
 
