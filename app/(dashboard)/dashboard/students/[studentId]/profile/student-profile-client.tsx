@@ -366,7 +366,7 @@ export function StudentProfileClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex w-full flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex w-full flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 md:p-6">
         <StudentProfileAvatar
           studentId={studentId}
           studentName={studentName}

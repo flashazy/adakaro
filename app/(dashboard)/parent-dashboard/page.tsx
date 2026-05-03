@@ -11,6 +11,7 @@ import type {
   ParentFeePaymentRow,
 } from "@/components/parent/parent-student-fees-tab-content";
 import { FloatingScrollButton } from "@/components/ui/floating-scroll-button";
+import { formatParentDashboardDisplayName } from "@/lib/display-name";
 import { getSchoolCurrencyById } from "@/lib/dashboard/resolve-school-display";
 import {
   currencyFlagEmoji,
@@ -44,6 +45,7 @@ import {
 } from "./parent-student-cards-accordion";
 import { fetchClassTeacherContactByClassIds } from "@/lib/class-teacher";
 import { ParentClassTeacherContactLine } from "@/components/parent/parent-class-teacher-contact-line";
+import { Users, GraduationCap, Hash, ChevronRight } from "lucide-react";
 
 interface StudentWithClass {
   id: string;
@@ -423,120 +425,80 @@ export default async function ParentDashboard() {
 
   return (
     <>
-    <main className="pb-4">
-        {hasAdminDashboardAccess ? (
-          <div className="mb-4 flex flex-wrap items-center justify-end gap-2 border-b border-slate-200 pb-3 dark:border-zinc-800">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105"
-            >
-              Admin dashboard
-            </Link>
-          </div>
-        ) : null}
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-            Parent dashboard
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-zinc-400">
-            Welcome back, {profileTyped?.full_name || "Parent"}
-          </p>
-        </div>
+      <main className="relative pb-8 print:pb-4">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-indigo-100/50 via-violet-50/30 to-transparent dark:from-indigo-950/40 dark:via-zinc-950/30 dark:to-transparent sm:h-56" aria-hidden />
 
-        <PendingSchoolInvitations invitations={pendingAdminInvitesForUi} />
-
-        {/* No linked students */}
-        {childCount === 0 ? (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800">
-                <svg className="h-7 w-7 text-slate-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
-                </svg>
-              </div>
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                No students linked yet
-              </h2>
-              <p className="mx-auto mt-2 max-w-md text-sm text-slate-500 dark:text-zinc-400">
-                Use the form below to request access using your child&apos;s
-                admission number. The school admin will review and approve your
-                request.
-              </p>
+        <div className="relative mx-auto w-full max-w-5xl">
+          {hasAdminDashboardAccess ? (
+            <div className="mb-4 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/90 md:mb-6">
+              <Link
+                href="/dashboard"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-gradient-to-r from-school-primary to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:brightness-105 dark:to-indigo-500"
+              >
+                Admin dashboard
+              </Link>
             </div>
+          ) : null}
 
-            <LinkRequestForm pendingRequests={pendingRequests} />
-          </div>
-        ) : (
-          <>
-            {/* Summary KPIs — multi-currency summary sits outside the 4-col grid so it never repeats as a grid fragment */}
-            {singleCurrencyCode ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <KpiCard
-                  label="My Children"
-                  value={String(childCount)}
-                  icon={
-                    <svg className="h-5 w-5 text-school-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
-                    </svg>
-                  }
-                />
-                <KpiCard
-                  label="Total Fees"
-                  value={formatCurrency(totalFees, singleCurrencyCode)}
-                  icon={
-                    <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
-                    </svg>
-                  }
-                />
-                <KpiCard
-                  label="Paid"
-                  value={formatCurrency(totalPaid, singleCurrencyCode)}
-                  color="emerald"
-                  subtitle={`${collectionPct}% collected`}
-                  icon={
-                    <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                    </svg>
-                  }
-                />
-                <KpiCard
-                  label="Balance Due"
-                  value={formatCurrency(totalBalance, singleCurrencyCode)}
-                  color={totalBalance > 0 ? "amber" : undefined}
-                  icon={
-                    <svg className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                    </svg>
-                  }
-                />
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
-                <div className="shrink-0 lg:w-[min(100%,14rem)]">
-                  <KpiCard
-                    label="My Children"
-                    value={String(childCount)}
-                    icon={
-                      <svg className="h-5 w-5 text-school-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
-                      </svg>
-                    }
+          <header className="mb-5 space-y-1.5 md:mb-6 md:space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+              Parent dashboard
+            </h1>
+            <p className="text-base text-slate-600 dark:text-zinc-400">
+              Welcome back,{" "}
+              <span className="font-medium text-slate-800 dark:text-zinc-200">
+                {formatParentDashboardDisplayName(profileTyped?.full_name)}
+              </span>
+            </p>
+          </header>
+
+          <PendingSchoolInvitations invitations={pendingAdminInvitesForUi} />
+
+          {childCount === 0 ? (
+            <div className="space-y-4 md:space-y-6">
+              <div className="rounded-2xl border border-dashed border-slate-300/90 bg-white p-8 text-center shadow-sm dark:border-zinc-600 dark:bg-zinc-900 sm:p-14">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-950/60 dark:to-violet-950/40">
+                  <Users
+                    className="h-8 w-8 text-indigo-600 dark:text-indigo-400"
+                    strokeWidth={1.5}
+                    aria-hidden
                   />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <MultiCurrencySummary totalsByCurrency={totalsByCurrency} />
-                </div>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  No students linked yet
+                </h2>
+                <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+                  Use the form below to request access using your child&apos;s
+                  admission number. The school admin will review and approve your
+                  request.
+                </p>
               </div>
-            )}
 
-            {/* Link another child */}
-            <div className="mt-6">
               <LinkRequestForm pendingRequests={pendingRequests} />
             </div>
+          ) : (
+            <>
+              {singleCurrencyCode ? (
+                <ParentPaymentSummaryHero
+                  childCount={childCount}
+                  totalFees={totalFees}
+                  totalPaid={totalPaid}
+                  totalBalance={totalBalance}
+                  currencyCode={singleCurrencyCode}
+                  collectionPct={collectionPct}
+                />
+              ) : (
+                <div className="space-y-3 md:space-y-5">
+                  <ParentMultiCurrencyHero childCount={childCount} />
+                  <MultiCurrencySummary totalsByCurrency={totalsByCurrency} />
+                </div>
+              )}
 
-            {/* Per-student breakdown (collapsible accordion, one open at a time) */}
-            <div className="mt-8 space-y-8">
+              <div className="mt-4 md:mt-8">
+                <LinkRequestForm pendingRequests={pendingRequests} />
+              </div>
+
+              <div className="mt-4 space-y-4 md:mt-8 md:space-y-8">
               <ParentStudentCardsGroup>
                 {students.map((student) => {
                   const sBalances = balances.filter(
@@ -559,86 +521,94 @@ export default async function ParentDashboard() {
                       key={student.id}
                       studentId={student.id}
                       summary={
-                        <div className="bg-slate-50/50 px-6 py-4 dark:bg-zinc-800/30">
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--school-primary-rgb)/0.16)] text-sm font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary">
+                        <div className="bg-gradient-to-br from-slate-50/90 via-white to-indigo-50/30 px-4 py-4 active:bg-slate-100/80 dark:from-zinc-900/80 dark:via-zinc-900/40 dark:to-indigo-950/20 dark:active:bg-zinc-800/50 sm:px-6 sm:py-5">
+                          <div className="flex items-center gap-3 sm:items-start sm:gap-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[rgb(var(--school-primary-rgb)/0.18)] text-sm font-bold text-school-primary shadow-inner ring-1 ring-white/60 sm:h-12 sm:w-12 sm:text-base dark:bg-[rgb(var(--school-primary-rgb)/0.22)] dark:ring-zinc-700/50">
                               {student.full_name.charAt(0).toUpperCase()}
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                                    {student.full_name}
-                                  </h2>
-                                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600 dark:text-zinc-400">
-                                    {student.class && (
-                                      <span className="inline-flex items-center gap-1">
-                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
-                                        </svg>
-                                        {student.class.name}
-                                      </span>
-                                    )}
-                                    {student.admission_number && (
-                                      <span className="inline-flex items-center gap-1">
-                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5" />
-                                        </svg>
-                                        {student.admission_number}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {student.classTeacherContact ? (
-                                    <ParentClassTeacherContactLine
-                                      teacherName={
-                                        student.classTeacherContact.fullName
-                                      }
-                                      phone={student.classTeacherContact.phone}
-                                    />
-                                  ) : null}
+                            <div className="min-w-0 flex-1 space-y-1.5 sm:space-y-2">
+                              <h2 className="text-base font-semibold leading-snug tracking-tight text-slate-900 dark:text-white sm:text-lg">
+                                {student.full_name}
+                              </h2>
+                              {student.class ? (
+                                <p className="flex items-center gap-2 text-sm text-slate-600 dark:text-zinc-400">
+                                  <GraduationCap
+                                    className="h-4 w-4 shrink-0 text-school-primary opacity-90"
+                                    aria-hidden
+                                  />
+                                  <span className="min-w-0 truncate">
+                                    {student.class.name}
+                                  </span>
+                                </p>
+                              ) : null}
+                              {student.admission_number ? (
+                                <p className="flex items-center gap-2 text-sm text-slate-600 dark:text-zinc-400">
+                                  <Hash
+                                    className="h-4 w-4 shrink-0 text-slate-400 dark:text-zinc-500"
+                                    aria-hidden
+                                  />
+                                  <span className="min-w-0 truncate font-mono text-xs sm:text-sm">
+                                    {student.admission_number}
+                                  </span>
+                                </p>
+                              ) : null}
+                              {sBalance > 0 ? (
+                                <span className="inline-flex w-fit max-w-full items-center rounded-full border border-amber-200/80 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/50 dark:text-amber-300">
+                                  <span className="truncate">
+                                    {formatCurrency(sBalance, sc)} due
+                                  </span>
+                                </span>
+                              ) : null}
+                              {student.classTeacherContact ? (
+                                <div className="hidden md:block">
+                                  <ParentClassTeacherContactLine
+                                    teacherName={
+                                      student.classTeacherContact.fullName
+                                    }
+                                    phone={student.classTeacherContact.phone}
+                                  />
                                 </div>
-                                <svg
-                                  className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 dark:text-zinc-500"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  strokeWidth={2}
-                                  stroke="currentColor"
-                                  aria-hidden
-                                >
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                                </svg>
-                              </div>
+                              ) : null}
                             </div>
+                            <ChevronRight
+                              className="h-6 w-6 shrink-0 self-center text-slate-400 dark:text-zinc-500 sm:mt-1 sm:self-start"
+                              strokeWidth={2}
+                              aria-hidden
+                            />
                           </div>
                         </div>
                       }
                       headerExpanded={
-                        <div className="bg-slate-50/50 px-6 py-4 dark:bg-zinc-800/30">
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--school-primary-rgb)/0.16)] text-sm font-bold text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:text-school-primary">
+                        <div className="bg-gradient-to-br from-indigo-50/80 via-white to-violet-50/40 px-4 py-5 sm:px-6 dark:from-indigo-950/30 dark:via-zinc-900/50 dark:to-violet-950/20">
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-4">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[rgb(var(--school-primary-rgb)/0.2)] text-base font-bold text-school-primary shadow-sm ring-1 ring-white/70 dark:bg-[rgb(var(--school-primary-rgb)/0.25)] dark:ring-zinc-600/50">
                               {student.full_name.charAt(0).toUpperCase()}
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div>
-                                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                            <div className="min-w-0 flex-1 space-y-3">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                                <div className="min-w-0 space-y-2">
+                                  <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white">
                                     {student.full_name}
                                   </h2>
-                                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600 dark:text-zinc-400">
+                                  <div className="flex flex-col gap-1.5 text-sm text-slate-600 dark:text-zinc-400">
                                     {student.class && (
-                                      <span className="inline-flex items-center gap-1">
-                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342" />
-                                        </svg>
+                                      <span className="inline-flex items-center gap-2">
+                                        <GraduationCap
+                                          className="h-4 w-4 shrink-0 text-school-primary"
+                                          aria-hidden
+                                        />
                                         {student.class.name}
                                       </span>
                                     )}
                                     {student.admission_number && (
-                                      <span className="inline-flex items-center gap-1">
-                                        <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5-3.9 19.5m-2.1-19.5-3.9 19.5" />
-                                        </svg>
-                                        {student.admission_number}
+                                      <span className="inline-flex items-center gap-2">
+                                        <Hash
+                                          className="h-4 w-4 shrink-0 text-slate-400 dark:text-zinc-500"
+                                          aria-hidden
+                                        />
+                                        <span className="font-mono text-xs sm:text-sm">
+                                          {student.admission_number}
+                                        </span>
                                       </span>
                                     )}
                                   </div>
@@ -650,12 +620,12 @@ export default async function ParentDashboard() {
                                       phone={student.classTeacherContact.phone}
                                     />
                                   ) : null}
-                                  <p className="mt-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                                  <p className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
                                     {schoolDisplayName}
                                   </p>
                                 </div>
                                 {sBalance > 0 && (
-                                  <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
+                                  <span className="inline-flex w-fit shrink-0 items-center rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm dark:border-amber-800/50 dark:bg-amber-950/50 dark:text-amber-300">
                                     {formatCurrency(sBalance, sc)} due
                                   </span>
                                 )}
@@ -715,16 +685,115 @@ export default async function ParentDashboard() {
                   );
                 })}
               </ParentStudentCardsGroup>
-            </div>
-          </>
-        )}
-    </main>
-    <FloatingScrollButton />
+              </div>
+            </>
+          )}
+        </div>
+      </main>
+      <FloatingScrollButton />
     </>
   );
 }
 
-// ─── Sub-components ─────────────────────────────────────────
+// ─── Sub-components (presentation only) ─────────────────────
+
+function ParentPaymentSummaryHero({
+  childCount,
+  totalFees,
+  totalPaid,
+  totalBalance,
+  currencyCode,
+  collectionPct,
+}: {
+  childCount: number;
+  totalFees: number;
+  totalPaid: number;
+  totalBalance: number;
+  currencyCode: SchoolCurrencyCode;
+  collectionPct: number;
+}) {
+  return (
+    <section
+      className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-indigo-50/50 to-violet-100/40 p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-zinc-700/90 dark:from-zinc-900 dark:via-indigo-950/25 dark:to-violet-950/20 dark:ring-white/5 md:px-5 md:py-5"
+      aria-label="Payment summary"
+    >
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3 lg:gap-4">
+        <div className="rounded-xl border border-white/60 bg-white/70 px-2.5 py-2.5 shadow-sm backdrop-blur-sm dark:border-zinc-700/60 dark:bg-zinc-800/50 md:px-3 md:py-3">
+          <p className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500 dark:text-zinc-400 md:text-xs">
+            Children
+          </p>
+          <p className="mt-0.5 text-xl font-bold tabular-nums leading-none text-slate-900 dark:text-white md:mt-0.5 md:text-2xl">
+            {childCount}
+          </p>
+        </div>
+        <div className="rounded-xl border border-white/60 bg-white/70 px-2.5 py-2.5 shadow-sm backdrop-blur-sm dark:border-zinc-700/60 dark:bg-zinc-800/50 md:px-3 md:py-3">
+          <p className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500 dark:text-zinc-400 md:text-xs">
+            Total fees
+          </p>
+          <p className="mt-0.5 break-words text-sm font-bold tabular-nums leading-tight tracking-tight text-slate-900 dark:text-white md:mt-0.5 md:text-base lg:text-lg">
+            {formatCurrency(totalFees, currencyCode)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-emerald-100/80 bg-emerald-50/50 px-2.5 py-2.5 shadow-sm dark:border-emerald-900/30 dark:bg-emerald-950/20 md:px-3 md:py-3">
+          <p className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-emerald-700 dark:text-emerald-400/90 md:text-xs">
+            Paid
+          </p>
+          <p className="mt-0.5 break-words text-sm font-bold tabular-nums leading-tight tracking-tight text-emerald-700 dark:text-emerald-300 md:mt-0.5 md:text-base lg:text-lg">
+            {formatCurrency(totalPaid, currencyCode)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-amber-100/90 bg-amber-50/40 px-2.5 py-2.5 shadow-sm dark:border-amber-900/35 dark:bg-amber-950/25 md:px-3 md:py-3">
+          <p className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-amber-800 dark:text-amber-400/90 md:text-xs">
+            Balance due
+          </p>
+          <p className="mt-0.5 break-words text-sm font-bold tabular-nums leading-tight tracking-tight text-amber-800 dark:text-amber-200 md:mt-0.5 md:text-base lg:text-lg">
+            {formatCurrency(totalBalance, currencyCode)}
+          </p>
+        </div>
+      </div>
+      {totalFees > 0 ? (
+        <div className="mt-3 md:mt-3.5 md:pt-0.5">
+          <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-slate-600 dark:text-zinc-400 md:mb-1 md:text-xs">
+            <span>Fee collection</span>
+            <span className="tabular-nums text-school-primary">
+              {collectionPct}%
+            </span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-slate-200/90 dark:bg-zinc-700 md:h-2">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-school-primary transition-[width] duration-500"
+              style={{ width: `${Math.min(100, Math.max(0, collectionPct))}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ParentMultiCurrencyHero({ childCount }: { childCount: number }) {
+  return (
+    <section
+      className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/80 to-indigo-50/40 p-4 shadow-sm dark:border-zinc-700 dark:from-zinc-900 dark:via-zinc-900 dark:to-indigo-950/30 md:px-5 md:py-5"
+      aria-label="Overview"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-3 md:gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+            Linked children
+          </p>
+          <p className="mt-0.5 text-2xl font-bold tabular-nums text-slate-900 dark:text-white md:mt-0.5 md:text-3xl">
+            {childCount}
+          </p>
+        </div>
+        <p className="max-w-sm text-xs leading-relaxed text-slate-600 dark:text-zinc-400 md:text-sm">
+          Fee totals are shown by currency below — amounts are not combined
+          across currencies.
+        </p>
+      </div>
+    </section>
+  );
+}
 
 function MultiCurrencySummary({
   totalsByCurrency,
@@ -733,12 +802,12 @@ function MultiCurrencySummary({
 }) {
   const codes = sortCurrencyCodes(totalsByCurrency.keys());
   return (
-    <div className="h-full rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="border-b border-slate-100 pb-3 dark:border-zinc-800">
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+    <div className="h-full rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-6">
+      <div className="border-b border-slate-100 pb-4 dark:border-zinc-800">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-white">
           Summary by Currency
         </h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+        <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-zinc-400">
           Totals are per school currency — amounts are not combined across
           currencies.
         </p>
@@ -756,7 +825,7 @@ function MultiCurrencySummary({
                 ? Math.round((t.totalPaid / t.totalFees) * 100)
                 : 0;
             return (
-              <li key={code}>
+              <li key={code} className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-800/40">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="text-sm font-medium text-slate-700 dark:text-zinc-300">
                     {currencyFlagEmoji(code)} {code}
@@ -768,52 +837,22 @@ function MultiCurrencySummary({
                     </span>
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
                   {formatCurrency(t.totalFees, code)} fees ·{" "}
                   {formatCurrency(t.totalPaid, code)} paid ({pct}% collected)
                 </p>
+                {t.totalFees > 0 ? (
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-zinc-600">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500"
+                      style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                    />
+                  </div>
+                ) : null}
               </li>
             );
           })}
         </ul>
-      )}
-    </div>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  color,
-  subtitle,
-  icon,
-}: {
-  label: string;
-  value: string;
-  color?: "emerald" | "amber";
-  subtitle?: string;
-  icon: React.ReactNode;
-}) {
-  const valueColor =
-    color === "emerald"
-      ? "text-emerald-600 dark:text-emerald-400"
-      : color === "amber"
-        ? "text-amber-600 dark:text-amber-400"
-        : "text-slate-900 dark:text-white";
-
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">
-          {label}
-        </p>
-        {icon}
-      </div>
-      <p className={`mt-3 text-2xl font-bold ${valueColor}`}>{value}</p>
-      {subtitle && (
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-          {subtitle}
-        </p>
       )}
     </div>
   );

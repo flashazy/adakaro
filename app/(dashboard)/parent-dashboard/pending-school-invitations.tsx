@@ -40,8 +40,8 @@ export default function PendingSchoolInvitations({
   }
 
   return (
-    <section className="mb-8 rounded-xl border border-[rgb(var(--school-primary-rgb)/0.25)] bg-[rgb(var(--school-primary-rgb)/0.12)] shadow-sm dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)]">
-      <div className="border-b border-[rgb(var(--school-primary-rgb)/0.25)]/80 px-6 py-4 dark:border-[rgb(var(--school-primary-rgb)/0.35)]">
+    <section className="mb-5 rounded-2xl border border-[rgb(var(--school-primary-rgb)/0.28)] bg-[rgb(var(--school-primary-rgb)/0.1)] shadow-sm ring-1 ring-[rgb(var(--school-primary-rgb)/0.08)] dark:border-[rgb(var(--school-primary-rgb)/0.35)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)] dark:ring-white/5 md:mb-8">
+      <div className="border-b border-[rgb(var(--school-primary-rgb)/0.22)]/90 px-4 py-4 dark:border-[rgb(var(--school-primary-rgb)/0.35)] sm:px-6 sm:py-5">
         <div className="flex items-center gap-2">
           <svg
             className="h-5 w-5 text-school-primary dark:text-school-primary"
@@ -60,7 +60,7 @@ export default function PendingSchoolInvitations({
             Pending invitations
           </h2>
         </div>
-        <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400">
+        <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
           You were invited to help manage a school as an administrator. Accept
           to open the admin dashboard, or decline if you don&apos;t want this
           role.

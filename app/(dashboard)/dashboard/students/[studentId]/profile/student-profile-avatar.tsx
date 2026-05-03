@@ -370,9 +370,13 @@ export function StudentProfileAvatar({
       avatarUrl.startsWith("http://localhost") ||
       avatarUrl.startsWith("http://127.0.0.1"));
 
-  const photoFrameClass = `group relative flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-slate-300 bg-slate-50 shadow-md ring-1 ring-black/5 dark:border-zinc-600 dark:bg-zinc-800/80 dark:ring-white/10 ${
+  /** Display-only sizes (upload pipeline unchanged). */
+  const photoShellClass =
+    "relative mx-auto aspect-square w-36 shrink-0 sm:w-40 md:w-44 lg:h-[200px] lg:w-[200px]";
+
+  const photoFrameClass = `group relative flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-full border border-dashed border-slate-300/90 bg-slate-50 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-zinc-600/90 dark:bg-zinc-800/80 dark:ring-white/[0.06] ${
     canChangePhoto
-      ? "transition hover:border-[rgb(var(--school-primary-rgb)/0.45)] hover:bg-slate-100 hover:shadow-lg disabled:opacity-60 dark:hover:border-school-primary dark:hover:bg-zinc-800"
+      ? "transition hover:border-[rgb(var(--school-primary-rgb)/0.4)] hover:bg-slate-100 hover:shadow-md disabled:opacity-60 dark:hover:border-school-primary dark:hover:bg-zinc-800"
       : ""
   }`;
 
@@ -389,7 +393,11 @@ export function StudentProfileAvatar({
         />
       ) : (
         <div className="flex flex-col items-center gap-1 text-slate-400 dark:text-zinc-500">
-          <UserRound className="h-11 w-11" strokeWidth={1.25} aria-hidden />
+          <UserRound
+            className="h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11"
+            strokeWidth={1.25}
+            aria-hidden
+          />
           <span className="flex items-center gap-1 text-[10px] font-medium leading-none">
             <Camera className="h-3 w-3" aria-hidden />
             Photo
@@ -407,12 +415,12 @@ export function StudentProfileAvatar({
   return (
     <div className="flex w-full min-w-0 flex-col items-center justify-center">
       {canChangePhoto ? (
-        <div className="relative mx-auto h-[120px] w-[120px] shrink-0">
+        <div className={photoShellClass}>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={pending || isCompressing}
-            className={photoFrameClass}
+            className={`${photoFrameClass} absolute inset-0`}
             aria-label="Upload or change student photo"
             aria-busy={isCompressing}
           >
@@ -425,11 +433,10 @@ export function StudentProfileAvatar({
           ) : null}
         </div>
       ) : (
-        <div
-          className={`${photoFrameClass} mx-auto h-[120px] w-[120px]`}
-          aria-hidden
-        >
-          {photoFrameInner}
+        <div className={`${photoShellClass}`} aria-hidden>
+          <div className={`${photoFrameClass} absolute inset-0`}>
+            {photoFrameInner}
+          </div>
         </div>
       )}
       {canChangePhoto ? (
@@ -466,7 +473,7 @@ export function StudentProfileAvatar({
         </>
       ) : null}
 
-      <h2 className="mt-4 mb-4 w-full text-center text-pretty text-lg font-semibold leading-snug tracking-tight text-slate-900 sm:text-xl dark:text-white">
+      <h2 className="mt-3 w-full text-pretty text-center text-base font-semibold leading-snug tracking-tight text-slate-900 sm:mt-3.5 sm:text-lg md:mt-4 md:text-xl dark:text-white">
         {headline}
       </h2>
 

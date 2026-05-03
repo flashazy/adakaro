@@ -61,19 +61,18 @@ export function ParentChildCardTabs({
   }, [initialMessagesUnreadSerialized]);
 
   return (
-    <div>
-      <div className="relative border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900/40">
-        {/* Mobile scroll hint — does not capture taps */}
+    <div className="border-t border-slate-100 bg-slate-50/60 dark:border-zinc-800 dark:bg-zinc-950/40">
+      <div className="relative px-3 pb-3 pt-3 sm:px-4">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-7 bg-gradient-to-r from-white to-transparent dark:from-zinc-950 md:hidden"
+          className="pointer-events-none absolute inset-y-3 left-0 z-10 w-8 bg-gradient-to-r from-slate-50 to-transparent dark:from-zinc-950 md:hidden"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-7 bg-gradient-to-l from-white to-transparent dark:from-zinc-950 md:hidden"
+          className="pointer-events-none absolute inset-y-3 right-0 z-10 w-8 bg-gradient-to-l from-slate-50 to-transparent dark:from-zinc-950 md:hidden"
         />
         <div
-          className="flex min-w-0 touch-pan-x flex-nowrap gap-1 overflow-x-auto overscroll-x-contain px-3 pt-2 [-webkit-overflow-scrolling:touch] md:flex-wrap md:touch-auto md:overflow-visible"
+          className="flex min-w-0 touch-pan-x flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1 [-webkit-overflow-scrolling:touch] md:flex-wrap md:gap-2 md:overflow-visible md:pb-0"
           role="tablist"
           aria-label="Student sections"
         >
@@ -85,10 +84,10 @@ export function ParentChildCardTabs({
               aria-selected={active === i}
               onClick={() => setActive(i)}
               className={cn(
-                "relative inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t-lg px-3 py-2 text-xs font-medium transition-colors",
+                "relative inline-flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2.5 text-xs font-semibold transition-all duration-200 sm:min-h-0 sm:py-2 sm:text-sm",
                 active === i
-                  ? "bg-slate-50 text-school-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-school-primary dark:bg-zinc-800/80 dark:text-school-primary"
-                  : "text-slate-500 hover:text-slate-800 dark:text-zinc-500 dark:hover:text-zinc-200"
+                  ? "bg-gradient-to-r from-school-primary to-indigo-600 text-white shadow-md dark:to-indigo-500"
+                  : "border border-slate-200/90 bg-white text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-white"
               )}
             >
               {i === SUBJECT_TAB_INDEX && subjectUnread.totalUnviewed > 0 && (
@@ -122,7 +121,7 @@ export function ParentChildCardTabs({
           ))}
         </div>
       </div>
-      <div className="min-h-0" role="tabpanel">
+      <div className="min-h-0 bg-white dark:bg-zinc-900" role="tabpanel">
         {(() => {
           const item = items[active];
           if (active === SUBJECT_TAB_INDEX && isValidElement(item)) {

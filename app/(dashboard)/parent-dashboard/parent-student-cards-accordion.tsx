@@ -76,7 +76,7 @@ export function ParentStudentCard({
   const panelId = `parent-student-card-panel-${studentId}`;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-200/60 dark:border-zinc-700/90 dark:bg-zinc-900 dark:shadow-lg dark:ring-zinc-700/50">
+    <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04] transition-shadow duration-200 hover:shadow-md dark:border-zinc-700/90 dark:bg-zinc-900 dark:ring-white/5 dark:hover:shadow-lg">
       {open ? (
         <>
           <div className="border-b border-slate-200 dark:border-zinc-800">

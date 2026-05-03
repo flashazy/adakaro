@@ -136,7 +136,12 @@ export function DashboardHeader({
   if (showSchoolIdentity) {
     return (
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
+        <div
+          className={cn(
+            "mx-auto px-4 py-4 sm:px-6 lg:px-8",
+            isParent ? "max-w-5xl" : "max-w-6xl"
+          )}
+        >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
             <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-zinc-600 dark:bg-zinc-800">
@@ -226,13 +231,18 @@ export function DashboardHeader({
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6 lg:px-8">
+      <div
+        className={cn(
+          "mx-auto px-4 py-3 sm:px-6 lg:px-8",
+          isParent ? "max-w-5xl" : "max-w-6xl"
+        )}
+      >
         {isParent ? (
-          <div className="flex items-center justify-between gap-3 md:hidden">
-            <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-5">
+          <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-slate-100 pb-2 pt-1 dark:border-zinc-800/80 md:hidden">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <NavLinkWithLoading
                 href={homeHref}
-                className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-white"
+                className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-xl px-1 text-lg font-bold tracking-tight text-slate-900 active:bg-slate-100 dark:text-white dark:active:bg-zinc-800"
                 aria-label="Adakaro"
               >
                 <Image
@@ -240,14 +250,16 @@ export function DashboardHeader({
                   alt="Adakaro"
                   width={32}
                   height={32}
-                  className="h-7 w-7 shrink-0 sm:h-8 sm:w-8"
+                  className="h-8 w-8 shrink-0"
                 />
                 Adakaro
               </NavLinkWithLoading>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <ThemeToggle />
-              <SignOutButton className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />
+              <span className="inline-flex h-11 w-11 items-center justify-center">
+                <ThemeToggle />
+              </span>
+              <SignOutButton className="min-h-[44px] rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" />
             </div>
           </div>
         ) : null}

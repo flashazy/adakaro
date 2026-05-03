@@ -4,6 +4,7 @@ import { useActionState, useEffect, useTransition, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Link2, Loader2, Send } from "lucide-react";
 import {
   submitLinkRequest,
   cancelPendingLinkRequest,
@@ -16,21 +17,16 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="inline-flex items-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:brightness-90 disabled:opacity-50"
+      className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-school-primary to-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:brightness-105 disabled:opacity-50 sm:min-h-0 sm:w-auto sm:py-2.5 dark:to-indigo-500"
     >
       {pending ? (
         <>
-          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
           Sending…
         </>
       ) : (
         <>
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
-          </svg>
+          <Send className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
           Send Request
         </>
       )}
@@ -69,30 +65,30 @@ export default function LinkRequestForm({
   }, [state.toastError]);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      {/* Header */}
-      <div className="border-b border-slate-200 px-6 py-4 dark:border-zinc-800">
-        <div className="flex items-center gap-2">
-          <svg className="h-5 w-5 text-school-primary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-          </svg>
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Link to a School
-          </h2>
+    <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="border-b border-slate-100 px-4 py-4 dark:border-zinc-800 sm:px-6 sm:py-5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-school-primary shadow-inner ring-1 ring-indigo-100/80 dark:bg-indigo-950/40 dark:ring-indigo-900/50">
+            <Link2 className="h-5 w-5" strokeWidth={2} aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              Link to a School
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+              Request access with your child&apos;s admission number. Your
+              school admin will review it.
+            </p>
+          </div>
         </div>
-        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-          Enter your child&apos;s admission number to request access to their
-          school records. The school admin will review your request.
-        </p>
       </div>
 
-      {/* Form */}
-      <form action={formAction} className="px-6 py-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex-1">
+      <form action={formAction} className="px-4 py-5 sm:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-4">
+          <div className="min-w-0 flex-1">
             <label
               htmlFor="admission_number"
-              className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-zinc-300"
+              className="mb-2 block text-sm font-medium text-slate-700 dark:text-zinc-300"
             >
               Child&apos;s Admission Number
             </label>
@@ -102,7 +98,7 @@ export default function LinkRequestForm({
               type="text"
               required
               placeholder="e.g. ADM-2024-001"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+              className="min-h-[48px] w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 transition-colors focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/25 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 sm:min-h-0 sm:py-2.5 sm:text-sm"
             />
           </div>
           <SubmitButton />
@@ -133,8 +129,8 @@ export default function LinkRequestForm({
 
       {/* Pending requests */}
       {pendingRequests.length > 0 && (
-        <div className="border-t border-slate-200 dark:border-zinc-800">
-          <div className="px-6 py-3">
+        <div className="border-t border-slate-100 dark:border-zinc-800">
+          <div className="px-4 py-3 sm:px-6">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
               Pending Requests
             </p>
@@ -145,7 +141,7 @@ export default function LinkRequestForm({
           </div>
           {cancelMessage && (
             <div
-              className={`mx-6 mb-2 rounded-lg border px-3 py-2 text-xs ${
+              className={`mx-4 mb-2 rounded-lg border px-3 py-2 text-xs sm:mx-6 ${
                 cancelMessage.type === "error"
                   ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-300"
                   : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300"
@@ -158,7 +154,7 @@ export default function LinkRequestForm({
             {pendingRequests.map((req) => (
               <div
                 key={req.id}
-                className="flex flex-col gap-2 px-6 py-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/20">
