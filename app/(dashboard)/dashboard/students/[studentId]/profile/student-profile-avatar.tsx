@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Info, UserRound } from "lucide-react";
+import { Camera, ChevronDown, Info, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -22,6 +22,7 @@ import {
   type StudentAvatarObjectName,
 } from "./profile-actions";
 import { StudentAvatarCropModal } from "./student-avatar-crop-modal";
+import { cn } from "@/lib/utils";
 
 function canUseLiveCamera(): boolean {
   if (typeof window === "undefined") return false;
@@ -52,6 +53,8 @@ interface StudentProfileAvatarProps {
   avatarUrl: string | null;
   /** When false, photo upload UI is hidden (e.g. teachers / dept viewers). */
   canChangePhoto?: boolean;
+  /** Hide the inline headline (shown in profile header column instead). */
+  hideHeadline?: boolean;
 }
 
 async function blobFromOutputCanvas(
@@ -83,6 +86,7 @@ export function StudentProfileAvatar({
   classLabel,
   avatarUrl,
   canChangePhoto = true,
+  hideHeadline = false,
 }: StudentProfileAvatarProps) {
   const router = useRouter();
   const inputId = useId();
@@ -370,9 +374,9 @@ export function StudentProfileAvatar({
       avatarUrl.startsWith("http://localhost") ||
       avatarUrl.startsWith("http://127.0.0.1"));
 
-  /** Display-only sizes (upload pipeline unchanged). */
+  /** Display-only sizes: 128px mobile, 160px tablet; md/lg slightly smaller for header balance (desktop only). */
   const photoShellClass =
-    "relative mx-auto aspect-square w-36 shrink-0 sm:w-40 md:w-44 lg:h-[200px] lg:w-[200px]";
+    "relative mx-auto aspect-square h-32 w-32 shrink-0 sm:h-40 sm:w-40 md:mx-0 md:h-[150px] md:w-[150px] lg:h-[168px] lg:w-[168px]";
 
   const photoFrameClass = `group relative flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-full border border-dashed border-slate-300/90 bg-slate-50 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-zinc-600/90 dark:bg-zinc-800/80 dark:ring-white/[0.06] ${
     canChangePhoto
@@ -413,7 +417,9 @@ export function StudentProfileAvatar({
   );
 
   return (
-    <div className="flex w-full min-w-0 flex-col items-center justify-center">
+    <div
+      className={`flex w-full min-w-0 flex-col items-center justify-center ${hideHeadline ? "md:items-start" : ""}`}
+    >
       {canChangePhoto ? (
         <div className={photoShellClass}>
           <button
@@ -433,7 +439,7 @@ export function StudentProfileAvatar({
           ) : null}
         </div>
       ) : (
-        <div className={`${photoShellClass}`} aria-hidden>
+        <div className={photoShellClass} aria-hidden>
           <div className={`${photoFrameClass} absolute inset-0`}>
             {photoFrameInner}
           </div>
@@ -473,78 +479,171 @@ export function StudentProfileAvatar({
         </>
       ) : null}
 
-      <h2 className="mt-3 w-full text-pretty text-center text-base font-semibold leading-snug tracking-tight text-slate-900 sm:mt-3.5 sm:text-lg md:mt-4 md:text-xl dark:text-white">
-        {headline}
-      </h2>
+      {!hideHeadline ? (
+        <h2 className="mt-3 w-full text-pretty text-center text-base font-semibold leading-snug tracking-tight text-slate-900 sm:mt-3.5 sm:text-lg md:mt-4 md:text-xl dark:text-white">
+          {headline}
+        </h2>
+      ) : null}
 
       {canChangePhoto ? (
         <>
-          <div className="mx-auto grid w-full max-w-xs grid-cols-1 gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={pending || isCompressing}
-              className="min-h-11 w-full rounded-lg bg-school-primary px-3 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
-            >
-              Change photo
-            </button>
-            <button
-              type="button"
-              onClick={openTakePhotoPicker}
-              disabled={
-                pending || isCompressing || liveCameraStarting || liveCameraOpen
-              }
-              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
-            >
-              Take photo
-            </button>
-            {hasClientEnv && canUseLiveCamera() ? (
+          <div
+            className={cn(
+              "w-full max-w-xs md:max-w-none",
+              hideHeadline
+                ? "mt-3 space-y-2 md:mt-3"
+                : "mt-4 space-y-3 md:mt-5"
+            )}
+          >
+            <div className="grid w-full grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => void openLiveCamera()}
-                disabled={
-                  pending ||
-                  isCompressing ||
-                  liveCameraStarting ||
-                  liveCameraOpen
-                }
-                className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:col-span-2 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={pending || isCompressing}
+                className={cn(
+                  "w-full font-semibold text-white shadow-sm transition hover:brightness-105 disabled:opacity-50",
+                  "bg-gradient-to-r from-school-primary to-indigo-600 dark:to-indigo-500",
+                  hideHeadline
+                    ? "min-h-11 rounded-lg px-4 py-2.5 text-sm md:min-h-0 md:px-4 md:py-2"
+                    : "min-h-11 rounded-xl px-3 py-2.5 text-sm hover:shadow-md"
+                )}
               >
-                {liveCameraStarting ? "Opening camera…" : "Open camera"}
+                Change photo
               </button>
+              <button
+                type="button"
+                onClick={openTakePhotoPicker}
+                disabled={
+                  pending || isCompressing || liveCameraStarting || liveCameraOpen
+                }
+                className={cn(
+                  "w-full border border-slate-300 bg-white font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800",
+                  hideHeadline
+                    ? "min-h-11 rounded-lg px-4 py-2.5 text-sm md:min-h-0 md:px-4 md:py-2"
+                    : "min-h-11 rounded-xl px-3 py-2.5 text-sm"
+                )}
+              >
+                Take photo
+              </button>
+            </div>
+            {hasClientEnv && canUseLiveCamera() ? (
+              <div
+                className={cn(
+                  "rounded-lg border dark:border-zinc-700/80 dark:bg-zinc-800/30",
+                  hideHeadline
+                    ? "border-slate-100 bg-slate-50/50 p-2"
+                    : "border-slate-200/90 bg-slate-50/70 p-3 dark:bg-zinc-800/40"
+                )}
+              >
+                <p
+                  className={cn(
+                    "font-medium text-slate-500 dark:text-zinc-400",
+                    hideHeadline
+                      ? "mb-1.5 text-[10px] uppercase tracking-wide md:mb-1"
+                      : "mb-2 text-center text-[10px] font-semibold uppercase tracking-wide md:text-left"
+                  )}
+                >
+                  {hideHeadline ? "Browser preview" : "Live browser preview"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void openLiveCamera()}
+                  disabled={
+                    pending ||
+                    isCompressing ||
+                    liveCameraStarting ||
+                    liveCameraOpen
+                  }
+                  className={cn(
+                    "w-full border border-slate-300 bg-white font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800",
+                    hideHeadline
+                      ? "min-h-11 rounded-lg px-4 py-2.5 text-sm md:min-h-0 md:px-4 md:py-2"
+                      : "min-h-11 rounded-xl px-3 py-2.5 text-sm"
+                  )}
+                >
+                  {liveCameraStarting ? "Opening camera…" : "Open camera"}
+                </button>
+              </div>
             ) : null}
           </div>
-          <button
-            type="button"
-            className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-school-primary dark:text-zinc-500 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-            title={photoRequirementsDescription}
-            aria-label={`Photo requirements: ${photoRequirementsDescription}`}
-          >
-            <Info className="h-4 w-4" strokeWidth={2} aria-hidden />
-          </button>
-          <div className="mt-2 max-w-xs space-y-2 text-center text-xs leading-relaxed text-gray-500 dark:text-zinc-500">
-            {!hasClientEnv ? (
-              <p>
-                Take photo uses your system camera or gallery when available. On
-                desktop you can pick an image file instead.
-              </p>
-            ) : canUseLiveCamera() ? (
-              <p>
-                Open camera uses your browser for a live preview (HTTPS
-                required). Take photo uses your system camera or gallery.
-              </p>
-            ) : (
-              <p>
-                Take photo uses your system camera or gallery when available. On
-                desktop you can pick an image file instead.
-              </p>
-            )}
-            {hasClientEnv && isIOS() ? (
-              <p className="text-slate-600 dark:text-zinc-400">
-                On iPhone, select &apos;Take Photo&apos; from the menu.
-              </p>
-            ) : null}
-          </div>
+          {hideHeadline ? (
+            <details className="group mt-2 w-full max-w-xs rounded-lg border border-slate-100 bg-white/70 text-left dark:border-zinc-800 dark:bg-zinc-900/40 md:max-w-none [&_summary::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-2 text-[11px] font-medium text-slate-500 transition hover:bg-slate-50/80 dark:text-zinc-400 dark:hover:bg-zinc-800/50">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Info
+                    className="h-3.5 w-3.5 shrink-0 opacity-70"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <span className="truncate">Photo tips & file rules</span>
+                </span>
+                <ChevronDown
+                  className="h-3.5 w-3.5 shrink-0 opacity-50 transition group-open:rotate-180"
+                  aria-hidden
+                />
+              </summary>
+              <div className="space-y-1.5 border-t border-slate-100 px-2.5 pb-2.5 pt-2 text-[10px] leading-snug text-slate-500 dark:border-zinc-800 dark:text-zinc-500">
+                {!hasClientEnv ? (
+                  <p>
+                    Take photo uses your system camera or gallery when available.
+                    On desktop you can pick an image file instead.
+                  </p>
+                ) : canUseLiveCamera() ? (
+                  <p>
+                    Open camera uses your browser for a live preview (HTTPS
+                    required). Take photo uses your system camera or gallery.
+                  </p>
+                ) : (
+                  <p>
+                    Take photo uses your system camera or gallery when available.
+                    On desktop you can pick an image file instead.
+                  </p>
+                )}
+                {hasClientEnv && isIOS() ? (
+                  <p className="text-slate-600 dark:text-zinc-400">
+                    On iPhone, select &apos;Take Photo&apos; from the menu.
+                  </p>
+                ) : null}
+                <p className="text-[10px] text-slate-400 dark:text-zinc-600">
+                  {photoRequirementsDescription}
+                </p>
+              </div>
+            </details>
+          ) : (
+            <div className="mt-3 flex w-full max-w-xs items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/90 px-3 py-2.5 text-left dark:border-zinc-800 dark:bg-zinc-900/50 md:max-w-none">
+              <Info
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-zinc-500"
+                strokeWidth={2}
+                aria-hidden
+              />
+              <div className="min-w-0 space-y-1.5 text-[11px] leading-snug text-slate-500 dark:text-zinc-500">
+                {!hasClientEnv ? (
+                  <p>
+                    Take photo uses your system camera or gallery when available.
+                    On desktop you can pick an image file instead.
+                  </p>
+                ) : canUseLiveCamera() ? (
+                  <p>
+                    Open camera uses your browser for a live preview (HTTPS
+                    required). Take photo uses your system camera or gallery.
+                  </p>
+                ) : (
+                  <p>
+                    Take photo uses your system camera or gallery when available.
+                    On desktop you can pick an image file instead.
+                  </p>
+                )}
+                {hasClientEnv && isIOS() ? (
+                  <p className="text-slate-600 dark:text-zinc-400">
+                    On iPhone, select &apos;Take Photo&apos; from the menu.
+                  </p>
+                ) : null}
+                <p className="text-[10px] text-slate-400 dark:text-zinc-600">
+                  {photoRequirementsDescription}
+                </p>
+              </div>
+            </div>
+          )}
         </>
       ) : null}
       {banner ? (

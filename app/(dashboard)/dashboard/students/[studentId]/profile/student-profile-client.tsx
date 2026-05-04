@@ -3,11 +3,23 @@
 import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronUp } from "lucide-react";
-import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
+import {
+  BookOpen,
+  CalendarCheck,
+  ChevronUp,
+  Shield,
+  Stethoscope,
+} from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { formatCurrency } from "@/lib/currency";
 import { formatPaymentRecordedAtInSchoolZone } from "@/lib/school-timezone";
-import { tanzaniaGradeBadgeClass } from "@/lib/tanzania-grades";
 import type {
   ProfileAttendanceSummary,
   ProfileFinanceNoteRow,
@@ -30,6 +42,8 @@ import type { StudentProfileViewerFlags } from "./student-profile-viewer";
 import { ProfilePaymentHistory } from "./profile-payment-history";
 import { StudentProfileFullReportCardButton } from "./student-profile-full-report-card-button";
 import type { ProfilePaymentListQuery } from "@/lib/student-profile-payments-list";
+import type { StudentProfileQuickSummaryCards } from "@/lib/student-profile-quick-summary";
+import { cn } from "@/lib/utils";
 
 type AcademicRow =
   Database["public"]["Tables"]["student_academic_records"]["Row"];
@@ -87,6 +101,234 @@ function incidentLabel(t: DisciplineRow["incident_type"]): string {
   return map[t] ?? t;
 }
 
+/** Display-only: keep server strings; format “N record(s)” as product copy. */
+function formatQuickSummaryDisciplineMain(serverValue: string): string {
+  const one = /^(\d+)\s+record$/.exec(serverValue);
+  if (one) return `${one[1]} Issue`;
+  const many = /^(\d+)\s+records$/.exec(serverValue);
+  if (many) return `${many[1]} Issues`;
+  return serverValue;
+}
+
+function QuickSummaryCard({
+  icon,
+  iconClassName,
+  label,
+  value,
+  helper,
+  valueClassName,
+}: {
+  icon: ReactNode;
+  iconClassName: string;
+  label: string;
+  value: string;
+  helper: string;
+  /** e.g. tabular-nums for percentages */
+  valueClassName?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "group flex flex-col gap-1.5 rounded-xl border border-slate-200/90 bg-white/80 p-4 text-left shadow-sm transition-all duration-200 dark:border-zinc-700/90 dark:bg-zinc-800/70",
+        "md:hover:-translate-y-px md:hover:shadow-md"
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <div
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg [&>svg]:h-4 [&>svg]:w-4",
+            iconClassName
+          )}
+          aria-hidden
+        >
+          {icon}
+        </div>
+        <span className="min-w-0 truncate text-xs font-medium text-slate-500 dark:text-zinc-400">
+          {label}
+        </span>
+      </div>
+      <p
+        className={cn(
+          "truncate text-lg font-semibold text-slate-900 dark:text-zinc-50",
+          valueClassName
+        )}
+      >
+        {value}
+      </p>
+      <p className="text-xs text-slate-500 dark:text-zinc-400">{helper}</p>
+    </div>
+  );
+}
+
+/** Outer shell for tab panels (Academic, Discipline, Health, Finance). */
+const PROFILE_TAB_SURFACE_CLASS =
+  "rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
+
+const PROFILE_TAB_PRIMARY_BUTTON_CLASS =
+  "inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:brightness-105 sm:min-h-0 sm:w-auto";
+
+const PROFILE_TAB_SECONDARY_BUTTON_CLASS =
+  "inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 sm:min-h-0 sm:w-auto";
+
+type ProfileStatusTone = "success" | "warning" | "critical" | "neutral";
+
+function ProfileStatusBadge({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: ProfileStatusTone;
+}) {
+  const toneClass: Record<ProfileStatusTone, string> = {
+    success:
+      "bg-emerald-500/10 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
+    warning:
+      "bg-amber-500/10 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200",
+    critical:
+      "bg-red-500/10 text-red-800 dark:bg-red-500/15 dark:text-red-300",
+    neutral:
+      "bg-slate-500/10 text-slate-700 dark:bg-slate-500/15 dark:text-zinc-300",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-1 text-xs font-medium capitalize",
+        toneClass[tone]
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function profileGradePillClass(letter: string): string {
+  const raw = letter.trim();
+  const base =
+    "inline-flex min-w-[2rem] justify-center rounded-full px-2 py-1 text-xs font-semibold ";
+  if (!raw || raw === "—") {
+    return (
+      base +
+      "bg-slate-500/10 text-slate-600 dark:bg-slate-500/15 dark:text-zinc-400"
+    );
+  }
+  const L = raw.charAt(0).toUpperCase();
+  switch (L) {
+    case "A":
+      return (
+        base +
+        "bg-emerald-500/10 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+      );
+    case "B":
+      return (
+        base +
+        "bg-indigo-500/10 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-300"
+      );
+    case "C":
+      return (
+        base +
+        "bg-amber-500/10 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200"
+      );
+    case "D":
+    case "E":
+    case "F":
+      return (
+        base +
+        "bg-red-500/10 text-red-800 dark:bg-red-500/15 dark:text-red-300"
+      );
+    default:
+      return (
+        base +
+        "bg-slate-500/10 text-slate-600 dark:bg-slate-500/15 dark:text-zinc-400"
+      );
+  }
+}
+
+function disciplineRecordStatusTone(
+  status: DisciplineRow["status"]
+): ProfileStatusTone {
+  if (status === "resolved") return "success";
+  if (status === "pending") return "warning";
+  return "neutral";
+}
+
+function healthSeverityTone(
+  severity: HealthRow["severity"]
+): ProfileStatusTone {
+  if (severity === "severe") return "critical";
+  if (severity === "moderate") return "warning";
+  if (severity === "mild") return "success";
+  return "neutral";
+}
+
+function reportCardStatusTone(status: string): ProfileStatusTone {
+  const s = status.toLowerCase();
+  if (s.includes("approved") || s.includes("published")) return "success";
+  if (s.includes("pending") || s.includes("draft")) return "warning";
+  if (s.includes("reject") || s.includes("revoke")) return "critical";
+  return "neutral";
+}
+
+function ProfileStaffRecordCard({
+  title,
+  meta,
+  statusBadge,
+  showEdit,
+  onEdit,
+  children,
+  attachments,
+}: {
+  title: string;
+  meta: string;
+  statusBadge?: { label: string; tone: ProfileStatusTone };
+  showEdit?: boolean;
+  onEdit?: () => void;
+  children: ReactNode;
+  attachments?: ReactNode;
+}) {
+  return (
+    <li
+      className={cn(
+        "space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md",
+        "dark:border-zinc-800 dark:bg-zinc-900"
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-2">
+          <p className="text-base font-semibold text-slate-900 dark:text-white">
+            {title}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">{meta}</p>
+            {statusBadge ? (
+              <ProfileStatusBadge
+                label={statusBadge.label}
+                tone={statusBadge.tone}
+              />
+            ) : null}
+          </div>
+        </div>
+        {showEdit && onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="shrink-0 rounded-lg border border-transparent px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-slate-200 hover:bg-slate-50 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/80"
+          >
+            Edit
+          </button>
+        ) : null}
+      </div>
+      <div className="space-y-2 text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+        {children}
+      </div>
+      {attachments ? (
+        <div className="border-t border-slate-100 pt-3 dark:border-zinc-800">
+          {attachments}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white";
 /** Same as `inputClass` but without `mt-1` (e.g. search in a flex header). */
@@ -98,6 +340,8 @@ interface StudentProfileClientProps {
   studentName: string;
   admissionNumber: string | null;
   className: string | null;
+  /** School display name when available (same row as student). */
+  schoolName: string | null;
   avatarUrl: string | null;
   viewer: StudentProfileViewerFlags;
   initialActiveTab: TabId;
@@ -117,6 +361,9 @@ interface StudentProfileClientProps {
   displayTimezone: string;
   /** "Name (Role)" for the Add note preview (server still sets created_by on save). */
   currentUserFinanceNoteRecorderLine: string;
+  quickSummaryCards: StudentProfileQuickSummaryCards;
+  /** When false, health quick summary shows em dash (same pattern as discipline RLS). */
+  quickSummaryHealthAvailable: boolean;
 }
 
 export function StudentProfileClient({
@@ -124,6 +371,7 @@ export function StudentProfileClient({
   studentName,
   admissionNumber,
   className,
+  schoolName,
   avatarUrl,
   viewer,
   initialActiveTab,
@@ -142,6 +390,8 @@ export function StudentProfileClient({
   profileFeeBalances,
   displayTimezone,
   currentUserFinanceNoteRecorderLine,
+  quickSummaryCards,
+  quickSummaryHealthAvailable,
 }: StudentProfileClientProps) {
   const router = useRouter();
   const canEditAcademicStaffNotes =
@@ -189,6 +439,45 @@ export function StudentProfileClient({
     () => profileFeeBalances.reduce((s, r) => s + Number(r.balance), 0),
     [profileFeeBalances]
   );
+
+  const disciplineQuickSummaryMain = useMemo(
+    () => formatQuickSummaryDisciplineMain(quickSummaryCards.disciplineValue),
+    [quickSummaryCards.disciplineValue]
+  );
+
+  const healthQuickSummaryDisplay = useMemo(() => {
+    if (!quickSummaryHealthAvailable) {
+      return {
+        value: "—",
+        helper: "Unavailable",
+        iconClassName:
+          "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400",
+      };
+    }
+    const n = healthRecords.length;
+    if (n === 0) {
+      return {
+        value: "No records",
+        helper: "No health records",
+        iconClassName:
+          "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300",
+      };
+    }
+    const latest = healthRecords[0]!;
+    const value = n === 1 ? "1 condition" : `${n} conditions`;
+    const helper = `Latest: ${latest.condition}`;
+    let iconClassName =
+      "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300";
+    const sev = latest.severity;
+    if (sev === "moderate") {
+      iconClassName =
+        "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200";
+    } else if (sev === "severe") {
+      iconClassName =
+        "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300";
+    }
+    return { value, helper, iconClassName };
+  }, [quickSummaryHealthAvailable, healthRecords]);
 
   const [academicModal, setAcademicModal] = useState<AcademicRow | "new" | null>(
     null
@@ -364,60 +653,167 @@ export function StudentProfileClient({
     };
   }
 
+  const admTrim = admissionNumber?.trim() ?? "";
+
   return (
     <div className="space-y-6">
-      <div className="flex w-full flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 md:p-6">
-        <StudentProfileAvatar
-          studentId={studentId}
-          studentName={studentName}
-          admissionNumber={admissionNumber}
-          classLabel={className}
-          avatarUrl={avatarUrl}
-          canChangePhoto={viewer.canChangeAvatar}
-        />
+      <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-white to-indigo-50/40 p-6 shadow-sm ring-1 ring-slate-900/[0.03] dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900 dark:to-indigo-950/25 dark:ring-white/[0.04]">
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:gap-8">
+          <div className="flex w-full flex-col items-center md:w-[200px] md:shrink-0 md:items-stretch md:border-r md:border-slate-200/70 md:pr-6 dark:md:border-zinc-700/70">
+            <StudentProfileAvatar
+              studentId={studentId}
+              studentName={studentName}
+              admissionNumber={admissionNumber}
+              classLabel={className}
+              avatarUrl={avatarUrl}
+              canChangePhoto={viewer.canChangeAvatar}
+              hideHeadline
+            />
+          </div>
+          <div className="min-w-0 flex-1 space-y-3 text-center md:pt-0.5 md:text-left">
+            <h2 className="text-pretty text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl dark:text-white">
+              {studentName}
+            </h2>
+            {schoolName?.trim() ? (
+              <p className="text-sm font-semibold text-slate-700 dark:text-zinc-300">
+                {schoolName.trim()}
+              </p>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-2 text-left shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/50">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-500">
+                  Class / Form
+                </p>
+                <p className="truncate text-xs font-semibold text-slate-900 dark:text-zinc-100">
+                  {className?.trim() || "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-2 text-left shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/50">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-500">
+                  Admission
+                </p>
+                <p className="truncate font-mono text-xs font-semibold text-slate-900 dark:text-zinc-100">
+                  {admTrim || "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-2 text-left shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/50">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-500">
+                  Balance due
+                </p>
+                <p className="truncate text-xs font-semibold text-slate-900 dark:text-zinc-100">
+                  {totalFeeBalance > 0 ? money(totalFeeBalance) : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-2 text-left shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/50">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-500">
+                  Status
+                </p>
+                <p className="truncate text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                  Active student
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200/70 pt-3 dark:border-zinc-700/70">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                Quick summary
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 lg:grid-cols-4">
+                <QuickSummaryCard
+                  icon={<CalendarCheck strokeWidth={2} />}
+                  iconClassName="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                  label="Attendance rate"
+                  value={quickSummaryCards.attendanceValue}
+                  helper={quickSummaryCards.attendanceHelper}
+                  valueClassName="tabular-nums"
+                />
+                <QuickSummaryCard
+                  icon={<BookOpen strokeWidth={2} />}
+                  iconClassName="bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300"
+                  label="Last exam average"
+                  value={quickSummaryCards.lastExamValue}
+                  helper={quickSummaryCards.lastExamHelper}
+                  valueClassName="tabular-nums"
+                />
+                <QuickSummaryCard
+                  icon={<Shield strokeWidth={2} />}
+                  iconClassName={cn(
+                    quickSummaryCards.disciplineTone === "records"
+                      ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                      : quickSummaryCards.disciplineTone === "ok"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
+                        : "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400"
+                  )}
+                  label="Discipline status"
+                  value={disciplineQuickSummaryMain}
+                  helper={quickSummaryCards.disciplineHelper}
+                />
+                <QuickSummaryCard
+                  icon={<Stethoscope strokeWidth={2} />}
+                  iconClassName={healthQuickSummaryDisplay.iconClassName}
+                  label="Health status"
+                  value={healthQuickSummaryDisplay.value}
+                  helper={healthQuickSummaryDisplay.helper}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2 dark:border-zinc-800">
-        {tabLabels
-          .filter((t) => visible.includes(t.id))
-          .map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                tab === t.id
-                  ? "bg-school-primary text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+      <div className="relative rounded-2xl border border-slate-200/90 bg-slate-50/70 p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/50">
+        <div
+          className="flex min-w-0 flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-0.5 [-webkit-overflow-scrolling:touch] md:flex-wrap md:overflow-visible"
+          role="tablist"
+          aria-label="Student record sections"
+        >
+          {tabLabels
+            .filter((t) => visible.includes(t.id))
+            .map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-full px-4 py-2.5 text-sm font-semibold transition-all duration-200 md:min-h-0",
+                  tab === t.id
+                    ? "bg-gradient-to-r from-school-primary to-indigo-600 text-white shadow-md dark:to-indigo-500"
+                    : "border border-slate-200/90 bg-white text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-white"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+        </div>
       </div>
 
       {tab === "academic" && visible.includes("academic") && (
-        <section className="space-y-8" aria-labelledby="academic-heading">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2
-              id="academic-heading"
-              className="text-base font-semibold text-slate-900 dark:text-white"
-            >
-              Academic
-            </h2>
-            {canEditAcademicStaffNotes ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError(null);
-                  setAcademicModal("new");
-                }}
-                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
+        <section aria-labelledby="academic-heading">
+          <div className={cn(PROFILE_TAB_SURFACE_CLASS, "space-y-8")}>
+            <div className="flex flex-col gap-3 border-b border-slate-100 pb-6 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
+              <h2
+                id="academic-heading"
+                className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white"
               >
-                Add record
-              </button>
-            ) : null}
-          </div>
+                Academic
+              </h2>
+              {canEditAcademicStaffNotes ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormError(null);
+                    setAcademicModal("new");
+                  }}
+                  className={PROFILE_TAB_PRIMARY_BUTTON_CLASS}
+                >
+                  {viewer.canManageAcademicNotes && !viewer.canManageStaffRecords
+                    ? "Add academic note"
+                    : "Add record"}
+                </button>
+              ) : null}
+            </div>
 
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
@@ -480,7 +876,10 @@ export function StudentProfileClient({
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                           {paginatedGradebookScores.map((row) => (
-                            <tr key={row.id}>
+                            <tr
+                              key={row.id}
+                              className="transition-colors odd:bg-white even:bg-slate-50 hover:bg-indigo-50/40 dark:odd:bg-zinc-900/25 dark:even:bg-zinc-800/35 dark:hover:bg-indigo-950/25"
+                            >
                               <td className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-zinc-100">
                                 {row.subject}
                               </td>
@@ -490,10 +889,10 @@ export function StudentProfileClient({
                               <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-800 dark:text-zinc-200">
                                 {row.scoreDisplay}
                               </td>
-                              <td
-                                className={`whitespace-nowrap px-3 py-2 ${tanzaniaGradeBadgeClass(row.grade)}`}
-                              >
-                                {row.grade}
+                              <td className="whitespace-nowrap px-3 py-2">
+                                <span className={profileGradePillClass(row.grade)}>
+                                  {row.grade}
+                                </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-zinc-400">
                                 {row.termLabel}
@@ -659,9 +1058,10 @@ export function StudentProfileClient({
                               <p className="text-sm font-semibold text-slate-900 dark:text-white">
                                 {rc.academicYear} · {rc.term}
                               </p>
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium capitalize text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
-                                {rc.status.replace(/_/g, " ")}
-                              </span>
+                              <ProfileStatusBadge
+                                label={rc.status.replace(/_/g, " ")}
+                                tone={reportCardStatusTone(rc.status)}
+                              />
                             </div>
                             {rc.submittedAt ? (
                               <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
@@ -708,7 +1108,10 @@ export function StudentProfileClient({
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                       {linesForCard.map(({ line, idx }) => (
-                                        <tr key={`${rc.id}-${line.subject}-${idx}`}>
+                                        <tr
+                                          key={`${rc.id}-${line.subject}-${idx}`}
+                                          className="transition-colors odd:bg-white even:bg-slate-50 hover:bg-indigo-50/40 dark:odd:bg-zinc-900/25 dark:even:bg-zinc-800/35 dark:hover:bg-indigo-950/25"
+                                        >
                                           <td className="px-2 py-2 font-medium text-slate-900 dark:text-zinc-100">
                                             {line.subject}
                                           </td>
@@ -721,12 +1124,14 @@ export function StudentProfileClient({
                                           <td className="whitespace-nowrap px-2 py-2 font-mono text-slate-800 dark:text-zinc-200">
                                             {line.averagePct}
                                           </td>
-                                          <td
-                                            className={`whitespace-nowrap px-2 py-2 ${tanzaniaGradeBadgeClass(
-                                              line.grade
-                                            )}`}
-                                          >
-                                            {line.grade}
+                                          <td className="whitespace-nowrap px-2 py-2">
+                                            <span
+                                              className={profileGradePillClass(
+                                                line.grade
+                                              )}
+                                            >
+                                              {line.grade}
+                                            </span>
                                           </td>
                                           <td className="max-w-[20rem] px-2 py-2 text-slate-700 dark:text-zinc-300">
                                             {line.comment}
@@ -790,29 +1195,14 @@ export function StudentProfileClient({
             )}
           </div>
 
-          <div className="space-y-3 border-t border-slate-200 pt-6 dark:border-zinc-800">
+          <div className="space-y-3 border-t border-slate-200 pt-8 dark:border-zinc-800">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
               Staff academic notes
             </h3>
             <p className="text-xs text-slate-500 dark:text-zinc-500">
-              {viewer.canManageAcademicNotes && !viewer.canManageStaffRecords
-                ? 'Use "Add academic note" for extra context (special needs, narrative notes) alongside the data above.'
-                : 'Use "Add record" for extra context (special needs, narrative notes) alongside the data above.'}
+              Use the button in the section header for narrative notes, special
+              needs, and extra context alongside the data above.
             </p>
-            {viewer.canManageAcademicNotes && !viewer.canManageStaffRecords ? (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormError(null);
-                    setAcademicModal("new");
-                  }}
-                  className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
-                >
-                  Add academic note
-                </button>
-              </div>
-            ) : null}
             {academicRecords.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-zinc-400">
                 No staff academic notes yet.
@@ -820,387 +1210,403 @@ export function StudentProfileClient({
             ) : (
               <ul className="space-y-3">
                 {academicRecords.map((r) => (
-                  <li
+                  <ProfileStaffRecordCard
                     key={r.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                    title={`${r.academic_year} · ${r.term}`}
+                    meta={`Updated ${formatTs(r.updated_at)}`}
+                    showEdit={canEditAcademicStaffNotes}
+                    onEdit={() => {
+                      setFormError(null);
+                      setAcademicModal(r);
+                    }}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {r.academic_year} · {r.term}
+                    <>
+                      {r.notes ? (
+                        <p>
+                          <span className="font-medium text-slate-800 dark:text-zinc-200">
+                            Notes:{" "}
+                          </span>
+                          {r.notes}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                          Updated {formatTs(r.updated_at)}
-                        </p>
-                      </div>
-                      {canEditAcademicStaffNotes ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormError(null);
-                            setAcademicModal(r);
-                          }}
-                          className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-                        >
-                          Edit
-                        </button>
                       ) : null}
-                    </div>
-                    {r.notes ? (
-                      <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                        <span className="font-medium text-slate-800 dark:text-zinc-200">
-                          Notes:{" "}
-                        </span>
-                        {r.notes}
-                      </p>
-                    ) : null}
-                    {r.special_needs ? (
-                      <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                        <span className="font-medium text-slate-800 dark:text-zinc-200">
-                          Special needs:{" "}
-                        </span>
-                        {r.special_needs}
-                      </p>
-                    ) : null}
-                  </li>
+                      {r.special_needs ? (
+                        <p>
+                          <span className="font-medium text-slate-800 dark:text-zinc-200">
+                            Special needs:{" "}
+                          </span>
+                          {r.special_needs}
+                        </p>
+                      ) : null}
+                      {!r.notes && !r.special_needs ? (
+                        <p className="text-slate-500 dark:text-zinc-500">
+                          No note body on file.
+                        </p>
+                      ) : null}
+                    </>
+                  </ProfileStaffRecordCard>
                 ))}
               </ul>
             )}
+          </div>
           </div>
         </section>
       )}
 
       {tab === "discipline" && visible.includes("discipline") && (
-        <section className="space-y-4" aria-labelledby="discipline-heading">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2
-              id="discipline-heading"
-              className="text-base font-semibold text-slate-900 dark:text-white"
-            >
-              Discipline
-            </h2>
-            {viewer.canManageStaffRecords ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError(null);
-                  setDisciplineModal("new");
-                }}
-                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
+        <section aria-labelledby="discipline-heading">
+          <div className={cn(PROFILE_TAB_SURFACE_CLASS, "space-y-6")}>
+            <div className="flex flex-col gap-3 border-b border-slate-100 pb-6 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
+              <h2
+                id="discipline-heading"
+                className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white"
               >
-                Add record
-              </button>
-            ) : null}
-          </div>
-          {disciplineRecords.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-zinc-400">
-              No discipline incidents recorded.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {disciplineRecords.map((r) => (
-                <li
-                  key={r.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                        {formatDateOnly(r.incident_date)} ·{" "}
-                        {incidentLabel(r.incident_type)}
-                      </p>
-                      <p className="mt-1 text-xs capitalize text-slate-500 dark:text-zinc-400">
-                        Status: {r.status} · Logged {formatTs(r.created_at)}
-                      </p>
-                    </div>
-                    {viewer.canManageStaffRecords ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormError(null);
-                          setDisciplineModal(r);
-                        }}
-                        className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-                      >
-                        Edit
-                      </button>
-                    ) : null}
-                  </div>
-                  <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                    {r.description}
-                  </p>
-                  {r.action_taken ? (
-                    <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-                      <span className="font-medium">Action: </span>
-                      {r.action_taken}
-                    </p>
-                  ) : null}
-                  {r.resolved_date ? (
-                    <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                      Resolved {formatDateOnly(r.resolved_date)}
-                    </p>
-                  ) : null}
-                  <StudentRecordAttachmentsPanel
-                    studentId={studentId}
-                    recordType="discipline"
-                    recordId={r.id}
-                    attachments={
-                      attachmentsByRecord.get(`discipline:${r.id}`) ?? []
-                    }
-                    canUpload={viewer.canUploadAttachments}
-                    canDelete={viewer.canDeleteAttachments}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {tab === "health" && visible.includes("health") && (
-        <section className="space-y-4" aria-labelledby="health-heading">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2
-              id="health-heading"
-              className="text-base font-semibold text-slate-900 dark:text-white"
-            >
-              Health
-            </h2>
-            {viewer.canManageStaffRecords ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError(null);
-                  setHealthModal("new");
-                }}
-                className="rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105"
-              >
-                Add record
-              </button>
-            ) : null}
-          </div>
-          {healthRecords.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-zinc-400">
-              No health information on file.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {healthRecords.map((r) => (
-                <li
-                  key={r.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                        {r.condition}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                        {r.severity ? `${r.severity} · ` : ""}
-                        Updated {formatTs(r.updated_at)}
-                      </p>
-                    </div>
-                    {viewer.canManageStaffRecords ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormError(null);
-                          setHealthModal(r);
-                        }}
-                        className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-                      >
-                        Edit
-                      </button>
-                    ) : null}
-                  </div>
-                  {r.medication ? (
-                    <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                      <span className="font-medium">Medication: </span>
-                      {r.medication}
-                    </p>
-                  ) : null}
-                  {r.special_care_notes ? (
-                    <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                      <span className="font-medium">Care notes: </span>
-                      {r.special_care_notes}
-                    </p>
-                  ) : null}
-                  {r.emergency_contact_phone ? (
-                    <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                      <span className="font-medium">Emergency phone: </span>
-                      {r.emergency_contact_phone}
-                    </p>
-                  ) : null}
-                  <StudentRecordAttachmentsPanel
-                    studentId={studentId}
-                    recordType="health"
-                    recordId={r.id}
-                    attachments={attachmentsByRecord.get(`health:${r.id}`) ?? []}
-                    canUpload={viewer.canUploadAttachments}
-                    canDelete={viewer.canDeleteAttachments}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {tab === "finance" && visible.includes("finance") && (
-        <section className="space-y-8" aria-labelledby="finance-heading">
-          <h2
-            id="finance-heading"
-            className="text-base font-semibold text-slate-900 dark:text-white"
-          >
-            Finance
-          </h2>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
-              Current fee balance
-            </h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">
-              Totals from assigned fees minus payments recorded for this student.
-            </p>
-            <p className="mt-3 text-2xl font-semibold text-slate-900 dark:text-white">
-              {money(totalFeeBalance)}{" "}
-              <span className="text-sm font-normal text-slate-500 dark:text-zinc-400">
-                total outstanding
-              </span>
-            </p>
-            {profileFeeBalances.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-                No fee balance rows for this student (no active fee structures or
-                not yet billed).
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm dark:border-zinc-800">
-                {profileFeeBalances.map((row) => (
-                  <li
-                    key={`${row.student_id}-${row.fee_structure_id}-${row.term}`}
-                    className="flex flex-wrap justify-between gap-2 text-slate-700 dark:text-zinc-300"
-                  >
-                    <span>
-                      {row.fee_name}{" "}
-                      <span className="text-slate-500 dark:text-zinc-500">
-                        · {row.term}
-                      </span>
-                    </span>
-                    <span className="font-mono font-medium">
-                      {money(Number(row.balance))}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {viewer.canRecordPayment ? (
-            <div>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormError(null);
-                  setRecordPaymentOpen(true);
-                }}
-                className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105"
-              >
-                Record payment
-              </button>
-            </div>
-          ) : null}
-
-          <ProfilePaymentHistory
-            payments={profilePayments}
-            total={profilePaymentTotal}
-            page={profilePaymentListQuery.page}
-            per={profilePaymentListQuery.per}
-            q={profilePaymentListQuery.q}
-            from={profilePaymentListQuery.from}
-            to={profilePaymentListQuery.to}
-            displayTimezone={displayTimezone}
-            currencyCode={currencyCode}
-          />
-
-          <div className="space-y-3 border-t border-slate-200 pt-6 dark:border-zinc-800">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
-              Staff finance notes
-            </h3>
-            {viewer.canRecordPayment ? (
-              <div>
+                Discipline
+              </h2>
+              {viewer.canManageStaffRecords ? (
                 <button
                   type="button"
                   onClick={() => {
                     setFormError(null);
-                    setFinanceNoteModal("new");
+                    setDisciplineModal("new");
                   }}
-                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  className={PROFILE_TAB_PRIMARY_BUTTON_CLASS}
                 >
-                  Add note
+                  Add record
                 </button>
-              </div>
-            ) : null}
-            {profileFinanceNotes.length === 0 ? (
+              ) : null}
+            </div>
+            {disciplineRecords.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-zinc-400">
-                No notes yet
+                No discipline incidents recorded.
               </p>
             ) : (
-              <>
-                <ul className="space-y-3">
-                  {inlineFinanceNotes.map((n) => (
-                    <li
-                      key={n.id}
-                      className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-                    >
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                        <p className="min-w-0 flex-1 text-sm text-slate-800 dark:text-zinc-200">
-                          <span className="font-medium text-slate-700 dark:text-zinc-300">
-                            Recorded by {n.recorded_by_line}
+              <ul className="space-y-3">
+                {disciplineRecords.map((r) => (
+                  <ProfileStaffRecordCard
+                    key={r.id}
+                    title={incidentLabel(r.incident_type)}
+                    meta={`Incident ${formatDateOnly(r.incident_date)} · Logged ${formatTs(r.created_at)}`}
+                    statusBadge={{
+                      label: r.status,
+                      tone: disciplineRecordStatusTone(r.status),
+                    }}
+                    showEdit={viewer.canManageStaffRecords}
+                    onEdit={() => {
+                      setFormError(null);
+                      setDisciplineModal(r);
+                    }}
+                    attachments={
+                      <StudentRecordAttachmentsPanel
+                        studentId={studentId}
+                        recordType="discipline"
+                        recordId={r.id}
+                        attachments={
+                          attachmentsByRecord.get(`discipline:${r.id}`) ?? []
+                        }
+                        canUpload={viewer.canUploadAttachments}
+                        canDelete={viewer.canDeleteAttachments}
+                      />
+                    }
+                  >
+                    <>
+                      <p>{r.description}</p>
+                      {r.action_taken ? (
+                        <p>
+                          <span className="font-medium text-slate-800 dark:text-zinc-200">
+                            Action:{" "}
                           </span>
-                          <span className="text-slate-400"> · </span>
-                          <span className="tabular-nums text-slate-600 dark:text-zinc-400">
-                            {formatPaymentRecordedAtInSchoolZone(
-                              n.updated_at,
-                              displayTimezone
-                            )}
-                          </span>
+                          {r.action_taken}
                         </p>
-                        {viewer.canRecordPayment ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFormError(null);
-                              setFinanceNoteModal(n);
-                            }}
-                            className="shrink-0 text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-                          >
-                            Edit
-                          </button>
-                        ) : null}
-                      </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
-                        {n.body}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-                {profileFinanceNotes.length > FINANCE_NOTES_INLINE_LIMIT ? (
-                  <p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setViewAllNotesSearch("");
-                        setViewAllNotesPage(0);
-                        setFinanceNotesViewAllOpen(true);
-                      }}
-                      className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-                    >
-                      View all notes
-                    </button>
-                  </p>
-                ) : null}
-              </>
+                      ) : null}
+                      {r.resolved_date ? (
+                        <p className="text-xs text-slate-500 dark:text-zinc-400">
+                          Resolved {formatDateOnly(r.resolved_date)}
+                        </p>
+                      ) : null}
+                    </>
+                  </ProfileStaffRecordCard>
+                ))}
+              </ul>
             )}
+          </div>
+        </section>
+      )}
+
+      {tab === "health" && visible.includes("health") && (
+        <section aria-labelledby="health-heading">
+          <div className={cn(PROFILE_TAB_SURFACE_CLASS, "space-y-6")}>
+            <div className="flex flex-col gap-3 border-b border-slate-100 pb-6 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
+              <h2
+                id="health-heading"
+                className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white"
+              >
+                Health
+              </h2>
+              {viewer.canManageStaffRecords ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormError(null);
+                    setHealthModal("new");
+                  }}
+                  className={PROFILE_TAB_PRIMARY_BUTTON_CLASS}
+                >
+                  Add record
+                </button>
+              ) : null}
+            </div>
+            {healthRecords.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-zinc-400">
+                No health information on file.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {healthRecords.map((r) => (
+                  <ProfileStaffRecordCard
+                    key={r.id}
+                    title={r.condition}
+                    meta={`Updated ${formatTs(r.updated_at)}`}
+                    statusBadge={
+                      r.severity
+                        ? {
+                            label: r.severity,
+                            tone: healthSeverityTone(r.severity),
+                          }
+                        : undefined
+                    }
+                    showEdit={viewer.canManageStaffRecords}
+                    onEdit={() => {
+                      setFormError(null);
+                      setHealthModal(r);
+                    }}
+                    attachments={
+                      <StudentRecordAttachmentsPanel
+                        studentId={studentId}
+                        recordType="health"
+                        recordId={r.id}
+                        attachments={
+                          attachmentsByRecord.get(`health:${r.id}`) ?? []
+                        }
+                        canUpload={viewer.canUploadAttachments}
+                        canDelete={viewer.canDeleteAttachments}
+                      />
+                    }
+                  >
+                    <>
+                      {r.medication ? (
+                        <p>
+                          <span className="font-medium text-slate-800 dark:text-zinc-200">
+                            Medication:{" "}
+                          </span>
+                          {r.medication}
+                        </p>
+                      ) : null}
+                      {r.special_care_notes ? (
+                        <p>
+                          <span className="font-medium text-slate-800 dark:text-zinc-200">
+                            Care notes:{" "}
+                          </span>
+                          {r.special_care_notes}
+                        </p>
+                      ) : null}
+                      {r.emergency_contact_phone ? (
+                        <p>
+                          <span className="font-medium text-slate-800 dark:text-zinc-200">
+                            Emergency phone:{" "}
+                          </span>
+                          {r.emergency_contact_phone}
+                        </p>
+                      ) : null}
+                      {!r.medication &&
+                      !r.special_care_notes &&
+                      !r.emergency_contact_phone ? (
+                        <p className="text-slate-500 dark:text-zinc-500">
+                          No additional details on file.
+                        </p>
+                      ) : null}
+                    </>
+                  </ProfileStaffRecordCard>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
+
+      {tab === "finance" && visible.includes("finance") && (
+        <section aria-labelledby="finance-heading">
+          <div className={cn(PROFILE_TAB_SURFACE_CLASS, "space-y-8")}>
+            <div className="flex flex-col gap-3 border-b border-slate-100 pb-6 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
+              <h2
+                id="finance-heading"
+                className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white"
+              >
+                Finance
+              </h2>
+              {viewer.canRecordPayment ? (
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormError(null);
+                      setRecordPaymentOpen(true);
+                    }}
+                    className={PROFILE_TAB_PRIMARY_BUTTON_CLASS}
+                  >
+                    Record payment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormError(null);
+                      setFinanceNoteModal("new");
+                    }}
+                    className={PROFILE_TAB_SECONDARY_BUTTON_CLASS}
+                  >
+                    Add note
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-slate-200/90 bg-gradient-to-br from-slate-50/90 via-white to-white p-5 shadow-sm dark:border-zinc-700 dark:from-zinc-900/80 dark:via-zinc-900 dark:to-zinc-900">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                    Current balance
+                  </p>
+                  <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-white">
+                    {money(totalFeeBalance)}
+                  </p>
+                  <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-500 dark:text-zinc-500">
+                    Totals from assigned fees minus payments recorded for this
+                    student.
+                  </p>
+                </div>
+                <ProfileStatusBadge
+                  label={totalFeeBalance > 0 ? "Outstanding" : "Cleared"}
+                  tone={totalFeeBalance > 0 ? "critical" : "success"}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
+                Fee breakdown
+              </h3>
+              {profileFeeBalances.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-zinc-400">
+                  No fee balance rows for this student (no active fee structures
+                  or not yet billed).
+                </p>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <ul className="divide-y divide-slate-100 dark:divide-zinc-800">
+                    {profileFeeBalances.map((row) => (
+                      <li
+                        key={`${row.student_id}-${row.fee_structure_id}-${row.term}`}
+                        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm text-slate-800 dark:text-zinc-200"
+                      >
+                        <span className="min-w-0 font-medium text-slate-800 dark:text-zinc-100">
+                          {row.fee_name}
+                          <span className="font-normal text-slate-500 dark:text-zinc-500">
+                            {" "}
+                            · {row.term}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-slate-900 dark:text-zinc-50">
+                          {money(Number(row.balance))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <ProfilePaymentHistory
+              payments={profilePayments}
+              total={profilePaymentTotal}
+              page={profilePaymentListQuery.page}
+              per={profilePaymentListQuery.per}
+              q={profilePaymentListQuery.q}
+              from={profilePaymentListQuery.from}
+              to={profilePaymentListQuery.to}
+              displayTimezone={displayTimezone}
+              currencyCode={currencyCode}
+            />
+
+            <div className="space-y-4 border-t border-slate-100 pt-8 dark:border-zinc-800">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
+                Staff finance notes
+              </h3>
+              {profileFinanceNotes.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-zinc-400">
+                  No notes yet
+                </p>
+              ) : (
+                <>
+                  <ul className="space-y-3">
+                    {inlineFinanceNotes.map((n) => (
+                      <li
+                        key={n.id}
+                        className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 space-y-1">
+                            <p className="text-base font-semibold text-slate-900 dark:text-white">
+                              Finance note
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-zinc-400">
+                              <span className="font-medium text-slate-600 dark:text-zinc-300">
+                                {n.recorded_by_line}
+                              </span>
+                              <span className="text-slate-400"> · </span>
+                              <span className="tabular-nums">
+                                {formatPaymentRecordedAtInSchoolZone(
+                                  n.updated_at,
+                                  displayTimezone
+                                )}
+                              </span>
+                            </p>
+                          </div>
+                          {viewer.canRecordPayment ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormError(null);
+                                setFinanceNoteModal(n);
+                              }}
+                              className="shrink-0 rounded-lg border border-transparent px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-slate-200 hover:bg-slate-50 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/80"
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                        </div>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+                          {n.body}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                  {profileFinanceNotes.length > FINANCE_NOTES_INLINE_LIMIT ? (
+                    <p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewAllNotesSearch("");
+                          setViewAllNotesPage(0);
+                          setFinanceNotesViewAllOpen(true);
+                        }}
+                        className="text-sm font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
+                      >
+                        View all notes
+                      </button>
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
           </div>
         </section>
       )}

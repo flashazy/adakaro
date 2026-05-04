@@ -21,6 +21,7 @@ import {
 } from "@/lib/student-profile-payments-list";
 import { normalizeSchoolLevel } from "@/lib/school-level";
 import { formatPaymentRecorderLine } from "@/lib/payment-recorder-label";
+import { buildStudentProfileQuickSummaryCards } from "@/lib/student-profile-quick-summary";
 import { StudentProfileClient } from "./student-profile-client";
 import type {
   StudentProfileTabId,
@@ -278,7 +279,7 @@ export default async function StudentProfilePage({
     loadProfileFinanceNotes(financeClient, studentId),
     supabase
       .from("schools")
-      .select("currency, timezone")
+      .select("currency, timezone, name")
       .eq("id", schoolId)
       .maybeSingle(),
     useFullGradebook
@@ -338,9 +339,14 @@ export default async function StudentProfilePage({
   const schoolRowTyped = schoolRow as {
     currency: string | null;
     timezone: string | null;
+    name: string | null;
   } | null;
   const currencyCode = normalizeSchoolCurrency(schoolRowTyped?.currency);
   const displayTimezone = resolveSchoolDisplayTimezone(schoolRowTyped?.timezone);
+  const schoolDisplayName =
+    schoolRowTyped?.name?.trim() && schoolRowTyped.name.trim().length > 0
+      ? schoolRowTyped.name.trim()
+      : null;
 
   const paymentListQuery = parseProfilePaymentListQuery(urlSearch);
   const tzForPmt = displayTimezone;
@@ -402,6 +408,14 @@ export default async function StudentProfilePage({
     ? `${typedStudent.full_name} (ADM: ${headerAdmission})`
     : typedStudent.full_name;
 
+  const quickSummaryCards = buildStudentProfileQuickSummaryCards({
+    attendance: profileAttendanceSummary,
+    reportCards: profileReportCards,
+    gradebookScores: profileGradebookScores,
+    disciplineAvailable: canReadDiscipline && !disciplineErr,
+    disciplineRowsOrdered: (disciplineRows ?? []) as DisciplineRow[],
+  });
+
   const backToStudentsHref =
     myProfileRole === "teacher" && !adminOk
       ? "/teacher-dashboard/students"
@@ -445,6 +459,7 @@ export default async function StudentProfilePage({
           studentName={typedStudent.full_name}
           admissionNumber={typedStudent.admission_number}
           className={typedStudent.class?.name ?? null}
+          schoolName={schoolDisplayName}
           avatarUrl={typedStudent.avatar_url}
           viewer={viewer}
           initialActiveTab={initialProfileTab}
@@ -463,6 +478,8 @@ export default async function StudentProfilePage({
           profileFeeBalances={profileFeeBalances}
           displayTimezone={displayTimezone}
           currentUserFinanceNoteRecorderLine={currentUserFinanceNoteRecorderLine}
+          quickSummaryCards={quickSummaryCards}
+          quickSummaryHealthAvailable={canReadHealth && !healthErr}
         />
       </main>
     </>
