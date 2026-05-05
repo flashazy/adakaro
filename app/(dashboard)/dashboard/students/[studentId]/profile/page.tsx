@@ -22,6 +22,7 @@ import {
 import { normalizeSchoolLevel } from "@/lib/school-level";
 import { formatPaymentRecorderLine } from "@/lib/payment-recorder-label";
 import { buildStudentProfileQuickSummaryCards } from "@/lib/student-profile-quick-summary";
+import { formatStudentDobWithAge } from "@/lib/student-dob-display";
 import { StudentProfileClient } from "./student-profile-client";
 import type {
   StudentProfileTabId,
@@ -80,7 +81,7 @@ export default async function StudentProfilePage({
   const { data: student, error: studentError } = await supabase
     .from("students")
     .select(
-      "id, full_name, admission_number, school_id, avatar_url, class_id, class:classes(name)"
+      "id, full_name, admission_number, school_id, avatar_url, class_id, date_of_birth, allergies, disability, insurance_provider, insurance_policy, class:classes(name)"
     )
     .eq("id", studentId)
     .eq("school_id", schoolId)
@@ -97,6 +98,11 @@ export default async function StudentProfilePage({
     school_id: string;
     avatar_url: string | null;
     class_id: string;
+    date_of_birth: string | null;
+    allergies: string | null;
+    disability: string | null;
+    insurance_provider: string | null;
+    insurance_policy: string | null;
     class: { name: string } | null;
   };
 
@@ -404,9 +410,14 @@ export default async function StudentProfilePage({
     .join(" ");
 
   const headerAdmission = typedStudent.admission_number?.trim() ?? "";
-  const headerSubtitleName = headerAdmission
-    ? `${typedStudent.full_name} (ADM: ${headerAdmission})`
-    : typedStudent.full_name;
+  const headerDobAge = formatStudentDobWithAge(typedStudent.date_of_birth);
+  const headerSubtitleName = (() => {
+    let s = headerAdmission
+      ? `${typedStudent.full_name} (ADM: ${headerAdmission})`
+      : typedStudent.full_name;
+    if (headerDobAge) s += ` · ${headerDobAge}`;
+    return s;
+  })();
 
   const quickSummaryCards = buildStudentProfileQuickSummaryCards({
     attendance: profileAttendanceSummary,
@@ -458,6 +469,11 @@ export default async function StudentProfilePage({
           studentId={typedStudent.id}
           studentName={typedStudent.full_name}
           admissionNumber={typedStudent.admission_number}
+          dateOfBirth={typedStudent.date_of_birth}
+          allergies={typedStudent.allergies}
+          disability={typedStudent.disability}
+          insuranceProvider={typedStudent.insurance_provider}
+          insurancePolicy={typedStudent.insurance_policy}
           className={typedStudent.class?.name ?? null}
           schoolName={schoolDisplayName}
           avatarUrl={typedStudent.avatar_url}

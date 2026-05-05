@@ -1081,6 +1081,10 @@ export interface Database {
           parent_email: string | null;
           parent_phone: string | null;
           date_of_birth: string | null;
+          allergies: string | null;
+          disability: string | null;
+          insurance_provider: string | null;
+          insurance_policy: string | null;
           gender: "male" | "female" | null;
           enrollment_date: string;
           status: StudentStatus;
@@ -1098,6 +1102,10 @@ export interface Database {
           parent_email?: string | null;
           parent_phone?: string | null;
           date_of_birth?: string | null;
+          allergies?: string | null;
+          disability?: string | null;
+          insurance_provider?: string | null;
+          insurance_policy?: string | null;
           gender?: "male" | "female" | null;
           enrollment_date?: string;
           status?: StudentStatus;
@@ -1113,6 +1121,10 @@ export interface Database {
           parent_email?: string | null;
           parent_phone?: string | null;
           date_of_birth?: string | null;
+          allergies?: string | null;
+          disability?: string | null;
+          insurance_provider?: string | null;
+          insurance_policy?: string | null;
           gender?: "male" | "female" | null;
           enrollment_date?: string;
           status?: StudentStatus;

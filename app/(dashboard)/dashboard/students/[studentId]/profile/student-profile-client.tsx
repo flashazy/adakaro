@@ -4,9 +4,12 @@ import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Accessibility,
+  AlertTriangle,
   BookOpen,
   CalendarCheck,
   ChevronUp,
+  Hospital,
   Shield,
   Stethoscope,
 } from "lucide-react";
@@ -43,6 +46,7 @@ import { ProfilePaymentHistory } from "./profile-payment-history";
 import { StudentProfileFullReportCardButton } from "./student-profile-full-report-card-button";
 import type { ProfilePaymentListQuery } from "@/lib/student-profile-payments-list";
 import type { StudentProfileQuickSummaryCards } from "@/lib/student-profile-quick-summary";
+import { formatStudentDobWithAge } from "@/lib/student-dob-display";
 import { cn } from "@/lib/utils";
 
 type AcademicRow =
@@ -339,6 +343,11 @@ interface StudentProfileClientProps {
   studentId: string;
   studentName: string;
   admissionNumber: string | null;
+  dateOfBirth: string | null;
+  allergies: string | null;
+  disability: string | null;
+  insuranceProvider: string | null;
+  insurancePolicy: string | null;
   className: string | null;
   /** School display name when available (same row as student). */
   schoolName: string | null;
@@ -370,6 +379,11 @@ export function StudentProfileClient({
   studentId,
   studentName,
   admissionNumber,
+  dateOfBirth,
+  allergies,
+  disability,
+  insuranceProvider,
+  insurancePolicy,
   className,
   schoolName,
   avatarUrl,
@@ -654,6 +668,12 @@ export function StudentProfileClient({
   }
 
   const admTrim = admissionNumber?.trim() ?? "";
+  const profileDobAgeLine = formatStudentDobWithAge(dateOfBirth);
+  const hasStaticHealthProfile =
+    Boolean(allergies?.trim()) ||
+    Boolean(disability?.trim()) ||
+    Boolean(insuranceProvider?.trim()) ||
+    Boolean(insurancePolicy?.trim());
 
   return (
     <div className="space-y-6">
@@ -695,6 +715,11 @@ export function StudentProfileClient({
                 <p className="truncate font-mono text-xs font-semibold text-slate-900 dark:text-zinc-100">
                   {admTrim || "—"}
                 </p>
+                {profileDobAgeLine ? (
+                  <p className="mt-1 text-[10px] font-medium leading-snug text-slate-600 dark:text-zinc-400">
+                    {profileDobAgeLine}
+                  </p>
+                ) : null}
               </div>
               <div className="rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-2 text-left shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/50">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-500">
@@ -1355,9 +1380,94 @@ export function StudentProfileClient({
                 </button>
               ) : null}
             </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
+                Health profile
+              </h3>
+              {!hasStaticHealthProfile ? (
+                <p className="text-sm text-slate-500 dark:text-zinc-400">
+                  No health records on file
+                </p>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
+                        aria-hidden
+                      >
+                        <AlertTriangle className="h-4 w-4" strokeWidth={2} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          Allergies
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+                          {allergies?.trim() || "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300"
+                        aria-hidden
+                      >
+                        <Accessibility
+                          className="h-4 w-4"
+                          strokeWidth={2}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          Disability
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+                          {disability?.trim() || "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
+                        aria-hidden
+                      >
+                        <Hospital className="h-4 w-4" strokeWidth={2} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          Insurance
+                        </p>
+                        <p className="mt-2 text-sm text-slate-700 dark:text-zinc-300">
+                          <span className="font-medium text-slate-800 dark:text-zinc-200">
+                            Provider:{" "}
+                          </span>
+                          {insuranceProvider?.trim() || "—"}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-700 dark:text-zinc-300">
+                          <span className="font-medium text-slate-800 dark:text-zinc-200">
+                            Policy:{" "}
+                          </span>
+                          {insurancePolicy?.trim() || "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 pt-6 dark:border-zinc-800">
+              <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-zinc-200">
+                Staff health records
+              </h3>
             {healthRecords.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-zinc-400">
-                No health information on file.
+                No staff health records yet.
               </p>
             ) : (
               <ul className="space-y-3">
@@ -1429,6 +1539,7 @@ export function StudentProfileClient({
                 ))}
               </ul>
             )}
+            </div>
           </div>
         </section>
       )}

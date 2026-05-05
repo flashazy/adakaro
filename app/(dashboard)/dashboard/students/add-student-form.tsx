@@ -31,13 +31,14 @@ import {
   blockInvalidKeyDownPhone,
   HINT_ALPHANUM_HYPHEN,
   HINT_LETTERS_AND_SPACES,
-  HINT_ONLY_NUMBERS,
+  HINT_PARENT_PHONE,
   hasInvalidAdmissionInput,
   hasInvalidLettersNameInput,
   hasInvalidPhoneInput,
+  normalizePhoneDigits,
   onlyAlphanumericHyphen,
   onlyLettersAndSpaces,
-  onlyNumbers,
+  sanitizePhoneInput,
 } from "@/lib/validation";
 
 /** Title-case one segment (handles O'Connor-style apostrophes). */
@@ -86,17 +87,20 @@ function syncAdmissionFromPreview(
   return { value: v, snapshot: v };
 }
 
-function SubmitButton({ disabled, pending }: { disabled?: boolean; pending: boolean }) {
-  return (
-    <button
-      type="submit"
-      disabled={pending || disabled}
-      className="w-full rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-    >
-      {pending ? "Adding…" : "Add student"}
-    </button>
-  );
-}
+const labelClass =
+  "mb-1 block text-sm font-medium text-slate-700 dark:text-zinc-300";
+const hintClass = "text-xs text-slate-500 dark:text-zinc-400";
+const inputClass =
+  "w-full min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-all duration-200 placeholder:text-slate-400 hover:border-slate-300 focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/40 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:hover:border-zinc-500";
+const dateInputClass = `${inputClass} [&::-webkit-calendar-picker-indicator]:ml-auto [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60`;
+const sectionCard =
+  "space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
+const sectionTitle = "text-base font-semibold text-slate-900 dark:text-white";
+const sectionDesc = "text-sm text-slate-500 dark:text-zinc-400";
+const gridForm =
+  "grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3";
+const subjectFieldLabel =
+  "block text-sm font-medium text-slate-700 dark:text-zinc-300";
 
 interface Props {
   classes: { id: string; name: string; parent_class_id: string | null }[];
@@ -131,6 +135,7 @@ export function AddStudentForm({
   >(initialState);
   const [submitting, startSubmit] = useTransition();
   const [open, setOpen] = useState(false);
+  const [healthOpen, setHealthOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const admissionInputRef = useRef<HTMLInputElement>(null);
   const namePeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -266,6 +271,7 @@ export function AddStudentForm({
       setClassSubjectOptions([]);
       setSelectedSubjectIds([]);
       setOpen(false);
+      setHealthOpen(false);
       setNameDuplicateWarning(null);
       setPhoneDuplicateModalName(null);
       clearAllFieldHintTimeouts();
@@ -373,16 +379,23 @@ export function AddStudentForm({
       onlyLettersAndSpaces(parentNameRaw).trim()
     );
 
+    const dobRaw = String(formData.get("date_of_birth") ?? "").trim();
+    if (!dobRaw) {
+      setHealthOpen(true);
+      setState({ error: "Please enter the student's date of birth." });
+      return;
+    }
+
     const parentPhoneRaw = String(formData.get("parent_phone") ?? "");
-    const parentPhoneClean = onlyNumbers(parentPhoneRaw).trim();
+    if (hasInvalidPhoneInput(parentPhoneRaw)) {
+      setState({ error: HINT_PARENT_PHONE });
+      return;
+    }
+    const parentPhoneClean = normalizePhoneDigits(parentPhoneRaw);
     if (!parentPhoneClean) {
       setState({
         error: "Please enter a parent phone number.",
       });
-      return;
-    }
-    if (parentPhoneRaw !== onlyNumbers(parentPhoneRaw)) {
-      setState({ error: HINT_ONLY_NUMBERS });
       return;
     }
     formData.set("parent_phone", parentPhoneClean);
@@ -461,6 +474,7 @@ export function AddStudentForm({
             setClassSubjectOptions([]);
             setSelectedSubjectIds([]);
             setOpen(false);
+            setHealthOpen(false);
             clearAllFieldHintTimeouts();
             setFieldHints({
               full_name: null,
@@ -540,10 +554,11 @@ export function AddStudentForm({
           ref={formRef}
           noValidate
           onSubmit={handleSubmit}
-          className="border-t border-slate-200 px-6 pb-6 pt-4 dark:border-zinc-800"
+          className="flex flex-col border-t border-slate-200 dark:border-zinc-800"
         >
+          <div className="space-y-6 px-6 py-6">
           {atStudentLimit ? (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-200">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-200">
               You&apos;ve reached your plan limit ({studentLimit} students).
               Upgrade on the{" "}
               <a
@@ -555,20 +570,24 @@ export function AddStudentForm({
               page to add more.
             </div>
           ) : approachingLimit ? (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+            <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
               You&apos;re close to your plan limit: {studentCount} of{" "}
               {studentLimit} students used.
             </div>
           ) : null}
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-zinc-300">
-            Student Information
-          </h3>
-          <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="full_name"
-                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
-              >
+
+          <section className={sectionCard} aria-labelledby="add-student-info-heading">
+            <div className="space-y-1">
+              <h3 id="add-student-info-heading" className={sectionTitle}>
+                Student Information
+              </h3>
+              <p className={sectionDesc}>
+                Basic student details required for enrollment
+              </p>
+            </div>
+            <div className={gridForm}>
+            <div className="flex flex-col">
+              <label htmlFor="full_name" className={labelClass}>
                 Full name <span className="text-red-500">*</span>
               </label>
               <input
@@ -576,7 +595,7 @@ export function AddStudentForm({
                 name="full_name"
                 type="text"
                 required
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                className={inputClass}
                 placeholder="e.g. Jane Doe"
                 onKeyDown={blockInvalidKeyDownLettersName}
                 onChange={(e) => {
@@ -630,15 +649,22 @@ export function AddStudentForm({
               ) : null}
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="admission_number"
-                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
-              >
-                Admission number
-              </label>
+            <div className="flex flex-col">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor="admission_number"
+                  className="text-sm font-medium text-slate-700 dark:text-zinc-300"
+                >
+                  Admission number
+                </label>
+                {hasAdmissionPrefix ? (
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-slate-200/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-zinc-700 dark:text-zinc-300">
+                    Auto-generated
+                  </span>
+                ) : null}
+              </div>
               {hasAdmissionPrefix ? (
-                <div className="flex gap-2">
+                <div className="flex gap-2 rounded-lg border border-slate-200/80 bg-slate-50 p-2 dark:border-zinc-700 dark:bg-zinc-800/50">
                   <input
                     type="hidden"
                     name="admission_default_snapshot"
@@ -669,57 +695,60 @@ export function AddStudentForm({
                       setAdmissionValue(onlyAlphanumericHyphen(raw));
                     }}
                     onKeyDown={blockInvalidKeyDownAdmission}
-                    className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                    className={`${inputClass} border-slate-200/80 bg-white dark:border-zinc-600 dark:bg-zinc-900`}
                     placeholder={`e.g. ${effectivePrefix}-001`}
                   />
                   <button
                     type="button"
-                    title="Focus field to edit admission number"
+                    title="Edit admission number"
                     onClick={() => {
                       admissionInputRef.current?.focus();
                       admissionInputRef.current?.select();
                     }}
-                    className="h-10 shrink-0 rounded-lg border border-gray-200 px-2 text-slate-600 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-slate-600 transition-colors duration-200 hover:bg-slate-100 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
                   >
                     <Pencil className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
               ) : (
-                <input
-                  id="admission_number"
-                  name="admission_number"
-                  type="text"
-                  onKeyDown={blockInvalidKeyDownAdmission}
-                  onChange={(e) => {
-                    const el = e.currentTarget;
-                    if (el == null) return;
-                    const raw = el.value;
-                    const next = onlyAlphanumericHyphen(raw);
-                    if (hasInvalidAdmissionInput(raw)) {
-                      setFieldHints((h) => ({
-                        ...h,
-                        admission_number: HINT_ALPHANUM_HYPHEN,
-                      }));
-                      armFieldHintDismiss("admission_number");
-                    } else {
-                      clearFieldHintTimeout("admission_number");
-                      setFieldHints((h) => ({
-                        ...h,
-                        admission_number: null,
-                      }));
-                    }
-                    if (next !== raw) el.value = next;
-                  }}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
-                  placeholder="e.g. ADM-001 (optional)"
-                />
+                <div className="rounded-lg border border-slate-200/80 bg-slate-50/80 p-2 dark:border-zinc-700 dark:bg-zinc-800/40">
+                  <input
+                    id="admission_number"
+                    name="admission_number"
+                    type="text"
+                    onKeyDown={blockInvalidKeyDownAdmission}
+                    onChange={(e) => {
+                      const el = e.currentTarget;
+                      if (el == null) return;
+                      const raw = el.value;
+                      const next = onlyAlphanumericHyphen(raw);
+                      if (hasInvalidAdmissionInput(raw)) {
+                        setFieldHints((h) => ({
+                          ...h,
+                          admission_number: HINT_ALPHANUM_HYPHEN,
+                        }));
+                        armFieldHintDismiss("admission_number");
+                      } else {
+                        clearFieldHintTimeout("admission_number");
+                        setFieldHints((h) => ({
+                          ...h,
+                          admission_number: null,
+                        }));
+                      }
+                      if (next !== raw) el.value = next;
+                    }}
+                    className={`${inputClass} border-slate-200/80 bg-white dark:border-zinc-600 dark:bg-zinc-900`}
+                    placeholder="e.g. ADM-001 (optional)"
+                  />
+                </div>
               )}
               {hasAdmissionPrefix ? (
-                <p className="mt-1 text-xs text-gray-500 dark:text-zinc-400">
-                  Auto-generated. You can edit.
+                <p className={`${hintClass} mt-1`}>
+                  Suggested from your school prefix — you can change it before
+                  saving.
                 </p>
               ) : (
-                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                <p className={`${hintClass} mt-1`}>
                   Set a school admission prefix in School settings to enable
                   auto-generated numbers.
                 </p>
@@ -731,11 +760,8 @@ export function AddStudentForm({
               ) : null}
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="class_id"
-                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
-              >
+            <div className="flex flex-col">
+              <label htmlFor="class_id" className={labelClass}>
                 Class <span className="text-red-500">*</span>
               </label>
               <select
@@ -744,7 +770,7 @@ export function AddStudentForm({
                 required
                 value={selectedClassId}
                 onChange={(e) => setSelectedClassId(e.target.value)}
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className={inputClass}
               >
                 <option value="">Select a class</option>
                 {classes.map((c) => (
@@ -758,11 +784,8 @@ export function AddStudentForm({
               </select>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="gender"
-                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
-              >
+            <div className="flex flex-col">
+              <label htmlFor="gender" className={labelClass}>
                 Gender <span className="text-red-500">*</span>
               </label>
               <select
@@ -770,7 +793,7 @@ export function AddStudentForm({
                 name="gender"
                 required
                 defaultValue=""
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className={inputClass}
               >
                 <option value="" disabled>
                   Select gender
@@ -780,18 +803,36 @@ export function AddStudentForm({
               </select>
             </div>
 
+            <div className="flex flex-col md:col-span-2 lg:col-span-1">
+              <label htmlFor="enrollment_date" className={labelClass}>
+                Enrollment date
+              </label>
+              <input
+                id="enrollment_date"
+                name="enrollment_date"
+                type="date"
+                defaultValue={todayIsoLocal()}
+                suppressHydrationWarning
+                className={dateInputClass}
+              />
+              <p className={`${hintClass} mt-1`}>
+                Defaults to today; change for a back-dated enrolment.
+              </p>
+            </div>
+            </div>
+
             {selectedClassId ? (
-              <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-3">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-zinc-300">
+              <div className="space-y-3 border-t border-slate-100 pt-5 dark:border-zinc-800">
+                <h4 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
                   Subjects this student will study
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                </h4>
+                <p className={hintClass}>
                   Optional. Choose the term and year, then tick the subjects this
                   learner takes. You can change these later when editing the
                   student.
                 </p>
                 <div className="flex flex-wrap gap-4">
-                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                  <label className={`flex flex-col gap-1 ${subjectFieldLabel}`}>
                     Academic year
                     <input
                       type="number"
@@ -800,16 +841,16 @@ export function AddStudentForm({
                       min={2000}
                       max={2100}
                       defaultValue={currentAcademicYear()}
-                      className="h-10 w-36 rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                      className={`${inputClass} w-36`}
                     />
                   </label>
-                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                  <label className={`flex flex-col gap-1 ${subjectFieldLabel}`}>
                     Term
                     <select
                       id="subject_term"
                       name="subject_term"
                       defaultValue="Term 1"
-                      className="h-10 min-w-[10rem] rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                      className={`${inputClass} min-w-[10rem]`}
                     >
                       {SUBJECT_ENROLLMENT_TERMS.map((t) => (
                         <option key={t} value={t}>
@@ -829,10 +870,10 @@ export function AddStudentForm({
                     Manage Subjects first.
                   </p>
                 ) : (
-                  <div className="rounded-lg border border-slate-100 p-3 dark:border-zinc-800">
+                  <div className="rounded-xl bg-slate-50/60 p-4 dark:bg-zinc-800/40">
                     <label
                       htmlFor="add-subj-select-all"
-                      className="flex items-center gap-2 border-b border-slate-100 pb-2 dark:border-zinc-800"
+                      className="flex items-center gap-2 border-b border-slate-200/80 pb-3 dark:border-zinc-700"
                     >
                       <input
                         ref={selectAllRef}
@@ -877,165 +918,287 @@ export function AddStudentForm({
                 )}
               </div>
             ) : null}
+          </section>
 
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="enrollment_date"
-                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
+          <section
+            className={`${sectionCard} overflow-hidden !p-0`}
+            aria-labelledby="add-student-health-heading"
+          >
+            <div className="overflow-hidden rounded-2xl bg-slate-50/60 dark:bg-zinc-800/25">
+              <button
+                type="button"
+                aria-expanded={healthOpen}
+                aria-controls="add-student-health-panel"
+                onClick={() => setHealthOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left transition-colors duration-200 hover:bg-slate-100/70 dark:hover:bg-zinc-800/50"
               >
-                Enrollment date
-              </label>
-              <input
-                id="enrollment_date"
-                name="enrollment_date"
-                type="date"
-                defaultValue={todayIsoLocal()}
-                suppressHydrationWarning
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-              />
-              <p className="text-xs text-gray-500 dark:text-zinc-400">
-                Defaults to today; change for a back-dated enrolment.
+                <div>
+                  <h3
+                    id="add-student-health-heading"
+                    className={sectionTitle}
+                  >
+                    Health Information (Optional)
+                  </h3>
+                  <p className={`${sectionDesc} mt-0.5`}>
+                    Expand to enter date of birth (required for new students)
+                    and optional medical details.
+                  </p>
+                </div>
+                <svg
+                  className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${healthOpen ? "rotate-180" : ""}`}
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                  />
+                </svg>
+              </button>
+              <div
+                id="add-student-health-panel"
+                className={`space-y-5 border-t border-slate-200 bg-white px-6 pb-6 pt-5 dark:border-zinc-700 dark:bg-zinc-900 ${healthOpen ? "" : "hidden"}`}
+              >
+                  <div className="flex flex-col">
+                    <label htmlFor="date_of_birth" className={labelClass}>
+                      Date of birth <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="date_of_birth"
+                      name="date_of_birth"
+                      type="date"
+                      required
+                      className={dateInputClass}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="flex flex-col">
+                      <label htmlFor="allergies" className={labelClass}>
+                        Allergies
+                      </label>
+                      <textarea
+                        id="allergies"
+                        name="allergies"
+                        rows={3}
+                        placeholder="e.g., Peanuts, pollen, penicillin"
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label htmlFor="disability" className={labelClass}>
+                        Disability
+                      </label>
+                      <textarea
+                        id="disability"
+                        name="disability"
+                        rows={3}
+                        placeholder="e.g., Uses wheelchair, dyslexia"
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="flex flex-col">
+                      <label htmlFor="insurance_provider" className={labelClass}>
+                        Health Insurance Provider
+                      </label>
+                      <input
+                        id="insurance_provider"
+                        name="insurance_provider"
+                        type="text"
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label htmlFor="insurance_policy" className={labelClass}>
+                        Insurance Policy Number
+                      </label>
+                      <input
+                        id="insurance_policy"
+                        name="insurance_policy"
+                        type="text"
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            className={sectionCard}
+            aria-labelledby="add-student-parent-heading"
+          >
+            <div className="space-y-1">
+              <h3 id="add-student-parent-heading" className={sectionTitle}>
+                Parent Information
+              </h3>
+              <p className={sectionDesc}>
+                Contact details for the parent or guardian
               </p>
             </div>
-          </div>
+            <div className={`${gridForm} !space-y-0`}>
+              <div className="flex flex-col">
+                <label htmlFor="parent_name" className={labelClass}>
+                  Parent name
+                </label>
+                <input
+                  id="parent_name"
+                  name="parent_name"
+                  type="text"
+                  onKeyDown={blockInvalidKeyDownLettersName}
+                  onChange={(e) => {
+                    const el = e.currentTarget;
+                    if (el == null) return;
+                    const raw = el.value;
+                    const next = onlyLettersAndSpaces(raw);
+                    if (hasInvalidLettersNameInput(raw)) {
+                      setFieldHints((h) => ({
+                        ...h,
+                        parent_name: HINT_LETTERS_AND_SPACES,
+                      }));
+                      armFieldHintDismiss("parent_name");
+                    } else {
+                      clearFieldHintTimeout("parent_name");
+                      setFieldHints((h) => ({ ...h, parent_name: null }));
+                    }
+                    if (next !== raw) el.value = next;
+                  }}
+                  className={inputClass}
+                  placeholder="Parent's full name"
+                  onBlur={(e) => {
+                    const el = e.currentTarget;
+                    if (el == null) return;
+                    el.value = toTitleCase(el.value);
+                    const titled = el.value;
+                    if (hasInvalidLettersNameInput(titled)) {
+                      setFieldHints((h) => ({
+                        ...h,
+                        parent_name: HINT_LETTERS_AND_SPACES,
+                      }));
+                      armFieldHintDismiss("parent_name");
+                    } else {
+                      clearFieldHintTimeout("parent_name");
+                      setFieldHints((h) => ({ ...h, parent_name: null }));
+                    }
+                  }}
+                />
+                {fieldHints.parent_name ? (
+                  <p className="text-xs text-red-500" role="alert">
+                    {fieldHints.parent_name}
+                  </p>
+                ) : null}
+              </div>
 
-          <h3 className="mb-2 mt-4 text-sm font-semibold text-gray-700 dark:text-zinc-300">
-            Parent Information
-          </h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="parent_name"
-                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
-              >
-                Parent name
-              </label>
-              <input
-                id="parent_name"
-                name="parent_name"
-                type="text"
-                onKeyDown={blockInvalidKeyDownLettersName}
-                onChange={(e) => {
-                  const el = e.currentTarget;
-                  if (el == null) return;
-                  const raw = el.value;
-                  const next = onlyLettersAndSpaces(raw);
-                  if (hasInvalidLettersNameInput(raw)) {
-                    setFieldHints((h) => ({
-                      ...h,
-                      parent_name: HINT_LETTERS_AND_SPACES,
-                    }));
-                    armFieldHintDismiss("parent_name");
-                  } else {
-                    clearFieldHintTimeout("parent_name");
-                    setFieldHints((h) => ({ ...h, parent_name: null }));
-                  }
-                  if (next !== raw) el.value = next;
-                }}
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
-                placeholder="Parent's full name"
-                onBlur={(e) => {
-                  const el = e.currentTarget;
-                  if (el == null) return;
-                  el.value = toTitleCase(el.value);
-                  const titled = el.value;
-                  if (hasInvalidLettersNameInput(titled)) {
-                    setFieldHints((h) => ({
-                      ...h,
-                      parent_name: HINT_LETTERS_AND_SPACES,
-                    }));
-                    armFieldHintDismiss("parent_name");
-                  } else {
-                    clearFieldHintTimeout("parent_name");
-                    setFieldHints((h) => ({ ...h, parent_name: null }));
-                  }
-                }}
-              />
-              {fieldHints.parent_name ? (
-                <p className="text-xs text-red-500" role="alert">
-                  {fieldHints.parent_name}
-                </p>
-              ) : null}
+              <div className="flex flex-col">
+                <label htmlFor="parent_email" className={labelClass}>
+                  Parent email
+                </label>
+                <input
+                  id="parent_email"
+                  name="parent_email"
+                  type="email"
+                  className={inputClass}
+                  placeholder="parent@example.com"
+                  onBlur={(e) => {
+                    const el = e.currentTarget;
+                    if (el == null) return;
+                    el.value = toLowercaseEmail(el.value);
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-col md:col-span-2 lg:col-span-3">
+                <label htmlFor="parent_phone" className={labelClass}>
+                  Parent phone <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="parent_phone"
+                  name="parent_phone"
+                  type="text"
+                  required
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  onKeyDown={blockInvalidKeyDownPhone}
+                  onChange={(e) => {
+                    const el = e.currentTarget;
+                    if (el == null) return;
+                    const raw = el.value;
+                    const next = sanitizePhoneInput(raw);
+                    if (hasInvalidPhoneInput(raw)) {
+                      setFieldHints((h) => ({
+                        ...h,
+                        parent_phone: HINT_PARENT_PHONE,
+                      }));
+                      armFieldHintDismiss("parent_phone");
+                    } else {
+                      clearFieldHintTimeout("parent_phone");
+                      setFieldHints((h) => ({ ...h, parent_phone: null }));
+                    }
+                    if (next !== raw) el.value = next;
+                  }}
+                  className={inputClass}
+                  placeholder="25570000000 or +255 700 000 000"
+                />
+                {fieldHints.parent_phone ? (
+                  <p className="text-xs text-red-500" role="alert">
+                    {fieldHints.parent_phone}
+                  </p>
+                ) : null}
+              </div>
             </div>
-
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="parent_email"
-                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
-              >
-                Parent email
-              </label>
-              <input
-                id="parent_email"
-                name="parent_email"
-                type="email"
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
-                placeholder="parent@example.com"
-                onBlur={(e) => {
-                  const el = e.currentTarget;
-                  if (el == null) return;
-                  el.value = toLowercaseEmail(el.value);
-                }}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="parent_phone"
-                className="text-sm font-medium text-slate-700 dark:text-zinc-300"
-              >
-                Parent phone <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="parent_phone"
-                name="parent_phone"
-                type="text"
-                required
-                inputMode="numeric"
-                autoComplete="tel"
-                onKeyDown={blockInvalidKeyDownPhone}
-                onChange={(e) => {
-                  const el = e.currentTarget;
-                  if (el == null) return;
-                  const raw = el.value;
-                  const next = onlyNumbers(raw);
-                  if (hasInvalidPhoneInput(raw)) {
-                    setFieldHints((h) => ({
-                      ...h,
-                      parent_phone: HINT_ONLY_NUMBERS,
-                    }));
-                    armFieldHintDismiss("parent_phone");
-                  } else {
-                    clearFieldHintTimeout("parent_phone");
-                    setFieldHints((h) => ({ ...h, parent_phone: null }));
-                  }
-                  if (next !== raw) el.value = next;
-                }}
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
-                placeholder="25570000000"
-              />
-              {fieldHints.parent_phone ? (
-                <p className="text-xs text-red-500" role="alert">
-                  {fieldHints.parent_phone}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between">
-            <SubmitButton disabled={atStudentLimit} pending={submitting} />
-          </div>
+          </section>
 
           {state.error && (
-            <p className="mt-3 text-sm text-red-600 dark:text-red-400">
+            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
               {state.error}
             </p>
           )}
           {state.success && (
-            <p className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">
+            <p className="text-sm text-emerald-600 dark:text-emerald-400" role="status">
               {state.success}
             </p>
           )}
+          </div>
+
+          <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-slate-200 bg-white/95 px-6 py-4 shadow-[0_-8px_30px_-12px_rgba(15,23,42,0.12)] backdrop-blur-sm supports-[backdrop-filter]:bg-white/90 dark:border-zinc-800 dark:bg-zinc-900/95 dark:supports-[backdrop-filter]:bg-zinc-900/90 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Make sure required fields are filled before saving.
+            </p>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => {
+                  setNameDuplicateWarning(null);
+                  setPhoneDuplicateModalName(null);
+                  clearAllFieldHintTimeouts();
+                  setFieldHints({
+                    full_name: null,
+                    admission_number: null,
+                    parent_name: null,
+                    parent_phone: null,
+                  });
+                  setOpen(false);
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors duration-200 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={atStudentLimit || submitting}
+                className="rounded-lg bg-school-primary px-6 py-2 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
+              >
+                {submitting ? "Adding…" : "Add student"}
+              </button>
+            </div>
+          </div>
         </form>
       )}
 

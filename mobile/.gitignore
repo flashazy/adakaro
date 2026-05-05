@@ -1,0 +1,24 @@
+# Flutter
+.dart_tool/
+.packages
+build/
+*.iml
+.idea/
+.vscode/
+
+# Env / secrets — keep `.env.example` tracked as a template.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Generated
+**/GeneratedPluginRegistrant.*
+
+# iOS / Android (after flutter create)
+**/Pods/
+**/.symlinks/
+**/local.properties
+**/key.properties
+*.jks
+*.keystore

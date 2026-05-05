@@ -1,13 +1,40 @@
 import type { KeyboardEvent } from "react";
 
 export const HINT_ONLY_NUMBERS = "Only numbers allowed.";
+
+/** Parent / contact phone fields: digits, optional leading +, spaces (ignored). */
+export const HINT_PARENT_PHONE =
+  "Use digits, an optional + at the start, and spaces. Letters and symbols such as @ or # are not allowed.";
 export const HINT_LETTERS_AND_SPACES = "Only letters and spaces allowed.";
 export const HINT_ALPHANUM_HYPHEN =
   "Letters, numbers, hyphens, and underscores allowed.";
 
-/** Keeps ASCII digits only (e.g. phone numbers). */
+/** Keeps ASCII digits only (e.g. amounts, legacy phone cleanup). */
 export function onlyNumbers(value: string): string {
   return value.replace(/\D/g, "");
+}
+
+/**
+ * Normalizes phone input for storage: strips whitespace, optional single leading
+ * `+`, then keeps digits only (no `+` in returned string).
+ */
+export function normalizePhoneDigits(value: string): string {
+  const compact = value.replace(/\s/g, "");
+  const withoutPlus = compact.startsWith("+") ? compact.slice(1) : compact;
+  return withoutPlus.replace(/\D/g, "");
+}
+
+/**
+ * Sanitizes phone input for controlled fields: removes spaces silently, allows
+ * at most one leading `+`, drops any other non-digits.
+ */
+export function sanitizePhoneInput(value: string): string {
+  const compact = value.replace(/\s/g, "");
+  if (compact === "") return "";
+  const withPlus = compact.startsWith("+");
+  const rest = withPlus ? compact.slice(1) : compact;
+  const digits = rest.replace(/\D/g, "");
+  return withPlus ? `+${digits}` : digits;
 }
 
 /**
@@ -90,7 +117,11 @@ export function blockInvalidKeyDownAdmission(
 export function blockInvalidKeyDownPhone(
   e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
 ): void {
-  blockInvalidKeyDown(e, /^\d$/);
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (NAV_KEYS.has(e.key)) return;
+  if (e.key.length !== 1) return;
+  if (e.key === " " || e.key === "+" || /^\d$/.test(e.key)) return;
+  e.preventDefault();
 }
 
 /** Amount field: digits and a single dot. */
@@ -129,9 +160,20 @@ export function hasInvalidAdmissionInput(value: string): boolean {
   return value.length > 0 && value !== onlyAlphanumericHyphen(value);
 }
 
-/** True when non-empty `value` contains characters stripped by `onlyNumbers`. */
+/**
+ * True when `value` has non-whitespace content and includes anything other than
+ * optional leading `+` (after spaces removed) followed by ASCII digits — e.g.
+ * letters or symbols. Does not `.trim()`, so stray spaces-only is not flagged.
+ */
 export function hasInvalidPhoneInput(value: string): boolean {
-  return value.length > 0 && value !== onlyNumbers(value);
+  const compact = value.replace(/\s/g, "");
+  if (compact.length === 0) return false;
+  if (compact.startsWith("+")) {
+    const rest = compact.slice(1);
+    if (rest.length === 0) return false;
+    return !/^\d+$/.test(rest);
+  }
+  return !/^\d+$/.test(compact);
 }
 
 /** True when non-empty `value` contains characters stripped by `onlyNumericAmount`. */

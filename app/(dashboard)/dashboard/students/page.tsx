@@ -101,6 +101,11 @@ export default async function StudentsPage() {
       class: { id: string; name: string } | null;
       gender: string | null;
       enrollment_date: string;
+      date_of_birth: string | null;
+      allergies: string | null;
+      disability: string | null;
+      insurance_provider: string | null;
+      insurance_policy: string | null;
       parent_name: string | null;
       parent_email: string | null;
       parent_phone: string | null;

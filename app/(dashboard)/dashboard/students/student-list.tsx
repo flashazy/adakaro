@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { EditStudentDrawer } from "@/components/students/EditStudentDrawer";
 import { StudentCard, StudentRow } from "./student-row";
 import {
   getStudentSubjects,
@@ -13,13 +14,14 @@ import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import {
   HINT_ALPHANUM_HYPHEN,
   HINT_LETTERS_AND_SPACES,
-  HINT_ONLY_NUMBERS,
+  HINT_PARENT_PHONE,
   hasInvalidAdmissionInput,
   hasInvalidLettersNameInput,
   hasInvalidPhoneInput,
+  normalizePhoneDigits,
   onlyAlphanumericHyphen,
   onlyLettersAndSpaces,
-  onlyNumbers,
+  sanitizePhoneInput,
 } from "@/lib/validation";
 import { useOfflineStudents } from "@/lib/offline/use-sync";
 import { isTempId } from "@/lib/offline/temp-ids";
@@ -56,6 +58,11 @@ interface StudentData {
   class: StudentClassRef | null;
   gender: string | null;
   enrollment_date: string;
+  date_of_birth?: string | null;
+  allergies?: string | null;
+  disability?: string | null;
+  insurance_provider?: string | null;
+  insurance_policy?: string | null;
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
@@ -74,7 +81,10 @@ export function StudentList({ students, classes }: StudentListProps) {
   const [classFilter, setClassFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingStudent, setEditingStudent] = useState<StudentData | null>(
+    null
+  );
+  const editingId = editingStudent?.id ?? null;
   const [editValues, setEditValues] = useState<Partial<StudentData>>({});
   const [inlineSaveError, setInlineSaveError] = useState<string | null>(null);
   const [inlineSaveSuccess, setInlineSaveSuccess] = useState<string | null>(
@@ -177,6 +187,11 @@ export function StudentList({ students, classes }: StudentListProps) {
           : null,
         gender: null,
         enrollment_date: new Date(row.createdAt).toISOString().slice(0, 10),
+        date_of_birth: null,
+        allergies: null,
+        disability: null,
+        insurance_provider: null,
+        insurance_policy: null,
         parent_name: null,
         parent_email: null,
         parent_phone: row.parentPhone,
@@ -281,13 +296,18 @@ export function StudentList({ students, classes }: StudentListProps) {
     setInlineFieldErrors({});
     setEditClassSubjects([]);
     setEditSubjectIds([]);
-    setEditingId(student.id);
+    setEditingStudent(student);
     setEditValues({
       full_name: student.full_name,
       admission_number: student.admission_number,
       class_id: student.class_id,
       gender: student.gender,
       enrollment_date: student.enrollment_date,
+      date_of_birth: student.date_of_birth ?? null,
+      allergies: student.allergies ?? null,
+      disability: student.disability ?? null,
+      insurance_provider: student.insurance_provider ?? null,
+      insurance_policy: student.insurance_policy ?? null,
       parent_name: student.parent_name,
       parent_email: student.parent_email,
       parent_phone: student.parent_phone,
@@ -331,7 +351,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         }
       } else if (field === "parent_phone") {
         if (hasInvalidPhoneInput(value)) {
-          nextHints.parent_phone = HINT_ONLY_NUMBERS;
+          nextHints.parent_phone = HINT_PARENT_PHONE;
         } else {
           delete nextHints.parent_phone;
         }
@@ -369,7 +389,7 @@ export function StudentList({ students, classes }: StudentListProps) {
     if (field === "full_name" || field === "parent_name") {
       next = onlyLettersAndSpaces(value);
     } else if (field === "parent_phone") {
-      next = onlyNumbers(value);
+      next = sanitizePhoneInput(value);
     } else if (field === "admission_number") {
       next = onlyAlphanumericHyphen(value);
     }
@@ -407,9 +427,14 @@ export function StudentList({ students, classes }: StudentListProps) {
       setInlineSaveError("Student name is required.");
       return;
     }
-    const parentPhoneRaw = (editValues.parent_phone ?? "").trim();
-    if (parentPhoneRaw !== onlyNumbers(parentPhoneRaw)) {
-      setInlineSaveError("Parent phone can only include numbers.");
+    const parentPhoneRaw = editValues.parent_phone ?? "";
+    if (hasInvalidPhoneInput(parentPhoneRaw)) {
+      setInlineSaveError(HINT_PARENT_PHONE);
+      return;
+    }
+    const parentPhoneDigits = normalizePhoneDigits(parentPhoneRaw);
+    if (!parentPhoneDigits) {
+      setInlineSaveError("Please enter a parent phone number.");
       return;
     }
     const admRaw = (editValues.admission_number ?? "").trim();
@@ -457,7 +482,15 @@ export function StudentList({ students, classes }: StudentListProps) {
       onlyLettersAndSpaces((editValues.parent_name ?? "").trim()).trim()
     );
     fd.set("parent_email", (editValues.parent_email ?? "").trim());
-    fd.set("parent_phone", onlyNumbers(parentPhoneRaw));
+    fd.set("parent_phone", parentPhoneDigits);
+    fd.set("date_of_birth", (editValues.date_of_birth ?? "").trim());
+    fd.set("allergies", (editValues.allergies ?? "").trim());
+    fd.set("disability", (editValues.disability ?? "").trim());
+    fd.set(
+      "insurance_provider",
+      (editValues.insurance_provider ?? "").trim()
+    );
+    fd.set("insurance_policy", (editValues.insurance_policy ?? "").trim());
 
     setIsSaving(true);
     try {
@@ -484,7 +517,7 @@ export function StudentList({ students, classes }: StudentListProps) {
             tempStudentId: editingId,
             fullName,
             classId,
-            parentPhone: (editValues.parent_phone ?? "").trim() || null,
+            parentPhone: parentPhoneDigits || null,
             op: "update",
           },
         },
@@ -499,7 +532,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         setInlineSaveSuccess(
           `Saved offline – "${fullName}" will sync when online.`
         );
-        setEditingId(null);
+        setEditingStudent(null);
         setEditValues({});
         clearAllInlineFieldHintTimeouts();
         setInlineFieldErrors({});
@@ -530,7 +563,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         [result.success, subResult.success].filter(Boolean).join(" ") ||
           "Student updated."
       );
-      setEditingId(null);
+      setEditingStudent(null);
       setEditValues({});
       clearAllInlineFieldHintTimeouts();
       setInlineFieldErrors({});
@@ -550,7 +583,7 @@ export function StudentList({ students, classes }: StudentListProps) {
   ]);
 
   function handleInlineCancel() {
-    setEditingId(null);
+    setEditingStudent(null);
     setEditValues({});
     clearAllInlineFieldHintTimeouts();
     setInlineFieldErrors({});
@@ -660,12 +693,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         )}
       </p>
 
-      {inlineSaveError ? (
-        <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
-          {inlineSaveError}
-        </p>
-      ) : null}
-      {inlineSaveSuccess ? (
+      {!editingStudent && inlineSaveSuccess ? (
         <p
           className="mt-2 text-sm text-emerald-600 dark:text-emerald-400"
           role="status"
@@ -683,48 +711,23 @@ export function StudentList({ students, classes }: StudentListProps) {
               <StudentCard
                 key={student.id}
                 student={student}
-                classes={classes}
-                editingId={editingId}
-                editValues={editValues}
-                onInlineEdit={handleEdit}
-                onInlineChange={handleChange}
-                onInlineSave={handleInlineSave}
-                onInlineCancel={handleInlineCancel}
-                isSaving={isSaving}
+                onEdit={handleEdit}
                 pendingSync={
                   isTempId(student.id) || pendingByRealId.has(student.id)
                 }
                 onDeleted={() => {
-                  if (editingId === student.id) {
+                  if (editingStudent?.id === student.id) {
                     handleInlineCancel();
                   }
                   router.refresh();
                 }}
-                inlineFieldErrors={
-                  editingId === student.id ? inlineFieldErrors : undefined
-                }
-                subjectEnrollmentEdit={
-                  editingId === student.id
-                    ? {
-                        academicYear: editSubjectYear,
-                        term: editSubjectTerm,
-                        classSubjects: editClassSubjects,
-                        selectedIds: editSubjectIds,
-                        loading: editSubjectsLoading,
-                        onYearChange: setEditSubjectYear,
-                        onTermChange: setEditSubjectTerm,
-                        onToggleSubject: toggleEditSubject,
-                        onToggleAllSubjects: toggleAllEditSubjects,
-                      }
-                    : undefined
-                }
               />
             ))}
           </div>
 
           {/* Desktop: table (≥768px) */}
           <div className="mt-3 hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="max-h-[min(70vh,720px)] overflow-x-auto overflow-y-auto">
+            <div className="max-h-[min(70vh,720px)] overflow-x-auto overflow-y-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
               <table className="w-full table-fixed border-collapse">
                 <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 [&_th]:bg-white dark:[&_th]:bg-zinc-900">
                   <tr>
@@ -749,7 +752,7 @@ export function StudentList({ students, classes }: StudentListProps) {
                     <th className="w-[280px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
                       Parent
                     </th>
-                    <th className="sticky right-0 z-30 w-[112px] min-w-[112px] border-l border-slate-200 bg-white px-2 py-3 text-left text-sm font-medium text-gray-500 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
+                    <th className="sticky right-0 z-30 w-[112px] min-w-[112px] shrink-0 border-l border-slate-200 bg-white px-2 py-3 text-left text-sm font-medium text-gray-500 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
                       Actions
                     </th>
                   </tr>
@@ -759,41 +762,16 @@ export function StudentList({ students, classes }: StudentListProps) {
                     <StudentRow
                       key={student.id}
                       student={student}
-                      classes={classes}
-                      editingId={editingId}
-                      editValues={editValues}
-                      onInlineEdit={handleEdit}
-                      onInlineChange={handleChange}
-                      onInlineSave={handleInlineSave}
-                      onInlineCancel={handleInlineCancel}
-                      isSaving={isSaving}
+                      onEdit={handleEdit}
                       pendingSync={
                         isTempId(student.id) || pendingByRealId.has(student.id)
                       }
                       onDeleted={() => {
-                        if (editingId === student.id) {
+                        if (editingStudent?.id === student.id) {
                           handleInlineCancel();
                         }
                         router.refresh();
                       }}
-                      inlineFieldErrors={
-                        editingId === student.id ? inlineFieldErrors : undefined
-                      }
-                      subjectEnrollmentEdit={
-                        editingId === student.id
-                          ? {
-                              academicYear: editSubjectYear,
-                              term: editSubjectTerm,
-                              classSubjects: editClassSubjects,
-                              selectedIds: editSubjectIds,
-                              loading: editSubjectsLoading,
-                              onYearChange: setEditSubjectYear,
-                              onTermChange: setEditSubjectTerm,
-                              onToggleSubject: toggleEditSubject,
-                              onToggleAllSubjects: toggleAllEditSubjects,
-                            }
-                          : undefined
-                      }
                     />
                   ))}
                 </tbody>
@@ -860,6 +838,40 @@ export function StudentList({ students, classes }: StudentListProps) {
           </p>
         </div>
       )}
+
+      <EditStudentDrawer
+        isOpen={editingStudent != null}
+        student={editingStudent}
+        classes={classes}
+        editValues={editValues}
+        saveError={inlineSaveError}
+        onClose={handleInlineCancel}
+        onSave={handleInlineSave}
+        onChange={handleChange}
+        inlineFieldErrors={inlineFieldErrors}
+        subjectEnrollment={
+          editingStudent
+            ? {
+                academicYear: editSubjectYear,
+                term: editSubjectTerm,
+                classSubjects: editClassSubjects,
+                selectedIds: editSubjectIds,
+                loading: editSubjectsLoading,
+                onYearChange: setEditSubjectYear,
+                onTermChange: setEditSubjectTerm,
+                onToggleSubject: toggleEditSubject,
+                onToggleAllSubjects: toggleAllEditSubjects,
+              }
+            : undefined
+        }
+        isSaving={isSaving}
+        pendingSync={
+          editingStudent
+            ? isTempId(editingStudent.id) ||
+              pendingByRealId.has(editingStudent.id)
+            : false
+        }
+      />
     </div>
   );
 }

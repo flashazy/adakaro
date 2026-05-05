@@ -34,6 +34,21 @@ async function getSchoolId() {
   return { supabase, schoolId, userId: user.id };
 }
 
+function nullableTrimmedText(raw: string | null | undefined): string | null {
+  const t = (raw ?? "").trim();
+  return t === "" ? null : t;
+}
+
+function optionalVarchar(
+  formData: FormData,
+  key: string,
+  max: number
+): string | null {
+  const t = nullableTrimmedText(formData.get(key) as string | undefined);
+  if (t == null) return null;
+  return t.length > max ? t.slice(0, max) : t;
+}
+
 async function assertSubjectsAllowedForClass(
   supabase: Awaited<ReturnType<typeof createClient>>,
   classId: string,
@@ -421,6 +436,22 @@ export async function addStudent(
   }
   const enrollmentDate = enrollmentParsed.iso ?? todayIsoLocal();
 
+  const dobRaw = (formData.get("date_of_birth") as string)?.trim() ?? "";
+  if (dobRaw === "") {
+    return { error: "Date of birth is required." };
+  }
+  const dobParsed = parseOptionalEnrollmentDate(dobRaw);
+  if (dobParsed.error || !dobParsed.iso) {
+    return {
+      error: dobParsed.error ?? "Enter a valid date of birth (YYYY-MM-DD).",
+    };
+  }
+
+  const allergies = nullableTrimmedText(formData.get("allergies") as string);
+  const disability = nullableTrimmedText(formData.get("disability") as string);
+  const insurance_provider = optionalVarchar(formData, "insurance_provider", 255);
+  const insurance_policy = optionalVarchar(formData, "insurance_policy", 255);
+
   const subjectIds = formData
     .getAll("subject_ids")
     .filter((v): v is string => typeof v === "string" && v.length > 0);
@@ -558,6 +589,11 @@ export async function addStudent(
         parent_name: parentName,
         parent_email: parentEmail,
         parent_phone: parentPhone,
+        date_of_birth: dobParsed.iso,
+        allergies,
+        disability,
+        insurance_provider,
+        insurance_policy,
       } as never)
       .select("id")
       .single();
@@ -634,6 +670,23 @@ export async function updateStudent(
     return { error: "Enrollment date is required (YYYY-MM-DD)." };
   }
 
+  const dobRaw = (formData.get("date_of_birth") as string)?.trim() ?? "";
+  let date_of_birth: string | null = null;
+  if (dobRaw !== "") {
+    const dobParsed = parseOptionalEnrollmentDate(dobRaw);
+    if (dobParsed.error || !dobParsed.iso) {
+      return {
+        error: dobParsed.error ?? "Enter a valid date of birth (YYYY-MM-DD).",
+      };
+    }
+    date_of_birth = dobParsed.iso;
+  }
+
+  const allergies = nullableTrimmedText(formData.get("allergies") as string);
+  const disability = nullableTrimmedText(formData.get("disability") as string);
+  const insurance_provider = optionalVarchar(formData, "insurance_provider", 255);
+  const insurance_policy = optionalVarchar(formData, "insurance_policy", 255);
+
   if (!fullName) return { error: "Student name is required." };
   if (!classId) return { error: "Please select a class." };
   if (genderRaw !== "male" && genderRaw !== "female") {
@@ -655,6 +708,11 @@ export async function updateStudent(
         parent_name: parentName,
         parent_email: parentEmail,
         parent_phone: parentPhone,
+        date_of_birth,
+        allergies,
+        disability,
+        insurance_provider,
+        insurance_policy,
       } as never)
       .eq("id", studentId);
 
