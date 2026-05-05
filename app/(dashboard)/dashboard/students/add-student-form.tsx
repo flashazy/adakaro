@@ -12,11 +12,17 @@ import {
 } from "react";
 import { Pencil } from "lucide-react";
 import {
+  StudentPhotoPicker,
+  type StudentPhotoDraft,
+} from "@/components/students/StudentPhotoPicker";
+import {
   addStudent,
   getSubjectsForClass,
   peekStudentCreateNameDuplicate,
   type StudentActionState,
 } from "./actions";
+import { uploadStudentAvatar } from "./[studentId]/profile/profile-actions";
+import { toast } from "sonner";
 import { todayIsoLocal } from "@/lib/enrollment-date";
 import {
   SUBJECT_ENROLLMENT_TERMS,
@@ -115,6 +121,12 @@ interface Props {
 }
 
 const initialState: StudentActionState = {};
+const WIZARD_STEPS = [
+  "Student Details",
+  "Student Photo",
+  "Health Information",
+  "Parent Information",
+] as const;
 
 export function AddStudentForm({
   classes,
@@ -135,7 +147,8 @@ export function AddStudentForm({
   >(initialState);
   const [submitting, startSubmit] = useTransition();
   const [open, setOpen] = useState(false);
-  const [healthOpen, setHealthOpen] = useState(false);
+  const [, setHealthOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
   const formRef = useRef<HTMLFormElement>(null);
   const admissionInputRef = useRef<HTMLInputElement>(null);
   const namePeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -157,6 +170,7 @@ export function AddStudentForm({
   // the per-subject boxes and the per-subject boxes can drive the header
   // checkbox's checked / indeterminate state.
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [photoDraft, setPhotoDraft] = useState<StudentPhotoDraft | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const [fieldHints, setFieldHints] = useState<{
     full_name: string | null;
@@ -174,6 +188,12 @@ export function AddStudentForm({
   const fieldHintTimeoutsRef = useRef<
     Partial<Record<FieldHintKey, ReturnType<typeof setTimeout>>>
   >({});
+
+  useEffect(() => {
+    return () => {
+      if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+    };
+  }, [photoDraft]);
 
   function clearFieldHintTimeout(key: FieldHintKey) {
     const t = fieldHintTimeoutsRef.current[key];
@@ -466,6 +486,9 @@ export function AddStudentForm({
               success: `Saved offline – "${fullName}" will sync when online.`,
               queued: true,
             });
+            if (photoDraft) {
+              toast.error("Student created, but photo upload failed");
+            }
             // Reset + close the form just like a normal success so the
             // user can keep adding students. The pending row appears in
             // the list below via the live-query merge.
@@ -474,6 +497,7 @@ export function AddStudentForm({
             setClassSubjectOptions([]);
             setSelectedSubjectIds([]);
             setOpen(false);
+            setCurrentStep(1);
             setHealthOpen(false);
             clearAllFieldHintTimeouts();
             setFieldHints({
@@ -482,6 +506,8 @@ export function AddStudentForm({
               parent_name: null,
               parent_phone: null,
             });
+            if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+            setPhotoDraft(null);
             return;
           }
           const result = wrapped.result;
@@ -494,7 +520,59 @@ export function AddStudentForm({
             return;
           }
           setPhoneDuplicateModalName(null);
-          setState(result);
+          if (result.error || !result.studentId || !photoDraft) {
+            setState(result);
+            if (!result.error && !result.phoneDuplicateConflict) {
+              formRef.current?.reset();
+              setSelectedClassId("");
+              setClassSubjectOptions([]);
+              setSelectedSubjectIds([]);
+              setOpen(false);
+              setCurrentStep(1);
+              setHealthOpen(false);
+              clearAllFieldHintTimeouts();
+              setFieldHints({
+                full_name: null,
+                admission_number: null,
+                parent_name: null,
+                parent_phone: null,
+              });
+              if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+              setPhotoDraft(null);
+            }
+            return;
+          }
+
+          const photoFd = new FormData();
+          photoFd.append("avatar", photoDraft.file, photoDraft.file.name);
+          const photoRes = await uploadStudentAvatar(result.studentId, photoFd);
+          if (photoRes.error) {
+            toast.error("Student created, but photo upload failed");
+            setState({
+              ...result,
+              success:
+                `${result.success ?? "Student added."} Photo upload failed: ${photoRes.error}`,
+            });
+          } else {
+            toast.success("Photo updated successfully");
+            setState(result);
+          }
+          formRef.current?.reset();
+          setSelectedClassId("");
+          setClassSubjectOptions([]);
+          setSelectedSubjectIds([]);
+          setOpen(false);
+          setCurrentStep(1);
+          setHealthOpen(false);
+          clearAllFieldHintTimeouts();
+          setFieldHints({
+            full_name: null,
+            admission_number: null,
+            parent_name: null,
+            parent_phone: null,
+          });
+          if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+          setPhotoDraft(null);
         } catch (e) {
           setState({
             error: e instanceof Error ? e.message : "Something went wrong.",
@@ -510,6 +588,60 @@ export function AddStudentForm({
     studentLimit != null &&
     !atStudentLimit &&
     studentCount >= Math.max(0, studentLimit - 5);
+  const totalSteps = WIZARD_STEPS.length;
+  const activeStepTitle = WIZARD_STEPS[currentStep - 1] ?? WIZARD_STEPS[0];
+
+  function validateStepBeforeNext(step: number): boolean {
+    const form = formRef.current;
+    if (!form) return true;
+    if (step === 1) {
+      const fullName = String(
+        new FormData(form).get("full_name") ?? ""
+      ).trim();
+      const classId = String(new FormData(form).get("class_id") ?? "").trim();
+      const gender = String(new FormData(form).get("gender") ?? "").trim();
+      const enrollmentDate = String(
+        new FormData(form).get("enrollment_date") ?? ""
+      ).trim();
+      if (!fullName) {
+        setState({ error: "Please enter the student's full name." });
+        return false;
+      }
+      if (!classId) {
+        setState({ error: "Please select a class." });
+        return false;
+      }
+      if (gender !== "male" && gender !== "female") {
+        setState({ error: "Please select a gender." });
+        return false;
+      }
+      if (!enrollmentDate) {
+        setState({ error: "Enrollment date is required." });
+        return false;
+      }
+    }
+    if (step === 3) {
+      const dob = String(new FormData(form).get("date_of_birth") ?? "").trim();
+      if (!dob) {
+        setHealthOpen(true);
+        setState({ error: "Please enter the student's date of birth." });
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function goNextStep() {
+    if (submitting || atStudentLimit) return;
+    if (!validateStepBeforeNext(currentStep)) return;
+    setState((prev) => ({ ...prev, error: undefined }));
+    setCurrentStep((s) => Math.min(totalSteps, s + 1));
+  }
+
+  function goBackStep() {
+    if (submitting) return;
+    setCurrentStep((s) => Math.max(1, s - 1));
+  }
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -521,6 +653,9 @@ export function AddStudentForm({
             if (!next) {
               setNameDuplicateWarning(null);
               setPhoneDuplicateModalName(null);
+              if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+              setPhotoDraft(null);
+              setCurrentStep(1);
               clearAllFieldHintTimeouts();
               setFieldHints({
                 full_name: null,
@@ -576,7 +711,48 @@ export function AddStudentForm({
             </div>
           ) : null}
 
-          <section className={sectionCard} aria-labelledby="add-student-info-heading">
+          <section className={sectionCard} aria-label="Add student progress">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                Step {currentStep} of {totalSteps} — {activeStepTitle}
+              </p>
+              <span className="text-xs font-medium text-slate-500 dark:text-zinc-400">
+                {Math.round((currentStep / totalSteps) * 100)}%
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-school-primary transition-all duration-200"
+                style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+              />
+            </div>
+            <div className="grid grid-cols-4 gap-2 text-center">
+              {WIZARD_STEPS.map((step, idx) => {
+                const n = idx + 1;
+                const active = currentStep === n;
+                const done = currentStep > n;
+                return (
+                  <div
+                    key={step}
+                    className={`rounded-lg px-2 py-1 text-[11px] ${
+                      active
+                        ? "bg-[rgb(var(--school-primary-rgb)/0.12)] font-semibold text-school-primary"
+                        : done
+                          ? "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300"
+                          : "bg-slate-50 text-slate-500 dark:bg-zinc-900 dark:text-zinc-500"
+                    }`}
+                  >
+                    {n}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section
+            className={currentStep === 1 ? sectionCard : "hidden"}
+            aria-labelledby="add-student-info-heading"
+          >
             <div className="space-y-1">
               <h3 id="add-student-info-heading" className={sectionTitle}>
                 Student Information
@@ -920,50 +1096,41 @@ export function AddStudentForm({
             ) : null}
           </section>
 
+          <div className={currentStep === 2 ? "" : "hidden"}>
+            <StudentPhotoPicker
+              studentName={admissionValue.trim() || "New student"}
+              title="Student Photo"
+              subtitle="Optional photo used on student profiles and records."
+              currentPhotoUrl={null}
+              draft={photoDraft}
+              pending={submitting}
+              disabled={submitting}
+              onDraftChange={(next) => {
+                if (
+                  photoDraft?.previewUrl &&
+                  photoDraft.previewUrl !== next?.previewUrl
+                ) {
+                  URL.revokeObjectURL(photoDraft.previewUrl);
+                }
+                setPhotoDraft(next);
+              }}
+              allowRemove
+            />
+          </div>
+
           <section
-            className={`${sectionCard} overflow-hidden !p-0`}
+            className={currentStep === 3 ? sectionCard : "hidden"}
             aria-labelledby="add-student-health-heading"
           >
-            <div className="overflow-hidden rounded-2xl bg-slate-50/60 dark:bg-zinc-800/25">
-              <button
-                type="button"
-                aria-expanded={healthOpen}
-                aria-controls="add-student-health-panel"
-                onClick={() => setHealthOpen((v) => !v)}
-                className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left transition-colors duration-200 hover:bg-slate-100/70 dark:hover:bg-zinc-800/50"
-              >
-                <div>
-                  <h3
-                    id="add-student-health-heading"
-                    className={sectionTitle}
-                  >
-                    Health Information (Optional)
-                  </h3>
-                  <p className={`${sectionDesc} mt-0.5`}>
-                    Expand to enter date of birth (required for new students)
-                    and optional medical details.
-                  </p>
-                </div>
-                <svg
-                  className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${healthOpen ? "rotate-180" : ""}`}
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  aria-hidden
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                  />
-                </svg>
-              </button>
-              <div
-                id="add-student-health-panel"
-                className={`space-y-5 border-t border-slate-200 bg-white px-6 pb-6 pt-5 dark:border-zinc-700 dark:bg-zinc-900 ${healthOpen ? "" : "hidden"}`}
-              >
+            <div className="space-y-1">
+              <h3 id="add-student-health-heading" className={sectionTitle}>
+                Health Information
+              </h3>
+              <p className={sectionDesc}>
+                Date of birth is required. Other medical details are optional.
+              </p>
+            </div>
+              <div className="space-y-5">
                   <div className="flex flex-col">
                     <label htmlFor="date_of_birth" className={labelClass}>
                       Date of birth <span className="text-red-500">*</span>
@@ -1027,11 +1194,10 @@ export function AddStudentForm({
                     </div>
                   </div>
               </div>
-            </div>
           </section>
 
           <section
-            className={sectionCard}
+            className={currentStep === 4 ? sectionCard : "hidden"}
             aria-labelledby="add-student-parent-heading"
           >
             <div className="space-y-1">
@@ -1171,12 +1337,24 @@ export function AddStudentForm({
               Make sure required fields are filled before saving.
             </p>
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {currentStep > 1 ? (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={goBackStep}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors duration-200 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Back
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={submitting}
                 onClick={() => {
                   setNameDuplicateWarning(null);
                   setPhoneDuplicateModalName(null);
+                  if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+                  setPhotoDraft(null);
                   clearAllFieldHintTimeouts();
                   setFieldHints({
                     full_name: null,
@@ -1190,13 +1368,24 @@ export function AddStudentForm({
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                disabled={atStudentLimit || submitting}
-                className="rounded-lg bg-school-primary px-6 py-2 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
-              >
-                {submitting ? "Adding…" : "Add student"}
-              </button>
+              {currentStep < totalSteps ? (
+                <button
+                  type="button"
+                  disabled={atStudentLimit || submitting}
+                  onClick={goNextStep}
+                  className="rounded-lg bg-school-primary px-6 py-2 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={atStudentLimit || submitting}
+                  className="rounded-lg bg-school-primary px-6 py-2 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
+                >
+                  {submitting ? "Adding…" : "Add student"}
+                </button>
+              )}
             </div>
           </div>
         </form>

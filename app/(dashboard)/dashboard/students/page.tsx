@@ -97,6 +97,7 @@ export default async function StudentsPage() {
       id: string;
       full_name: string;
       admission_number: string | null;
+      avatar_url: string | null;
       class_id: string;
       class: { id: string; name: string } | null;
       gender: string | null;

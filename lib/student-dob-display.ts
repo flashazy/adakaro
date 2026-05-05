@@ -28,3 +28,14 @@ export function formatStudentDobWithAge(
   const age = differenceInYears(new Date(), d);
   return `DOB: ${format(d, "d MMM yyyy")} (Age: ${age})`;
 }
+
+/** e.g. "15 Mar 2010 (Age: 14)" — returns null when unset or invalid. */
+export function formatStudentDobIdentityValue(
+  ymd: string | null | undefined
+): string | null {
+  if (!ymd?.trim()) return null;
+  const d = parseLocalYmdToDate(ymd);
+  if (!d) return null;
+  const age = differenceInYears(new Date(), d);
+  return `${format(d, "d MMM yyyy")} (Age: ${age})`;
+}

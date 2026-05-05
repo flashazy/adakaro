@@ -9,6 +9,13 @@ import {
   useState,
 } from "react";
 import { X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { StudentPhotoPicker, type StudentPhotoDraft } from "@/components/students/StudentPhotoPicker";
+import {
+  clearStudentAvatar,
+  uploadStudentAvatar,
+} from "@/app/(dashboard)/dashboard/students/[studentId]/profile/profile-actions";
 import {
   SUBJECT_ENROLLMENT_TERMS,
   type SubjectEnrollmentTerm,
@@ -427,8 +434,12 @@ export function EditStudentDrawer({
   pendingSync = false,
   saveError,
 }: EditStudentDrawerProps) {
+  const router = useRouter();
   const [entered, setEntered] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [photoDraft, setPhotoDraft] = useState<StudentPhotoDraft | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [avatarUrlOverride, setAvatarUrlOverride] = useState<string | null>(null);
   const [editBaseline, setEditBaseline] = useState<EditFieldSnapshot | null>(
     null
   );
@@ -440,6 +451,12 @@ export function EditStudentDrawer({
   const subjectEnrollmentRef = useRef(subjectEnrollment);
   subjectEnrollmentRef.current = subjectEnrollment;
 
+  useEffect(() => {
+    return () => {
+      if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+    };
+  }, [photoDraft]);
+
   useLayoutEffect(() => {
     if (!isOpen || !student) {
       setEditBaseline(null);
@@ -447,6 +464,9 @@ export function EditStudentDrawer({
       pendingSubjectBaselineRef.current = false;
       baselineStudentIdRef.current = null;
       setDiscardConfirmOpen(false);
+      if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+      setPhotoDraft(null);
+      setAvatarUrlOverride(null);
       return;
     }
     if (baselineStudentIdRef.current !== student.id) {
@@ -455,6 +475,9 @@ export function EditStudentDrawer({
       setSubjectBaseline(null);
       pendingSubjectBaselineRef.current =
         subjectEnrollmentRef.current != null;
+      if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+      setPhotoDraft(null);
+      setAvatarUrlOverride(student.avatar_url ?? null);
     }
   }, [isOpen, student]);
 
@@ -489,6 +512,7 @@ export function EditStudentDrawer({
 
   const hasUnsavedChanges = useMemo(() => {
     if (!student || !editBaseline) return false;
+    if (photoDraft != null) return true;
     const curEdit = snapFromEditValues(student, editValues);
     if (editFieldsDirty(editBaseline, curEdit)) return true;
     if (!subjectEnrollment) return false;
@@ -506,6 +530,7 @@ export function EditStudentDrawer({
     student,
     editBaseline,
     editValues,
+    photoDraft,
     subjectEnrollment,
     subjectBaseline,
   ]);
@@ -568,6 +593,56 @@ export function EditStudentDrawer({
   const subtitleAdm =
     (editValues.admission_number ?? student.admission_number ?? "").trim() ||
     "—";
+  const currentDrawerPhotoUrl = avatarUrlOverride ?? student.avatar_url ?? null;
+
+  async function commitDrawerPhotoDraft(next: StudentPhotoDraft | null) {
+    if (!student) return;
+    if (next == null) {
+      if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+      setPhotoDraft(null);
+      return;
+    }
+    if (photoDraft?.previewUrl && photoDraft.previewUrl !== next.previewUrl) {
+      URL.revokeObjectURL(photoDraft.previewUrl);
+    }
+    setPhotoDraft(next);
+    setPhotoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("avatar", next.file, next.file.name || "avatar.jpg");
+      const res = await uploadStudentAvatar(student.id, fd);
+      if (res.error) {
+        toast.error("Failed to update photo. Please try again.");
+        return;
+      }
+      setAvatarUrlOverride(next.previewUrl);
+      setPhotoDraft(null);
+      toast.success("Photo updated successfully");
+      router.refresh();
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function removeDrawerPhoto() {
+    if (!student) return { error: "Student not found." };
+    setPhotoBusy(true);
+    try {
+      const res = await clearStudentAvatar(student.id);
+      if (res.error) {
+        toast.error("Failed to update photo. Please try again.");
+        return { error: res.error };
+      }
+      if (photoDraft?.previewUrl) URL.revokeObjectURL(photoDraft.previewUrl);
+      setPhotoDraft(null);
+      setAvatarUrlOverride(null);
+      toast.success("Photo removed");
+      router.refresh();
+      return { ok: true as const };
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[100]">
@@ -645,6 +720,19 @@ export function EditStudentDrawer({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 [-webkit-overflow-scrolling:touch]">
             <div className="space-y-6">
+              <StudentPhotoPicker
+                size="compact"
+                studentName={subtitleName}
+                currentPhotoUrl={currentDrawerPhotoUrl}
+                draft={photoDraft}
+                pending={photoBusy || isSaving}
+                disabled={isSaving}
+                onDraftChange={(next) => {
+                  void commitDrawerPhotoDraft(next);
+                }}
+                onRemoveCurrent={removeDrawerPhoto}
+              />
+
               {saveError ? (
                 <p className="text-sm text-red-600 dark:text-red-400" role="alert">
                   {saveError}

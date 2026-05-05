@@ -23,6 +23,7 @@ export interface StudentData {
   id: string;
   full_name: string;
   admission_number: string | null;
+  avatar_url?: string | null;
   class_id: string;
   class: StudentClassRef | null;
   gender: string | null;
