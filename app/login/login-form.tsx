@@ -11,7 +11,7 @@ import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { login, type AuthState } from "../actions";
+import { login, type AuthState } from "@/app/(auth)/actions";
 import { PasswordInput } from "@/components/auth/password-input";
 import { cn } from "@/lib/utils";
 
@@ -45,10 +45,7 @@ function SubmitButton({
     >
       {busy ? (
         <>
-          <Loader2
-            className="mr-2 h-4 w-4 shrink-0 animate-spin"
-            aria-hidden
-          />
+          <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
           Signing in...
         </>
       ) : (
@@ -73,19 +70,17 @@ export function LoginForm() {
   const [showSessionReplaceWarning, setShowSessionReplaceWarning] =
     useState(false);
   const [cancelHrefForBanner, setCancelHrefForBanner] = useState("/dashboard");
-  const [loginId, setLoginId] = useState("");
-  const [passwordValue, setPasswordValue] = useState("");
-  const [clearedIdHighlight, setClearedIdHighlight] = useState(false);
-  const [clearedPasswordHighlight, setClearedPasswordHighlight] =
-    useState(false);
   const wasActionBusy = useRef(false);
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "";
-  const paramError = searchParams.get("error");
   const signupHref =
     next && next.startsWith("/")
       ? `/signup?next=${encodeURIComponent(next)}`
       : "/signup";
+  const forgotHref =
+    next && next.startsWith("/")
+      ? `/forgot-password?next=${encodeURIComponent(next)}`
+      : "/forgot-password";
 
   useEffect(() => {
     try {
@@ -110,8 +105,7 @@ export function LoginForm() {
   const loginActionBusy = isLoading || isLoginPending || isPending;
   useEffect(() => {
     if (wasActionBusy.current && !loginActionBusy && state.error) {
-      setClearedIdHighlight(false);
-      setClearedPasswordHighlight(false);
+      // no-op; field highlighting is handled by `state.loginFieldHighlight`
     }
     wasActionBusy.current = loginActionBusy;
   }, [loginActionBusy, state.error]);
@@ -124,44 +118,31 @@ export function LoginForm() {
         : "border-slate-300 focus:border-school-primary focus:ring-school-primary dark:border-zinc-700 dark:focus:border-school-primary dark:focus:ring-school-primary"
     );
 
-  const passwordFieldClass = (invalid: boolean) =>
-    invalid
-      ? "border !border-red-400 focus:!border-red-500/90 focus:!ring-red-500/25 dark:!border-red-500/60 dark:focus:!border-red-500/80"
-      : undefined;
-
-  const h = state.loginFieldHighlight;
-  const showIdErr = Boolean(
-    h?.identifier && !clearedIdHighlight && !showSessionReplaceWarning
-  );
-  const showPassErr = Boolean(
-    h?.password && !clearedPasswordHighlight && !showSessionReplaceWarning
-  );
-
-  useEffect(() => {
-    if (!awaitingLoginActionRef.current) return;
-    if (!isLoginPending && !isPending) {
-      setIsLoading(false);
-      awaitingLoginActionRef.current = false;
-    }
-  }, [isLoginPending, isPending]);
+  const idInvalid = Boolean(state.loginFieldHighlight?.identifier);
+  const pwInvalid = Boolean(state.loginFieldHighlight?.password);
 
   const runLogin = (fd: FormData) => {
     awaitingLoginActionRef.current = true;
     startTransition(() => {
-      formAction(fd);
+      // invoke server action
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (formAction as any)(fd);
     });
   };
 
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit: React.FormEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
+    if (showSessionReplaceWarning) return;
     const form = e.currentTarget;
+    if (!form) return;
+
     const fd = new FormData(form);
     void (async () => {
       try {
         const raw = (fd.get("email") as string) ?? "";
         const attempt = raw.trim().toLowerCase();
-        const password = fd.get("password");
-        if (!attempt || !password) return;
+        const pw = fd.get("password");
+        if (!attempt || !pw) return;
 
         setIsLoading(true);
 
@@ -177,27 +158,22 @@ export function LoginForm() {
           return;
         }
 
-        if (attempt.includes("@")) {
-          let res: SessionEmailResponse;
-          try {
-            const r = await fetch("/api/auth/session-email", {
-              credentials: "include",
-            });
-            res = (await r.json()) as SessionEmailResponse;
-          } catch {
-            runLogin(fd);
-            return;
-          }
+        let res: SessionEmailResponse;
+        try {
+          const r = await fetch("/api/auth/session-email", {
+            credentials: "include",
+          });
+          res = (await r.json()) as SessionEmailResponse;
+        } catch {
+          runLogin(fd);
+          return;
+        }
 
-          if (
-            res.email &&
-            res.email.trim().toLowerCase() !== attempt
-          ) {
-            setCancelHrefForBanner(res.cancelHref || "/dashboard");
-            setShowSessionReplaceWarning(true);
-            setIsLoading(false);
-            return;
-          }
+        if (res.email && res.email.trim().toLowerCase() !== attempt) {
+          setCancelHrefForBanner(res.cancelHref || "/dashboard");
+          setShowSessionReplaceWarning(true);
+          setIsLoading(false);
+          return;
         }
 
         runLogin(fd);
@@ -207,6 +183,13 @@ export function LoginForm() {
       }
     })();
   };
+
+  useEffect(() => {
+    if (!awaitingLoginActionRef.current) return;
+    if (isPending || isLoginPending) return;
+    awaitingLoginActionRef.current = false;
+    setIsLoading(false);
+  }, [isPending, isLoginPending]);
 
   const handleContinueReplace = () => {
     try {
@@ -257,16 +240,16 @@ export function LoginForm() {
           >
             <p className="font-medium">Switch accounts?</p>
             <p className="mt-2 leading-relaxed">
-              Another account is already logged in on this browser. For
-              multiple accounts, please use Chrome Profiles, different browsers,
-              or log out completely before switching accounts.
+              Another account is already logged in on this browser. For multiple
+              accounts, please use Chrome Profiles, different browsers, or log
+              out completely before switching accounts.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleContinueReplace}
                 disabled={busy}
-                className="inline-flex items-center justify-center rounded-lg bg-school-primary px-3 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy ? (
                   <svg
@@ -306,26 +289,18 @@ export function LoginForm() {
           </div>
         )}
 
-        {paramError && !state.error ? (
-          <div
-            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
-            role="alert"
-          >
-            {paramError}
-          </div>
-        ) : null}
-        {state.error ? (
+        {state.error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-400">
             {state.error}
           </div>
-        ) : null}
+        )}
 
         <div>
           <label
             htmlFor="email"
             className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
           >
-            Email or full name
+            Email or username
           </label>
           <input
             id="email"
@@ -333,61 +308,47 @@ export function LoginForm() {
             type="text"
             autoComplete="username"
             required
-            value={loginId}
-            onChange={(e) => {
-              setLoginId(e.target.value);
-              setClearedIdHighlight(true);
-            }}
             disabled={showSessionReplaceWarning}
-            className={textFieldClass(showIdErr)}
-            placeholder="you@example.com or your full name"
+            className={textFieldClass(idInvalid)}
+            placeholder="you@example.com"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="password"
-            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-          >
-            Password
-          </label>
+          <div className="flex items-center justify-between">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+            >
+              Password
+            </label>
+            <Link
+              href={forgotHref}
+              className="text-sm font-medium text-school-primary hover:opacity-90"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <PasswordInput
             id="password"
             name="password"
             autoComplete="current-password"
             required
             minLength={6}
-            value={passwordValue}
-            onChange={(e) => {
-              setPasswordValue(e.target.value);
-              setClearedPasswordHighlight(true);
-            }}
             disabled={showSessionReplaceWarning}
-            className={passwordFieldClass(showPassErr)}
             placeholder="••••••••"
+            className={pwInvalid ? "border !border-red-400" : undefined}
           />
         </div>
 
-        <SubmitButton
-          isLoading={isLoading}
-          disabled={showSessionReplaceWarning}
-        />
+        <SubmitButton isLoading={isLoading} disabled={showSessionReplaceWarning} />
       </form>
-
-      <p className="mt-4 text-center text-sm text-slate-500 dark:text-zinc-400">
-        <Link
-          href={next && next.startsWith("/") ? `/forgot-password?next=${encodeURIComponent(next)}` : "/forgot-password"}
-          className="font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
-        >
-          Forgot login details?
-        </Link>
-      </p>
 
       <p className="mt-6 text-center text-sm text-slate-500 dark:text-zinc-400">
         Don&apos;t have an account?{" "}
         <Link
           href={signupHref}
-          className="font-medium text-school-primary hover:opacity-90 dark:text-school-primary"
+          className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
         >
           Sign up
         </Link>
@@ -395,3 +356,4 @@ export function LoginForm() {
     </div>
   );
 }
+

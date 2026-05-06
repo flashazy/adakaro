@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { EditStudentDrawer } from "@/components/students/EditStudentDrawer";
 import { StudentCard, StudentRow } from "./student-row";
 import {
+  bulkApprovePendingStudents,
   getStudentSubjects,
   getSubjectsForClass,
   updateStudent,
   updateStudentSubjects,
 } from "./actions";
+import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import {
   HINT_ALPHANUM_HYPHEN,
@@ -68,15 +70,26 @@ interface StudentData {
   parent_phone: string | null;
   /** Distinct subjects enrolled for the current calendar year (any term). */
   subject_enrollment_count?: number;
+  approval_status?: "approved" | "pending" | "rejected";
 }
 
 interface StudentListProps {
   students: StudentData[];
   classes: ClassOption[];
+  approvalFilter?: "approved" | "pending" | "rejected" | "all";
 }
 
-export function StudentList({ students, classes }: StudentListProps) {
+export function StudentList({
+  students,
+  classes,
+  approvalFilter = "approved",
+}: StudentListProps) {
   const router = useRouter();
+  const [serverStudents, setServerStudents] = useState<StudentData[]>(students);
+  useEffect(() => setServerStudents(students), [students]);
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkPending, startBulkTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -226,14 +239,19 @@ export function StudentList({ students, classes }: StudentListProps) {
   // placeholders. Optimistic rows go to the top so the user spots the
   // student they just added.
   const sourceStudents = useMemo<StudentData[]>(
-    () => [...optimisticStudents, ...students],
-    [optimisticStudents, students]
+    () => [...optimisticStudents, ...serverStudents],
+    [optimisticStudents, serverStudents]
   );
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
 
     return sourceStudents.filter((s) => {
+      const status = s.approval_status ?? "approved";
+      if (approvalFilter === "approved" && status !== "approved") return false;
+      if (approvalFilter === "pending" && status !== "pending") return false;
+      if (approvalFilter === "rejected" && status !== "rejected") return false;
+
       if (classFilter && s.class_id !== classFilter) return false;
 
       if (!q) return true;
@@ -258,7 +276,7 @@ export function StudentList({ students, classes }: StudentListProps) {
         parentPhone.includes(q)
       );
     });
-  }, [sourceStudents, query, classFilter, classNameMap]);
+  }, [sourceStudents, query, classFilter, classNameMap, approvalFilter]);
 
   const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
@@ -315,6 +333,35 @@ export function StudentList({ students, classes }: StudentListProps) {
     setEditSubjectYear(currentAcademicYear());
     setEditSubjectTerm("Term 1");
   }, []);
+
+  const pendingCount = useMemo(() => {
+    return sourceStudents.filter(
+      (s) => (s.approval_status ?? "approved") === "pending"
+    ).length;
+  }, [sourceStudents]);
+
+  const handleBulkApprove = useCallback(() => {
+    startBulkTransition(async () => {
+      const snapshot = serverStudents;
+      // Optimistic: flip all pending rows to approved so they disappear immediately
+      // from the Pending tab (client-side filter).
+      setServerStudents((prev) =>
+        prev.map((s) =>
+          (s.approval_status ?? "approved") === "pending"
+            ? { ...s, approval_status: "approved" }
+            : s
+        )
+      );
+
+      const res = await bulkApprovePendingStudents();
+      if (res.error) {
+        setServerStudents(snapshot);
+      } else {
+        router.refresh();
+      }
+      setBulkOpen(false);
+    });
+  }, [router, serverStudents]);
 
   useEffect(() => {
     if (!editingId) return;
@@ -628,6 +675,16 @@ export function StudentList({ students, classes }: StudentListProps) {
         </div>
 
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+        {approvalFilter === "pending" ? (
+          <button
+            type="button"
+            onClick={() => setBulkOpen(true)}
+            disabled={pendingCount === 0 || bulkPending}
+            className="h-10 w-full rounded-lg bg-school-primary px-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          >
+            {bulkPending ? "Approving…" : `Bulk approve (${pendingCount})`}
+          </button>
+        ) : null}
         <select
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
@@ -721,6 +778,14 @@ export function StudentList({ students, classes }: StudentListProps) {
                   }
                   router.refresh();
                 }}
+                onApprovalChanged={(next) => {
+                  setServerStudents((prev) =>
+                    prev.map((s) =>
+                      s.id === student.id ? { ...s, approval_status: next } : s
+                    )
+                  );
+                  router.refresh();
+                }}
               />
             ))}
           </div>
@@ -770,6 +835,16 @@ export function StudentList({ students, classes }: StudentListProps) {
                         if (editingStudent?.id === student.id) {
                           handleInlineCancel();
                         }
+                        router.refresh();
+                      }}
+                      onApprovalChanged={(next) => {
+                        setServerStudents((prev) =>
+                          prev.map((s) =>
+                            s.id === student.id
+                              ? { ...s, approval_status: next }
+                              : s
+                          )
+                        );
                         router.refresh();
                       }}
                     />
@@ -871,6 +946,18 @@ export function StudentList({ students, classes }: StudentListProps) {
               pendingByRealId.has(editingStudent.id)
             : false
         }
+      />
+
+      <ConfirmDeleteModal
+        open={bulkOpen}
+        onClose={() => (bulkPending ? undefined : setBulkOpen(false))}
+        onConfirm={handleBulkApprove}
+        title="Approve all pending students?"
+        message="They will appear in the main school list."
+        confirmLabel="Approve all"
+        cancelLabel="Cancel"
+        isDeleting={bulkPending}
+        confirmVariant="primary"
       />
     </div>
   );

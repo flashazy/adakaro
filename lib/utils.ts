@@ -1,3 +1,12 @@
+/** Remove trailing `/` from a URL or path (no regex — safe for any origin string). */
+export function stripTrailingSlash(url: string): string {
+  let s = url;
+  while (s.endsWith("/")) {
+    s = s.slice(0, -1);
+  }
+  return s;
+}
+
 /** Join class names; omit falsy entries. */
 export function cn(
   ...parts: (string | undefined | null | false)[]

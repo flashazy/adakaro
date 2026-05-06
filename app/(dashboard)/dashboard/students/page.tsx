@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { combineSupabaseErrors } from "@/lib/dashboard/supabase-error";
@@ -17,6 +18,37 @@ import { StudentList } from "./student-list";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { BackButton } from "@/components/dashboard/back-button";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
+import type { StudentApprovalStatus } from "@/types/supabase";
+
+/** Columns for the dashboard student list + class embed (matches public.students). */
+const STUDENTS_DASHBOARD_LIST_SELECT = [
+  "id",
+  "school_id",
+  "class_id",
+  "full_name",
+  "admission_number",
+  "parent_name",
+  "parent_email",
+  "parent_phone",
+  "date_of_birth",
+  "allergies",
+  "disability",
+  "insurance_provider",
+  "insurance_policy",
+  "gender",
+  "enrollment_date",
+  "status",
+  "avatar_url",
+  "approval_status",
+  "enrolled_by",
+  "approved_by",
+  "approved_at",
+  "rejected_at",
+  "rejection_reason",
+  "created_at",
+  "updated_at",
+  "class:classes(id, name)",
+].join(", ");
 
 /** DB migration not applied yet — do not block the whole page. */
 function isMissingStudentSubjectEnrollmentTable(err: unknown): boolean {
@@ -32,7 +64,21 @@ function isMissingStudentSubjectEnrollmentTable(err: unknown): boolean {
 
 export const dynamic = "force-dynamic";
 
-export default async function StudentsPage() {
+export default async function StudentsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = (await searchParams) ?? {};
+  const approvalParam =
+    typeof sp.approval === "string" ? sp.approval : "approved";
+  const approvalFilter =
+    approvalParam === "pending" ||
+    approvalParam === "rejected" ||
+    approvalParam === "all"
+      ? approvalParam
+      : "approved";
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -49,12 +95,21 @@ export default async function StudentsPage() {
     .eq("school_id", schoolId)
     .order("name");
 
-  const { data: students, error: studentsError } = await orderStudentsByGenderThenName(
-    supabase
-      .from("students")
-      .select("*, class:classes(id, name)")
-      .eq("school_id", schoolId)
-  );
+  let studentsQuery = supabase
+    .from("students")
+    .select(STUDENTS_DASHBOARD_LIST_SELECT)
+    .eq("school_id", schoolId);
+
+  if (approvalFilter === "approved") {
+    studentsQuery = studentsQuery.eq("approval_status", "approved");
+  } else if (approvalFilter === "pending") {
+    studentsQuery = studentsQuery.eq("approval_status", "pending");
+  } else if (approvalFilter === "rejected") {
+    studentsQuery = studentsQuery.eq("approval_status", "rejected");
+  }
+
+  const { data: students, error: studentsError } =
+    await orderStudentsByGenderThenName(studentsQuery);
 
   const enrollmentYear = new Date().getFullYear();
   const { data: enrollmentRows, error: enrollmentError } = await supabase
@@ -110,6 +165,12 @@ export default async function StudentsPage() {
       parent_name: string | null;
       parent_email: string | null;
       parent_phone: string | null;
+      approval_status: StudentApprovalStatus;
+      enrolled_by: string | null;
+      approved_by: string | null;
+      approved_at: string | null;
+      rejected_at: string | null;
+      rejection_reason: string | null;
     };
     return {
       ...row,
@@ -175,21 +236,60 @@ export default async function StudentsPage() {
             message={listError}
           />
         ) : null}
-        <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
-          <StudentImportModal
-            classes={classOptions}
-            canBulkImport={canBulkImport}
-          />
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-1 text-sm dark:border-zinc-700 dark:bg-zinc-900/60">
+          {(
+            [
+              { key: "approved", label: "Approved" },
+              { key: "pending", label: "Pending" },
+              { key: "rejected", label: "Rejected" },
+              { key: "all", label: "All" },
+            ] as const
+          ).map((tab) => (
+            <Link
+              key={tab.key}
+              href={
+                tab.key === "approved"
+                  ? "/dashboard/students"
+                  : `/dashboard/students?approval=${tab.key}`
+              }
+              className={`rounded-lg px-3 py-2 font-medium transition-colors ${
+                approvalFilter === tab.key
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-zinc-800 dark:text-white"
+                  : "text-slate-600 hover:bg-white/70 dark:text-zinc-400 dark:hover:bg-zinc-800/80"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          ))}
         </div>
-        <AddStudentForm
-          classes={classOptions}
-          studentCount={studentLimitState.current}
-          studentLimit={studentLimitState.limit}
-          nextAdmissionPreview={nextAdmissionPreview}
-          schoolAdmissionPrefix={schoolAdmissionPrefix}
-        />
+        {approvalFilter === "approved" ? (
+          <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+            <StudentImportModal
+              classes={classOptions}
+              canBulkImport={canBulkImport}
+            />
+          </div>
+        ) : null}
+        {approvalFilter === "approved" ? (
+          <AddStudentForm
+            classes={classOptions}
+            studentCount={studentLimitState.current}
+            studentLimit={studentLimitState.limit}
+            nextAdmissionPreview={nextAdmissionPreview}
+            schoolAdmissionPrefix={schoolAdmissionPrefix}
+          />
+        ) : (
+          <p className="text-sm text-slate-600 dark:text-zinc-400">
+            Use the Approved tab to add students from the dashboard. Pending and
+            rejected rows are from capture card or other workflows.
+          </p>
+        )}
         {!listError ? (
-          <StudentList students={typedStudents} classes={classOptions} />
+          <StudentList
+            students={typedStudents}
+            classes={classOptions}
+            approvalFilter={approvalFilter}
+          />
         ) : null}
       </main>
       <SmartFloatingScrollButton sectionIds={[]} />

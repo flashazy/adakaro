@@ -105,7 +105,8 @@ export async function checkStudentLimit(
   const { count, error } = await supabase
     .from("students")
     .select("*", { count: "exact", head: true })
-    .eq("school_id", schoolId);
+    .eq("school_id", schoolId)
+    .eq("approval_status", "approved");
 
   const current = error ? 0 : count ?? 0;
   if (limit == null) {

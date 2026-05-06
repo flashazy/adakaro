@@ -147,6 +147,8 @@ export async function POST(request: NextRequest) {
       parent_name: parentName,
       parent_email: parentEmail,
       parent_phone: parentPhone,
+      enrolled_by: user.id,
+      approval_status: "approved",
     };
 
     const { error: insErr } = await supabase.from("students").insert(row as never);

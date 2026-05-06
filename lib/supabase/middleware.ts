@@ -4,8 +4,163 @@ import { NextResponse, type NextRequest } from "next/server";
 import { TEACHER_TEMP_EXPIRED_ERROR } from "@/lib/teacher-temp-password-constants";
 import type { Database } from "@/types/supabase";
 
+const CAPTURE_SESSION_COOKIE = "cc_session";
+
+type CaptureCookiePayload = {
+  v: 1;
+  ccu_id: string;
+  school_id: string;
+  username?: string;
+  exp: number; // unix seconds
+};
+
+type CaptureSessionReadResult =
+  | { ok: true; payload: CaptureCookiePayload }
+  | { ok: false; hadCookie: boolean };
+
+function base64UrlToBytes(b64url: string): Uint8Array {
+  const b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+  const str = atob(b64 + pad);
+  const bytes = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i);
+  return bytes;
+}
+
+function bytesToBase64Url(bytes: ArrayBuffer): string {
+  const u8 = new Uint8Array(bytes);
+  let s = "";
+  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]!);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function hmacSha256Base64Url(
+  secret: string,
+  data: string
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(data)
+  );
+  return bytesToBase64Url(sig);
+}
+
+async function readCaptureSession(
+  request: NextRequest
+): Promise<CaptureSessionReadResult> {
+  const cookie = request.cookies.get(CAPTURE_SESSION_COOKIE)?.value ?? "";
+  if (!cookie) return { ok: false, hadCookie: false };
+  const [body, sig] = cookie.split(".");
+  if (!body || !sig) return { ok: false, hadCookie: true };
+
+  const secret =
+    process.env.CAPTURE_CARD_SESSION_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    process.env.SUPABASE_JWT_SECRET ||
+    "";
+  if (!secret) return { ok: false, hadCookie: true };
+
+  let expected = "";
+  try {
+    expected = await hmacSha256Base64Url(secret, body);
+  } catch {
+    return { ok: false, hadCookie: true };
+  }
+  if (expected !== sig) return { ok: false, hadCookie: true };
+
+  let payload: CaptureCookiePayload;
+  try {
+    const json = new TextDecoder().decode(base64UrlToBytes(body));
+    payload = JSON.parse(json) as CaptureCookiePayload;
+  } catch {
+    return { ok: false, hadCookie: true };
+  }
+
+  if (payload?.v !== 1) return { ok: false, hadCookie: true };
+  if (!payload.ccu_id || !payload.school_id)
+    return { ok: false, hadCookie: true };
+  if (!payload.exp || payload.exp <= Math.floor(Date.now() / 1000))
+    return { ok: false, hadCookie: true };
+  return { ok: true, payload };
+}
+
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  const isAuthCallback = pathname.startsWith("/auth/callback");
+
+  const isCaptureCardRoute = pathname.startsWith("/capture-card");
+
+  const isAuthPage =
+    !isAuthCallback &&
+    (pathname.startsWith("/login") ||
+      pathname.startsWith("/signup") ||
+      pathname.startsWith("/forgot-password") ||
+      pathname.startsWith("/auth"));
+
+  const isAdminRoute = pathname.startsWith("/dashboard");
+  const isParentRoute = pathname.startsWith("/parent-dashboard");
+  const isSuperAdminRoute = pathname.startsWith("/super-admin");
+  const isTeacherRoute = pathname.startsWith("/teacher-dashboard");
+  const isProtectedRoute =
+    isAdminRoute || isParentRoute || isSuperAdminRoute || isTeacherRoute;
+  const isSchoolSuspendedPage = pathname === "/school-suspended";
+  const isPaymentPage = pathname === "/payment";
+  /** Public marketing landing — allow suspended users to exit here without loop */
+  const isLandingPage = pathname === "/";
+  const isSchoolReactivationPaymentApi = pathname.startsWith(
+    "/api/payment/school-reactivation"
+  );
+
+  const debug = process.env.NODE_ENV === "development";
+  const rawCc = request.cookies.get(CAPTURE_SESSION_COOKIE)?.value ?? "";
+  const captureRead = await readCaptureSession(request);
+  const captureSession = captureRead.ok ? captureRead.payload : null;
+
+  if (debug) {
+    console.info("[cc_session] check", {
+      pathname,
+      hasCookie: Boolean(rawCc),
+      decodeOk: captureRead.ok,
+      ccu_id: captureSession?.ccu_id ?? null,
+      school_id: captureSession?.school_id ?? null,
+      username: captureSession?.username ?? null,
+    });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
+  if (!captureRead.ok && captureRead.hadCookie) {
+    if (debug) console.warn("[cc_session] invalid cookie cleared");
+    supabaseResponse.cookies.set(CAPTURE_SESSION_COOKIE, "", {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 0,
+    });
+  }
+
+  // IMPORTANT: For capture-card routes, we MUST avoid Supabase auth calls in Edge
+  // (they can fail with AuthRetryableFetchError: fetch failed). Cookie session is enough.
+  if (captureSession && isCaptureCardRoute) {
+    if (debug) console.info("[cc_session] allow capture-card via cookie");
+    return supabaseResponse;
+  }
+
+  if (captureSession && isAuthPage) {
+    if (debug) console.info("[cc_session] redirect away from auth page");
+    const url = request.nextUrl.clone();
+    url.pathname = "/capture-card";
+    return NextResponse.redirect(url);
+  }
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,68 +187,80 @@ export async function updateSession(request: NextRequest) {
   // supabase.auth.getUser(). A simple mistake could make it very
   // hard to debug issues with users being randomly logged out.
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const pathname = request.nextUrl.pathname;
-
-  const isAuthCallback = pathname.startsWith("/auth/callback");
-
-  const isAuthPage =
-    !isAuthCallback &&
-    (pathname.startsWith("/login") ||
-      pathname.startsWith("/signup") ||
-      pathname.startsWith("/forgot-password") ||
-      pathname.startsWith("/auth"));
-
-  const isAdminRoute = pathname.startsWith("/dashboard");
-  const isParentRoute = pathname.startsWith("/parent-dashboard");
-  const isSuperAdminRoute = pathname.startsWith("/super-admin");
-  const isTeacherRoute = pathname.startsWith("/teacher-dashboard");
-  const isProtectedRoute =
-    isAdminRoute || isParentRoute || isSuperAdminRoute || isTeacherRoute;
-  const isSchoolSuspendedPage = pathname === "/school-suspended";
-  const isPaymentPage = pathname === "/payment";
-  /** Public marketing landing — allow suspended users to exit here without loop */
-  const isLandingPage = pathname === "/";
-  const isSchoolReactivationPaymentApi = pathname.startsWith(
-    "/api/payment/school-reactivation"
-  );
+  let user: unknown = null;
+  try {
+    const {
+      data: { user: u },
+    } = await supabase.auth.getUser();
+    user = u;
+  } catch (e) {
+    if (debug) console.warn("[supabase] auth.getUser failed in middleware", e);
+    user = null;
+  }
+  const typedUser = user as { id: string; user_metadata?: Record<string, unknown> } | null;
 
   // Suspension and payment pages are for logged-in users only.
-  if (!user && (isSchoolSuspendedPage || isPaymentPage)) {
+  if (!typedUser && !captureSession && (isSchoolSuspendedPage || isPaymentPage)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    if (debug) console.info("[auth] redirect to /login (suspension/payment)");
     return NextResponse.redirect(url);
   }
 
   // Unauthenticated users trying to access protected routes → login.
-  if (!user && isProtectedRoute) {
+  if (!typedUser && !captureSession && isProtectedRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    if (debug) console.info("[auth] redirect to /login (protected route)");
     return NextResponse.redirect(url);
   }
 
-  if (user) {
+  // Capture-card pages: allow through even if middleware can't validate Supabase user.
+  // The /capture-card route itself will handle legacy Supabase sessions in Node runtime.
+  if (!typedUser && !captureSession && isCaptureCardRoute) {
+    if (debug) {
+      console.info(
+        "[auth] allow capture-card without cc_session (legacy handled by route)"
+      );
+    }
+    return supabaseResponse;
+  }
+
+  // Capture session should never access normal dashboards.
+  if (!typedUser && captureSession && isProtectedRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/capture-card";
+    if (debug) console.info("[cc_session] redirect to /capture-card (protected route)");
+    return NextResponse.redirect(url);
+  }
+
+  if (typedUser) {
     // JWT metadata first (always available); override from DB when present.
     // Using only metadata while the parent page requires profiles.role caused a
     // loop: page → redirect /dashboard, middleware → redirect /parent-dashboard.
-    const metaRole = String(user.user_metadata?.role ?? "")
+    const metaRole = String(typedUser.user_metadata?.role ?? "")
       .toLowerCase()
       .trim();
-    let role: "admin" | "parent" | "super_admin" | "teacher" =
+    let role:
+      | "admin"
+      | "parent"
+      | "super_admin"
+      | "teacher"
+      | "capture_card_user" =
       metaRole === "admin"
         ? "admin"
         : metaRole === "teacher"
           ? "teacher"
-          : "parent";
+          : metaRole === "capture_card_user"
+            ? "capture_card_user"
+            : "parent";
 
     if (
       isAuthPage ||
       isProtectedRoute ||
       isSchoolSuspendedPage ||
-      isPaymentPage
+      isPaymentPage ||
+      isCaptureCardRoute
     ) {
       // SECURITY DEFINER — reliable even if profiles SELECT is flaky for this user.
       const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
@@ -106,7 +273,7 @@ export async function updateSession(request: NextRequest) {
         const { data: profileRow } = await supabase
           .from("profiles")
           .select("role")
-          .eq("id", user.id)
+          .eq("id", typedUser.id)
           .maybeSingle();
 
         const pr = (profileRow as {
@@ -116,10 +283,13 @@ export async function updateSession(request: NextRequest) {
             | "super_admin"
             | "teacher"
             | "finance"
-            | "accounts";
+            | "accounts"
+            | "capture_card_user";
         } | null)?.role;
         if (pr === "finance" || pr === "accounts") {
           role = "admin";
+        } else if (pr === "capture_card_user") {
+          role = "capture_card_user";
         } else if (
           pr === "admin" ||
           pr === "parent" ||
@@ -133,7 +303,11 @@ export async function updateSession(request: NextRequest) {
       // If profiles SELECT missed the row (RLS timing) but JWT metadata defaulted to
       // parent, we would send teachers parent-dashboard ↔ teacher-dashboard in a loop.
       // is_teacher() is SECURITY DEFINER (see migration 00048).
-      if (role !== "super_admin" && role !== "teacher") {
+      if (
+        role !== "super_admin" &&
+        role !== "teacher" &&
+        role !== "capture_card_user"
+      ) {
         const { data: asTeacher, error: teacherRpcErr } = await supabase.rpc(
           "is_teacher",
           {} as never
@@ -173,6 +347,8 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/dashboard";
       } else if (role === "teacher") {
         url.pathname = "/teacher-dashboard";
+      } else if (role === "capture_card_user") {
+        url.pathname = "/capture-card";
       } else {
         url.pathname = "/parent-dashboard";
       }
@@ -185,10 +361,22 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/dashboard";
       } else if (role === "teacher") {
         url.pathname = "/teacher-dashboard";
+      } else if (role === "capture_card_user") {
+        url.pathname = "/capture-card";
       } else {
         url.pathname = "/parent-dashboard";
       }
       return NextResponse.redirect(url);
+    }
+
+    // Capture-card users are now authenticated via cookie session (not Supabase Auth),
+    // but keep legacy support if a Supabase capture_card_user exists.
+    if (role === "capture_card_user") {
+      if (isAdminRoute || isTeacherRoute) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/capture-card";
+        return NextResponse.redirect(url);
+      }
     }
 
     if (role === "teacher" || role === "admin") {
@@ -197,7 +385,7 @@ export async function updateSession(request: NextRequest) {
         .select(
           "role, password_changed, password_forced_reset, teacher_temp_password_expires_at"
         )
-        .eq("id", user.id)
+        .eq("id", typedUser.id)
         .maybeSingle();
       const pw = profPw as {
         role?: string;
@@ -257,7 +445,7 @@ export async function updateSession(request: NextRequest) {
       const { data: prRec } = await supabase
         .from("profiles")
         .select("recovery_reset_required, password_forced_reset")
-        .eq("id", user.id)
+        .eq("id", typedUser.id)
         .maybeSingle();
       const r = prRec as {
         recovery_reset_required?: boolean;
@@ -294,6 +482,40 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/dashboard";
       } else if (role === "teacher") {
         url.pathname = "/teacher-dashboard";
+      } else if (role === "capture_card_user") {
+        url.pathname = "/capture-card";
+      } else {
+        url.pathname = "/parent-dashboard";
+      }
+      return NextResponse.redirect(url);
+    }
+
+    if (role === "capture_card_user") {
+      if (
+        !isCaptureCardRoute &&
+        !isAuthCallback &&
+        !pathname.startsWith("/api/")
+      ) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/capture-card";
+        return NextResponse.redirect(url);
+      }
+      if (!isCaptureCardRoute && pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+      }
+    }
+
+    if (
+      role !== "capture_card_user" &&
+      isCaptureCardRoute
+    ) {
+      const url = request.nextUrl.clone();
+      if (role === "super_admin") {
+        url.pathname = "/super-admin";
+      } else if (role === "admin") {
+        url.pathname = "/dashboard";
+      } else if (role === "teacher") {
+        url.pathname = "/teacher-dashboard";
       } else {
         url.pathname = "/parent-dashboard";
       }
@@ -303,7 +525,9 @@ export async function updateSession(request: NextRequest) {
     // Super admin routes: platform owners only.
     if (isSuperAdminRoute && role !== "super_admin") {
       const url = request.nextUrl.clone();
-      if (role === "parent") {
+      if (role === "capture_card_user") {
+        url.pathname = "/capture-card";
+      } else if (role === "parent") {
         url.pathname = "/parent-dashboard";
       } else if (role === "teacher") {
         url.pathname = "/teacher-dashboard";
@@ -317,6 +541,8 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       if (role === "super_admin") {
         url.pathname = "/super-admin";
+      } else if (role === "capture_card_user") {
+        url.pathname = "/capture-card";
       } else if (role === "admin") {
         url.pathname = "/dashboard";
       } else {
@@ -341,7 +567,7 @@ export async function updateSession(request: NextRequest) {
       const { data: financeDeptRow, error: financeDeptErr } = await supabase
         .from("teacher_department_roles")
         .select("id")
-        .eq("user_id", user.id)
+        .eq("user_id", typedUser.id)
         .in("department", ["finance", "accounts"])
         .limit(1)
         .maybeSingle();
@@ -370,6 +596,7 @@ export async function updateSession(request: NextRequest) {
       isAdminRoute &&
       role !== "admin" &&
       role !== "super_admin" &&
+      role !== "capture_card_user" &&
       !isTeacherAllowedAdminRoute
     ) {
       const url = request.nextUrl.clone();
@@ -383,12 +610,26 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       if (role === "super_admin") {
         url.pathname = "/super-admin";
+      } else if (role === "capture_card_user") {
+        url.pathname = "/capture-card";
       } else if (role === "teacher") {
         url.pathname = "/teacher-dashboard";
       } else {
         url.pathname = "/dashboard";
       }
       return NextResponse.redirect(url);
+    }
+  }
+
+  // Capture-session users: block access outside capture-card.
+  if (!typedUser && captureSession) {
+    if (!isCaptureCardRoute && !isAuthCallback && !pathname.startsWith("/api/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/capture-card";
+      return NextResponse.redirect(url);
+    }
+    if (!isCaptureCardRoute && pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
   }
 

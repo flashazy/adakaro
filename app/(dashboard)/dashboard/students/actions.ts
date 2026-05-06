@@ -34,6 +34,257 @@ async function getSchoolId() {
   return { supabase, schoolId, userId: user.id };
 }
 
+async function requireAdminForSchool(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+  const role = (profile as { role?: string } | null)?.role ?? "";
+  if (role !== "admin" && role !== "super_admin") {
+    throw new Error("Only admins can approve or reject students.");
+  }
+}
+
+async function allocateAdmissionNumberIfMissing(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  schoolId: string,
+  existing: string | null
+): Promise<string | null> {
+  const current = (existing ?? "").trim();
+  if (current) return current;
+  const { data: generated, error } = await supabase.rpc(
+    "get_next_admission_number",
+    { p_school_id: schoolId } as never
+  );
+  if (error) throw new Error(error.message);
+  const genText = generated as string | null | undefined;
+  const out = typeof genText === "string" ? genText.trim() : "";
+  return out || null;
+}
+
+async function maybeEmailParentOnApproval(params: {
+  parentEmail: string | null;
+  studentName: string;
+  schoolId: string;
+}) {
+  const { parentEmail, studentName } = params;
+  const email = String(parentEmail ?? "").trim();
+  if (!email) return;
+  // We only send if SMTP is configured. This avoids breaking approval flows
+  // in dev or schools that don't configure outbound mail.
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS ?? process.env.GMAIL_APP_PASSWORD;
+  if (!host || !user || !pass) return;
+
+  try {
+    const nodemailer = (await import("nodemailer")).default;
+    const port = Number(process.env.SMTP_PORT ?? "587");
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+    });
+    await transporter.sendMail({
+      from: `"Adakaro" <${process.env.EMAIL_FROM ?? user}>`,
+      to: email,
+      subject: `Student approved: ${studentName}`,
+      text: `Good news — ${studentName} has been approved and is now on the school list.`,
+      html: `<p>Good news — <strong>${studentName}</strong> has been approved and is now on the school list.</p>`,
+    });
+  } catch (e) {
+    console.error("[students] parent email notify failed", e);
+  }
+}
+
+export async function approveStudent(studentId: string): Promise<{ error?: string; ok?: true }> {
+  try {
+    const { supabase, schoolId, userId } = await getSchoolId();
+    await requireAdminForSchool(supabase, userId);
+
+    const { data: st, error: stErr } = await supabase
+      .from("students")
+      .select("id, approval_status, admission_number, full_name, parent_email")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+    if (stErr || !st) return { error: "Student not found." };
+
+    const row = st as {
+      id: string;
+      approval_status: string;
+      admission_number: string | null;
+      full_name: string;
+      parent_email: string | null;
+    };
+    if (row.approval_status !== "pending") {
+      return { error: "This student is not pending approval." };
+    }
+
+    const limitCheck = await checkStudentLimit(supabase, schoolId);
+    if (!limitCheck.allowed) {
+      return { error: "This school has reached its student limit. Upgrade to approve more students." };
+    }
+
+    const admission = await allocateAdmissionNumberIfMissing(
+      supabase,
+      schoolId,
+      row.admission_number
+    );
+
+    const { error: upErr } = await supabase
+      .from("students")
+      .update({
+        approval_status: "approved",
+        approved_by: userId,
+        approved_at: new Date().toISOString(),
+        rejected_at: null,
+        rejection_reason: null,
+        admission_number: admission,
+      } as never)
+      .eq("id", studentId)
+      .eq("school_id", schoolId);
+    if (upErr) return { error: upErr.message };
+
+    void logAdminActionFromServerAction(
+      userId,
+      "approve_student",
+      { student_id: studentId },
+      schoolId
+    );
+
+    void maybeEmailParentOnApproval({
+      parentEmail: row.parent_email,
+      studentName: row.full_name,
+      schoolId,
+    });
+
+    revalidatePath("/dashboard/students");
+    return { ok: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
+export async function rejectStudent(studentId: string, reason?: string): Promise<{ error?: string; ok?: true }> {
+  try {
+    const { supabase, schoolId, userId } = await getSchoolId();
+    await requireAdminForSchool(supabase, userId);
+
+    const { data: st, error: stErr } = await supabase
+      .from("students")
+      .select("id, approval_status")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+    if (stErr || !st) return { error: "Student not found." };
+
+    const row = st as { id: string; approval_status: string };
+    if (row.approval_status !== "pending") {
+      return { error: "This student is not pending approval." };
+    }
+
+    const { error: upErr } = await supabase
+      .from("students")
+      .update({
+        approval_status: "rejected",
+        rejected_at: new Date().toISOString(),
+        rejection_reason: nullableTrimmedText(reason) ?? "Rejected",
+        approved_by: null,
+        approved_at: null,
+      } as never)
+      .eq("id", studentId)
+      .eq("school_id", schoolId);
+    if (upErr) return { error: upErr.message };
+
+    void logAdminActionFromServerAction(
+      userId,
+      "reject_student",
+      { student_id: studentId, reason: nullableTrimmedText(reason) ?? undefined },
+      schoolId
+    );
+
+    revalidatePath("/dashboard/students");
+    return { ok: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
+export async function bulkApprovePendingStudents(): Promise<{ error?: string; ok?: true; count?: number }> {
+  try {
+    const { supabase, schoolId, userId } = await getSchoolId();
+    await requireAdminForSchool(supabase, userId);
+
+    const { data: pendingRows, error: loadErr } = await supabase
+      .from("students")
+      .select("id, admission_number, full_name, parent_email")
+      .eq("school_id", schoolId)
+      .eq("approval_status", "pending")
+      .limit(500);
+    if (loadErr) return { error: loadErr.message };
+    const rows = (pendingRows ?? []) as Array<{
+      id: string;
+      admission_number: string | null;
+      full_name: string;
+      parent_email: string | null;
+    }>;
+    if (rows.length === 0) return { ok: true as const, count: 0 };
+
+    const limitCheck = await checkStudentLimit(supabase, schoolId);
+    if (limitCheck.limit != null && limitCheck.current + rows.length > limitCheck.limit) {
+      return { error: "Approving all pending students would exceed your plan limit." };
+    }
+
+    let approved = 0;
+    for (const r of rows) {
+      const admission = await allocateAdmissionNumberIfMissing(
+        supabase,
+        schoolId,
+        r.admission_number
+      );
+      const { error: upErr } = await supabase
+        .from("students")
+        .update({
+          approval_status: "approved",
+          approved_by: userId,
+          approved_at: new Date().toISOString(),
+          rejected_at: null,
+          rejection_reason: null,
+          admission_number: admission,
+        } as never)
+        .eq("id", r.id)
+        .eq("school_id", schoolId)
+        .eq("approval_status", "pending");
+      if (!upErr) {
+        approved++;
+        void maybeEmailParentOnApproval({
+          parentEmail: r.parent_email,
+          studentName: r.full_name,
+          schoolId,
+        });
+      }
+    }
+
+    void logAdminActionFromServerAction(
+      userId,
+      "bulk_approve_students",
+      { count: approved },
+      schoolId
+    );
+
+    revalidatePath("/dashboard/students");
+    return { ok: true as const, count: approved };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
 function nullableTrimmedText(raw: string | null | undefined): string | null {
   const t = (raw ?? "").trim();
   return t === "" ? null : t;
@@ -367,6 +618,7 @@ async function findStudentsByParentPhone(
     .from("students")
     .select("id, full_name, admission_number, parent_phone, class_id")
     .eq("school_id", schoolId)
+    .eq("approval_status", "approved")
     .eq("parent_phone", trimmed)
     .limit(5);
 
@@ -396,6 +648,7 @@ export async function peekStudentCreateNameDuplicate(
       .from("students")
       .select("full_name")
       .eq("school_id", schoolId)
+      .eq("approval_status", "approved")
       .ilike("full_name", pattern)
       .limit(15);
 
@@ -594,6 +847,8 @@ export async function addStudent(
         disability,
         insurance_provider,
         insurance_policy,
+        enrolled_by: userId,
+        approval_status: "approved",
       } as never)
       .select("id")
       .single();

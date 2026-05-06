@@ -12,7 +12,10 @@ export type UserRole =
   | "super_admin"
   | "teacher"
   | "finance"
-  | "accounts";
+  | "accounts"
+  | "capture_card_user";
+
+export type StudentApprovalStatus = "pending" | "approved" | "rejected";
 export type SchoolStatus = "active" | "suspended";
 export type StudentStatus = "active" | "inactive" | "graduated" | "transferred";
 export type PaymentMethod =
@@ -591,6 +594,60 @@ export interface Database {
         };
         Relationships: [];
       };
+      capture_card_users: {
+        Row: {
+          id: string;
+          school_id: string;
+          username: string;
+          auth_email: string;
+          auth_user_id: string;
+          password_hash: string | null;
+          created_by: string;
+          expires_at: string | null;
+          is_active: boolean;
+          requires_approval: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          username: string;
+          auth_email: string;
+          auth_user_id: string;
+          password_hash?: string | null;
+          created_by: string;
+          expires_at?: string | null;
+          is_active?: boolean;
+          requires_approval?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          username?: string;
+          auth_email?: string;
+          auth_user_id?: string;
+          password_hash?: string | null;
+          expires_at?: string | null;
+          is_active?: boolean;
+          requires_approval?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "capture_card_users_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "capture_card_users_created_by_fkey";
+            columns: ["created_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       classes: {
         Row: {
           id: string;
@@ -1089,6 +1146,12 @@ export interface Database {
           enrollment_date: string;
           status: StudentStatus;
           avatar_url: string | null;
+          approval_status: StudentApprovalStatus;
+          enrolled_by: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          rejected_at: string | null;
+          rejection_reason: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1110,6 +1173,12 @@ export interface Database {
           enrollment_date?: string;
           status?: StudentStatus;
           avatar_url?: string | null;
+          approval_status?: StudentApprovalStatus;
+          enrolled_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          rejected_at?: string | null;
+          rejection_reason?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1129,6 +1198,12 @@ export interface Database {
           enrollment_date?: string;
           status?: StudentStatus;
           avatar_url?: string | null;
+          approval_status?: StudentApprovalStatus;
+          enrolled_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          rejected_at?: string | null;
+          rejection_reason?: string | null;
           updated_at?: string;
         };
       };

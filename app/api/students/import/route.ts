@@ -1074,6 +1074,8 @@ export async function POST(request: NextRequest) {
           parent_email: r.parent_email,
           parent_name: r.parent_name,
           parent_phone: r.parent_phone,
+          enrolled_by: user.id,
+          approval_status: "approved",
         };
 
         const { data: insertedStudent, error: insErr } = await supabase

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2, X } from "lucide-react";
 
 export interface ConfirmDeleteModalProps {
@@ -32,6 +33,11 @@ export function ConfirmDeleteModal({
 }: ConfirmDeleteModalProps) {
   const [rendered, setRendered] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -62,7 +68,7 @@ export function ConfirmDeleteModal({
     return null;
   }
 
-  return (
+  const node = (
     <div
       className="fixed inset-0 z-[210] flex items-end justify-center p-0 sm:items-center sm:p-4"
       role="presentation"
@@ -147,4 +153,9 @@ export function ConfirmDeleteModal({
       </div>
     </div>
   );
+
+  // Important: render in a portal so this modal can be used inside tables
+  // (e.g. within <tbody>) without producing invalid HTML / hydration errors.
+  if (!mounted) return null;
+  return createPortal(node, document.body);
 }

@@ -3,9 +3,9 @@ import type { Database } from "@/types/supabase";
 import { normalizeTeacherDisplayName } from "@/lib/teacher-display-name";
 
 /**
- * Supabase sign-in uses email. Teachers may type their display name instead;
- * this resolves a unique teacher row to the auth email (including synthetic
- * emails for admin-created accounts).
+ * Supabase sign-in uses email. Resolution order for non-email input:
+ * 1) `capture_card_users` by username (case-insensitive), then
+ * 2) teacher/admin `profiles` by normalized full name.
  */
 export async function resolveLoginEmailForSignIn(
   admin: SupabaseClient<Database>,
@@ -17,6 +17,49 @@ export async function resolveLoginEmailForSignIn(
   }
   if (trimmed.includes("@")) {
     return { ok: true, email: trimmed };
+  }
+
+  const { data: ccRows, error: ccErr } = await admin
+    .from("capture_card_users")
+    .select("auth_email, is_active, expires_at")
+    .ilike("username", trimmed);
+
+  if (!ccErr && ccRows && ccRows.length > 0) {
+    if (ccRows.length > 1) {
+      return {
+        ok: false,
+        error:
+          "That username exists for more than one school. Open the capture card link from your school, or sign in with your email address.",
+      };
+    }
+    const row = ccRows[0] as {
+      auth_email: string;
+      is_active: boolean;
+      expires_at: string | null;
+    };
+    if (!row.is_active) {
+      return {
+        ok: false,
+        error:
+          "This capture account is turned off. Ask your school admin for help.",
+      };
+    }
+    if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
+      return {
+        ok: false,
+        error:
+          "This capture account has expired. Ask your school admin for a new one.",
+      };
+    }
+    const em = row.auth_email?.trim();
+    if (!em) {
+      return {
+        ok: false,
+        error:
+          "Could not resolve this capture account. Ask your school admin for help.",
+      };
+    }
+    return { ok: true, email: em };
   }
 
   const normalized = normalizeTeacherDisplayName(trimmed);

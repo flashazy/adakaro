@@ -2,8 +2,9 @@
 
 import { Fragment, useState, useTransition } from "react";
 import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
-import { Pencil, Trash2, UserCircle } from "lucide-react";
-import { deleteStudent } from "./actions";
+import { Check, Pencil, Trash2, UserCircle, X } from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
+import { approveStudent, deleteStudent, rejectStudent } from "./actions";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ export interface StudentData {
   parent_email: string | null;
   parent_phone: string | null;
   subject_enrollment_count?: number;
+  approval_status?: "approved" | "pending" | "rejected";
 }
 
 function genderAbbrev(g: string | null | undefined): string {
@@ -96,6 +98,8 @@ export interface StudentRowProps {
   onEdit: (student: StudentData) => void;
   /** Called after a successful delete (parent should refresh data). */
   onDeleted?: () => void;
+  /** Called after a successful approve/reject (parent should update UI). */
+  onApprovalChanged?: (next: "approved" | "rejected") => void;
   /** True when this row represents an offline-queued create or edit
    * that hasn't synced yet. Renders a "Pending sync" badge next to the
    * name. */
@@ -132,11 +136,18 @@ export function StudentRow({
   student,
   onEdit,
   onDeleted,
+  onApprovalChanged,
   pendingSync = false,
 }: StudentRowProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [approvalPending, setApprovalPending] = useState(false);
+
+  const approvalStatus = student.approval_status ?? "approved";
+  const canApproveOrReject = approvalStatus === "pending";
 
   function handleDelete() {
     startTransition(async () => {
@@ -175,6 +186,40 @@ export function StudentRow({
       setError(null);
       setShowDeleteConfirm(false);
       onDeleted?.();
+    });
+  }
+
+  function handleApprove() {
+    setApprovalPending(true);
+    startTransition(async () => {
+      const res = await approveStudent(student.id);
+      if (res.error) {
+        setError(res.error);
+        setShowApproveConfirm(false);
+        setApprovalPending(false);
+        return;
+      }
+      setError(null);
+      setShowApproveConfirm(false);
+      setApprovalPending(false);
+      onApprovalChanged?.("approved");
+    });
+  }
+
+  function handleReject() {
+    setApprovalPending(true);
+    startTransition(async () => {
+      const res = await rejectStudent(student.id);
+      if (res.error) {
+        setError(res.error);
+        setShowRejectConfirm(false);
+        setApprovalPending(false);
+        return;
+      }
+      setError(null);
+      setShowRejectConfirm(false);
+      setApprovalPending(false);
+      onApprovalChanged?.("rejected");
     });
   }
 
@@ -243,6 +288,30 @@ export function StudentRow({
           )}
         >
           <div className="flex flex-nowrap items-center gap-1">
+            {canApproveOrReject ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowApproveConfirm(true)}
+                  title="Approve student"
+                  aria-label="Approve student"
+                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-emerald-400"
+                  disabled={isPending || approvalPending}
+                >
+                  <Check className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRejectConfirm(true)}
+                  title="Reject student"
+                  aria-label="Reject student"
+                  className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-red-400"
+                  disabled={isPending || approvalPending}
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                </button>
+              </>
+            ) : null}
             <NavLinkWithLoading
               href={`/dashboard/students/${student.id}/profile`}
               title="View profile"
@@ -296,6 +365,30 @@ export function StudentRow({
           </td>
         </tr>
       )}
+
+      <ConfirmDeleteModal
+        open={showApproveConfirm}
+        onClose={() => (approvalPending ? undefined : setShowApproveConfirm(false))}
+        onConfirm={handleApprove}
+        title={`Approve “${student.full_name}”?`}
+        message="They will appear in the main school list."
+        confirmLabel="Approve"
+        cancelLabel="Cancel"
+        isDeleting={approvalPending}
+        confirmVariant="primary"
+      />
+
+      <ConfirmDeleteModal
+        open={showRejectConfirm}
+        onClose={() => (approvalPending ? undefined : setShowRejectConfirm(false))}
+        onConfirm={handleReject}
+        title={`Reject “${student.full_name}”?`}
+        message="They will be moved to the Rejected tab."
+        confirmLabel="Reject"
+        cancelLabel="Cancel"
+        isDeleting={approvalPending}
+        confirmVariant="danger"
+      />
     </Fragment>
   );
 }
@@ -304,11 +397,18 @@ export function StudentCard({
   student,
   onEdit,
   onDeleted,
+  onApprovalChanged,
   pendingSync = false,
 }: StudentRowProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [approvalPending, setApprovalPending] = useState(false);
+
+  const approvalStatus = student.approval_status ?? "approved";
+  const canApproveOrReject = approvalStatus === "pending";
 
   function handleDelete() {
     startTransition(async () => {
@@ -347,6 +447,40 @@ export function StudentCard({
       setError(null);
       setShowDeleteConfirm(false);
       onDeleted?.();
+    });
+  }
+
+  function handleApprove() {
+    setApprovalPending(true);
+    startTransition(async () => {
+      const res = await approveStudent(student.id);
+      if (res.error) {
+        setError(res.error);
+        setShowApproveConfirm(false);
+        setApprovalPending(false);
+        return;
+      }
+      setError(null);
+      setShowApproveConfirm(false);
+      setApprovalPending(false);
+      onApprovalChanged?.("approved");
+    });
+  }
+
+  function handleReject() {
+    setApprovalPending(true);
+    startTransition(async () => {
+      const res = await rejectStudent(student.id);
+      if (res.error) {
+        setError(res.error);
+        setShowRejectConfirm(false);
+        setApprovalPending(false);
+        return;
+      }
+      setError(null);
+      setShowRejectConfirm(false);
+      setApprovalPending(false);
+      onApprovalChanged?.("rejected");
     });
   }
 
@@ -436,6 +570,30 @@ export function StudentCard({
             View profile
           </NavLinkWithLoading>
           <div className="flex items-center gap-1">
+            {canApproveOrReject ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowApproveConfirm(true)}
+                  title="Approve student"
+                  aria-label="Approve student"
+                  className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-emerald-400"
+                  disabled={isPending || approvalPending}
+                >
+                  <Check className="h-4 w-4" strokeWidth={2} aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRejectConfirm(true)}
+                  title="Reject student"
+                  aria-label="Reject student"
+                  className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-red-400"
+                  disabled={isPending || approvalPending}
+                >
+                  <X className="h-4 w-4" strokeWidth={2} aria-hidden />
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               onClick={() => onEdit(student)}
@@ -475,6 +633,30 @@ export function StudentCard({
           onConfirm={handleDelete}
         />
       ) : null}
+
+      <ConfirmDeleteModal
+        open={showApproveConfirm}
+        onClose={() => (approvalPending ? undefined : setShowApproveConfirm(false))}
+        onConfirm={handleApprove}
+        title={`Approve “${student.full_name}”?`}
+        message="They will appear in the main school list."
+        confirmLabel="Approve"
+        cancelLabel="Cancel"
+        isDeleting={approvalPending}
+        confirmVariant="primary"
+      />
+
+      <ConfirmDeleteModal
+        open={showRejectConfirm}
+        onClose={() => (approvalPending ? undefined : setShowRejectConfirm(false))}
+        onConfirm={handleReject}
+        title={`Reject “${student.full_name}”?`}
+        message="They will be moved to the Rejected tab."
+        confirmLabel="Reject"
+        cancelLabel="Cancel"
+        isDeleting={approvalPending}
+        confirmVariant="danger"
+      />
     </article>
   );
 }

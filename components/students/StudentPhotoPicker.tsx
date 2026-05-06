@@ -11,6 +11,7 @@ import {
 } from "@/lib/student-avatar-canvas";
 import { StudentAvatarCropModal } from "@/app/(dashboard)/dashboard/students/[studentId]/profile/student-avatar-crop-modal";
 import { toast } from "sonner";
+import { CaptureButton } from "@/components/ui/capture-button";
 
 type PickerSize = "default" | "compact";
 
@@ -193,26 +194,29 @@ export function StudentPhotoPicker({
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <button
+            <CaptureButton
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={buttonBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2 text-sm font-medium text-white transition hover:brightness-105 disabled:opacity-50"
+              loading={isProcessing}
+              loadingLabel="Processing…"
             >
-              <Upload className="h-4 w-4" aria-hidden />
+              {!isProcessing ? <Upload className="h-4 w-4" aria-hidden /> : null}
               {hasPhoto ? "Change photo" : "Upload photo"}
-            </button>
-            <button
+            </CaptureButton>
+            <CaptureButton
               type="button"
               onClick={() => cameraInputRef.current?.click()}
               disabled={buttonBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              variant="outline"
+              loading={isProcessing}
+              loadingLabel="Processing…"
             >
-              <Camera className="h-4 w-4" aria-hidden />
+              {!isProcessing ? <Camera className="h-4 w-4" aria-hidden /> : null}
               Take photo
-            </button>
+            </CaptureButton>
             {allowRemove && (hasPhoto || currentPhotoUrl) ? (
-              <button
+              <CaptureButton
                 type="button"
                 disabled={buttonBusy}
                 onClick={() => {
@@ -232,11 +236,13 @@ export function StudentPhotoPicker({
                     });
                   });
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                variant="outline"
+                loading={isRemoving}
+                loadingLabel="Removing…"
               >
-                <X className="h-4 w-4" aria-hidden />
+                {!isRemoving ? <X className="h-4 w-4" aria-hidden /> : null}
                 Remove
-              </button>
+              </CaptureButton>
             ) : null}
           </div>
           <p className="text-xs text-slate-500">
