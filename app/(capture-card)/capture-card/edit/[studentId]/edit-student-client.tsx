@@ -16,6 +16,7 @@ import {
   CaptureButton,
   CaptureLinkButton,
 } from "@/components/ui/capture-button";
+import { EnrollmentDeskHeader } from "@/components/enrollment-desk/EnrollmentDeskHeader";
 import { formatPersonName } from "@/lib/format-person-name";
 import type { CaptureCardInitialSubjectEnrollment } from "@/lib/capture-card-initial-subject-enrollment";
 import {
@@ -51,10 +52,16 @@ function subjectSelectionKey(
 }
 
 export function CaptureCardEditStudentClient({
+  schoolName,
+  schoolLogoUrl = null,
+  schoolLogoVersion = null,
   student,
   classes,
   initialSubjectEnrollment,
 }: {
+  schoolName: string;
+  schoolLogoUrl?: string | null;
+  schoolLogoVersion?: number | null;
   student: EditStudentInitial;
   classes: { id: string; name: string }[];
   initialSubjectEnrollment: CaptureCardInitialSubjectEnrollment;
@@ -269,16 +276,24 @@ export function CaptureCardEditStudentClient({
 
   if (readOnly) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-8">
-        <CaptureButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="px-0"
-          onClick={() => router.push("/capture-card")}
-        >
-          ← Back
-        </CaptureButton>
+      <div className="min-h-svh bg-slate-50 pb-24 dark:bg-zinc-950">
+        <EnrollmentDeskHeader
+          schoolName={schoolName}
+          schoolLogoUrl={schoolLogoUrl}
+          schoolLogoVersion={schoolLogoVersion}
+          rightSlot={
+            <CaptureButton
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-10"
+              onClick={() => router.push("/capture-card")}
+            >
+              Back
+            </CaptureButton>
+          }
+        />
+        <div className="mx-auto max-w-lg px-4 py-8">
         <h1 className="mt-4 text-xl font-semibold text-slate-900 dark:text-white">
           {student.full_name}
         </h1>
@@ -291,26 +306,36 @@ export function CaptureCardEditStudentClient({
           size="md"
           className="mt-6 inline-flex rounded-xl px-4 py-3 text-sm font-semibold"
         >
-          Back to Capture Card
+          Back to Enrollment Desk
         </CaptureLinkButton>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 pb-40">
-      <CaptureButton
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="px-0"
-        onClick={goBack}
-      >
-        ← Back
-      </CaptureButton>
-      <h1 className="mt-4 text-xl font-semibold text-slate-900 dark:text-white">
-        Edit student
-      </h1>
+    <div className="min-h-svh bg-slate-50 pb-24 dark:bg-zinc-950">
+      <EnrollmentDeskHeader
+        schoolName={schoolName}
+        schoolLogoUrl={schoolLogoUrl}
+        schoolLogoVersion={schoolLogoVersion}
+        rightSlot={
+          <CaptureButton
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-10"
+            onClick={goBack}
+          >
+            Back
+          </CaptureButton>
+        }
+        subtitle=""
+      />
+      <div className="mx-auto max-w-lg px-4 py-6 pb-40">
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+          Edit student
+        </h1>
       {student.approval_status === "rejected" ? (
         <p className="mt-2 text-sm text-red-800 dark:text-red-200">
           This record needs changes. Update the details, then send it for approval
@@ -597,6 +622,7 @@ export function CaptureCardEditStudentClient({
             </CaptureButton>
           ) : null}
         </div>
+      </div>
       </div>
     </div>
   );

@@ -64,10 +64,10 @@ export default async function CaptureCardUsersPage() {
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Capture Card Users
+              Enrollment Desk Users
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
-              Create temporary users who can help capture student enrollment data.
+              Create temporary users who can help submit student enrollment data.
             </p>
           </div>
           <BackButton

@@ -60,6 +60,21 @@ export default async function CaptureCardEditStudentPage({
     }
 
     const schoolId = session.schoolId;
+    const { data: schoolRow } = await admin
+      .from("schools")
+      .select("name, logo_url, updated_at")
+      .eq("id", schoolId)
+      .maybeSingle();
+    const schoolName =
+      (schoolRow as { name: string } | null)?.name?.trim() || "Your school";
+    const schoolLogoUrl =
+      (schoolRow as { logo_url?: string | null } | null)?.logo_url?.trim() ||
+      null;
+    const schoolLogoVersion = (() => {
+      const raw = (schoolRow as { updated_at?: string } | null)?.updated_at;
+      const t = raw ? new Date(raw).getTime() : NaN;
+      return Number.isFinite(t) ? t : null;
+    })();
 
     const { data: st, error } = await admin
       .from("students")
@@ -135,6 +150,9 @@ export default async function CaptureCardEditStudentPage({
 
     return (
       <CaptureCardEditStudentClient
+        schoolName={schoolName}
+        schoolLogoUrl={schoolLogoUrl}
+        schoolLogoVersion={schoolLogoVersion}
         student={{
           id: row.id,
           full_name: row.full_name,
@@ -176,6 +194,21 @@ export default async function CaptureCardEditStudentPage({
 
   const schoolId = await getSchoolIdForUser(supabase, user.id);
   if (!schoolId) redirect("/login");
+
+  const { data: schoolRow } = await supabase
+    .from("schools")
+    .select("name, logo_url, updated_at")
+    .eq("id", schoolId)
+    .maybeSingle();
+  const schoolName =
+    (schoolRow as { name: string } | null)?.name?.trim() || "Your school";
+  const schoolLogoUrl =
+    (schoolRow as { logo_url?: string | null } | null)?.logo_url?.trim() || null;
+  const schoolLogoVersion = (() => {
+    const raw = (schoolRow as { updated_at?: string } | null)?.updated_at;
+    const t = raw ? new Date(raw).getTime() : NaN;
+    return Number.isFinite(t) ? t : null;
+  })();
 
   const { data: st, error } = await supabase
     .from("students")
@@ -248,6 +281,9 @@ export default async function CaptureCardEditStudentPage({
 
   return (
     <CaptureCardEditStudentClient
+      schoolName={schoolName}
+      schoolLogoUrl={schoolLogoUrl}
+      schoolLogoVersion={schoolLogoVersion}
       student={{
         id: row.id,
         full_name: row.full_name,

@@ -25,33 +25,13 @@ import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
 import { cn } from "@/lib/utils";
 import { formatPersonName } from "@/lib/format-person-name";
 import { CaptureButton, CaptureLinkButton } from "@/components/ui/capture-button";
-import { useFormStatus } from "react-dom";
+import { EnrollmentDeskHeader } from "@/components/enrollment-desk/EnrollmentDeskHeader";
 import {
   SUBJECT_ENROLLMENT_TERMS,
   currentAcademicYear,
   getCurrentAcademicYearAndTerm,
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
-
-function LogoutButton({ error }: { error?: string }) {
-  const { pending } = useFormStatus();
-  useEffect(() => {
-    if (!error) return;
-    toast.error(error);
-  }, [error]);
-  return (
-    <CaptureButton
-      type="submit"
-      variant="outline"
-      size="sm"
-      className="h-10"
-      loading={pending}
-      loadingLabel="Logging out…"
-    >
-      Log out
-    </CaptureButton>
-  );
-}
 
 const STEPS = [
   "Student",
@@ -74,6 +54,8 @@ export interface CaptureLatestStudent {
 
 interface CaptureCardClientProps {
   schoolName: string;
+  schoolLogoUrl?: string | null;
+  schoolLogoVersion?: number | null;
   requiresApproval: boolean;
   classes: { id: string; name: string }[];
   latest: CaptureLatestStudent | null;
@@ -109,6 +91,8 @@ function ApprovalBadge({ status }: { status: string }) {
 
 export function CaptureCardClient({
   schoolName,
+  schoolLogoUrl = null,
+  schoolLogoVersion = null,
   requiresApproval,
   classes,
   latest,
@@ -410,33 +394,22 @@ export function CaptureCardClient({
 
   return (
     <div className="min-h-svh bg-slate-50 pb-24 dark:bg-zinc-950">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
-        <div className="mx-auto flex max-w-lg items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-500">
-              {schoolName}
-            </p>
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Capture Card
-            </h1>
-            <p className="text-sm text-slate-600 dark:text-zinc-400">
-              Enroll students quickly and safely.
-            </p>
-          </div>
-          <form action={logoutAction}>
-            <LogoutButton error={logoutState?.error} />
-          </form>
-        </div>
-      </header>
+      <EnrollmentDeskHeader
+        schoolName={schoolName}
+        schoolLogoUrl={schoolLogoUrl}
+        schoolLogoVersion={schoolLogoVersion}
+        logoutAction={logoutAction as unknown as (fd: FormData) => void}
+        logoutError={logoutState?.error}
+      />
 
       <main className="mx-auto max-w-lg space-y-8 px-4 py-6">
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-            Latest student
+            Latest submitted student
           </h2>
           {!latest ? (
             <p className="mt-3 text-sm text-slate-600 dark:text-zinc-400">
-              No students captured yet.
+              No submissions yet.
             </p>
           ) : (
             <div className="mt-3 flex gap-3">

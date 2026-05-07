@@ -78,7 +78,7 @@ export default async function CaptureCardHomePage({
 
     const { data: schoolRow, error: schoolErr } = await admin
       .from("schools")
-      .select("name")
+      .select("name, logo_url, updated_at")
       .eq("id", schoolId)
       .maybeSingle();
     if (schoolErr) {
@@ -89,6 +89,14 @@ export default async function CaptureCardHomePage({
 
     const schoolName =
       (schoolRow as { name: string } | null)?.name?.trim() || "Your school";
+    const schoolLogoUrl =
+      (schoolRow as { logo_url?: string | null } | null)?.logo_url?.trim() ||
+      null;
+    const schoolLogoVersion = (() => {
+      const raw = (schoolRow as { updated_at?: string } | null)?.updated_at;
+      const t = raw ? new Date(raw).getTime() : NaN;
+      return Number.isFinite(t) ? t : null;
+    })();
 
     const requiresApproval =
       (ccu as { requires_approval: boolean } | null)?.requires_approval !==
@@ -154,6 +162,8 @@ export default async function CaptureCardHomePage({
     return (
       <CaptureCardClient
         schoolName={schoolName}
+        schoolLogoUrl={schoolLogoUrl}
+        schoolLogoVersion={schoolLogoVersion}
         requiresApproval={requiresApproval}
         classes={classes}
         latest={latest}
@@ -185,11 +195,18 @@ export default async function CaptureCardHomePage({
 
   const { data: schoolRow } = await supabase
     .from("schools")
-    .select("name")
+    .select("name, logo_url, updated_at")
     .eq("id", schoolId)
     .maybeSingle();
   const schoolName =
     (schoolRow as { name: string } | null)?.name?.trim() || "Your school";
+  const schoolLogoUrl =
+    (schoolRow as { logo_url?: string | null } | null)?.logo_url?.trim() || null;
+  const schoolLogoVersion = (() => {
+    const raw = (schoolRow as { updated_at?: string } | null)?.updated_at;
+    const t = raw ? new Date(raw).getTime() : NaN;
+    return Number.isFinite(t) ? t : null;
+  })();
 
   const { data: ccuRow } = await supabase
     .from("capture_card_users")
@@ -241,6 +258,8 @@ export default async function CaptureCardHomePage({
   return (
     <CaptureCardClient
       schoolName={schoolName}
+      schoolLogoUrl={schoolLogoUrl}
+      schoolLogoVersion={schoolLogoVersion}
       requiresApproval={requiresApproval}
       classes={classes}
       latest={latest}

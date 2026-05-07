@@ -153,7 +153,7 @@ export async function createCaptureCardUserAction(formData: FormData): Promise<
       });
       return {
         error:
-          "You don't have permission to create capture card users for this school.",
+          "You don't have permission to create Enrollment Desk users for this school.",
       };
     }
 

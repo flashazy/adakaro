@@ -198,11 +198,11 @@ export function CaptureCardUsersClient({
 
       <section className="space-y-4" aria-labelledby="capture-users-list-heading">
         <h2 id="capture-users-list-heading" className="sr-only">
-          Capture card users
+          Enrollment Desk users
         </h2>
         {users.length === 0 ? (
           <p className="text-sm text-slate-600 dark:text-zinc-400">
-            No capture card users yet.
+            No Enrollment Desk users yet.
           </p>
         ) : (
           <>
@@ -613,7 +613,7 @@ export function CaptureCardUsersClient({
 
       <SimpleDialog
         open={openCreate}
-        title="Create capture card user"
+        title="Create Enrollment Desk user"
         onClose={() => {
           if (!createPending) {
             setShowCreatePassword(false);
