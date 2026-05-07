@@ -79,7 +79,7 @@ export default async function CaptureCardEditStudentPage({
     const { data: st, error } = await admin
       .from("students")
       .select(
-        "id, full_name, date_of_birth, class_id, gender, parent_name, parent_phone, parent_email, allergies, disability, insurance_provider, insurance_policy, approval_status, avatar_url, enrolled_by, school_id"
+        "id, full_name, date_of_birth, class_id, gender, parent_name, parent_phone, parent_email, allergies, disability, insurance_provider, insurance_policy, approval_status, rejection_reason, avatar_url, enrolled_by, school_id"
       )
       .eq("id", studentId)
       .maybeSingle();
@@ -98,6 +98,7 @@ export default async function CaptureCardEditStudentPage({
       insurance_provider: string | null;
       insurance_policy: string | null;
       approval_status: string;
+      rejection_reason: string | null;
       avatar_url: string | null;
       enrolled_by: string | null;
       school_id: string;
@@ -167,6 +168,7 @@ export default async function CaptureCardEditStudentPage({
           insurance_provider: row.insurance_provider,
           insurance_policy: row.insurance_policy,
           approval_status: row.approval_status,
+          rejection_reason: row.rejection_reason,
           avatar_url: row.avatar_url,
         }}
         classes={classes}
@@ -213,7 +215,7 @@ export default async function CaptureCardEditStudentPage({
   const { data: st, error } = await supabase
     .from("students")
     .select(
-      "id, full_name, date_of_birth, class_id, gender, parent_name, parent_phone, parent_email, allergies, disability, insurance_provider, insurance_policy, approval_status, avatar_url, enrolled_by, school_id"
+      "id, full_name, date_of_birth, class_id, gender, parent_name, parent_phone, parent_email, allergies, disability, insurance_provider, insurance_policy, approval_status, rejection_reason, avatar_url, enrolled_by, school_id"
     )
     .eq("id", studentId)
     .maybeSingle();
@@ -232,6 +234,7 @@ export default async function CaptureCardEditStudentPage({
     insurance_provider: string | null;
     insurance_policy: string | null;
     approval_status: string;
+    rejection_reason: string | null;
     avatar_url: string | null;
     enrolled_by: string | null;
     school_id: string;
@@ -298,6 +301,7 @@ export default async function CaptureCardEditStudentPage({
         insurance_provider: row.insurance_provider,
         insurance_policy: row.insurance_policy,
         approval_status: row.approval_status,
+        rejection_reason: row.rejection_reason,
         avatar_url: row.avatar_url,
       }}
       classes={classes}

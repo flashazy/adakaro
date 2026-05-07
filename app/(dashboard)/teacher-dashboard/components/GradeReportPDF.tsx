@@ -50,7 +50,7 @@ export function downloadGradeReportPdf(data: GradeReportExportData): void {
   let y = margin;
 
   doc.setFontSize(16);
-  doc.text("Marks report", margin, y);
+  doc.text("Subject evaluation", margin, y);
   y += 8;
 
   doc.setFontSize(10);
@@ -118,5 +118,5 @@ export function downloadGradeReportPdf(data: GradeReportExportData): void {
     .replace(/[^\w\s-]/g, "")
     .replace(/\s+/g, "-")
     .slice(0, 40);
-  doc.save(`marks-report-${safeName || "assignment"}.pdf`);
+  doc.save(`subject-evaluation-${safeName || "assignment"}.pdf`);
 }

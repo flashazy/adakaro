@@ -4,6 +4,7 @@ import { Fragment, useState, useTransition } from "react";
 import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { Check, Pencil, Trash2, UserCircle, X } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
+import { RejectEnrollmentGuidanceDialog } from "@/components/dashboard/RejectEnrollmentGuidanceDialog";
 import { approveStudent, deleteStudent, rejectStudent } from "./actions";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
@@ -206,10 +207,10 @@ export function StudentRow({
     });
   }
 
-  function handleReject() {
+  function rejectWithGuidance(reason: string | null) {
     setApprovalPending(true);
     startTransition(async () => {
-      const res = await rejectStudent(student.id);
+      const res = await rejectStudent(student.id, reason ?? undefined);
       if (res.error) {
         setError(res.error);
         setShowRejectConfirm(false);
@@ -378,16 +379,14 @@ export function StudentRow({
         confirmVariant="primary"
       />
 
-      <ConfirmDeleteModal
+      <RejectEnrollmentGuidanceDialog
         open={showRejectConfirm}
-        onClose={() => (approvalPending ? undefined : setShowRejectConfirm(false))}
-        onConfirm={handleReject}
         title={`Reject “${student.full_name}”?`}
-        message="They will be moved to the Rejected tab."
-        confirmLabel="Reject"
-        cancelLabel="Cancel"
-        isDeleting={approvalPending}
-        confirmVariant="danger"
+        onClose={() => !approvalPending && setShowRejectConfirm(false)}
+        isSubmitting={approvalPending}
+        onConfirm={(reason) => {
+          rejectWithGuidance(reason);
+        }}
       />
     </Fragment>
   );
@@ -467,10 +466,10 @@ export function StudentCard({
     });
   }
 
-  function handleReject() {
+  function rejectWithGuidance(reason: string | null) {
     setApprovalPending(true);
     startTransition(async () => {
-      const res = await rejectStudent(student.id);
+      const res = await rejectStudent(student.id, reason ?? undefined);
       if (res.error) {
         setError(res.error);
         setShowRejectConfirm(false);
@@ -646,16 +645,14 @@ export function StudentCard({
         confirmVariant="primary"
       />
 
-      <ConfirmDeleteModal
+      <RejectEnrollmentGuidanceDialog
         open={showRejectConfirm}
-        onClose={() => (approvalPending ? undefined : setShowRejectConfirm(false))}
-        onConfirm={handleReject}
         title={`Reject “${student.full_name}”?`}
-        message="They will be moved to the Rejected tab."
-        confirmLabel="Reject"
-        cancelLabel="Cancel"
-        isDeleting={approvalPending}
-        confirmVariant="danger"
+        onClose={() => !approvalPending && setShowRejectConfirm(false)}
+        isSubmitting={approvalPending}
+        onConfirm={(reason) => {
+          rejectWithGuidance(reason);
+        }}
       />
     </article>
   );

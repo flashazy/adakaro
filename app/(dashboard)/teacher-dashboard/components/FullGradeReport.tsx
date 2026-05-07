@@ -599,13 +599,13 @@ export function FullGradeReport({
             id="full-grade-report-title"
             className="text-lg font-semibold text-slate-900"
           >
-            Full marks report
+            Subject evaluation
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            aria-label="Close"
+            aria-label="Close subject evaluation"
           >
             <X className="h-5 w-5" />
           </button>
@@ -614,7 +614,7 @@ export function FullGradeReport({
         <div className="max-h-[calc(100vh-8rem)] overflow-y-auto px-4 pb-4 pt-2 sm:px-6 print:max-h-none print:overflow-visible">
           {metaLoading && (
             <p className="py-8 text-center text-sm text-slate-500">
-              Loading report header…
+              Loading subject evaluation…
             </p>
           )}
           {!metaLoading && meta && (
@@ -673,7 +673,7 @@ export function FullGradeReport({
 
                 {assignments.length === 0 && (
                   <p className="mt-6 text-center text-sm text-slate-500">
-                    No assignments to report for this class and subject.
+                    No assignments to evaluate for this class and subject.
                   </p>
                 )}
 
@@ -801,6 +801,7 @@ export function FullGradeReport({
                   type="button"
                   onClick={() => handlePdf()}
                   disabled={pdfBusy || !selectedAssignment}
+                  title="Download subject evaluation as PDF"
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
@@ -810,6 +811,7 @@ export function FullGradeReport({
                   type="button"
                   onClick={handlePrint}
                   disabled={!selectedAssignment}
+                  title="Print subject evaluation"
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50"
                 >
                   <Printer className="h-4 w-4" />
@@ -820,7 +822,7 @@ export function FullGradeReport({
           )}
           {!metaLoading && !meta && (
             <p className="py-8 text-center text-sm text-red-600">
-              Could not load report details.
+              Could not load subject evaluation.
             </p>
           )}
         </div>

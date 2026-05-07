@@ -7,6 +7,8 @@ import {
   rejectPendingStudentAction,
 } from "./actions";
 import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
+import { cn } from "@/lib/utils";
+import { RejectEnrollmentGuidanceDialog } from "@/components/dashboard/RejectEnrollmentGuidanceDialog";
 
 export interface PendingStudentRow {
   id: string;
@@ -25,11 +27,13 @@ function SimpleDialog({
   open,
   title,
   onClose,
+  panelClassName,
   children,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
+  panelClassName?: string;
   children: ReactNode;
 }) {
   if (!open) return null;
@@ -39,7 +43,12 @@ function SimpleDialog({
       role="dialog"
       aria-modal="true"
     >
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+      <div
+        className={cn(
+          "max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900",
+          panelClassName
+        )}
+      >
         <div className="flex items-start justify-between gap-2">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
             {title}
@@ -76,7 +85,10 @@ export function PendingApprovalsClient({
   const [pending, startTransition] = useTransition();
   const [detail, setDetail] = useState<PendingStudentRow | null>(null);
   const [rejectFor, setRejectFor] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
+
+  function closeRejectModal() {
+    setRejectFor(null);
+  }
 
   return (
     <div className="space-y-4">
@@ -151,10 +163,7 @@ export function PendingApprovalsClient({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setRejectFor(s.id);
-                  setRejectReason("");
-                }}
+                onClick={() => setRejectFor(s.id)}
                 className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-800 dark:border-red-900 dark:text-red-200"
               >
                 Reject
@@ -202,56 +211,24 @@ export function PendingApprovalsClient({
         ) : null}
       </SimpleDialog>
 
-      <SimpleDialog
+      <RejectEnrollmentGuidanceDialog
         open={rejectFor != null}
         title="Reject enrolment"
-        onClose={() => setRejectFor(null)}
-      >
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
+        onClose={() => {
+          if (!pending) closeRejectModal();
+        }}
+        isSubmitting={pending}
+        onConfirm={(reason) => {
+          startTransition(async () => {
             if (!rejectFor) return;
             const id = rejectFor;
-            startTransition(async () => {
-              const res = await rejectPendingStudentAction(
-                id,
-                rejectReason.trim() || null
-              );
-              if (res.error) toast.error(res.error);
-              else toast.success("Rejected.");
-              setRejectFor(null);
-              setRejectReason("");
-            });
-          }}
-        >
-          <p className="text-sm text-slate-600 dark:text-zinc-400">
-            Optional note for the person who captured this student.
-          </p>
-          <textarea
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            rows={3}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setRejectFor(null)}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-zinc-600"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              Reject
-            </button>
-          </div>
-        </form>
-      </SimpleDialog>
+            const res = await rejectPendingStudentAction(id, reason);
+            if (res.error) toast.error(res.error);
+            else toast.success("Rejected.");
+            closeRejectModal();
+          });
+        }}
+      />
     </div>
   );
 }

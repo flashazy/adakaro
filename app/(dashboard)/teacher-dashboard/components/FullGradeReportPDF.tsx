@@ -379,6 +379,6 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
   const safe = (s: string) =>
     s.replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").slice(0, 40);
   doc.save(
-    `marks-report-${safe(data.assignmentTitle)}-${safe(data.className)}.pdf`
+    `subject-evaluation-${safe(data.assignmentTitle)}-${safe(data.className)}.pdf`
   );
 }

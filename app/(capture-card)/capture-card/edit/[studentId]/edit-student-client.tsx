@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   getCaptureCardSubjectsForClass,
@@ -17,6 +18,7 @@ import {
   CaptureLinkButton,
 } from "@/components/ui/capture-button";
 import { EnrollmentDeskHeader } from "@/components/enrollment-desk/EnrollmentDeskHeader";
+import { RejectionGuidanceDisplay } from "@/components/enrollment-desk/RejectionGuidanceDisplay";
 import { formatPersonName } from "@/lib/format-person-name";
 import type { CaptureCardInitialSubjectEnrollment } from "@/lib/capture-card-initial-subject-enrollment";
 import {
@@ -40,6 +42,7 @@ export interface EditStudentInitial {
   insurance_provider: string | null;
   insurance_policy: string | null;
   approval_status: string;
+  rejection_reason: string | null;
   avatar_url: string | null;
 }
 
@@ -337,10 +340,22 @@ export function CaptureCardEditStudentClient({
           Edit student
         </h1>
       {student.approval_status === "rejected" ? (
-        <p className="mt-2 text-sm text-red-800 dark:text-red-200">
-          This record needs changes. Update the details, then send it for approval
-          again.
-        </p>
+        <div
+          className="mt-4 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-900 shadow-sm dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100"
+          role="alert"
+        >
+          <div className="mt-0.5 shrink-0">
+            <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-semibold text-red-900 dark:text-red-50">
+              Correction needed
+            </p>
+            <div className="mt-2">
+              <RejectionGuidanceDisplay rejectionReason={student.rejection_reason} />
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <div className="mt-6 space-y-4">
@@ -614,31 +629,37 @@ export function CaptureCardEditStudentClient({
         </div>
       </div>
 
+      {student.approval_status === "rejected" ? (
+        <p className="mx-auto mt-6 max-w-lg rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-50">
+          This corrected submission will be sent back to the admin for approval.
+        </p>
+      ) : null}
+
       <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
         <div className="mx-auto flex max-w-lg flex-col gap-2">
-          <CaptureButton
-            type="button"
-            disabled={pending}
-            onClick={() => save(false)}
-            loading={pending}
-            loadingLabel="Saving…"
-            className="w-full rounded-xl py-3 text-base font-semibold"
-          >
-            Save changes
-          </CaptureButton>
           {student.approval_status === "rejected" ? (
             <CaptureButton
               type="button"
-              variant="outline"
               disabled={pending}
               onClick={() => save(true)}
               loading={pending}
               loadingLabel="Saving…"
-              className="w-full rounded-xl py-3 text-base font-medium"
+              className="w-full rounded-xl py-3 text-base font-semibold"
             >
-              Save and send for approval again
+              Save and resubmit
             </CaptureButton>
-          ) : null}
+          ) : (
+            <CaptureButton
+              type="button"
+              disabled={pending}
+              onClick={() => save(false)}
+              loading={pending}
+              loadingLabel="Saving…"
+              className="w-full rounded-xl py-3 text-base font-semibold"
+            >
+              Save changes
+            </CaptureButton>
+          )}
         </div>
       </div>
       </div>

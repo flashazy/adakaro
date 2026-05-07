@@ -172,7 +172,10 @@ export async function approveStudent(studentId: string): Promise<{ error?: strin
   }
 }
 
-export async function rejectStudent(studentId: string, reason?: string): Promise<{ error?: string; ok?: true }> {
+export async function rejectStudent(
+  studentId: string,
+  reason?: string | null
+): Promise<{ error?: string; ok?: true }> {
   try {
     const { supabase, schoolId, userId } = await getSchoolId();
     await requireAdminForSchool(supabase, userId);
@@ -195,7 +198,7 @@ export async function rejectStudent(studentId: string, reason?: string): Promise
       .update({
         approval_status: "rejected",
         rejected_at: new Date().toISOString(),
-        rejection_reason: nullableTrimmedText(reason) ?? "Rejected",
+        rejection_reason: nullableTrimmedText(reason),
         approved_by: null,
         approved_at: null,
       } as never)
@@ -211,6 +214,7 @@ export async function rejectStudent(studentId: string, reason?: string): Promise
     );
 
     revalidatePath("/dashboard/students");
+    revalidatePath("/capture-card");
     return { ok: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Something went wrong." };

@@ -59,6 +59,7 @@ export async function approvePendingStudentAction(
     }
     revalidatePath("/dashboard/pending-approvals");
     revalidatePath("/dashboard/students");
+    revalidatePath("/capture-card");
     return { ok: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Something went wrong." };
@@ -90,6 +91,7 @@ export async function rejectPendingStudentAction(
     }
     revalidatePath("/dashboard/pending-approvals");
     revalidatePath("/dashboard/students");
+    revalidatePath("/capture-card");
     return { ok: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Something went wrong." };

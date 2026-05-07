@@ -738,7 +738,7 @@ export async function updateCaptureCardStudentAction(
     ok: true as const,
     message:
       resubmitForApproval && ex.approval_status === "rejected"
-        ? "Sent for approval again."
+        ? "Student corrected and sent for approval."
         : "Changes saved.",
   };
 }

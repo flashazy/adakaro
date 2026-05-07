@@ -10,6 +10,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createCaptureCardStudentAction,
@@ -26,6 +27,11 @@ import { cn } from "@/lib/utils";
 import { formatPersonName } from "@/lib/format-person-name";
 import { CaptureButton, CaptureLinkButton } from "@/components/ui/capture-button";
 import { EnrollmentDeskHeader } from "@/components/enrollment-desk/EnrollmentDeskHeader";
+import { RejectionGuidanceDisplay } from "@/components/enrollment-desk/RejectionGuidanceDisplay";
+import {
+  getRejectionQueuePreviewDisplay,
+  rejectionGuidancePlainSummary,
+} from "@/lib/rejection-guidance";
 import {
   SUBJECT_ENROLLMENT_TERMS,
   currentAcademicYear,
@@ -42,15 +48,78 @@ const STEPS = [
   "Review",
 ] as const;
 
+type EnrollmentDeskDraftV1 = {
+  version: 1;
+  savedAt: number;
+  step: number;
+  fullName: string;
+  dateOfBirth: string;
+  gender: "male" | "female" | "";
+  classId: string;
+  subjectAcademicYear: number;
+  subjectTerm: SubjectEnrollmentTerm;
+  selectedSubjectIds: string[];
+  assignSubjectsLater: boolean;
+  parentName: string;
+  parentPhone: string;
+  parentEmail: string;
+  allergies: string;
+  disability: string;
+  insuranceProvider: string;
+  insurancePolicy: string;
+};
+
+function draftStorageKey(schoolName: string): string {
+  // We don't have schoolId / captureUserId here. Use a stable per-school key.
+  // (If those become available later, this can be expanded safely.)
+  return `enrollment-desk-draft:${encodeURIComponent(schoolName)}`;
+}
+
+function isMeaningfulDraft(d: EnrollmentDeskDraftV1): boolean {
+  return Boolean(
+    d.fullName.trim() ||
+      d.dateOfBirth ||
+      d.classId ||
+      d.parentName.trim() ||
+      d.parentPhone.trim() ||
+      d.selectedSubjectIds.length > 0 ||
+      d.assignSubjectsLater ||
+      d.allergies.trim() ||
+      d.disability.trim() ||
+      d.insuranceProvider.trim() ||
+      d.insurancePolicy.trim()
+  );
+}
+
+export interface CaptureCorrectionQueueStudent {
+  id: string;
+  full_name: string;
+  admission_number: string | null;
+  enrollment_date: string;
+  rejection_reason: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  rejected_at: string | null;
+  class: { name: string } | null;
+}
+
 export interface CaptureLatestStudent {
   id: string;
   full_name: string;
   admission_number: string | null;
   enrollment_date: string;
   approval_status: string;
+  rejection_reason: string | null;
   avatar_url: string | null;
   date_of_birth: string | null;
   class: { name: string } | null;
+}
+
+export interface EnrollmentDeskCaptureUserStats {
+  submittedToday: number;
+  pending: number;
+  approved: number;
+  rejected: number;
 }
 
 interface CaptureCardClientProps {
@@ -63,6 +132,212 @@ interface CaptureCardClientProps {
   myStudents: CaptureLatestStudent[];
   page: number;
   hasMore: boolean;
+  enrollmentStats?: EnrollmentDeskCaptureUserStats;
+  correctionsQueue?: CaptureCorrectionQueueStudent[];
+}
+
+const DEFAULT_ENROLLMENT_STATS: EnrollmentDeskCaptureUserStats = {
+  submittedToday: 0,
+  pending: 0,
+  approved: 0,
+  rejected: 0,
+};
+
+function EnrollmentDeskStatsBanner({ stats }: { stats: EnrollmentDeskCaptureUserStats }) {
+  const chips: {
+    label: string;
+    value: number;
+    dotClass: string;
+    cardClass: string;
+  }[] = [
+    {
+      label: "Today",
+      value: stats.submittedToday,
+      dotClass: "bg-indigo-500",
+      cardClass:
+        "bg-indigo-50/90 dark:bg-indigo-950/35 border-indigo-100 dark:border-indigo-900/50",
+    },
+    {
+      label: "Pending",
+      value: stats.pending,
+      dotClass: "bg-amber-500",
+      cardClass:
+        "bg-amber-50/90 dark:bg-amber-950/35 border-amber-100 dark:border-amber-900/50",
+    },
+    {
+      label: "Approved",
+      value: stats.approved,
+      dotClass: "bg-emerald-500",
+      cardClass:
+        "bg-emerald-50/90 dark:bg-emerald-950/35 border-emerald-100 dark:border-emerald-900/50",
+    },
+    {
+      label: "Rejected",
+      value: stats.rejected,
+      dotClass: "bg-red-500",
+      cardClass:
+        "bg-red-50/90 dark:bg-red-950/35 border-red-100 dark:border-red-900/50",
+    },
+  ];
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {chips.map((c) => (
+          <div
+            key={c.label}
+            className={cn(
+              "rounded-xl border p-3 dark:border-transparent",
+              c.cardClass
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={cn("inline-block h-2 w-2 shrink-0 rounded-full", c.dotClass)}
+                aria-hidden
+              />
+              <p className="text-xs font-medium text-slate-600 dark:text-zinc-400">
+                {c.label}
+              </p>
+            </div>
+            <p className="mt-2 tabular-nums text-2xl font-semibold text-slate-900 dark:text-white">
+              {c.value}
+            </p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-center text-xs text-slate-500 dark:text-zinc-500">
+        Your enrollment activity for this school.
+      </p>
+    </section>
+  );
+}
+
+function studentInitials(fullName: string): string {
+  return fullName
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+const CORRECTIONS_SCROLL_HINT_MIN = 5;
+
+function CorrectionsNeededQueueSection({
+  correctionsQueue,
+}: {
+  correctionsQueue: CaptureCorrectionQueueStudent[];
+}) {
+  const total = correctionsQueue.length;
+
+  if (total === 0) return null;
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              Corrections needed
+            </h2>
+            <span
+              className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full bg-red-100 px-2 text-xs font-semibold tabular-nums text-red-900 dark:bg-red-950/50 dark:text-red-100"
+              aria-label={`${total} rejected ${total === 1 ? "submission" : "submissions"} need corrections`}
+            >
+              {total}
+            </span>
+            {total > CORRECTIONS_SCROLL_HINT_MIN ? (
+              <span className="text-xs text-slate-500 dark:text-zinc-500">
+                Scroll to view more
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+            Fix rejected submissions and send them back for approval.
+          </p>
+        </div>
+      </div>
+
+      <div
+        className="mt-4 max-h-[360px] overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-slate-100 py-1 pl-1 pr-2 dark:border-zinc-800 md:max-h-[420px] [scrollbar-gutter:stable]"
+        aria-label="Scrollable list of rejected students"
+      >
+        <ul
+          className="space-y-3"
+          aria-label="Rejected students to correct"
+        >
+          {correctionsQueue.map((s) => {
+            const preview = getRejectionQueuePreviewDisplay(s.rejection_reason, 2);
+            return (
+              <li
+                key={s.id}
+                className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-800/40 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4"
+              >
+                <div className="flex min-w-0 flex-1 gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
+                    {s.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={s.avatar_url}
+                        alt=""
+                        width={48}
+                        height={48}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-slate-600 dark:text-zinc-300">
+                        {studentInitials(s.full_name)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="font-medium leading-snug text-slate-900 dark:text-white">
+                      {s.full_name}
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-zinc-400">
+                      {s.admission_number ?? "—"} · {s.class?.name ?? "Class"}{" "}
+                      · {formatEnrollmentDateDisplay(s.enrollment_date)}
+                      {s.rejected_at ? (
+                        <>
+                          {" "}
+                          · Rejected{" "}
+                          {formatEnrollmentDateDisplay(s.rejected_at)}
+                        </>
+                      ) : null}
+                    </p>
+                    <div className="rounded-lg border border-red-100 bg-red-50/90 px-3 py-2 dark:border-red-900/40 dark:bg-red-950/25">
+                      <ul className="list-disc space-y-1 pl-4 text-sm leading-relaxed text-red-900 dark:text-red-100/95">
+                        {preview.lines.map((line, i) => (
+                          <li key={`${s.id}-p-${i}`}>{line}</li>
+                        ))}
+                      </ul>
+                      {preview.suffix ? (
+                        <p className="mt-1.5 text-xs font-medium text-red-800/90 dark:text-red-200/90">
+                          {preview.suffix}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ApprovalBadge status="rejected" />
+                    </div>
+                  </div>
+                </div>
+                <CaptureLinkButton
+                  href={`/capture-card/edit/${s.id}`}
+                  variant="primary"
+                  size="sm"
+                  className="h-11 w-full shrink-0 justify-center rounded-xl font-semibold sm:h-10 sm:w-auto sm:min-w-[7.5rem] sm:self-center"
+                >
+                  Correct
+                </CaptureLinkButton>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </section>
+  );
 }
 
 function ApprovalBadge({ status }: { status: string }) {
@@ -71,7 +346,9 @@ function ApprovalBadge({ status }: { status: string }) {
       ? "Waiting for approval"
       : status === "approved"
         ? "Approved"
-        : "Needs changes";
+        : status === "rejected"
+          ? "Rejected"
+          : "Needs changes";
   const cls =
     status === "approved"
       ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200"
@@ -100,6 +377,8 @@ export function CaptureCardClient({
   myStudents,
   page,
   hasMore,
+  enrollmentStats,
+  correctionsQueue = [],
 }: CaptureCardClientProps) {
   useEffect(() => {
     console.info("[capture-card] client mounted", {
@@ -125,11 +404,18 @@ export function CaptureCardClient({
   const [logoutState, logoutAction] = useActionState(signOutCaptureCardAction, {});
   const [search, setSearch] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardView, setWizardView] = useState<"form" | "success">("form");
   const [step, setStep] = useState(1);
   const [pending, startTransition] = useTransition();
   const [navPending, startNavTransition] = useTransition();
   const [navTarget, setNavTarget] = useState<"prev" | "next" | null>(null);
   const [photoDraft, setPhotoDraft] = useState<StudentPhotoDraft | null>(null);
+  const [keptContextHint, setKeptContextHint] = useState(false);
+  const [lastSubmitted, setLastSubmitted] = useState<{
+    fullName: string;
+    className: string;
+    requiresApproval: boolean;
+  } | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -156,6 +442,13 @@ export function CaptureCardClient({
   const [subjectsLoading, setSubjectsLoading] = useState(false);
   const [assignSubjectsLater, setAssignSubjectsLater] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const restoringDraftRef = useRef(false);
+  const restoredSubjectIdsRef = useRef<string[] | null>(null);
+  const [recoveryDraft, setRecoveryDraft] = useState<EnrollmentDeskDraftV1 | null>(
+    null
+  );
+  const [showRecoveryPrompt, setShowRecoveryPrompt] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
 
   const academicYearOptions = useMemo(() => {
     const c = currentAcademicYear();
@@ -195,6 +488,30 @@ export function CaptureCardClient({
     setSelectedSubjectIds([]);
     setSubjectsLoading(false);
     setAssignSubjectsLater(false);
+    setWizardView("form");
+    setKeptContextHint(false);
+    setLastSubmitted(null);
+    setDraftSavedAt(null);
+  }
+
+  function resetWizardForNextStudent() {
+    setStep(1);
+    setWizardView("form");
+    setKeptContextHint(true);
+    setDraftSavedAt(null);
+
+    // Student-specific fields
+    setFullName("");
+    setDateOfBirth("");
+    setGender("");
+    setPhotoDraft(null);
+    setParentName("");
+    setParentPhone("");
+    setParentEmail("");
+    setAllergies("");
+    setDisability("");
+    setInsuranceProvider("");
+    setInsurancePolicy("");
   }
 
   function openWizard() {
@@ -202,8 +519,97 @@ export function CaptureCardClient({
     setWizardOpen(true);
   }
 
+  const clearDraft = useCallback(() => {
+    try {
+      localStorage.removeItem(draftStorageKey(schoolName));
+    } catch {
+      // ignore
+    }
+    setDraftSavedAt(null);
+    setRecoveryDraft(null);
+    setShowRecoveryPrompt(false);
+  }, [schoolName]);
+
+  const saveDraft = useCallback(
+    (draft: EnrollmentDeskDraftV1) => {
+      try {
+        localStorage.setItem(draftStorageKey(schoolName), JSON.stringify(draft));
+        setDraftSavedAt(draft.savedAt);
+      } catch {
+        // ignore
+      }
+    },
+    [schoolName]
+  );
+
+  function applyDraft(d: EnrollmentDeskDraftV1) {
+    restoringDraftRef.current = true;
+    restoredSubjectIdsRef.current = d.selectedSubjectIds;
+
+    const clampedStep =
+      Number.isInteger(d.step) && d.step >= 1 && d.step <= STEPS.length ? d.step : 1;
+
+    setWizardView("form");
+    setKeptContextHint(false);
+    setStep(clampedStep);
+
+    setFullName(d.fullName);
+    setDateOfBirth(d.dateOfBirth);
+    setGender(d.gender);
+    setParentName(d.parentName);
+    setParentPhone(d.parentPhone);
+    setParentEmail(d.parentEmail);
+    setAllergies(d.allergies);
+    setDisability(d.disability);
+    setInsuranceProvider(d.insuranceProvider);
+    setInsurancePolicy(d.insurancePolicy);
+
+    setSubjectAcademicYear(d.subjectAcademicYear);
+    setSubjectTerm(d.subjectTerm);
+    setAssignSubjectsLater(Boolean(d.assignSubjectsLater));
+
+    const classOk = classes.some((c) => c.id === d.classId);
+    if (classOk) {
+      setClassId(d.classId);
+      setSelectedSubjectIds(d.selectedSubjectIds);
+    } else {
+      setClassId("");
+      setSelectedSubjectIds([]);
+      setAssignSubjectsLater(false);
+    }
+
+    // Photo is intentionally not restored.
+    setPhotoDraft(null);
+  }
+
+  useEffect(() => {
+    // Recovery prompt on initial load (don’t interrupt an open wizard).
+    if (wizardOpen) return;
+    try {
+      const raw = localStorage.getItem(draftStorageKey(schoolName));
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<EnrollmentDeskDraftV1> | null;
+      if (!parsed || parsed.version !== 1) {
+        localStorage.removeItem(draftStorageKey(schoolName));
+        return;
+      }
+      const d = parsed as EnrollmentDeskDraftV1;
+      if (!isMeaningfulDraft(d)) return;
+      setRecoveryDraft(d);
+      setShowRecoveryPrompt(true);
+    } catch {
+      // ignore
+    }
+  }, [schoolName, wizardOpen]);
+
   const closeWizard = useCallback(() => {
     if (pending) return;
+    if (wizardView === "success") {
+      setWizardOpen(false);
+      resetWizard();
+      clearDraft();
+      return;
+    }
     const dirty =
       fullName.trim() !== "" ||
       dateOfBirth !== "" ||
@@ -229,6 +635,7 @@ export function CaptureCardClient({
     resetWizard();
   }, [
     pending,
+    wizardView,
     fullName,
     dateOfBirth,
     classId,
@@ -243,6 +650,7 @@ export function CaptureCardClient({
     photoDraft,
     selectedSubjectIds.length,
     assignSubjectsLater,
+    clearDraft,
   ]);
 
   useEffect(() => {
@@ -252,19 +660,127 @@ export function CaptureCardClient({
       setAssignSubjectsLater(false);
       return;
     }
-    setAssignSubjectsLater(false);
+    const restoring = restoringDraftRef.current;
+    if (!restoring) {
+      setAssignSubjectsLater(false);
+      setSelectedSubjectIds([]);
+    }
     let cancelled = false;
     setSubjectsLoading(true);
     void getCaptureCardSubjectsForClass(classId).then((opts) => {
       if (cancelled) return;
       setClassSubjectOptions(opts);
-      setSelectedSubjectIds([]);
+      setSelectedSubjectIds((prev) => {
+        if (restoringDraftRef.current && restoredSubjectIdsRef.current) {
+          const fromDraft = restoredSubjectIdsRef.current.filter((id) =>
+            opts.some((o) => o.id === id)
+          );
+          restoredSubjectIdsRef.current = null;
+          restoringDraftRef.current = false;
+          return fromDraft;
+        }
+        return prev.filter((id) => opts.some((o) => o.id === id));
+      });
       setSubjectsLoading(false);
     });
     return () => {
       cancelled = true;
     };
   }, [classId]);
+
+  const isWizardMeaningful = useMemo(() => {
+    return Boolean(
+      fullName.trim() ||
+        dateOfBirth ||
+        classId ||
+        parentName.trim() ||
+        parentPhone.trim() ||
+        parentEmail.trim() ||
+        allergies.trim() ||
+        disability.trim() ||
+        insuranceProvider.trim() ||
+        insurancePolicy.trim() ||
+        selectedSubjectIds.length > 0 ||
+        assignSubjectsLater
+    );
+  }, [
+    fullName,
+    dateOfBirth,
+    classId,
+    parentName,
+    parentPhone,
+    parentEmail,
+    allergies,
+    disability,
+    insuranceProvider,
+    insurancePolicy,
+    selectedSubjectIds.length,
+    assignSubjectsLater,
+  ]);
+
+  useEffect(() => {
+    // Browser-level leave protection for refresh/close.
+    if (!wizardOpen || wizardView !== "form" || !isWizardMeaningful) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Required for Chrome to show the confirmation dialog.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [wizardOpen, wizardView, isWizardMeaningful]);
+
+  useEffect(() => {
+    // Autosave draft while actively editing the wizard.
+    if (!wizardOpen || wizardView !== "form") return;
+    if (!isWizardMeaningful) return;
+
+    const t = window.setTimeout(() => {
+      const d: EnrollmentDeskDraftV1 = {
+        version: 1,
+        savedAt: Date.now(),
+        step,
+        fullName,
+        dateOfBirth,
+        gender,
+        classId,
+        subjectAcademicYear,
+        subjectTerm,
+        selectedSubjectIds,
+        assignSubjectsLater,
+        parentName,
+        parentPhone,
+        parentEmail,
+        allergies,
+        disability,
+        insuranceProvider,
+        insurancePolicy,
+      };
+      saveDraft(d);
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [
+    wizardOpen,
+    wizardView,
+    isWizardMeaningful,
+    step,
+    fullName,
+    dateOfBirth,
+    gender,
+    classId,
+    subjectAcademicYear,
+    subjectTerm,
+    selectedSubjectIds,
+    assignSubjectsLater,
+    parentName,
+    parentPhone,
+    parentEmail,
+    allergies,
+    disability,
+    insuranceProvider,
+    insurancePolicy,
+    saveDraft,
+  ]);
 
   const allSubjectsSelected = useMemo(
     () =>
@@ -359,8 +875,12 @@ export function CaptureCardClient({
             ? "Student captured and sent for approval."
             : "Student enrolled successfully."
         );
-        setWizardOpen(false);
-        resetWizard();
+        setLastSubmitted({
+          fullName: nameFormatted,
+          className: classes.find((c) => c.id === classId)?.name ?? "—",
+          requiresApproval,
+        });
+        setWizardView("success");
         router.refresh();
       }
     });
@@ -397,6 +917,9 @@ export function CaptureCardClient({
             ? Boolean(parentName.trim() && parentPhone.trim())
             : true;
 
+  const deskStats =
+    enrollmentStats !== undefined ? enrollmentStats : DEFAULT_ENROLLMENT_STATS;
+
   const canSubmitEnrollment = useMemo(
     () =>
       Boolean(
@@ -431,6 +954,46 @@ export function CaptureCardClient({
       />
 
       <main className="mx-auto max-w-lg space-y-8 px-4 py-6">
+        <EnrollmentDeskStatsBanner stats={deskStats} />
+
+        <CorrectionsNeededQueueSection correctionsQueue={correctionsQueue} />
+
+        {showRecoveryPrompt && recoveryDraft && !wizardOpen ? (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              Resume unfinished enrollment?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
+              We found a saved draft from your last session.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <CaptureButton
+                type="button"
+                onClick={() => {
+                  applyDraft(recoveryDraft);
+                  setShowRecoveryPrompt(false);
+                  setWizardOpen(true);
+                  toast.message("Photo must be added again.");
+                }}
+                className="w-full rounded-xl py-3 text-base font-semibold"
+              >
+                Resume draft
+              </CaptureButton>
+              <CaptureButton
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  clearDraft();
+                  openWizard();
+                }}
+                className="w-full rounded-xl py-3 text-base"
+              >
+                Start new
+              </CaptureButton>
+            </div>
+          </section>
+        ) : null}
+
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">
             Latest submitted student
@@ -439,6 +1002,61 @@ export function CaptureCardClient({
             <p className="mt-3 text-sm text-slate-600 dark:text-zinc-400">
               No submissions yet.
             </p>
+          ) : latest.approval_status === "rejected" ? (
+            <div
+              className="mt-3 space-y-4 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm dark:border-red-900/55 dark:bg-red-950/35 dark:text-red-50"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex gap-3">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-red-100 bg-white dark:border-red-900/40 dark:bg-red-950/50">
+                  {latest.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={latest.avatar_url}
+                      alt=""
+                      width={56}
+                      height={56}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-lg font-semibold text-red-700 dark:text-red-200">
+                      {latest.full_name
+                        .split(/\s+/)
+                        .map((p) => p[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold leading-snug text-red-950 dark:text-red-50">
+                    {latest.full_name}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-red-700/95 dark:text-red-100/85">
+                    {latest.admission_number ?? "—"} ·{" "}
+                    {latest.class?.name ?? "Class"} ·{" "}
+                    {formatEnrollmentDateDisplay(latest.enrollment_date)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <ApprovalBadge status="rejected" />
+              </div>
+              <RejectionGuidanceDisplay
+                rejectionReason={latest.rejection_reason}
+                density="comfortable"
+              />
+              <CaptureLinkButton
+                href={`/capture-card/edit/${latest.id}`}
+                variant="primary"
+                size="sm"
+                className="w-full min-h-11 justify-center rounded-xl py-3 text-base font-semibold"
+              >
+                Correct and resubmit
+              </CaptureLinkButton>
+            </div>
           ) : (
             <div className="mt-3 flex gap-3">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 dark:bg-zinc-800">
@@ -509,29 +1127,48 @@ export function CaptureCardClient({
                 No matches.
               </p>
             ) : (
-              filtered.slice(0, 12).map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-800/50"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-900 dark:text-white">
-                      {s.full_name}
-                    </p>
-                    <p className="truncate text-xs text-slate-600 dark:text-zinc-400">
-                      {s.admission_number ?? "—"}
-                    </p>
-                  </div>
-                  <CaptureLinkButton
-                    href={`/capture-card/edit/${s.id}`}
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0"
+              filtered.slice(0, 12).map((s) => {
+                const rejected = s.approval_status === "rejected";
+                const rowTone = rejected
+                  ? "border-red-200 bg-red-50/95 dark:border-red-900/50 dark:bg-red-950/30"
+                  : "border-slate-100 bg-slate-50/80 dark:border-zinc-800 dark:bg-zinc-800/50";
+                const nameCls = rejected
+                  ? "truncate font-medium text-red-950 dark:text-red-50"
+                  : "truncate font-medium text-slate-900 dark:text-white";
+                const subCls = rejected
+                  ? "truncate text-xs text-red-800 dark:text-red-100/85"
+                  : "truncate text-xs text-slate-600 dark:text-zinc-400";
+                return (
+                  <div
+                    key={s.id}
+                    className={cn(
+                      "flex flex-col gap-3 rounded-2xl border px-3 py-3 shadow-sm sm:flex-row sm:items-start sm:justify-between",
+                      rowTone
+                    )}
                   >
-                    Edit
-                  </CaptureLinkButton>
-                </div>
-              ))
+                    <div className="min-w-0 flex-1">
+                      <p className={nameCls}>{s.full_name}</p>
+                      <p className={subCls}>{s.admission_number ?? "—"}</p>
+                      <div className="mt-2 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                        <ApprovalBadge status={s.approval_status} />
+                        {rejected ? (
+                          <p className="line-clamp-2 text-sm leading-snug text-red-700 dark:text-red-100/95">
+                            {rejectionGuidancePlainSummary(s.rejection_reason, 140)}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <CaptureLinkButton
+                      href={`/capture-card/edit/${s.id}`}
+                      variant={rejected ? "primary" : "outline"}
+                      size="sm"
+                      className="w-full min-h-10 shrink-0 justify-center rounded-xl py-2.5 font-semibold sm:w-auto sm:py-2"
+                    >
+                      {rejected ? "Correct" : "Edit"}
+                    </CaptureLinkButton>
+                  </div>
+                );
+              })
             )}
           </div>
 
@@ -613,11 +1250,83 @@ export function CaptureCardClient({
             ))}
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-8">
-            {step === 1 ? (
+            {wizardView === "success" ? (
+              <div className="mx-auto max-w-lg space-y-4 pt-6">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
+                      <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                        Student submitted successfully
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+                        {lastSubmitted?.requiresApproval
+                          ? "Sent for approval"
+                          : "Enrolled successfully"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-1 text-sm text-slate-700 dark:text-zinc-300">
+                    <p className="truncate">
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Student:{" "}
+                      </span>
+                      {lastSubmitted?.fullName ?? formatPersonName(fullName) ?? "—"}
+                    </p>
+                    <p className="truncate">
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Class:{" "}
+                      </span>
+                      {lastSubmitted?.className ??
+                        classes.find((c) => c.id === classId)?.name ??
+                        "—"}
+                    </p>
+                  </div>
+
+                  <div className="mt-5 space-y-3">
+                    <CaptureButton
+                      type="button"
+                      disabled={pending}
+                      onClick={() => {
+                        if (pending) return;
+                        resetWizardForNextStudent();
+                      }}
+                      className="w-full rounded-xl py-3 text-base font-semibold"
+                    >
+                      Enroll Next Student
+                    </CaptureButton>
+                    <CaptureButton
+                      type="button"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => {
+                        if (pending) return;
+                        setWizardOpen(false);
+                        resetWizard();
+                        clearDraft();
+                      }}
+                      className="w-full rounded-xl py-3 text-base"
+                    >
+                      Back to Enrollment Desk
+                    </CaptureButton>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {wizardView !== "success" && step === 1 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Student details
                 </h3>
+                {keptContextHint ? (
+                  <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-100">
+                    Class and subjects were kept to speed up the next enrollment.
+                  </p>
+                ) : null}
                 <label className="block">
                   <span className="text-sm font-medium text-slate-700 dark:text-zinc-300">
                     Full name
@@ -685,7 +1394,7 @@ export function CaptureCardClient({
               </div>
             ) : null}
 
-            {step === 2 ? (
+            {wizardView !== "success" && step === 2 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Select class
@@ -713,7 +1422,7 @@ export function CaptureCardClient({
               </div>
             ) : null}
 
-            {step === 3 ? (
+            {wizardView !== "success" && step === 3 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <div className="space-y-1">
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -854,7 +1563,7 @@ export function CaptureCardClient({
               </div>
             ) : null}
 
-            {step === 4 ? (
+            {wizardView !== "success" && step === 4 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Parent or guardian
@@ -894,7 +1603,7 @@ export function CaptureCardClient({
               </div>
             ) : null}
 
-            {step === 5 ? (
+            {wizardView !== "success" && step === 5 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Health information
@@ -950,7 +1659,7 @@ export function CaptureCardClient({
               </div>
             ) : null}
 
-            {step === 6 ? (
+            {wizardView !== "success" && step === 6 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Review &amp; submit
@@ -1112,8 +1821,14 @@ export function CaptureCardClient({
             ) : null}
           </div>
 
-          <div className="border-t border-slate-200 p-4 dark:border-zinc-800">
+          {wizardView !== "success" ? (
+            <div className="border-t border-slate-200 p-4 dark:border-zinc-800">
             <div className="mx-auto flex max-w-lg gap-3">
+              {wizardView === "form" && draftSavedAt ? (
+                <p className="sr-only">
+                  Draft saved at {new Date(draftSavedAt).toISOString()}
+                </p>
+              ) : null}
               {step > 1 ? (
                 <CaptureButton
                   type="button"
@@ -1160,6 +1875,7 @@ export function CaptureCardClient({
               )}
             </div>
           </div>
+          ) : null}
         </div>
       ) : null}
     </div>

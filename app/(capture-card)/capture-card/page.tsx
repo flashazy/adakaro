@@ -6,12 +6,100 @@ import { filterLeafClassOptions } from "@/lib/class-options";
 import { readCaptureCardSession } from "@/lib/capture-card/session";
 import {
   CaptureCardClient,
+  type CaptureCorrectionQueueStudent,
   type CaptureLatestStudent,
+  type EnrollmentDeskCaptureUserStats,
 } from "./capture-card-client";
+import { schoolLocalCalendarDayUtcIsoRangeIso } from "@/lib/school-local-day-utc-range";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
+/** Max rejected rows for the corrections queue (expand is client-side within this list). */
+const CORRECTIONS_QUEUE_FETCH_LIMIT = 50;
+
+async function fetchCorrectionsQueueForCaptureUser(params: {
+  client: SupabaseClient<Database>;
+  schoolId: string;
+  enrolledByAuthUserId: string;
+}) {
+  const { client, schoolId, enrolledByAuthUserId } = params;
+  const { data, error } = await client
+    .from("students")
+    .select(
+      "id, full_name, admission_number, enrollment_date, rejection_reason, avatar_url, created_at, rejected_at, class:classes(name)"
+    )
+    .eq("school_id", schoolId)
+    .eq("enrolled_by", enrolledByAuthUserId)
+    .eq("approval_status", "rejected")
+    .order("rejected_at", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(CORRECTIONS_QUEUE_FETCH_LIMIT);
+
+  if (error) {
+    console.error("[capture corrections queue]", error.message);
+    return [];
+  }
+
+  return (data ?? []) as CaptureCorrectionQueueStudent[];
+}
+
+async function getEnrollmentDeskCaptureUserStats(params: {
+  client: SupabaseClient<Database>;
+  schoolId: string;
+  enrolledByAuthUserId: string;
+  schoolTimezone: string | null;
+}): Promise<EnrollmentDeskCaptureUserStats> {
+  const { client, schoolId, enrolledByAuthUserId, schoolTimezone } = params;
+  const fallback: EnrollmentDeskCaptureUserStats = {
+    submittedToday: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+  };
+
+  try {
+    const { startIso, endExclusiveIso } =
+      schoolLocalCalendarDayUtcIsoRangeIso(schoolTimezone);
+
+    async function countApproval(
+      status: "pending" | "approved" | "rejected"
+    ): Promise<number> {
+      const { count, error } = await client
+        .from("students")
+        .select("id", { count: "exact", head: true })
+        .eq("school_id", schoolId)
+        .eq("enrolled_by", enrolledByAuthUserId)
+        .eq("approval_status", status);
+
+      if (error) return 0;
+      return typeof count === "number" ? count : 0;
+    }
+
+    const [submittedToday, pending, approved, rejected] = await Promise.all([
+      (async () => {
+        const { count, error } = await client
+          .from("students")
+          .select("id", { count: "exact", head: true })
+          .eq("school_id", schoolId)
+          .eq("enrolled_by", enrolledByAuthUserId)
+          .gte("created_at", startIso)
+          .lt("created_at", endExclusiveIso);
+        if (error) return 0;
+        return typeof count === "number" ? count : 0;
+      })(),
+      countApproval("pending"),
+      countApproval("approved"),
+      countApproval("rejected"),
+    ]);
+
+    return { submittedToday, pending, approved, rejected };
+  } catch {
+    return fallback;
+  }
+}
 
 function parsePage(sp: Record<string, string | string[] | undefined>): number {
   const raw = sp.page;
@@ -78,7 +166,7 @@ export default async function CaptureCardHomePage({
 
     const { data: schoolRow, error: schoolErr } = await admin
       .from("schools")
-      .select("name, logo_url, updated_at")
+      .select("name, logo_url, updated_at, timezone")
       .eq("id", schoolId)
       .maybeSingle();
     if (schoolErr) {
@@ -97,6 +185,23 @@ export default async function CaptureCardHomePage({
       const t = raw ? new Date(raw).getTime() : NaN;
       return Number.isFinite(t) ? t : null;
     })();
+
+    const schoolTz =
+      (schoolRow as { timezone?: string | null } | null)?.timezone ?? null;
+
+    const [enrollmentStats, correctionsQueue] = await Promise.all([
+      getEnrollmentDeskCaptureUserStats({
+        client: admin,
+        schoolId,
+        enrolledByAuthUserId: ccu.auth_user_id,
+        schoolTimezone: schoolTz,
+      }),
+      fetchCorrectionsQueueForCaptureUser({
+        client: admin,
+        schoolId,
+        enrolledByAuthUserId: ccu.auth_user_id,
+      }),
+    ]);
 
     const requiresApproval =
       (ccu as { requires_approval: boolean } | null)?.requires_approval !==
@@ -124,20 +229,20 @@ export default async function CaptureCardHomePage({
     const { data: latestRows } = await admin
       .from("students")
       .select(
-        "id, full_name, admission_number, enrollment_date, approval_status, avatar_url, date_of_birth, class:classes(name)"
+        "id, full_name, admission_number, enrollment_date, approval_status, rejection_reason, avatar_url, date_of_birth, class:classes(name)"
       )
       .eq("enrolled_by", ccu.auth_user_id)
-      .eq("approval_status", "pending")
+      .in("approval_status", ["pending", "rejected"])
       .order("created_at", { ascending: false })
       .limit(1);
 
     const { data: myRows, error: stErr } = await admin
       .from("students")
       .select(
-        "id, full_name, admission_number, enrollment_date, approval_status, avatar_url, date_of_birth, class:classes(name)"
+        "id, full_name, admission_number, enrollment_date, approval_status, rejection_reason, avatar_url, date_of_birth, class:classes(name)"
       )
       .eq("enrolled_by", ccu.auth_user_id)
-      .eq("approval_status", "pending")
+      .in("approval_status", ["pending", "rejected"])
       .order("created_at", { ascending: false })
       .range(from, to);
     if (stErr) {
@@ -170,6 +275,8 @@ export default async function CaptureCardHomePage({
         myStudents={myStudents}
         page={page}
         hasMore={hasMore}
+        enrollmentStats={enrollmentStats}
+        correctionsQueue={correctionsQueue}
       />
     );
   }
@@ -195,7 +302,7 @@ export default async function CaptureCardHomePage({
 
   const { data: schoolRow } = await supabase
     .from("schools")
-    .select("name, logo_url, updated_at")
+    .select("name, logo_url, updated_at, timezone")
     .eq("id", schoolId)
     .maybeSingle();
   const schoolName =
@@ -207,6 +314,23 @@ export default async function CaptureCardHomePage({
     const t = raw ? new Date(raw).getTime() : NaN;
     return Number.isFinite(t) ? t : null;
   })();
+
+  const schoolTz =
+    (schoolRow as { timezone?: string | null } | null)?.timezone ?? null;
+
+  const [enrollmentStats, correctionsQueue] = await Promise.all([
+    getEnrollmentDeskCaptureUserStats({
+      client: supabase,
+      schoolId,
+      enrolledByAuthUserId: user.id,
+      schoolTimezone: schoolTz,
+    }),
+    fetchCorrectionsQueueForCaptureUser({
+      client: supabase,
+      schoolId,
+      enrolledByAuthUserId: user.id,
+    }),
+  ]);
 
   const { data: ccuRow } = await supabase
     .from("capture_card_users")
@@ -233,20 +357,20 @@ export default async function CaptureCardHomePage({
   const { data: latestRows } = await supabase
     .from("students")
     .select(
-      "id, full_name, admission_number, enrollment_date, approval_status, avatar_url, date_of_birth, class:classes(name)"
+      "id, full_name, admission_number, enrollment_date, approval_status, rejection_reason, avatar_url, date_of_birth, class:classes(name)"
     )
     .eq("enrolled_by", user.id)
-    .eq("approval_status", "pending")
+    .in("approval_status", ["pending", "rejected"])
     .order("created_at", { ascending: false })
     .limit(1);
 
   const { data: myRows } = await supabase
     .from("students")
     .select(
-      "id, full_name, admission_number, enrollment_date, approval_status, avatar_url, date_of_birth, class:classes(name)"
+      "id, full_name, admission_number, enrollment_date, approval_status, rejection_reason, avatar_url, date_of_birth, class:classes(name)"
     )
     .eq("enrolled_by", user.id)
-    .eq("approval_status", "pending")
+    .in("approval_status", ["pending", "rejected"])
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -266,6 +390,8 @@ export default async function CaptureCardHomePage({
       myStudents={myStudents}
       page={page}
       hasMore={hasMore}
+      enrollmentStats={enrollmentStats}
+      correctionsQueue={correctionsQueue}
     />
   );
 }
