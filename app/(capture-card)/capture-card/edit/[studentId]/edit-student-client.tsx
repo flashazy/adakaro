@@ -362,20 +362,6 @@ export function CaptureCardEditStudentClient({
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
           />
         </label>
-        <label className="block">
-          <span className="text-sm font-medium">Class</span>
-          <select
-            value={classId}
-            onChange={(e) => setClassId(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          >
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <fieldset>
           <legend className="text-sm font-medium">Gender</legend>
           <div className="mt-2 flex gap-3">
@@ -412,78 +398,25 @@ export function CaptureCardEditStudentClient({
           />
         </div>
 
-        <label className="block">
-          <span className="text-sm font-medium">Allergies</span>
-          <textarea
-            value={allergies}
-            onChange={(e) => setAllergies(e.target.value)}
-            onBlur={() =>
-              setAllergies((v) => (v.trim() ? v.trim().toUpperCase() : v))
-            }
-            rows={2}
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          />
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium">Disability or support needs</span>
-          <textarea
-            value={disability}
-            onChange={(e) => setDisability(e.target.value)}
-            onBlur={() =>
-              setDisability((v) => (v.trim() ? v.trim().toUpperCase() : v))
-            }
-            rows={2}
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          />
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium">Health insurance (provider)</span>
-          <input
-            value={insuranceProvider}
-            onChange={(e) => setInsuranceProvider(e.target.value)}
-            onBlur={() =>
-              setInsuranceProvider((p) =>
-                p.trim() ? p.trim().toUpperCase() : p
-              )
-            }
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          />
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium">Insurance policy number</span>
-          <input
-            value={insurancePolicy}
-            onChange={(e) => setInsurancePolicy(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-sm font-medium">Parent or guardian name</span>
-          <input
-            value={parentName}
-            onChange={(e) => setParentName(e.target.value)}
-            onBlur={() => setParentName((n) => formatPersonName(n))}
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          />
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium">Parent phone</span>
-          <input
-            value={parentPhone}
-            onChange={(e) => setParentPhone(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          />
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium">Parent email (optional)</span>
-          <input
-            type="email"
-            value={parentEmail}
-            onChange={(e) => setParentEmail(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          />
-        </label>
+        <div className="space-y-2 border-t border-slate-200 pt-4 dark:border-zinc-800">
+          <label className="block">
+            <span className="text-sm font-medium">Class</span>
+            <select
+              value={classId}
+              onChange={(e) => setClassId(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            >
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-sm text-slate-600 dark:text-zinc-400">
+            Choose the class before assigning subjects.
+          </p>
+        </div>
 
         <div
           className={cn(
@@ -492,11 +425,10 @@ export function CaptureCardEditStudentClient({
         >
           <div>
             <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-              Subjects selection
+              Subjects Selection
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-              Choose the subjects this student will study for the selected year
-              and term.
+              Choose the subjects this student will study in the selected class.
             </p>
           </div>
           <p className="text-xs text-slate-500 dark:text-zinc-500">
@@ -511,7 +443,7 @@ export function CaptureCardEditStudentClient({
                 onChange={(e) =>
                   setSubjectAcademicYear(Number(e.target.value))
                 }
-                className="mt-1 w-full min-h-11 rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
               >
                 {academicYearOptions.map((y) => (
                   <option key={y} value={y}>
@@ -527,7 +459,7 @@ export function CaptureCardEditStudentClient({
                 onChange={(e) =>
                   setSubjectTerm(e.target.value as SubjectEnrollmentTerm)
                 }
-                className="mt-1 w-full min-h-11 rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
               >
                 {SUBJECT_ENROLLMENT_TERMS.map((t) => (
                   <option key={t} value={t}>
@@ -549,7 +481,7 @@ export function CaptureCardEditStudentClient({
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
               <label
                 htmlFor="edit-capture-subj-all"
-                className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-slate-200/80 pb-3 dark:border-zinc-700"
+                className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-slate-200/80 pb-3 touch-manipulation dark:border-zinc-700"
               >
                 <input
                   ref={selectAllRef}
@@ -567,11 +499,11 @@ export function CaptureCardEditStudentClient({
                   selected
                 </span>
               </label>
-              <ul className="mt-3 grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+              <ul className="mt-3 grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 sm:gap-3">
                 {classSubjectOptions.map((sub) => (
                   <li
                     key={sub.id}
-                    className="flex min-h-11 items-center gap-3 rounded-lg px-1"
+                    className="flex min-h-11 items-center gap-3 rounded-lg px-1 py-0.5"
                   >
                     <input
                       type="checkbox"
@@ -593,6 +525,92 @@ export function CaptureCardEditStudentClient({
               </ul>
             </div>
           )}
+        </div>
+
+        <div className="space-y-4 border-t border-slate-200 pt-4 dark:border-zinc-800">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+            Parent or guardian
+          </h2>
+          <label className="block">
+            <span className="text-sm font-medium">Parent or guardian name</span>
+            <input
+              value={parentName}
+              onChange={(e) => setParentName(e.target.value)}
+              onBlur={() => setParentName((n) => formatPersonName(n))}
+              className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Parent phone</span>
+            <input
+              value={parentPhone}
+              onChange={(e) => setParentPhone(e.target.value)}
+              className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Parent email (optional)</span>
+            <input
+              type="email"
+              value={parentEmail}
+              onChange={(e) => setParentEmail(e.target.value)}
+              className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
+        </div>
+
+        <div className="space-y-4 border-t border-slate-200 pt-4 dark:border-zinc-800">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+            Health information
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-zinc-400">
+            All optional. Leave blank if not known.
+          </p>
+          <label className="block">
+            <span className="text-sm font-medium">Allergies</span>
+            <textarea
+              value={allergies}
+              onChange={(e) => setAllergies(e.target.value)}
+              onBlur={() =>
+                setAllergies((v) => (v.trim() ? v.trim().toUpperCase() : v))
+              }
+              rows={2}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Disability or support needs</span>
+            <textarea
+              value={disability}
+              onChange={(e) => setDisability(e.target.value)}
+              onBlur={() =>
+                setDisability((v) => (v.trim() ? v.trim().toUpperCase() : v))
+              }
+              rows={2}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Health insurance (provider)</span>
+            <input
+              value={insuranceProvider}
+              onChange={(e) => setInsuranceProvider(e.target.value)}
+              onBlur={() =>
+                setInsuranceProvider((p) =>
+                  p.trim() ? p.trim().toUpperCase() : p
+                )
+              }
+              className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium">Insurance policy number</span>
+            <input
+              value={insurancePolicy}
+              onChange={(e) => setInsurancePolicy(e.target.value)}
+              className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
         </div>
       </div>
 

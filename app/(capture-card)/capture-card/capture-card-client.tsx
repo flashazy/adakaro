@@ -35,9 +35,10 @@ import {
 
 const STEPS = [
   "Student",
+  "Class",
+  "Subjects",
   "Parent",
   "Health",
-  "Subjects",
   "Review",
 ] as const;
 
@@ -153,6 +154,7 @@ export function CaptureCardClient({
   >([]);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const [assignSubjectsLater, setAssignSubjectsLater] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   const academicYearOptions = useMemo(() => {
@@ -192,6 +194,7 @@ export function CaptureCardClient({
     setClassSubjectOptions([]);
     setSelectedSubjectIds([]);
     setSubjectsLoading(false);
+    setAssignSubjectsLater(false);
   }
 
   function openWizard() {
@@ -214,7 +217,8 @@ export function CaptureCardClient({
       insuranceProvider.trim() !== "" ||
       insurancePolicy.trim() !== "" ||
       photoDraft != null ||
-      selectedSubjectIds.length > 0;
+      selectedSubjectIds.length > 0 ||
+      assignSubjectsLater;
     if (
       dirty &&
       !window.confirm("Discard your changes and go back to the home screen?")
@@ -238,14 +242,17 @@ export function CaptureCardClient({
     insurancePolicy,
     photoDraft,
     selectedSubjectIds.length,
+    assignSubjectsLater,
   ]);
 
   useEffect(() => {
     if (!classId) {
       setClassSubjectOptions([]);
       setSelectedSubjectIds([]);
+      setAssignSubjectsLater(false);
       return;
     }
+    setAssignSubjectsLater(false);
     let cancelled = false;
     setSubjectsLoading(true);
     void getCaptureCardSubjectsForClass(classId).then((opts) => {
@@ -275,6 +282,7 @@ export function CaptureCardClient({
   }, [someSubjectsSelected]);
 
   function toggleSubject(subjectId: string, checked: boolean) {
+    if (assignSubjectsLater) return;
     setSelectedSubjectIds((prev) => {
       if (checked) return prev.includes(subjectId) ? prev : [...prev, subjectId];
       return prev.filter((id) => id !== subjectId);
@@ -282,6 +290,7 @@ export function CaptureCardClient({
   }
 
   function toggleAllSubjects(checked: boolean) {
+    if (assignSubjectsLater) return;
     setSelectedSubjectIds(
       checked ? classSubjectOptions.map((s) => s.id) : []
     );
@@ -322,10 +331,12 @@ export function CaptureCardClient({
       }
       if (insurancePolicy.trim()) fd.set("insurance_policy", insurancePolicy);
 
-      fd.set("subject_academic_year", String(subjectAcademicYear));
-      fd.set("subject_term", subjectTerm);
-      for (const sid of selectedSubjectIds) {
-        fd.append("subject_ids", sid);
+      if (!assignSubjectsLater) {
+        fd.set("subject_academic_year", String(subjectAcademicYear));
+        fd.set("subject_term", subjectTerm);
+        for (const sid of selectedSubjectIds) {
+          fd.append("subject_ids", sid);
+        }
       }
 
       const res = await createCaptureCardStudentAction(fd);
@@ -372,12 +383,19 @@ export function CaptureCardClient({
       ? Boolean(
           fullName.trim() &&
             dateOfBirth &&
-            classId &&
             (gender === "male" || gender === "female")
         )
       : step === 2
-        ? Boolean(parentName.trim() && parentPhone.trim())
-        : true;
+        ? Boolean(classId)
+        : step === 3
+          ? Boolean(
+              classId &&
+                !subjectsLoading &&
+                (assignSubjectsLater || selectedSubjectIds.length > 0)
+            )
+          : step === 4
+            ? Boolean(parentName.trim() && parentPhone.trim())
+            : true;
 
   const canSubmitEnrollment = useMemo(
     () =>
@@ -387,9 +405,19 @@ export function CaptureCardClient({
           classId &&
           (gender === "male" || gender === "female") &&
           parentName.trim() &&
-          parentPhone.trim()
+          parentPhone.trim() &&
+          (assignSubjectsLater || selectedSubjectIds.length > 0)
       ),
-    [fullName, dateOfBirth, classId, gender, parentName, parentPhone]
+    [
+      fullName,
+      dateOfBirth,
+      classId,
+      gender,
+      parentName,
+      parentPhone,
+      assignSubjectsLater,
+      selectedSubjectIds.length,
+    ]
   );
 
   return (
@@ -564,6 +592,9 @@ export function CaptureCardClient({
               <p className="text-sm font-medium text-slate-900 dark:text-white">
                 Step {step} of {STEPS.length}
               </p>
+              <p className="text-xs font-medium text-slate-700 dark:text-zinc-300">
+                {STEPS[step - 1]}
+              </p>
               <p className="text-xs text-slate-500 dark:text-zinc-500">
                 {Math.round((step / STEPS.length) * 100)}% complete
               </p>
@@ -611,23 +642,6 @@ export function CaptureCardClient({
                     className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                   />
                 </label>
-                <label className="block">
-                  <span className="text-sm font-medium text-slate-700 dark:text-zinc-300">
-                    Class
-                  </span>
-                  <select
-                    value={classId}
-                    onChange={(e) => setClassId(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-                  >
-                    <option value="">Choose a class</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 <fieldset>
                   <legend className="text-sm font-medium text-slate-700 dark:text-zinc-300">
                     Gender
@@ -674,6 +688,175 @@ export function CaptureCardClient({
             {step === 2 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  Select class
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-zinc-400">
+                  Choose the class before assigning subjects.
+                </p>
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                    Class
+                  </span>
+                  <select
+                    value={classId}
+                    onChange={(e) => setClassId(e.target.value)}
+                    className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                  >
+                    <option value="">Choose a class</option>
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+
+            {step === 3 ? (
+              <div className="mx-auto max-w-lg space-y-4 pt-2">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    Subjects Selection
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-zinc-400">
+                    Choose the subjects this student will study in the selected
+                    class.
+                  </p>
+                </div>
+                {!classId ? (
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+                    Please choose a class first.
+                  </p>
+                ) : null}
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3 touch-manipulation dark:border-zinc-700 dark:bg-zinc-800/50">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
+                    checked={assignSubjectsLater}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setAssignSubjectsLater(on);
+                      if (on) setSelectedSubjectIds([]);
+                    }}
+                  />
+                  <span className="text-sm text-slate-800 dark:text-zinc-200">
+                    This student&apos;s subjects will be assigned later
+                  </span>
+                </label>
+                <div
+                  className={cn(
+                    "flex flex-col gap-3 sm:flex-row sm:flex-wrap",
+                    (!classId || assignSubjectsLater) &&
+                      "pointer-events-none opacity-50"
+                  )}
+                >
+                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                    Academic year
+                    <select
+                      value={subjectAcademicYear}
+                      onChange={(e) =>
+                        setSubjectAcademicYear(Number(e.target.value))
+                      }
+                      disabled={!classId || assignSubjectsLater}
+                      className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                    >
+                      {academicYearOptions.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                    Term
+                    <select
+                      value={subjectTerm}
+                      onChange={(e) =>
+                        setSubjectTerm(e.target.value as SubjectEnrollmentTerm)
+                      }
+                      disabled={!classId || assignSubjectsLater}
+                      className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                    >
+                      {SUBJECT_ENROLLMENT_TERMS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {subjectsLoading ? (
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Loading subjects…
+                  </p>
+                ) : classId && classSubjectOptions.length === 0 ? (
+                  <p className="text-xs text-amber-800 dark:text-amber-200/90">
+                    No subjects linked to this class yet. An admin can set them
+                    under Manage Subjects. You can mark &quot;assigned
+                    later&quot; above to continue.
+                  </p>
+                ) : (
+                  <div
+                    className={cn(
+                      "rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-zinc-700 dark:bg-zinc-800/40",
+                      assignSubjectsLater && "pointer-events-none opacity-50"
+                    )}
+                  >
+                    <label
+                      htmlFor="capture-subj-select-all"
+                      className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-slate-200/80 pb-3 touch-manipulation dark:border-zinc-700"
+                    >
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        id="capture-subj-select-all"
+                        checked={allSubjectsSelected}
+                        onChange={(e) => toggleAllSubjects(e.target.checked)}
+                        disabled={!classId || assignSubjectsLater}
+                        className="h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary disabled:opacity-60 dark:border-zinc-600"
+                      />
+                      <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                        Select all subjects
+                      </span>
+                      <span className="ml-auto text-xs text-slate-500 dark:text-zinc-400">
+                        {selectedSubjectIds.length} of{" "}
+                        {classSubjectOptions.length} selected
+                      </span>
+                    </label>
+                    <ul className="mt-3 grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 sm:gap-3">
+                      {classSubjectOptions.map((sub) => (
+                        <li
+                          key={sub.id}
+                          className="flex min-h-11 items-center gap-3 rounded-lg px-1 py-0.5"
+                        >
+                          <input
+                            type="checkbox"
+                            id={`capture-subj-${sub.id}`}
+                            checked={selectedSubjectIds.includes(sub.id)}
+                            onChange={(e) =>
+                              toggleSubject(sub.id, e.target.checked)
+                            }
+                            disabled={!classId || assignSubjectsLater}
+                            className="h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary disabled:opacity-60 dark:border-zinc-600"
+                          />
+                          <label
+                            htmlFor={`capture-subj-${sub.id}`}
+                            className="flex-1 cursor-pointer text-sm text-slate-800 dark:text-zinc-200"
+                          >
+                            {sub.name}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {step === 4 ? (
+              <div className="mx-auto max-w-lg space-y-4 pt-2">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Parent or guardian
                 </h3>
                 <p className="text-sm text-slate-600 dark:text-zinc-400">
@@ -711,7 +894,7 @@ export function CaptureCardClient({
               </div>
             ) : null}
 
-            {step === 3 ? (
+            {step === 5 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Health information
@@ -767,191 +950,39 @@ export function CaptureCardClient({
               </div>
             ) : null}
 
-            {step === 4 ? (
-              <div className="mx-auto max-w-lg space-y-4 pt-2">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    Subjects selection
-                  </h3>
-                  <p className="text-sm text-slate-600 dark:text-zinc-400">
-                    Choose the subjects this student will study.
-                  </p>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-zinc-500">
-                  Subjects can also be assigned later by an admin if you skip
-                  this.
-                </p>
-                {!classId ? (
-                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
-                    Choose a class in step 1 to load subjects.
-                  </p>
-                ) : null}
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
-                    Academic year
-                    <select
-                      value={subjectAcademicYear}
-                      onChange={(e) =>
-                        setSubjectAcademicYear(Number(e.target.value))
-                      }
-                      className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-                    >
-                      {academicYearOptions.map((y) => (
-                        <option key={y} value={y}>
-                          {y}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
-                    Term
-                    <select
-                      value={subjectTerm}
-                      onChange={(e) =>
-                        setSubjectTerm(e.target.value as SubjectEnrollmentTerm)
-                      }
-                      className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-                    >
-                      {SUBJECT_ENROLLMENT_TERMS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                {subjectsLoading ? (
-                  <p className="text-xs text-slate-500 dark:text-zinc-400">
-                    Loading subjects…
-                  </p>
-                ) : classId && classSubjectOptions.length === 0 ? (
-                  <p className="text-xs text-amber-800 dark:text-amber-200/90">
-                    No subjects linked to this class yet. An admin can set them
-                    under Manage Subjects.
-                  </p>
-                ) : (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
-                    <label
-                      htmlFor="capture-subj-select-all"
-                      className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-slate-200/80 pb-3 touch-manipulation dark:border-zinc-700"
-                    >
-                      <input
-                        ref={selectAllRef}
-                        type="checkbox"
-                        id="capture-subj-select-all"
-                        checked={allSubjectsSelected}
-                        onChange={(e) => toggleAllSubjects(e.target.checked)}
-                        className="h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
-                      />
-                      <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">
-                        Select all subjects
-                      </span>
-                      <span className="ml-auto text-xs text-slate-500 dark:text-zinc-400">
-                        {selectedSubjectIds.length} of{" "}
-                        {classSubjectOptions.length} selected
-                      </span>
-                    </label>
-                    <ul className="mt-3 grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 sm:gap-3">
-                      {classSubjectOptions.map((sub) => (
-                        <li
-                          key={sub.id}
-                          className="flex min-h-11 items-center gap-3 rounded-lg px-1 py-0.5"
-                        >
-                          <input
-                            type="checkbox"
-                            id={`capture-subj-${sub.id}`}
-                            checked={selectedSubjectIds.includes(sub.id)}
-                            onChange={(e) =>
-                              toggleSubject(sub.id, e.target.checked)
-                            }
-                            className="h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
-                          />
-                          <label
-                            htmlFor={`capture-subj-${sub.id}`}
-                            className="flex-1 cursor-pointer text-sm text-slate-800 dark:text-zinc-200"
-                          >
-                            {sub.name}
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {step === 5 ? (
+            {step === 6 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Review &amp; submit
                 </h3>
-                <ul className="space-y-2 text-sm text-slate-700 dark:text-zinc-300">
-                  <li>
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      Name:{" "}
-                    </span>
-                    {fullName}
-                  </li>
-                  <li>
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      Class:{" "}
-                    </span>
-                    {classes.find((c) => c.id === classId)?.name ?? "—"}
-                  </li>
-                  <li>
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      Date of birth:{" "}
-                    </span>
-                    {dateOfBirth}
-                  </li>
-                  <li>
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      Parent / guardian:{" "}
-                    </span>
-                    {parentName || "—"}
-                  </li>
-                  <li>
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      Parent phone:{" "}
-                    </span>
-                    {parentPhone}
-                  </li>
-                  {parentEmail.trim() ? (
+                <div className="space-y-2 text-sm text-slate-700 dark:text-zinc-300">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Student details
+                  </p>
+                  <ul className="space-y-2">
                     <li>
                       <span className="font-medium text-slate-900 dark:text-white">
-                        Parent email:{" "}
+                        Name:{" "}
                       </span>
-                      {parentEmail}
+                      {fullName}
                     </li>
-                  ) : null}
-                  <li>
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      Academic year:{" "}
-                    </span>
-                    {subjectAcademicYear}
-                  </li>
-                  <li>
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      Term:{" "}
-                    </span>
-                    {subjectTerm}
-                  </li>
-                </ul>
-                <div>
-                  <p className="text-sm font-medium text-slate-900 dark:text-white">
-                    Subjects
-                  </p>
-                  {selectedSubjectLabels.length === 0 ? (
-                    <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-                      None selected — an admin can assign subjects later.
-                    </p>
-                  ) : (
-                    <ul className="mt-1 list-inside list-disc space-y-0.5 text-sm text-slate-700 dark:text-zinc-300">
-                      {selectedSubjectLabels.map((name, idx) => (
-                        <li key={`${name}-${idx}`}>{name}</li>
-                      ))}
-                    </ul>
-                  )}
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Date of birth:{" "}
+                      </span>
+                      {dateOfBirth}
+                    </li>
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Gender:{" "}
+                      </span>
+                      {gender === "male"
+                        ? "Male"
+                        : gender === "female"
+                          ? "Female"
+                          : "—"}
+                    </li>
+                  </ul>
                 </div>
                 {photoDraft?.previewUrl ? (
                   <div>
@@ -966,6 +997,107 @@ export function CaptureCardClient({
                     />
                   </div>
                 ) : null}
+                <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Class
+                  </p>
+                  <p className="text-sm text-slate-700 dark:text-zinc-300">
+                    {classes.find((c) => c.id === classId)?.name ?? "—"}
+                  </p>
+                </div>
+                <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Academic year &amp; term
+                  </p>
+                  <ul className="space-y-1 text-sm text-slate-700 dark:text-zinc-300">
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Academic year:{" "}
+                      </span>
+                      {subjectAcademicYear}
+                    </li>
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Term:{" "}
+                      </span>
+                      {subjectTerm}
+                    </li>
+                  </ul>
+                </div>
+                <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Subjects
+                  </p>
+                  {assignSubjectsLater || selectedSubjectLabels.length === 0 ? (
+                    <p className="text-sm text-slate-600 dark:text-zinc-400">
+                      Subjects will be assigned later.
+                    </p>
+                  ) : (
+                    <ul className="list-inside list-disc space-y-0.5 text-sm text-slate-700 dark:text-zinc-300">
+                      {selectedSubjectLabels.map((name, idx) => (
+                        <li key={`${name}-${idx}`}>{name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Parent / guardian
+                  </p>
+                  <ul className="space-y-1 text-sm text-slate-700 dark:text-zinc-300">
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Name:{" "}
+                      </span>
+                      {parentName || "—"}
+                    </li>
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Phone:{" "}
+                      </span>
+                      {parentPhone}
+                    </li>
+                    {parentEmail.trim() ? (
+                      <li>
+                        <span className="font-medium text-slate-900 dark:text-white">
+                          Email:{" "}
+                        </span>
+                        {parentEmail}
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>
+                <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Health information
+                  </p>
+                  <ul className="space-y-1 text-sm text-slate-700 dark:text-zinc-300">
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Allergies:{" "}
+                      </span>
+                      {allergies.trim() || "—"}
+                    </li>
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Disability / support:{" "}
+                      </span>
+                      {disability.trim() || "—"}
+                    </li>
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Insurance provider:{" "}
+                      </span>
+                      {insuranceProvider.trim() || "—"}
+                    </li>
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Policy number:{" "}
+                      </span>
+                      {insurancePolicy.trim() || "—"}
+                    </li>
+                  </ul>
+                </div>
                 {requiresApproval ? (
                   <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">
                     This student will be sent to the admin for approval before
@@ -1005,13 +1137,8 @@ export function CaptureCardClient({
                     if (step === 1) {
                       setFullName((n) => formatPersonName(n));
                     }
-                    if (step === 2) {
+                    if (step === 4) {
                       setParentName((n) => formatPersonName(n));
-                    }
-                    if (step === 3) {
-                      setInsuranceProvider((p) =>
-                        p.trim() ? formatPersonName(p) : p
-                      );
                     }
                     setStep((s) => s + 1);
                   }}
