@@ -97,6 +97,9 @@ export async function updateSession(request: NextRequest) {
 
   const isAuthCallback = pathname.startsWith("/auth/callback");
 
+  const isEnrollmentDeskAccessRoute = pathname.startsWith(
+    "/enrollment-desk/access"
+  );
   const isCaptureCardRoute = pathname.startsWith("/capture-card");
 
   const isAuthPage =
@@ -623,7 +626,12 @@ export async function updateSession(request: NextRequest) {
 
   // Capture-session users: block access outside capture-card.
   if (!typedUser && captureSession) {
-    if (!isCaptureCardRoute && !isAuthCallback && !pathname.startsWith("/api/")) {
+    if (
+      !isCaptureCardRoute &&
+      !isEnrollmentDeskAccessRoute &&
+      !isAuthCallback &&
+      !pathname.startsWith("/api/")
+    ) {
       const url = request.nextUrl.clone();
       url.pathname = "/capture-card";
       return NextResponse.redirect(url);

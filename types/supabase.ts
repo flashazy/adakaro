@@ -606,6 +606,9 @@ export interface Database {
           expires_at: string | null;
           is_active: boolean;
           requires_approval: boolean;
+          is_quick_qr_user: boolean;
+          quick_qr_label: string | null;
+          quick_qr_note: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -620,6 +623,9 @@ export interface Database {
           expires_at?: string | null;
           is_active?: boolean;
           requires_approval?: boolean;
+          is_quick_qr_user?: boolean;
+          quick_qr_label?: string | null;
+          quick_qr_note?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -631,6 +637,9 @@ export interface Database {
           expires_at?: string | null;
           is_active?: boolean;
           requires_approval?: boolean;
+          is_quick_qr_user?: boolean;
+          quick_qr_label?: string | null;
+          quick_qr_note?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -644,6 +653,54 @@ export interface Database {
             foreignKeyName: "capture_card_users_created_by_fkey";
             columns: ["created_by"];
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      enrollment_desk_access_tokens: {
+        Row: {
+          id: string;
+          capture_card_user_id: string;
+          school_id: string;
+          token_hash: string;
+          expires_at: string;
+          used_at: string | null;
+          revoked_at: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          capture_card_user_id: string;
+          school_id: string;
+          token_hash: string;
+          expires_at: string;
+          used_at?: string | null;
+          revoked_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          capture_card_user_id?: string;
+          school_id?: string;
+          token_hash?: string;
+          expires_at?: string;
+          used_at?: string | null;
+          revoked_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "enrollment_desk_access_tokens_capture_card_user_id_fkey";
+            columns: ["capture_card_user_id"];
+            referencedRelation: "capture_card_users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "enrollment_desk_access_tokens_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
             referencedColumns: ["id"];
           },
         ];

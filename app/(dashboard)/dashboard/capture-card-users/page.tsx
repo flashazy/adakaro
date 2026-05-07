@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { BackButton } from "@/components/dashboard/back-button";
-import { CaptureCardUsersClient } from "./capture-card-users-client";
+import { CaptureCardUsersClient, type CaptureCardUserRow } from "./capture-card-users-client";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,9 @@ export default async function CaptureCardUsersPage() {
 
   const { data: rows, error } = await supabase
     .from("capture_card_users")
-    .select("id, username, is_active, expires_at, requires_approval, created_at")
+    .select(
+      "id, username, is_active, expires_at, requires_approval, created_at, is_quick_qr_user, quick_qr_label, quick_qr_note"
+    )
     .eq("school_id", schoolId)
     .order("created_at", { ascending: false });
 
@@ -48,15 +50,29 @@ export default async function CaptureCardUsersPage() {
     console.error("[capture-card-users]", error);
   }
 
-  const users =
-    (rows ?? []) as {
-      id: string;
-      username: string;
-      is_active: boolean;
-      expires_at: string | null;
-      requires_approval: boolean;
-      created_at: string;
-    }[];
+  const { data: tokenRows, error: tokenErr } = await supabase
+    .from("enrollment_desk_access_tokens")
+    .select("capture_card_user_id, expires_at")
+    .eq("school_id", schoolId)
+    .is("revoked_at", null)
+    .is("used_at", null)
+    .gt("expires_at", new Date().toISOString());
+
+  if (tokenErr) {
+    console.error("[capture-card-users] active qr tokens:", tokenErr);
+  }
+
+  const activeQrByUserId: Record<string, { expires_at: string }> = {};
+  for (const t of tokenRows ?? []) {
+    const row = t as { capture_card_user_id: string; expires_at: string };
+    if (!activeQrByUserId[row.capture_card_user_id]) {
+      activeQrByUserId[row.capture_card_user_id] = {
+        expires_at: row.expires_at,
+      };
+    }
+  }
+
+  const users = (rows ?? []) as CaptureCardUserRow[];
 
   return (
     <>
@@ -79,7 +95,11 @@ export default async function CaptureCardUsersPage() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <CaptureCardUsersClient schoolId={schoolId} users={users} />
+        <CaptureCardUsersClient
+          schoolId={schoolId}
+          users={users}
+          activeQrByUserId={activeQrByUserId}
+        />
       </main>
     </>
   );

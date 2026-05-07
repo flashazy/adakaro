@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
 
 const CAPTURE_SESSION_COOKIE = "cc_session";
 
@@ -67,6 +68,25 @@ function createSignedCaptureSessionCookieValue(payload: CaptureCookiePayload): s
   return `${body}.${sig}`;
 }
 
+const captureSessionCookieBaseOptions = {
+  path: "/",
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+};
+
+export function setCaptureCardSessionOnResponse(
+  response: NextResponse,
+  payload: CaptureCookiePayload
+) {
+  const value = createSignedCaptureSessionCookieValue(payload);
+  const maxAge = Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
+  response.cookies.set(CAPTURE_SESSION_COOKIE, value, {
+    ...captureSessionCookieBaseOptions,
+    maxAge,
+  });
+}
+
 export async function readCaptureCardSession(): Promise<CaptureCardSession | null> {
   const jar = await cookies();
   const cookie = jar.get(CAPTURE_SESSION_COOKIE)?.value ?? "";
@@ -112,10 +132,7 @@ export async function setCaptureCardSessionCookie(payload: CaptureCookiePayload)
   const value = createSignedCaptureSessionCookieValue(payload);
   const jar = await cookies();
   jar.set(CAPTURE_SESSION_COOKIE, value, {
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    ...captureSessionCookieBaseOptions,
     maxAge: Math.max(0, payload.exp - Math.floor(Date.now() / 1000)),
   });
 }
