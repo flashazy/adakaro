@@ -53,6 +53,7 @@ interface StudentWithClass {
   admission_number: string | null;
   school_id: string;
   class_id: string;
+  enrollment_date: string | null;
   class: { name: string; class_teacher_id: string | null } | null;
   classTeacherContact?: {
     fullName: string;
@@ -228,7 +229,25 @@ export default async function ParentDashboard() {
       .gt("expires_at", nowIso),
   ]);
 
-  const typedLinks = (linksResult.data ?? []) as { student_id: string }[];
+  let typedLinks = (linksResult.data ?? []) as { student_id: string }[];
+  if (
+    typedLinks.length === 0 &&
+    profileTyped?.role === "parent" &&
+    !linksResult.error
+  ) {
+    try {
+      const admin = createAdminClient();
+      const { data: adminLinks, error: adminLinkErr } = await admin
+        .from("parent_students")
+        .select("student_id")
+        .eq("parent_id", user.id);
+      if (!adminLinkErr && adminLinks && adminLinks.length > 0) {
+        typedLinks = adminLinks as { student_id: string }[];
+      }
+    } catch {
+      /* service role unavailable */
+    }
+  }
   const studentIds = typedLinks.map((l) => l.student_id);
   const childCount = studentIds.length;
   const typedPendingReqs = (pendingReqsResult.data ?? []) as {
@@ -342,7 +361,7 @@ export default async function ParentDashboard() {
         supabase
           .from("students")
           .select(
-            "id, full_name, admission_number, school_id, class_id, class:classes(name, class_teacher_id)"
+            "id, full_name, admission_number, school_id, class_id, enrollment_date, class:classes(name, class_teacher_id)"
           )
           .in("id", studentIds)
       ),
@@ -387,6 +406,7 @@ export default async function ParentDashboard() {
           id: s.id,
           class_id: s.class_id,
           class_teacher_id: s.class?.class_teacher_id ?? null,
+          enrollment_date: s.enrollment_date ?? null,
         }))
       );
     }
@@ -493,10 +513,6 @@ export default async function ParentDashboard() {
                   <MultiCurrencySummary totalsByCurrency={totalsByCurrency} />
                 </div>
               )}
-
-              <div className="mt-4 md:mt-8">
-                <LinkRequestForm pendingRequests={pendingRequests} />
-              </div>
 
               <div className="mt-4 space-y-4 md:mt-8 md:space-y-8">
               <ParentStudentCardsGroup>

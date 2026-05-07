@@ -32,16 +32,22 @@ COMMENT ON TABLE public.enrollment_desk_access_tokens IS
 GRANT SELECT, INSERT, UPDATE ON TABLE public.enrollment_desk_access_tokens TO authenticated;
 GRANT ALL ON TABLE public.enrollment_desk_access_tokens TO service_role;
 
+DROP POLICY IF EXISTS enrollment_desk_access_tokens_select
+  ON public.enrollment_desk_access_tokens;
 CREATE POLICY enrollment_desk_access_tokens_select
   ON public.enrollment_desk_access_tokens
   FOR SELECT TO authenticated
   USING (public.is_school_admin(school_id) OR public.is_super_admin());
 
+DROP POLICY IF EXISTS enrollment_desk_access_tokens_insert
+  ON public.enrollment_desk_access_tokens;
 CREATE POLICY enrollment_desk_access_tokens_insert
   ON public.enrollment_desk_access_tokens
   FOR INSERT TO authenticated
   WITH CHECK (public.is_school_admin(school_id) OR public.is_super_admin());
 
+DROP POLICY IF EXISTS enrollment_desk_access_tokens_update
+  ON public.enrollment_desk_access_tokens;
 CREATE POLICY enrollment_desk_access_tokens_update
   ON public.enrollment_desk_access_tokens
   FOR UPDATE TO authenticated

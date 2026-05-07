@@ -9,6 +9,7 @@ import {
   useTransition,
   useCallback,
   type FormEvent,
+  type FocusEvent,
 } from "react";
 import { Pencil } from "lucide-react";
 import {
@@ -47,6 +48,36 @@ import {
   sanitizePhoneInput,
 } from "@/lib/validation";
 import { formatPersonName } from "@/lib/format-person-name";
+import { ParentCredentialsModal } from "@/components/enrollment/ParentCredentialsModal";
+import type { ParentCredentialSheetPayload } from "@/lib/parent-credential-sheet-types";
+
+function splitParentCredentialFields(result: StudentActionState): {
+  rest: StudentActionState;
+  sheet?: ParentCredentialSheetPayload;
+  warning?: string;
+  error?: string;
+} {
+  const {
+    parentCredentialSheet: sheet,
+    parentCredentialWarning: warning,
+    parentCredentialError: error,
+    ...rest
+  } = result;
+  return { rest, sheet, warning, error };
+}
+
+/** Same normalization as Enrollment Desk health fields (optional → empty or uppercase). */
+function formatOptionalHealthFieldUppercase(raw: string): string {
+  const t = raw.trim();
+  return t ? t.toUpperCase() : "";
+}
+
+function blurOptionalHealthUppercase(
+  e: FocusEvent<HTMLInputElement | HTMLTextAreaElement>
+) {
+  const el = e.currentTarget;
+  el.value = formatOptionalHealthFieldUppercase(el.value);
+}
 
 function toLowercaseEmail(str: string): string {
   if (!str.trim()) return str;
@@ -139,6 +170,9 @@ export function AddStudentForm({
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [photoDraft, setPhotoDraft] = useState<StudentPhotoDraft | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const [parentCredentialSheet, setParentCredentialSheet] =
+    useState<ParentCredentialSheetPayload | null>(null);
+
   const [fieldHints, setFieldHints] = useState<{
     full_name: string | null;
     admission_number: string | null;
@@ -387,6 +421,31 @@ export function AddStudentForm({
     }
     formData.set("parent_phone", parentPhoneClean);
 
+    const allergiesFmt = formatOptionalHealthFieldUppercase(
+      String(formData.get("allergies") ?? "")
+    );
+    const disabilityFmt = formatOptionalHealthFieldUppercase(
+      String(formData.get("disability") ?? "")
+    );
+    const insuranceProviderFmt = formatOptionalHealthFieldUppercase(
+      String(formData.get("insurance_provider") ?? "")
+    );
+    formData.set("allergies", allergiesFmt);
+    formData.set("disability", disabilityFmt);
+    formData.set("insurance_provider", insuranceProviderFmt);
+    const allergiesTa = form.querySelector<HTMLTextAreaElement>(
+      'textarea[name="allergies"]'
+    );
+    const disabilityTa = form.querySelector<HTMLTextAreaElement>(
+      'textarea[name="disability"]'
+    );
+    const insuranceProvIn = form.querySelector<HTMLInputElement>(
+      'input[name="insurance_provider"]'
+    );
+    if (allergiesTa) allergiesTa.value = allergiesFmt;
+    if (disabilityTa) disabilityTa.value = disabilityFmt;
+    if (insuranceProvIn) insuranceProvIn.value = insuranceProviderFmt;
+
     if (bypassPhoneNextSubmitRef.current) {
       formData.set("force_duplicate_phone", "1");
       bypassPhoneNextSubmitRef.current = false;
@@ -477,16 +536,23 @@ export function AddStudentForm({
             setPhotoDraft(null);
             return;
           }
-          const result = wrapped.result;
+          const rawResult = wrapped.result;
           if (
-            result.phoneDuplicateConflict &&
-            result.existingStudentForPhone
+            rawResult.phoneDuplicateConflict &&
+            rawResult.existingStudentForPhone
           ) {
-            setPhoneDuplicateModalName(result.existingStudentForPhone);
+            setPhoneDuplicateModalName(rawResult.existingStudentForPhone);
             setState({});
             return;
           }
           setPhoneDuplicateModalName(null);
+
+          const { rest: result, sheet, warning, error } =
+            splitParentCredentialFields(rawResult);
+          if (warning) toast.message(warning);
+          if (error) toast.error(error);
+          if (sheet) setParentCredentialSheet(sheet);
+
           if (result.error || !result.studentId || !photoDraft) {
             setState(result);
             if (!result.error && !result.phoneDuplicateConflict) {
@@ -1121,6 +1187,7 @@ export function AddStudentForm({
                         rows={3}
                         placeholder="e.g., Peanuts, pollen, penicillin"
                         className={inputClass}
+                        onBlur={blurOptionalHealthUppercase}
                       />
                     </div>
                     <div className="flex flex-col">
@@ -1133,6 +1200,7 @@ export function AddStudentForm({
                         rows={3}
                         placeholder="e.g., Uses wheelchair, dyslexia"
                         className={inputClass}
+                        onBlur={blurOptionalHealthUppercase}
                       />
                     </div>
                   </div>
@@ -1146,6 +1214,7 @@ export function AddStudentForm({
                         name="insurance_provider"
                         type="text"
                         className={inputClass}
+                        onBlur={blurOptionalHealthUppercase}
                       />
                     </div>
                     <div className="flex flex-col">
@@ -1409,6 +1478,12 @@ export function AddStudentForm({
           </div>
         </div>
       ) : null}
+
+      <ParentCredentialsModal
+        open={parentCredentialSheet !== null}
+        sheet={parentCredentialSheet}
+        onClose={() => setParentCredentialSheet(null)}
+      />
     </div>
   );
 }

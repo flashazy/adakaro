@@ -102,6 +102,10 @@ export async function updateSession(request: NextRequest) {
   );
   const isCaptureCardRoute = pathname.startsWith("/capture-card");
 
+  const isPasswordSetupPage =
+    pathname.startsWith("/change-password") ||
+    pathname.startsWith("/reset-password");
+
   const isAuthPage =
     !isAuthCallback &&
     (pathname.startsWith("/login") ||
@@ -263,7 +267,8 @@ export async function updateSession(request: NextRequest) {
       isProtectedRoute ||
       isSchoolSuspendedPage ||
       isPaymentPage ||
-      isCaptureCardRoute
+      isCaptureCardRoute ||
+      isPasswordSetupPage
     ) {
       // SECURITY DEFINER — reliable even if profiles SELECT is flaky for this user.
       const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
@@ -447,13 +452,39 @@ export async function updateSession(request: NextRequest) {
     if (role === "parent") {
       const { data: prRec } = await supabase
         .from("profiles")
-        .select("recovery_reset_required, password_forced_reset")
+        .select(
+          "recovery_reset_required, password_forced_reset, must_change_password"
+        )
         .eq("id", typedUser.id)
         .maybeSingle();
       const r = prRec as {
         recovery_reset_required?: boolean;
         password_forced_reset?: boolean;
+        must_change_password?: boolean;
       } | null;
+
+      if (r?.must_change_password === true) {
+        const isChangePasswordPage = pathname.startsWith("/change-password");
+        const isAuthApi = pathname.startsWith("/api/auth");
+        if (!isChangePasswordPage && !isAuthApi) {
+          if (pathname.startsWith("/api/")) {
+            return NextResponse.json(
+              {
+                error: "You must change your password before continuing.",
+              },
+              { status: 403 }
+            );
+          }
+          const url = request.nextUrl.clone();
+          url.pathname = "/change-password";
+          url.searchParams.set(
+            "next",
+            `${pathname}${request.nextUrl.search || ""}`
+          );
+          return NextResponse.redirect(url);
+        }
+      }
+
       const needPasswordReset =
         r?.recovery_reset_required === true || r?.password_forced_reset === true;
       if (needPasswordReset) {

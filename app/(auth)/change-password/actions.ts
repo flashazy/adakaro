@@ -11,7 +11,7 @@ export type ChangePasswordState =
   | { ok: true }
   | { ok: false; error: string };
 
-export async function changeTeacherPasswordAction(
+export async function changeForcedPasswordAction(
   _prev: ChangePasswordState | null,
   formData: FormData
 ): Promise<ChangePasswordState> {
@@ -36,7 +36,7 @@ export async function changeTeacherPasswordAction(
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("role, password_changed, password_forced_reset")
+    .select("role, password_changed, password_forced_reset, must_change_password")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -44,6 +44,7 @@ export async function changeTeacherPasswordAction(
     role: string;
     password_changed: boolean | null;
     password_forced_reset: boolean;
+    must_change_password?: boolean;
   } | null;
 
   if (pr?.role === "super_admin") {
@@ -53,16 +54,23 @@ export async function changeTeacherPasswordAction(
     redirect("/dashboard");
   }
 
-  if (pr?.role !== "teacher") {
+  const isTeacher = pr?.role === "teacher";
+  const isParent = pr?.role === "parent";
+
+  if (!isTeacher && !isParent) {
     return {
       ok: false,
       error: "This password setup page is not available for your account.",
     };
   }
 
-  const must =
-    pr.password_changed === false || pr.password_forced_reset === true;
-  if (!must) {
+  const mustTeacher =
+    isTeacher &&
+    (pr.password_changed === false || pr.password_forced_reset === true);
+  const mustParent = isParent && pr.must_change_password === true;
+
+  if (!mustTeacher && !mustParent) {
+    if (isParent) redirect("/parent-dashboard");
     redirect("/teacher-dashboard");
   }
 
@@ -72,15 +80,21 @@ export async function changeTeacherPasswordAction(
   }
 
   type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
-  const { error: profErr } = await (supabase as Db)
-    .from("profiles")
-    .update(
-      {
+  const profilePatch: ProfileUpdate = isParent
+    ? {
+        password_changed: true,
+        must_change_password: false,
+        password_forced_reset: false,
+      }
+    : {
         password_changed: true,
         password_forced_reset: false,
         teacher_temp_password_expires_at: null,
-      } satisfies ProfileUpdate
-    )
+      };
+
+  const { error: profErr } = await (supabase as Db)
+    .from("profiles")
+    .update(profilePatch)
     .eq("id", user.id);
 
   if (profErr) {
@@ -95,5 +109,5 @@ export async function changeTeacherPasswordAction(
   if (nextRaw.startsWith("/") && !nextRaw.startsWith("//")) {
     redirect(nextRaw);
   }
-  redirect("/teacher-dashboard");
+  redirect(isParent ? "/parent-dashboard" : "/teacher-dashboard");
 }

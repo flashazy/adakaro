@@ -17,6 +17,7 @@ import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { subjectTextKey } from "@/lib/subject-text-key";
+import { gradebookAssignmentIsOnOrAfterEnrollment } from "@/lib/parent-academic-from-enrollment";
 
 type AssignmentRow = {
   id: string;
@@ -27,6 +28,8 @@ type AssignmentRow = {
   academic_year: string;
   exam_type: string | null;
   term: string | null;
+  due_date: string | null;
+  created_at: string;
   updated_at: string;
 };
 
@@ -79,7 +82,8 @@ export type { ParentMajorExamClassResultOption, ParentMajorExamClassResultsPaylo
  * assignment with a recorded score (same data as the full class-results loader).
  */
 export async function listParentClassResultSubjects(
-  classId: string
+  classId: string,
+  opts?: { enrollmentDate: string | null }
 ): Promise<string[]> {
   const admin = createAdminClient();
   const cluster = await resolveClassCluster(admin, classId);
@@ -93,6 +97,8 @@ export async function listParentClassResultSubjects(
         | "max_score"
         | "academic_year"
         | "term"
+        | "due_date"
+        | "created_at"
         | "updated_at"
       >[]
     | null = null;
@@ -102,7 +108,9 @@ export async function listParentClassResultSubjects(
       fetchPage: async (from, to) =>
         await admin
           .from("teacher_gradebook_assignments")
-          .select("id, subject, title, max_score, academic_year, term, updated_at")
+          .select(
+            "id, subject, title, max_score, academic_year, term, due_date, created_at, updated_at"
+          )
           .in("class_id", cluster.classIds)
           .range(from, to),
     });
@@ -118,8 +126,23 @@ export async function listParentClassResultSubjects(
     | "max_score"
     | "academic_year"
     | "term"
+    | "due_date"
+    | "created_at"
     | "updated_at"
   >[];
+
+  const enrollmentDate = opts?.enrollmentDate ?? null;
+  const allAssignFiltered = enrollmentDate
+    ? allAssign.filter((a) =>
+        gradebookAssignmentIsOnOrAfterEnrollment(
+          {
+            due_date: (a as { due_date?: string | null }).due_date ?? null,
+            created_at: (a as { created_at: string }).created_at,
+          },
+          enrollmentDate
+        )
+      )
+    : allAssign;
 
   if (assignErr && process.env.NODE_ENV === "development") {
     // eslint-disable-next-line no-console
@@ -130,7 +153,7 @@ export async function listParentClassResultSubjects(
     });
   }
 
-  if (allAssign.length === 0) {
+  if (allAssignFiltered.length === 0) {
     if (process.env.NODE_ENV === "development") {
       // eslint-disable-next-line no-console
       console.log("[listParentClassResultSubjects] no assignments in cluster", {
@@ -141,7 +164,7 @@ export async function listParentClassResultSubjects(
     return [];
   }
 
-  const allAssignmentIds = allAssign.map((m) => m.id);
+  const allAssignmentIds = allAssignFiltered.map((m) => m.id);
   let scoreErr: { message?: string } | null = null;
   let scoreData:
     | {
@@ -191,7 +214,7 @@ export async function listParentClassResultSubjects(
       {
         classId,
         clusterClassIds: cluster.classIds,
-        teacherGradebookAssignmentCount: allAssign.length,
+        teacherGradebookAssignmentCount: allAssignFiltered.length,
         teacherScoresRowCount: scoreRows.length,
         /** Assignments with ≥1 `teacher_scores` row (satisfies a.id joined where ts.id IS NOT NULL). */
         assignmentCountWithAtLeastOneScoreRow: distinctWithScore,
@@ -209,7 +232,7 @@ export async function listParentClassResultSubjects(
     scoresByAssign.set(row.assignment_id, list);
   }
 
-  const withScores = allAssign.filter((a) =>
+  const withScores = allAssignFiltered.filter((a) =>
     hasAnyTeacherScoreRow(scoresByAssign.get(a.id))
   );
   if (process.env.NODE_ENV === "development") {
@@ -233,7 +256,8 @@ export async function listParentClassResultSubjects(
  */
 export async function loadParentMajorExamClassResults(
   classId: string,
-  subject: string
+  subject: string,
+  opts?: { enrollmentDate: string | null }
 ): Promise<ParentMajorExamClassResultsPayload> {
   const admin = createAdminClient();
   const { data: classRow } = await admin
@@ -275,7 +299,7 @@ export async function loadParentMajorExamClassResults(
       await admin
         .from("teacher_gradebook_assignments")
         .select(
-          "id, teacher_id, class_id, subject, title, max_score, academic_year, exam_type, term, updated_at"
+          "id, teacher_id, class_id, subject, title, max_score, academic_year, exam_type, term, due_date, created_at, updated_at"
         )
         .in("class_id", cluster.classIds)
         .range(from, to),
@@ -285,6 +309,13 @@ export async function loadParentMajorExamClassResults(
 
   if (allAssign.length === 0) {
     return { options: [], defaultOptionId: "" };
+  }
+
+  const enrollmentDate = opts?.enrollmentDate ?? null;
+  if (enrollmentDate) {
+    allAssign = allAssign.filter((a) =>
+      gradebookAssignmentIsOnOrAfterEnrollment(a, enrollmentDate)
+    );
   }
 
   /** Match the `subject` text column the same way as {@link listParentClassResultSubjects} keys. */

@@ -39,6 +39,10 @@ import {
   reportAcademicYearToEnrollmentYear,
 } from "@/lib/student-subject-enrollment-queries";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
+import {
+  gradebookAssignmentIsOnOrAfterEnrollment,
+  reportCardIsOnOrAfterEnrollment,
+} from "@/lib/parent-academic-from-enrollment";
 import { REPORT_TERM_OPTIONS } from "../report-cards/constants";
 import type {
   CoordinatorClassOverview,
@@ -469,6 +473,8 @@ async function loadGradebookScoresForClass(
     academicYear: string;
     term: "Term 1" | "Term 2";
     studentIds: string[];
+    /** When set (e.g. parent preview), omit assignments before this calendar date. */
+    enrollmentDate?: string | null;
   }
 ): Promise<Map<string, Map<string, GradebookExamPair>>> {
   const out = new Map<string, Map<string, GradebookExamPair>>();
@@ -484,7 +490,9 @@ async function loadGradebookScoresForClass(
 
   const { data: gbRowsRaw } = await admin
     .from("teacher_gradebook_assignments")
-    .select("id, title, exam_type, subject, max_score, academic_year")
+    .select(
+      "id, title, exam_type, subject, max_score, academic_year, due_date, created_at"
+    )
     .in("class_id", params.classIds);
 
   const gbRows = (gbRowsRaw ?? []) as {
@@ -494,6 +502,8 @@ async function loadGradebookScoresForClass(
     subject: string;
     max_score: number | string;
     academic_year: string | null;
+    due_date: string | null;
+    created_at: string;
   }[];
 
   type Meta = {
@@ -532,6 +542,15 @@ async function loadGradebookScoresForClass(
     }
 
     if (!slot) continue;
+    if (
+      params.enrollmentDate != null &&
+      !gradebookAssignmentIsOnOrAfterEnrollment(
+        { due_date: r.due_date, created_at: r.created_at },
+        params.enrollmentDate
+      )
+    ) {
+      continue;
+    }
     const maxScore = Number(r.max_score);
     if (!Number.isFinite(maxScore) || maxScore <= 0) continue;
     metaByAssignment.set(r.id, {
@@ -676,6 +695,11 @@ async function loadClassReportCards(
     classSubjectNames: string[];
     /** When set, only include cards in these workflow states. */
     statuses?: ReportCardStatus[];
+    /** Parent “Exam results”: restrict to one child and report cards released on/after enrollment. */
+    parentExamScope?: {
+      studentId: string;
+      enrollmentDate: string | null;
+    };
   }
 ): Promise<CoordinatorReportCardItem[]> {
   const termExact = params.term.trim();
@@ -709,7 +733,7 @@ async function loadClassReportCards(
       let q = admin
         .from("report_cards")
         .select(
-          "id, class_id, school_id, status, student_id, term, academic_year, approved_at, updated_at, teacher_id, students ( full_name, parent_email, admission_number, class_id, gender )"
+          "id, class_id, school_id, status, student_id, term, academic_year, approved_at, updated_at, created_at, teacher_id, students ( full_name, parent_email, admission_number, class_id, gender )"
         )
         .in("class_id", params.classIds)
         .eq("term", termExact)
@@ -721,7 +745,7 @@ async function loadClassReportCards(
     },
   });
 
-  const cardRows = (cards ?? []) as {
+  let cardRows = (cards ?? []) as {
     id: string;
     class_id: string;
     school_id: string;
@@ -731,6 +755,7 @@ async function loadClassReportCards(
     academic_year: string;
     approved_at: string | null;
     updated_at: string | null;
+    created_at: string;
     teacher_id: string | null;
     students: {
       full_name: string;
@@ -740,6 +765,22 @@ async function loadClassReportCards(
       gender: "male" | "female" | null;
     } | null;
   }[];
+
+  if (params.parentExamScope) {
+    const { studentId, enrollmentDate } = params.parentExamScope;
+    cardRows = cardRows.filter(
+      (c) =>
+        c.student_id === studentId &&
+        reportCardIsOnOrAfterEnrollment(
+          {
+            approved_at: c.approved_at,
+            updated_at: c.updated_at ?? "",
+            created_at: c.created_at,
+          },
+          enrollmentDate
+        )
+    );
+  }
 
   if (cardRows.length === 0) return [];
 
@@ -1140,6 +1181,8 @@ export async function mergeReportCardCommentsWithGradebookForParent(params: {
   classId: string;
   academicYear: string;
   term: string;
+  /** Parent preview: exclude major-exam gradebook marks recorded before enrollment. */
+  enrollmentDate?: string | null;
 }): Promise<ReportCardCommentRow[]> {
   const admin = createAdminClient() as Db;
   const { reportCardId, studentId, classId, academicYear, term: termRaw } =
@@ -1201,6 +1244,7 @@ export async function mergeReportCardCommentsWithGradebookForParent(params: {
     academicYear,
     term: gbTerm,
     studentIds: [studentId],
+    enrollmentDate: params.enrollmentDate,
   });
 
   return mergeGradebookScoresIntoComments(
@@ -1429,7 +1473,12 @@ export type ParentPublishedClassResultPeriod = {
  */
 export async function loadParentPublishedClassResultPeriods(
   admin: Db,
-  params: { studentClassId: string }
+  params: {
+    studentClassId: string;
+    /** When set with {@link params.enrollmentDate}, only terms where this student has a qualifying approved card. */
+    studentId?: string;
+    enrollmentDate?: string | null;
+  }
 ): Promise<ParentPublishedClassResultPeriod[]> {
   const classId = params.studentClassId;
   const cluster = await resolveClassCluster(admin, classId);
@@ -1483,18 +1532,57 @@ export async function loadParentPublishedClassResultPeriods(
   const schoolLevel = normalizeSchoolLevel(schoolRow?.school_level);
   const mottoTrim = (schoolRow?.motto ?? "").trim();
 
-  const { data: periodRows } = await admin
-    .from("report_cards")
-    .select("term, academic_year")
-    .in("class_id", clusterIds)
-    .eq("status", "approved");
+  let periodRows: {
+    term: string;
+    academic_year: string;
+    approved_at: string | null;
+    updated_at: string;
+    created_at: string;
+  }[] = [];
+
+  if (params.studentId) {
+    const { data: scoped } = await admin
+      .from("report_cards")
+      .select("term, academic_year, approved_at, updated_at, created_at")
+      .in("class_id", clusterIds)
+      .eq("status", "approved")
+      .eq("student_id", params.studentId);
+    const rows = (scoped ?? []) as {
+      term: string;
+      academic_year: string;
+      approved_at: string | null;
+      updated_at: string;
+      created_at: string;
+    }[];
+    periodRows = rows.filter((r) =>
+      reportCardIsOnOrAfterEnrollment(
+        {
+          approved_at: r.approved_at,
+          updated_at: r.updated_at,
+          created_at: r.created_at,
+        },
+        params.enrollmentDate ?? null
+      )
+    );
+  } else {
+    const { data: legacy } = await admin
+      .from("report_cards")
+      .select("term, academic_year")
+      .in("class_id", clusterIds)
+      .eq("status", "approved");
+    periodRows = ((legacy ?? []) as { term: string; academic_year: string }[]).map(
+      (r) => ({
+        ...r,
+        approved_at: null as string | null,
+        updated_at: "",
+        created_at: "",
+      })
+    );
+  }
 
   const seen = new Set<string>();
   const rawPeriods: { term: string; academic_year: string }[] = [];
-  for (const r of (periodRows ?? []) as {
-    term: string;
-    academic_year: string;
-  }[]) {
+  for (const r of periodRows) {
     const tr = (r.term ?? "").trim();
     const yr = (r.academic_year ?? "").trim();
     const k = `${tr}|||${yr}`;
@@ -1548,6 +1636,13 @@ export async function loadParentPublishedClassResultPeriods(
       term: p.term,
       classSubjectNames,
       statuses: ["approved"],
+      parentExamScope:
+        params.studentId !== undefined
+          ? {
+              studentId: params.studentId,
+              enrollmentDate: params.enrollmentDate ?? null,
+            }
+          : undefined,
     });
     if (reportCards.length === 0) continue;
 

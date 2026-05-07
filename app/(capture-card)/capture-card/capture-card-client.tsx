@@ -27,6 +27,8 @@ import { cn } from "@/lib/utils";
 import { formatPersonName } from "@/lib/format-person-name";
 import { CaptureButton, CaptureLinkButton } from "@/components/ui/capture-button";
 import { EnrollmentDeskHeader } from "@/components/enrollment-desk/EnrollmentDeskHeader";
+import { ParentCredentialsModal } from "@/components/enrollment/ParentCredentialsModal";
+import type { ParentCredentialSheetPayload } from "@/lib/parent-credential-sheet-types";
 import { RejectionGuidanceDisplay } from "@/components/enrollment-desk/RejectionGuidanceDisplay";
 import {
   getRejectionQueuePreviewDisplay,
@@ -416,6 +418,8 @@ export function CaptureCardClient({
     className: string;
     requiresApproval: boolean;
   } | null>(null);
+  const [enrollmentParentSheet, setEnrollmentParentSheet] =
+    useState<ParentCredentialSheetPayload | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -492,9 +496,11 @@ export function CaptureCardClient({
     setKeptContextHint(false);
     setLastSubmitted(null);
     setDraftSavedAt(null);
+    setEnrollmentParentSheet(null);
   }
 
   function resetWizardForNextStudent() {
+    setEnrollmentParentSheet(null);
     setStep(1);
     setWizardView("form");
     setKeptContextHint(true);
@@ -861,6 +867,15 @@ export function CaptureCardClient({
         return;
       }
       if ("ok" in res && res.ok && res.studentId) {
+        if (res.parentCredentialWarning) {
+          toast.message(res.parentCredentialWarning);
+        }
+        if (res.parentCredentialError) {
+          toast.error(res.parentCredentialError);
+        }
+        if (res.parentCredentialSheet) {
+          setEnrollmentParentSheet(res.parentCredentialSheet);
+        }
         const sid = res.studentId;
         if (photoDraft?.file) {
           const up = new FormData();
@@ -1878,6 +1893,13 @@ export function CaptureCardClient({
           ) : null}
         </div>
       ) : null}
+
+      <ParentCredentialsModal
+        open={enrollmentParentSheet !== null}
+        sheet={enrollmentParentSheet}
+        onClose={() => setEnrollmentParentSheet(null)}
+        schoolLogoUrl={schoolLogoUrl ?? undefined}
+      />
     </div>
   );
 }

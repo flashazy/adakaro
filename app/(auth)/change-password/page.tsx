@@ -22,7 +22,7 @@ export default async function ChangePasswordPage({
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("role, password_changed, password_forced_reset")
+    .select("role, password_changed, password_forced_reset, must_change_password")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -30,6 +30,7 @@ export default async function ChangePasswordPage({
     role: string;
     password_changed: boolean | null;
     password_forced_reset: boolean;
+    must_change_password?: boolean;
   } | null;
 
   if (pr?.role === "super_admin") {
@@ -39,22 +40,35 @@ export default async function ChangePasswordPage({
     redirect("/dashboard");
   }
 
-  if (pr?.role !== "teacher") {
-    redirect("/dashboard");
-  }
+  const mustChangeTeacher =
+    pr?.role === "teacher" &&
+    (pr.password_changed === false || pr.password_forced_reset === true);
+  const mustChangeParent =
+    pr?.role === "parent" && pr.must_change_password === true;
 
-  const mustChange =
-    pr.password_changed === false || pr.password_forced_reset === true;
-  if (!mustChange) {
-    redirect("/teacher-dashboard");
+  if (!mustChangeTeacher && !mustChangeParent) {
+    if (pr?.role === "teacher") {
+      redirect("/teacher-dashboard");
+    }
+    if (pr?.role === "parent") {
+      redirect("/parent-dashboard");
+    }
+    redirect("/dashboard");
   }
 
   const sp = await searchParams;
   const nextParam = sp?.next?.trim() ?? "";
+  const defaultNext =
+    pr?.role === "parent" ? "/parent-dashboard" : "/teacher-dashboard";
   const nextPath =
     nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
-      : "/teacher-dashboard";
+      : defaultNext;
 
-  return <ChangePasswordForm nextPath={nextPath} />;
+  return (
+    <ChangePasswordForm
+      nextPath={nextPath}
+      variant={mustChangeParent ? "parent" : "teacher"}
+    />
+  );
 }

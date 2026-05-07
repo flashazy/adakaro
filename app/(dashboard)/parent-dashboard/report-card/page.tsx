@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ReportCardPreview } from "@/app/(dashboard)/teacher-dashboard/report-cards/components/ReportCardPreview";
 import { buildParentReportCardPreviewData } from "../build-parent-report-card-preview";
+import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
 
 export const metadata = {
   title: "Report card — Parent",
@@ -61,6 +62,13 @@ export default async function ParentReportCardPage({
         <p className="text-sm text-slate-600">
           This report card is not yet available for viewing. Please check back
           later.
+        </p>
+      );
+    }
+    if (built.error === "before_enrollment") {
+      return (
+        <p className="text-sm text-slate-600">
+          {PARENT_NO_RESULTS_AFTER_ENROLLMENT}
         </p>
       );
     }

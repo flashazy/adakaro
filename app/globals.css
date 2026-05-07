@@ -217,6 +217,26 @@ body {
   #lesson-plan-print-root.lesson-plan-print-root .bg-slate-50\/80 {
     background-color: #fff !important;
   }
+
+  /* Parent credential slip from enrollment — hide modal chrome */
+  .parent-credentials-print-scope .no-print {
+    display: none !important;
+  }
+  .parent-credentials-print-scope {
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+    max-height: none !important;
+  }
+  .parent-credentials-slip {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    background: white !important;
+    border: 1px solid #e5e7eb !important;
+    color: #111827 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }
 
 /* Dashboard modals: subtle open (respect reduced motion) */

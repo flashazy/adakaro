@@ -22,6 +22,11 @@ import {
   mergeReportCardCommentsWithGradebookForParent,
   resolveCoordinatorSignatureUrlForClassCluster,
 } from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
+import {
+  calendarDateKey,
+  isCalendarDateOnOrAfter,
+  reportCardIsOnOrAfterEnrollment,
+} from "@/lib/parent-academic-from-enrollment";
 import { resolveClassCluster } from "@/lib/class-cluster";
 import {
   loadReportCardSupplementaryBatch,
@@ -123,6 +128,7 @@ export async function buildParentReportCardPreviewData(
       submitted_at,
       updated_at,
       approved_at,
+      created_at,
       students ( full_name ),
       classes ( name ),
       schools ( name, logo_url, motto, school_stamp_url, head_teacher_signature_url )
@@ -148,6 +154,7 @@ export async function buildParentReportCardPreviewData(
     submitted_at: string | null;
     updated_at: string;
     approved_at: string | null;
+    created_at: string;
     students: { full_name: string } | null;
     classes: { name: string } | null;
     schools: {
@@ -163,12 +170,34 @@ export async function buildParentReportCardPreviewData(
     return { ok: false, error: "not_shared" };
   }
 
+  const { data: stRow } = await supabase
+    .from("students")
+    .select("enrollment_date")
+    .eq("id", params.studentId)
+    .maybeSingle();
+  const enrollmentDate =
+    (stRow as { enrollment_date?: string | null } | null)?.enrollment_date ??
+    null;
+  if (
+    !reportCardIsOnOrAfterEnrollment(
+      {
+        approved_at: row.approved_at,
+        updated_at: row.updated_at,
+        created_at: row.created_at,
+      },
+      enrollmentDate
+    )
+  ) {
+    return { ok: false, error: "before_enrollment" };
+  }
+
   const commentRows = await mergeReportCardCommentsWithGradebookForParent({
     reportCardId: row.id,
     studentId: params.studentId,
     classId: row.class_id,
     academicYear: row.academic_year,
     term: row.term,
+    enrollmentDate,
   });
 
   const subjectOrder = [...new Set(commentRows.map((c) => c.subject))].sort(
@@ -242,7 +271,7 @@ export async function buildParentReportCardPreviewData(
     .gte("attendance_date", start)
     .lte("attendance_date", end);
 
-  const attRows = dedupeTeacherAttendanceByStudentAndDate(
+  const attDeduped = dedupeTeacherAttendanceByStudentAndDate(
     (attRowsRaw ?? []).map((a) => ({
       student_id: params.studentId,
       attendance_date: (a as { attendance_date: string }).attendance_date,
@@ -250,6 +279,16 @@ export async function buildParentReportCardPreviewData(
       status: (a as { status: string }).status,
     }))
   );
+  const enrollBoundary = calendarDateKey(enrollmentDate ?? undefined);
+  const attRows =
+    enrollBoundary != null
+      ? attDeduped.filter((a) =>
+          isCalendarDateOnOrAfter(
+            calendarDateKey(a.attendance_date),
+            enrollBoundary
+          )
+        )
+      : attDeduped;
 
   let present = 0;
   let absent = 0;

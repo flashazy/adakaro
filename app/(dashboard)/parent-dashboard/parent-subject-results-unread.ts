@@ -10,6 +10,7 @@ import {
   initialEmptySubjectResultsUnread,
   type SubjectResultsUnreadState,
 } from "@/lib/parent-subject-results-unread-types";
+import { gradebookAssignmentIsOnOrAfterEnrollment } from "@/lib/parent-academic-from-enrollment";
 
 type ScoreTimes = { created_at: string; updated_at: string };
 
@@ -110,7 +111,8 @@ export async function loadParentSubjectResultsUnread(
   supabaseUser: SupabaseClient<Database>,
   parentId: string,
   studentId: string,
-  classId: string
+  classId: string,
+  opts?: { enrollmentDate: string | null }
 ): Promise<SubjectResultsUnreadState> {
   const admin = createAdminClient() as ClusterDb;
 
@@ -125,6 +127,7 @@ export async function loadParentSubjectResultsUnread(
   const rawAssign = await fetchAllRows<{
     id: string;
     subject: string;
+    due_date: string | null;
     created_at: string;
     updated_at: string;
   }>({
@@ -132,17 +135,23 @@ export async function loadParentSubjectResultsUnread(
     fetchPage: async (from, to) =>
       await admin
         .from("teacher_gradebook_assignments")
-        .select("id, subject, created_at, updated_at")
+        .select("id, subject, due_date, created_at, updated_at")
         .in("class_id", cluster.classIds)
         .range(from, to),
   });
 
-  const allAssign = (rawAssign ?? []) as {
-    id: string;
-    subject: string;
-    created_at: string;
-    updated_at: string;
-  }[];
+  const enrollmentDate = opts?.enrollmentDate ?? null;
+  const allAssign = (
+    (rawAssign ?? []) as {
+      id: string;
+      subject: string;
+      due_date: string | null;
+      created_at: string;
+      updated_at: string;
+    }[]
+  ).filter((a) =>
+    gradebookAssignmentIsOnOrAfterEnrollment(a, enrollmentDate)
+  );
   if (allAssign.length === 0) {
     return initialEmptySubjectResultsUnread();
   }

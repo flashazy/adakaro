@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import type { ClassResultSheetPdfInput } from "@/lib/class-result-sheet-noticeboard-tables";
 import { classResultSheetToNoticeboardView } from "@/lib/class-result-sheet-noticeboard-tables";
+import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
 
 type Row = {
   id: string;
@@ -16,9 +17,7 @@ function NoData() {
   return (
     <div className="px-6 py-10 text-center">
       <p className="text-sm text-slate-500 dark:text-zinc-400">
-        No class result sheet yet. When report cards for this class are released
-        to parents (approved), the full class sheet will appear here (same as the
-        noticeboard printout).
+        {PARENT_NO_RESULTS_AFTER_ENROLLMENT}
       </p>
     </div>
   );

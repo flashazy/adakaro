@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
+import { resolveParentLoginEmailFromAdmission } from "@/lib/resolve-parent-login-email";
 import { normalizeTeacherDisplayName } from "@/lib/teacher-display-name";
 
 /**
@@ -60,6 +61,17 @@ export async function resolveLoginEmailForSignIn(
       };
     }
     return { ok: true, email: em };
+  }
+
+  const parentResolved = await resolveParentLoginEmailFromAdmission(
+    admin,
+    trimmed
+  );
+  if (parentResolved.ok) {
+    return { ok: true, email: parentResolved.email };
+  }
+  if (!parentResolved.skip) {
+    return { ok: false, error: parentResolved.error };
   }
 
   const normalized = normalizeTeacherDisplayName(trimmed);

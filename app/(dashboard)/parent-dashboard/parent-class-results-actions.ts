@@ -38,7 +38,7 @@ export async function loadParentClassResultsForSubjectAction(input: {
 
   const { data: st } = await admin
     .from("students")
-    .select("id")
+    .select("id, enrollment_date")
     .eq("id", input.studentId)
     .eq("class_id", input.classId)
     .maybeSingle();
@@ -46,9 +46,13 @@ export async function loadParentClassResultsForSubjectAction(input: {
     return { ok: false, error: "Student not in this class." };
   }
 
+  const enrollmentDate =
+    (st as { enrollment_date?: string | null }).enrollment_date ?? null;
+
   const payload = await loadParentMajorExamClassResults(
     input.classId,
-    input.subject
+    input.subject,
+    { enrollmentDate }
   );
   return { ok: true, payload };
 }

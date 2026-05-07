@@ -3,6 +3,7 @@ import { ParentReportCardsTabClient } from "./parent-report-cards-tab-client";
 import { ParentClassResultSheetsTabClient } from "./parent-class-result-sheets-tab-client";
 import { ParentClassTeacherMessagesTabClient } from "@/components/chat/parent-class-teacher-messages-tab-client";
 import { DEFAULT_SCHOOL_DISPLAY_TIMEZONE } from "@/lib/school-timezone";
+import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
 export { ParentClassResultsTabContent } from "./parent-class-results-tab-content-client";
 
 export function ParentClassTeacherMessagesTabContent({
@@ -90,7 +91,7 @@ export function ParentAttendanceTabContent({
     return (
       <div className="px-4 py-12 text-center sm:px-6">
         <p className="text-sm text-slate-500 dark:text-zinc-400">
-          No attendance records found.
+          {PARENT_NO_RESULTS_AFTER_ENROLLMENT}
         </p>
       </div>
     );

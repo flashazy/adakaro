@@ -20,6 +20,8 @@ import {
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
 import { replaceStudentSubjectEnrollments } from "@/lib/student-subject-enrollment-write";
+import { ensureParentAccountForEnrolledStudent } from "@/lib/ensure-parent-account";
+import type { ParentCredentialSheetPayload } from "@/lib/parent-credential-sheet-types";
 
 const AVATAR_NAMES = ["avatar.webp", "avatar.jpg", "avatar.png"] as const;
 const ACTION_TIMEOUT_MS = 15_000;
@@ -596,6 +598,38 @@ export async function createCaptureCardStudentAction(formData: FormData) {
   }
 
   revalidatePath("/capture-card");
+
+  let parentCredentialSheet: ParentCredentialSheetPayload | undefined;
+  let parentCredentialWarning: string | undefined;
+  let parentCredentialError: string | undefined;
+
+  try {
+    const adminSvc = createAdminClient();
+    const { data: stRow } = await admin
+      .from("students")
+      .select("admission_number, full_name")
+      .eq("id", studentId)
+      .maybeSingle();
+    const sr = stRow as {
+      admission_number: string | null;
+      full_name: string;
+    } | null;
+    const provision = await ensureParentAccountForEnrolledStudent(adminSvc, {
+      schoolId: ccu.school_id,
+      studentId,
+      admissionNumber: sr?.admission_number ?? null,
+      parentName,
+      parentPhoneRaw: parentPhone,
+      studentFullName: sr?.full_name ?? fullName,
+    });
+    if (provision.sheet) parentCredentialSheet = provision.sheet;
+    if (provision.warning) parentCredentialWarning = provision.warning;
+    if (provision.error) parentCredentialError = provision.error;
+  } catch {
+    parentCredentialWarning =
+      "Could not finish parent portal setup. The school admin can link the parent later.";
+  }
+
   return {
     ok: true as const,
     studentId: studentId ?? "",
@@ -603,6 +637,9 @@ export async function createCaptureCardStudentAction(formData: FormData) {
       approvalStatus === "pending"
         ? "Student captured and sent for approval."
         : "Student enrolled successfully.",
+    parentCredentialSheet,
+    parentCredentialWarning,
+    parentCredentialError,
   };
 }
 

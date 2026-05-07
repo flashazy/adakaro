@@ -48,6 +48,7 @@ export async function loadParentChildTabData(
     id: string;
     class_id: string;
     class_teacher_id?: string | null;
+    enrollment_date: string | null;
   }[]
 ): Promise<Map<string, ChildTabData>> {
   const byStudent = new Map<string, ChildTabData>();
@@ -91,12 +92,14 @@ export async function loadParentChildTabData(
     const parentUserId = user.id;
     const studentId = s.id;
     const classId = s.class_id;
+    const enrollmentDate = s.enrollment_date;
 
     let reportCards: any[] = [];
     try {
       reportCards = await loadParentReportCardsForStudent(supabase, {
         parentUserId,
         studentId,
+        enrollmentDate,
       });
     } catch {
       reportCards = [];
@@ -105,7 +108,10 @@ export async function loadParentChildTabData(
     let classResultSheets: any[] = [];
     if (admin) {
       try {
-        classResultSheets = await loadParentClassResultSheets(admin, classId);
+        classResultSheets = await loadParentClassResultSheets(admin, classId, {
+          studentId,
+          enrollmentDate,
+        });
       } catch {
         classResultSheets = [];
       }
@@ -113,7 +119,11 @@ export async function loadParentChildTabData(
 
     let attendance: any[] = [];
     try {
-      attendance = await loadParentAttendanceForStudent(supabase, studentId);
+      attendance = await loadParentAttendanceForStudent(
+        supabase,
+        studentId,
+        enrollmentDate
+      );
       attendance.sort((x, y) => {
         if (x.attendance_date !== y.attendance_date) {
           return x.attendance_date < y.attendance_date ? 1 : -1;
@@ -131,7 +141,9 @@ export async function loadParentChildTabData(
     let classResultSubjects: string[] = [];
     let majorExamClassResults: any = { options: [], defaultOptionId: "" };
     try {
-      classResultSubjects = await listParentClassResultSubjects(classId);
+      classResultSubjects = await listParentClassResultSubjects(classId, {
+        enrollmentDate,
+      });
     } catch {
       classResultSubjects = [];
     }
@@ -140,7 +152,8 @@ export async function loadParentChildTabData(
         classResultSubjects.length > 0
           ? await loadParentMajorExamClassResults(
               classId,
-              classResultSubjects[0]!
+              classResultSubjects[0]!,
+              { enrollmentDate }
             )
           : { options: [], defaultOptionId: "" };
     } catch {
@@ -155,7 +168,8 @@ export async function loadParentChildTabData(
           supabase,
           parentUserId,
           studentId,
-          classId
+          classId,
+          { enrollmentDate }
         );
       } catch {
         subjectResultsUnread = initialEmptySubjectResultsUnread();

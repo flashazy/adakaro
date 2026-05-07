@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import {
-  changeTeacherPasswordAction,
+  changeForcedPasswordAction,
   type ChangePasswordState,
 } from "./actions";
 import { PasswordInput } from "@/components/auth/password-input";
@@ -32,11 +32,22 @@ function SubmitButton() {
 
 const initial: ChangePasswordState | null = null;
 
-export function ChangePasswordForm({ nextPath }: { nextPath: string }) {
+export function ChangePasswordForm({
+  nextPath,
+  variant,
+}: {
+  nextPath: string;
+  variant: "teacher" | "parent";
+}) {
   const [state, formAction] = useActionState(
-    changeTeacherPasswordAction,
+    changeForcedPasswordAction,
     initial
   );
+
+  const description =
+    variant === "parent"
+      ? "You signed in with a temporary password from enrollment. Choose a new password you will remember before continuing."
+      : "Your school administrator created your account with a temporary password. Set a new password you will remember before continuing.";
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -44,8 +55,7 @@ export function ChangePasswordForm({ nextPath }: { nextPath: string }) {
         Choose a new password
       </h1>
       <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
-        Your school administrator created your account with a temporary password.
-        Set a new password you will remember before continuing.
+        {description}
       </p>
 
       <form action={formAction} className="mt-6 space-y-4">

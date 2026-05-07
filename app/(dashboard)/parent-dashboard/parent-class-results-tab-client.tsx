@@ -25,6 +25,7 @@ import { markSubjectResultAssignmentsViewed } from "@/lib/parent-subject-results
 import { loadParentClassResultsForSubjectAction } from "./parent-class-results-actions";
 import { recordParentSubjectResultViewedAction } from "./parent-subject-results-view-actions";
 import { RankingPaginationBar } from "@/components/report/ranking-pagination-bar";
+import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
 import { useMinWidthMd } from "@/hooks/use-min-width-md";
 import { usePrinting } from "@/hooks/use-printing";
 
@@ -359,8 +360,7 @@ export function ParentClassResultsTabClient({
     return (
       <div className="px-6 py-10 text-center">
         <p className="text-sm text-slate-500 dark:text-zinc-400">
-          No class results yet. When teachers record scores in Marks for an
-          assignment, statistics for that exam will appear here.
+          {PARENT_NO_RESULTS_AFTER_ENROLLMENT}
         </p>
       </div>
     );

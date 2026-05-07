@@ -4,18 +4,21 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildParentReportCardPreviewData } from "./build-parent-report-card-preview";
 import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
 import { loadParentPublishedClassResultPeriods } from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
+import { reportCardIsOnOrAfterEnrollment } from "@/lib/parent-academic-from-enrollment";
 
 /**
  * Report card rows for the parent “Report cards” tab (preview payload per card).
  */
 export async function loadParentReportCardsForStudent(
   supabase: SupabaseClient,
-  params: { parentUserId: string; studentId: string }
+  params: { parentUserId: string; studentId: string; enrollmentDate: string | null }
 ): Promise<unknown[]> {
   try {
     const { data: rawRows, error: qErr } = await supabase
       .from("report_cards")
-      .select("id, student_id, term, academic_year, status")
+      .select(
+        "id, student_id, term, academic_year, status, approved_at, updated_at, created_at"
+      )
       .eq("student_id", params.studentId)
       .eq("status", "approved")
       .order("academic_year", { ascending: false })
@@ -27,10 +30,23 @@ export async function loadParentReportCardsForStudent(
       term: string;
       academic_year: string;
       status: string;
+      approved_at: string | null;
+      updated_at: string;
+      created_at: string;
     }[];
-    if (raw.length === 0) return [];
+    const filtered = raw.filter((r) =>
+      reportCardIsOnOrAfterEnrollment(
+        {
+          approved_at: r.approved_at,
+          updated_at: r.updated_at,
+          created_at: r.created_at,
+        },
+        params.enrollmentDate
+      )
+    );
+    if (filtered.length === 0) return [];
 
-    const rawSorted = sortParentReportCardsByRecency(raw);
+    const rawSorted = sortParentReportCardsByRecency(filtered);
     const out: unknown[] = [];
     for (const r of rawSorted) {
       const built = await buildParentReportCardPreviewData(supabase, {
@@ -64,11 +80,14 @@ type ServiceRoleClient = ReturnType<
  */
 export async function loadParentClassResultSheets(
   admin: ServiceRoleClient,
-  studentClassId: string
+  studentClassId: string,
+  opts?: { studentId: string; enrollmentDate: string | null }
 ): Promise<unknown[]> {
   try {
     return (await loadParentPublishedClassResultPeriods(admin, {
       studentClassId,
+      studentId: opts?.studentId,
+      enrollmentDate: opts?.enrollmentDate ?? null,
     })) as unknown[];
   } catch {
     return [];
@@ -80,7 +99,8 @@ export async function loadParentClassResultSheets(
  */
 export async function loadParentAttendanceForStudent(
   supabase: SupabaseClient,
-  studentId: string
+  studentId: string,
+  enrollmentDate: string | null
 ): Promise<unknown[]> {
   try {
     const { data: attRows, error: attErr } = await supabase
@@ -102,7 +122,17 @@ export async function loadParentAttendanceForStudent(
       updated_at: string | null;
       subjects: { name: string } | null;
     }[];
-    return rows.map((a) => {
+    const boundary =
+      enrollmentDate && enrollmentDate.trim().length >= 10
+        ? enrollmentDate.trim().slice(0, 10)
+        : null;
+    const filtered = boundary
+      ? rows.filter((a) => {
+          const d = (a.attendance_date ?? "").trim().slice(0, 10);
+          return d.length >= 10 && d >= boundary;
+        })
+      : rows;
+    return filtered.map((a) => {
       const subjectName = a.subjects?.name?.trim()
         ? a.subjects.name.trim()
         : a.subject_id

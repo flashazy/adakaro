@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { ReportCardPreview } from "@/app/(dashboard)/teacher-dashboard/report-cards/components/ReportCardPreview";
 import type { ChildTabData } from "./parent-child-tab-data";
 import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
+import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
 
 type Row = ChildTabData["reportCards"][number];
 
@@ -38,7 +39,7 @@ export function ParentReportCardsTabClient({ rows }: { rows: Row[] }) {
     return (
       <div className="px-6 py-10 text-center">
         <p className="text-sm text-slate-500 dark:text-zinc-400">
-          No report card available
+          {PARENT_NO_RESULTS_AFTER_ENROLLMENT}
         </p>
       </div>
     );

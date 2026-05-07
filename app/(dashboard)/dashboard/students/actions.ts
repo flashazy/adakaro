@@ -17,6 +17,8 @@ import {
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
 import { replaceStudentSubjectEnrollments } from "@/lib/student-subject-enrollment-write";
+import { ensureParentAccountForEnrolledStudent } from "@/lib/ensure-parent-account";
+import type { ParentCredentialSheetPayload } from "@/lib/parent-credential-sheet-types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
@@ -295,12 +297,28 @@ function nullableTrimmedText(raw: string | null | undefined): string | null {
   return t === "" ? null : t;
 }
 
+/** Matches Enrollment Desk: optional health text stored uppercase. */
+function nullableTrimmedUppercase(raw: string | null | undefined): string | null {
+  const t = (raw ?? "").trim();
+  return t === "" ? null : t.toUpperCase();
+}
+
 function optionalVarchar(
   formData: FormData,
   key: string,
   max: number
 ): string | null {
   const t = nullableTrimmedText(formData.get(key) as string | undefined);
+  if (t == null) return null;
+  return t.length > max ? t.slice(0, max) : t;
+}
+
+function optionalVarcharUppercase(
+  formData: FormData,
+  key: string,
+  max: number
+): string | null {
+  const t = nullableTrimmedUppercase(formData.get(key) as string | undefined);
   if (t == null) return null;
   return t.length > max ? t.slice(0, max) : t;
 }
@@ -525,6 +543,10 @@ export interface StudentActionState {
     parent_phone: string | null;
     class_id: string | null;
   }>;
+  /** Shown once after admin enrollment when parent portal auto-provisioning ran */
+  parentCredentialSheet?: ParentCredentialSheetPayload;
+  parentCredentialWarning?: string;
+  parentCredentialError?: string;
 }
 
 /** Escape `%` / `_` / `\` for use as an ILIKE pattern (exact match, case-insensitive). */
@@ -637,9 +659,13 @@ export async function addStudent(
     };
   }
 
-  const allergies = nullableTrimmedText(formData.get("allergies") as string);
-  const disability = nullableTrimmedText(formData.get("disability") as string);
-  const insurance_provider = optionalVarchar(formData, "insurance_provider", 255);
+  const allergies = nullableTrimmedUppercase(formData.get("allergies") as string);
+  const disability = nullableTrimmedUppercase(formData.get("disability") as string);
+  const insurance_provider = optionalVarcharUppercase(
+    formData,
+    "insurance_provider",
+    255
+  );
   const insurance_policy = optionalVarchar(formData, "insurance_policy", 255);
 
   const subjectIds = formData
@@ -787,7 +813,7 @@ export async function addStudent(
         enrolled_by: userId,
         approval_status: "approved",
       } as never)
-      .select("id")
+      .select("id, admission_number, full_name")
       .single();
 
     if (error) {
@@ -799,7 +825,12 @@ export async function addStudent(
       return { error: error.message };
     }
 
-    const newId = (inserted as { id: string } | null)?.id;
+    const insertedRow = inserted as {
+      id: string;
+      admission_number: string | null;
+      full_name: string;
+    } | null;
+    const newId = insertedRow?.id;
     if (newId && subjectIds.length > 0 && subjectTerm) {
       const enr = await enrollStudentInSubjects(
         newId,
@@ -828,12 +859,42 @@ export async function addStudent(
       schoolId
     );
 
+    let parentCredentialSheet: ParentCredentialSheetPayload | undefined;
+    let parentCredentialWarning: string | undefined;
+    let parentCredentialError: string | undefined;
+    if (newId) {
+      try {
+        const adminSvc = createAdminClient();
+        const provision = await ensureParentAccountForEnrolledStudent(
+          adminSvc,
+          {
+            schoolId,
+            studentId: newId,
+            admissionNumber:
+              insertedRow?.admission_number ?? admissionNumber,
+            parentName,
+            parentPhoneRaw: parentPhone,
+            studentFullName: insertedRow?.full_name ?? fullName,
+          }
+        );
+        if (provision.sheet) parentCredentialSheet = provision.sheet;
+        if (provision.warning) parentCredentialWarning = provision.warning;
+        if (provision.error) parentCredentialError = provision.error;
+      } catch {
+        parentCredentialWarning =
+          "Could not finish parent portal setup. You can link the parent manually later.";
+      }
+    }
+
     return {
       success: `Student "${fullName}" added.`,
       // Returned for the offline sync queue — see the field comment in
       // `StudentActionState`. Existing callers that ignore extra fields
       // (the standard `useActionState` pattern) are unaffected.
       studentId: newId ?? undefined,
+      parentCredentialSheet,
+      parentCredentialWarning,
+      parentCredentialError,
     };
   } catch (e) {
     return { error: (e as Error).message };
