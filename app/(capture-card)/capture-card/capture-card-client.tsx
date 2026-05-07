@@ -21,6 +21,7 @@ import {
 } from "@/components/students/StudentPhotoPicker";
 import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
 import { cn } from "@/lib/utils";
+import { formatPersonName } from "@/lib/format-person-name";
 import { CaptureButton, CaptureLinkButton } from "@/components/ui/capture-button";
 import { useFormStatus } from "react-dom";
 
@@ -221,19 +222,27 @@ export function CaptureCardClient({
 
   function submitEnrollment() {
     if (pending) return;
+    const nameFormatted = formatPersonName(fullName);
+    const parentFormatted = formatPersonName(parentName);
+    const insuranceFormatted = insuranceProvider.trim()
+      ? formatPersonName(insuranceProvider)
+      : "";
+    setFullName(nameFormatted);
+    setParentName(parentFormatted);
+    if (insuranceFormatted) setInsuranceProvider(insuranceFormatted);
     startTransition(async () => {
       const fd = new FormData();
-      fd.set("full_name", fullName);
+      fd.set("full_name", nameFormatted);
       fd.set("date_of_birth", dateOfBirth);
       fd.set("class_id", classId);
       fd.set("gender", gender);
-      fd.set("parent_name", parentName);
+      fd.set("parent_name", parentFormatted);
       fd.set("parent_phone", parentPhone);
       if (parentEmail.trim()) fd.set("parent_email", parentEmail);
       if (allergies.trim()) fd.set("allergies", allergies);
       if (disability.trim()) fd.set("disability", disability);
-      if (insuranceProvider.trim()) {
-        fd.set("insurance_provider", insuranceProvider);
+      if (insuranceFormatted) {
+        fd.set("insurance_provider", insuranceFormatted);
       }
       if (insurancePolicy.trim()) fd.set("insurance_policy", insurancePolicy);
 
@@ -506,6 +515,9 @@ export function CaptureCardClient({
                   <input
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
+                    onBlur={() => {
+                      setFullName((n) => formatPersonName(n));
+                    }}
                     className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                   />
                 </label>
@@ -614,6 +626,11 @@ export function CaptureCardClient({
                   <input
                     value={insuranceProvider}
                     onChange={(e) => setInsuranceProvider(e.target.value)}
+                    onBlur={() => {
+                      setInsuranceProvider((p) =>
+                        p.trim() ? formatPersonName(p) : p
+                      );
+                    }}
                     className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                   />
                 </label>
@@ -638,6 +655,9 @@ export function CaptureCardClient({
                   <input
                     value={parentName}
                     onChange={(e) => setParentName(e.target.value)}
+                    onBlur={() => {
+                      setParentName((n) => formatPersonName(n));
+                    }}
                     className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                   />
                 </label>
@@ -742,6 +762,15 @@ export function CaptureCardClient({
                   disabled={!stepValid || pending}
                   onClick={() => {
                     if (!stepValid || pending) return;
+                    if (step === 1) {
+                      setFullName((n) => formatPersonName(n));
+                    }
+                    if (step === 4) {
+                      setParentName((n) => formatPersonName(n));
+                      setInsuranceProvider((p) =>
+                        p.trim() ? formatPersonName(p) : p
+                      );
+                    }
                     setStep((s) => s + 1);
                   }}
                   className="flex-1 rounded-xl py-3 text-base font-semibold"

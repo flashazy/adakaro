@@ -15,6 +15,7 @@ import {
   CaptureButton,
   CaptureLinkButton,
 } from "@/components/ui/capture-button";
+import { formatPersonName } from "@/lib/format-person-name";
 
 export interface EditStudentInitial {
   id: string;
@@ -100,17 +101,17 @@ export function CaptureCardEditStudentClient({
     if (pending) return;
     startTransition(async () => {
       const fd = new FormData();
-      fd.set("full_name", fullName);
+      fd.set("full_name", formatPersonName(fullName));
       fd.set("date_of_birth", dateOfBirth);
       fd.set("class_id", classId);
       fd.set("gender", gender);
-      fd.set("parent_name", parentName);
+      fd.set("parent_name", formatPersonName(parentName));
       fd.set("parent_phone", parentPhone);
       if (parentEmail.trim()) fd.set("parent_email", parentEmail);
       if (allergies.trim()) fd.set("allergies", allergies);
       if (disability.trim()) fd.set("disability", disability);
       if (insuranceProvider.trim()) {
-        fd.set("insurance_provider", insuranceProvider);
+        fd.set("insurance_provider", formatPersonName(insuranceProvider));
       }
       if (insurancePolicy.trim()) fd.set("insurance_policy", insurancePolicy);
 
@@ -198,6 +199,7 @@ export function CaptureCardEditStudentClient({
           <input
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
+            onBlur={() => setFullName((n) => formatPersonName(n))}
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
           />
         </label>
@@ -283,6 +285,11 @@ export function CaptureCardEditStudentClient({
           <input
             value={insuranceProvider}
             onChange={(e) => setInsuranceProvider(e.target.value)}
+            onBlur={() =>
+              setInsuranceProvider((p) =>
+                p.trim() ? formatPersonName(p) : p
+              )
+            }
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
           />
         </label>
@@ -300,6 +307,7 @@ export function CaptureCardEditStudentClient({
           <input
             value={parentName}
             onChange={(e) => setParentName(e.target.value)}
+            onBlur={() => setParentName((n) => formatPersonName(n))}
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
           />
         </label>

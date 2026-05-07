@@ -13,9 +13,40 @@ import {
   clearCaptureCardSessionCookie,
   readCaptureCardSession,
 } from "@/lib/capture-card/session";
+import { formatPersonName } from "@/lib/format-person-name";
 
 const AVATAR_NAMES = ["avatar.webp", "avatar.jpg", "avatar.png"] as const;
 const ACTION_TIMEOUT_MS = 15_000;
+/** Max attempts to allocate + insert when admission_number collides (race or counter drift). */
+const CAPTURE_CARD_ADMISSION_MAX_ATTEMPTS = 3;
+const CAPTURE_CARD_LOG = "[capture-card createStudent]";
+
+type StudentInsert = Database["public"]["Tables"]["students"]["Insert"];
+
+function isAdmissionUniqueViolation(err: {
+  code?: string;
+  message?: string;
+}): boolean {
+  const msg = err.message ?? "";
+  return (
+    err.code === "23505" ||
+    msg.includes("students_school_id_admission_number_key") ||
+    msg.includes("duplicate key")
+  );
+}
+
+function friendlyAdmissionRpcError(message: string): string | null {
+  if (
+    message.includes("School has no admission prefix") ||
+    message.includes("admission prefix set")
+  ) {
+    return "Could not create an admission number. Ask your admin to set a school admission prefix.";
+  }
+  if (message.includes("Not authenticated") || message.includes("Forbidden")) {
+    return "Could not allocate an admission number. Please sign in again.";
+  }
+  return null;
+}
 
 async function withTimeout<T>(
   label: string,
@@ -124,6 +155,158 @@ async function requireCaptureSession() {
   };
 }
 
+/**
+ * Uses DB atomic sequence (`schools.admission_prefix` + `school_admission_counters`),
+ * same as dashboard enrollment via `get_next_admission_number`.
+ */
+async function allocateNextAdmissionNumber(
+  admin: ReturnType<typeof createAdminClient>,
+  schoolId: string
+): Promise<{ admissionNumber: string } | { error: string }> {
+  const { data, error } = await admin.rpc("get_next_admission_number", {
+    p_school_id: schoolId,
+  } as never);
+
+  if (error) {
+    const friendly = friendlyAdmissionRpcError(error.message);
+    console.error(`${CAPTURE_CARD_LOG} get_next_admission_number RPC failed`, {
+      schoolId,
+      message: error.message,
+      code: error.code,
+    });
+    return {
+      error:
+        friendly ??
+        "Could not generate an admission number. Please try again or contact support.",
+    };
+  }
+
+  const raw = data as string | null | undefined;
+  const admissionNumber = typeof raw === "string" ? raw.trim() : "";
+  if (!admissionNumber) {
+    return {
+      error:
+        "Could not create an admission number. Ask your admin to set a school admission prefix.",
+    };
+  }
+
+  console.info(
+    `${CAPTURE_CARD_LOG} generated admission number`,
+    { schoolId, admissionNumber }
+  );
+
+  return { admissionNumber };
+}
+
+async function admissionNumberExistsForSchool(
+  admin: ReturnType<typeof createAdminClient>,
+  schoolId: string,
+  admissionNumber: string
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("students")
+    .select("id")
+    .eq("school_id", schoolId)
+    .eq("admission_number", admissionNumber)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`${CAPTURE_CARD_LOG} admission duplicate check failed`, {
+      schoolId,
+      admissionNumber,
+      message: error.message,
+    });
+    throw new Error(error.message);
+  }
+
+  return data != null;
+}
+
+async function createStudent(
+  admin: ReturnType<typeof createAdminClient>,
+  schoolId: string,
+  insertBase: Omit<StudentInsert, "admission_number">
+): Promise<{ ok: true; studentId: string } | { error: string }> {
+  for (
+    let attempt = 1;
+    attempt <= CAPTURE_CARD_ADMISSION_MAX_ATTEMPTS;
+    attempt++
+  ) {
+    const allocated = await withTimeout(
+      `get_next_admission_number attempt ${attempt}`,
+      allocateNextAdmissionNumber(admin, schoolId)
+    );
+
+    if ("error" in allocated) {
+      return { error: allocated.error };
+    }
+
+    const { admissionNumber } = allocated;
+
+    let exists = false;
+    try {
+      exists = await withTimeout(
+        `admission exists check attempt ${attempt}`,
+        admissionNumberExistsForSchool(admin, schoolId, admissionNumber)
+      );
+    } catch (e) {
+      return {
+        error:
+          e instanceof Error ? e.message : "Could not verify admission number.",
+      };
+    }
+
+    if (exists) {
+      console.warn(
+        `${CAPTURE_CARD_LOG} admission number already exists for school; retrying`,
+        { schoolId, admissionNumber, attempt }
+      );
+      continue;
+    }
+
+    const insertRow: StudentInsert = {
+      ...insertBase,
+      admission_number: admissionNumber,
+    };
+
+    const { data: inserted, error: insErr } = await withTimeout(
+      `students insert attempt ${attempt}`,
+      admin.from("students").insert(insertRow as never).select("id").single()
+    );
+
+    if (!insErr) {
+      const studentId = (inserted as { id: string } | null)?.id ?? "";
+      console.info(`${CAPTURE_CARD_LOG} inserted student`, {
+        schoolId,
+        admissionNumber,
+        studentId,
+        attempt,
+      });
+      return { ok: true as const, studentId };
+    }
+
+    if (isAdmissionUniqueViolation(insErr)) {
+      console.warn(
+        `${CAPTURE_CARD_LOG} insert duplicate admission_number; retrying`,
+        {
+          schoolId,
+          admissionNumber,
+          attempt,
+          message: insErr.message,
+        }
+      );
+      continue;
+    }
+
+    return { error: insErr.message };
+  }
+
+  return {
+    error:
+      "Could not assign a unique admission number after several attempts. Please try again or contact support.",
+  };
+}
+
 export type CaptureCardLogoutState = { error?: string };
 
 export async function signOutCaptureCardAction(
@@ -182,10 +365,14 @@ export async function createCaptureCardStudentAction(formData: FormData) {
     };
   }
 
-  const fullName = String(formData.get("full_name") ?? "").trim();
+  const fullName = formatPersonName(
+    String(formData.get("full_name") ?? "").trim()
+  );
   const classId = String(formData.get("class_id") ?? "").trim();
   const genderRaw = String(formData.get("gender") ?? "").trim();
-  const parentName = String(formData.get("parent_name") ?? "").trim();
+  const parentName = formatPersonName(
+    String(formData.get("parent_name") ?? "").trim()
+  );
   const parentPhone = String(formData.get("parent_phone") ?? "").trim();
   const parentEmail =
     String(formData.get("parent_email") ?? "").trim() || null;
@@ -194,8 +381,11 @@ export async function createCaptureCardStudentAction(formData: FormData) {
     String(formData.get("allergies") ?? "").trim() || null;
   const disability =
     String(formData.get("disability") ?? "").trim() || null;
-  const insuranceProvider =
-    String(formData.get("insurance_provider") ?? "").trim() || null;
+  const insuranceProviderRaw =
+    String(formData.get("insurance_provider") ?? "").trim();
+  const insuranceProvider = insuranceProviderRaw
+    ? formatPersonName(insuranceProviderRaw)
+    : null;
   const insurancePolicy =
     String(formData.get("insurance_policy") ?? "").trim() || null;
 
@@ -223,22 +413,10 @@ export async function createCaptureCardStudentAction(formData: FormData) {
     }
   }
 
-  const admissionNumber = await withTimeout(
-    "getNextAdmissionNumber",
-    getNextAdmissionNumber(admin, ccu.school_id)
-  );
-  if (!admissionNumber) {
-    return {
-      error:
-        "Could not create an admission number. Ask your admin to set a school admission prefix.",
-    };
-  }
-
-  const insertRow: Database["public"]["Tables"]["students"]["Insert"] = {
+  const insertBase: Omit<StudentInsert, "admission_number"> = {
     school_id: ccu.school_id,
     class_id: classId,
     full_name: fullName,
-    admission_number: admissionNumber,
     gender: genderRaw,
     date_of_birth: dob,
     enrollment_date: todayIsoLocal(),
@@ -253,16 +431,13 @@ export async function createCaptureCardStudentAction(formData: FormData) {
     approval_status: approvalStatus,
   };
 
-  const { data: inserted, error: insErr } = await withTimeout(
-    "students insert",
-    admin.from("students").insert(insertRow as never).select("id").single()
-  );
+  const created = await createStudent(admin, ccu.school_id, insertBase);
 
-  if (insErr) {
-    return { error: insErr.message };
+  if ("error" in created) {
+    return { error: created.error };
   }
 
-  const studentId = (inserted as { id: string } | null)?.id;
+  const studentId = created.studentId;
   revalidatePath("/capture-card");
   return {
     ok: true as const,
@@ -309,10 +484,14 @@ export async function updateCaptureCardStudentAction(
     return { error: "Approved students can only be edited by an admin." };
   }
 
-  const fullName = String(formData.get("full_name") ?? "").trim();
+  const fullName = formatPersonName(
+    String(formData.get("full_name") ?? "").trim()
+  );
   const classId = String(formData.get("class_id") ?? "").trim();
   const genderRaw = String(formData.get("gender") ?? "").trim();
-  const parentName = String(formData.get("parent_name") ?? "").trim();
+  const parentName = formatPersonName(
+    String(formData.get("parent_name") ?? "").trim()
+  );
   const parentPhone = String(formData.get("parent_phone") ?? "").trim();
   const parentEmail =
     String(formData.get("parent_email") ?? "").trim() || null;
@@ -321,8 +500,11 @@ export async function updateCaptureCardStudentAction(
     String(formData.get("allergies") ?? "").trim() || null;
   const disability =
     String(formData.get("disability") ?? "").trim() || null;
-  const insuranceProvider =
-    String(formData.get("insurance_provider") ?? "").trim() || null;
+  const insuranceProviderRaw =
+    String(formData.get("insurance_provider") ?? "").trim();
+  const insuranceProvider = insuranceProviderRaw
+    ? formatPersonName(insuranceProviderRaw)
+    : null;
   const insurancePolicy =
     String(formData.get("insurance_policy") ?? "").trim() || null;
 
@@ -465,41 +647,4 @@ export async function uploadCaptureCardStudentPhotoAction(
 
   revalidatePath("/capture-card");
   return { ok: true as const };
-}
-
-async function getNextAdmissionNumber(
-  admin: ReturnType<typeof createAdminClient>,
-  schoolId: string
-): Promise<string | null> {
-  const { data: schoolRow } = await admin
-    .from("schools")
-    .select("admission_prefix")
-    .eq("id", schoolId)
-    .maybeSingle();
-  const prefix = (schoolRow as { admission_prefix: string | null } | null)
-    ?.admission_prefix;
-  const p = String(prefix ?? "").trim();
-  if (!p) return null;
-
-  const { data: counterRow } = await admin
-    .from("school_admission_counters")
-    .select("next_number")
-    .eq("school_id", schoolId)
-    .maybeSingle();
-  const next = (counterRow as { next_number: number } | null)?.next_number;
-
-  if (typeof next !== "number" || !Number.isFinite(next) || next <= 0) {
-    // Initialize counter; next_number stored as "next to assign".
-    await admin
-      .from("school_admission_counters")
-      .insert({ school_id: schoolId, next_number: 2 } as never);
-    return `${p}-${String(1).padStart(3, "0")}`;
-  }
-
-  await admin
-    .from("school_admission_counters")
-    .update({ next_number: next + 1, updated_at: new Date().toISOString() } as never)
-    .eq("school_id", schoolId);
-
-  return `${p}-${String(next).padStart(3, "0")}`;
 }

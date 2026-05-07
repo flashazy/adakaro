@@ -315,20 +315,12 @@ export function LoginForm() {
         </div>
 
         <div>
-          <div className="flex items-center justify-between">
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-            >
-              Password
-            </label>
-            <Link
-              href={forgotHref}
-              className="text-sm font-medium text-school-primary hover:opacity-90"
-            >
-              Forgot password?
-            </Link>
-          </div>
+          <label
+            htmlFor="password"
+            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+          >
+            Password
+          </label>
           <PasswordInput
             id="password"
             name="password"
@@ -339,7 +331,18 @@ export function LoginForm() {
             placeholder="••••••••"
             className={pwInvalid ? "border !border-red-400" : undefined}
           />
+
+          <div className="mt-2 flex justify-end">
+            <Link
+              href={forgotHref}
+              className="text-sm font-medium text-school-primary hover:opacity-90"
+            >
+              Forgot password?
+            </Link>
+          </div>
         </div>
+
+        <div className="border-t border-slate-200 pt-4 dark:border-zinc-800" />
 
         <SubmitButton isLoading={isLoading} disabled={showSessionReplaceWarning} />
       </form>

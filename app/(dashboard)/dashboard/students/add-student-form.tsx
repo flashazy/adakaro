@@ -46,40 +46,7 @@ import {
   onlyLettersAndSpaces,
   sanitizePhoneInput,
 } from "@/lib/validation";
-
-/** Title-case one segment (handles O'Connor-style apostrophes). */
-function capitalizeNameSegment(segment: string): string {
-  if (!segment) return segment;
-  const lower = segment.toLowerCase();
-  if (lower.includes("'")) {
-    return lower
-      .split("'")
-      .map((part) =>
-        part ? part.charAt(0).toUpperCase() + part.slice(1) : ""
-      )
-      .join("'");
-  }
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
-}
-
-/** Title-case a single whitespace-delimited word (handles hyphens). */
-function capitalizeNameWord(word: string): string {
-  if (!word) return word;
-  if (word.includes("-")) {
-    return word.split("-").map(capitalizeNameSegment).join("-");
-  }
-  return capitalizeNameSegment(word);
-}
-
-/** Full name on blur: trim runs of spaces, title-case each word. Empty / whitespace-only unchanged. */
-function toTitleCase(str: string): string {
-  if (!str.trim()) return str;
-  return str
-    .trim()
-    .split(/\s+/)
-    .map(capitalizeNameWord)
-    .join(" ");
-}
+import { formatPersonName } from "@/lib/format-person-name";
 
 function toLowercaseEmail(str: string): string {
   if (!str.trim()) return str;
@@ -795,7 +762,7 @@ export function AddStudentForm({
                 onBlur={(e) => {
                   const el = e.currentTarget;
                   if (el == null) return;
-                  el.value = toTitleCase(el.value);
+                  el.value = formatPersonName(el.value);
                   const titled = el.value;
                   if (hasInvalidLettersNameInput(titled)) {
                     setFieldHints((h) => ({
@@ -1240,7 +1207,7 @@ export function AddStudentForm({
                   onBlur={(e) => {
                     const el = e.currentTarget;
                     if (el == null) return;
-                    el.value = toTitleCase(el.value);
+                    el.value = formatPersonName(el.value);
                     const titled = el.value;
                     if (hasInvalidLettersNameInput(titled)) {
                       setFieldHints((h) => ({
