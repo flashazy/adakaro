@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
+  getCaptureCardSubjectsForClass,
   updateCaptureCardStudentAction,
   uploadCaptureCardStudentPhotoAction,
 } from "@/app/(capture-card)/capture-card-actions";
@@ -16,6 +17,13 @@ import {
   CaptureLinkButton,
 } from "@/components/ui/capture-button";
 import { formatPersonName } from "@/lib/format-person-name";
+import type { CaptureCardInitialSubjectEnrollment } from "@/lib/capture-card-initial-subject-enrollment";
+import {
+  SUBJECT_ENROLLMENT_TERMS,
+  currentAcademicYear,
+  type SubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
+import { cn } from "@/lib/utils";
 
 export interface EditStudentInitial {
   id: string;
@@ -34,12 +42,22 @@ export interface EditStudentInitial {
   avatar_url: string | null;
 }
 
+function subjectSelectionKey(
+  year: number,
+  term: SubjectEnrollmentTerm,
+  ids: string[]
+): string {
+  return JSON.stringify({ year, term, ids: [...ids].sort() });
+}
+
 export function CaptureCardEditStudentClient({
   student,
   classes,
+  initialSubjectEnrollment,
 }: {
   student: EditStudentInitial;
   classes: { id: string; name: string }[];
+  initialSubjectEnrollment: CaptureCardInitialSubjectEnrollment;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -65,9 +83,102 @@ export function CaptureCardEditStudentClient({
     student.insurance_policy ?? ""
   );
 
+  const [subjectAcademicYear, setSubjectAcademicYear] = useState(
+    initialSubjectEnrollment.academic_year
+  );
+  const [subjectTerm, setSubjectTerm] = useState<SubjectEnrollmentTerm>(
+    initialSubjectEnrollment.term
+  );
+  const [classSubjectOptions, setClassSubjectOptions] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const subjectLoadGeneration = useRef(0);
+
+  const academicYearOptions = useMemo(() => {
+    const c = currentAcademicYear();
+    const out: number[] = [];
+    for (let y = c - 2; y <= c + 3; y++) out.push(y);
+    return out;
+  }, []);
+
+  const initialSubjectKey = useMemo(
+    () =>
+      subjectSelectionKey(
+        initialSubjectEnrollment.academic_year,
+        initialSubjectEnrollment.term,
+        initialSubjectEnrollment.subject_ids
+      ),
+    [initialSubjectEnrollment]
+  );
+
   const readOnly = student.approval_status === "approved";
 
+  useEffect(() => {
+    if (!classId) return;
+    subjectLoadGeneration.current += 1;
+    const gen = subjectLoadGeneration.current;
+    let cancelled = false;
+    setSubjectsLoading(true);
+    void getCaptureCardSubjectsForClass(classId).then((opts) => {
+      if (cancelled || gen !== subjectLoadGeneration.current) return;
+      setClassSubjectOptions(opts);
+      setSelectedSubjectIds((prev) => {
+        const filtered = prev.filter((id) =>
+          opts.some((o) => o.id === id)
+        );
+        if (
+          filtered.length === 0 &&
+          prev.length === 0 &&
+          classId === student.class_id
+        ) {
+          return initialSubjectEnrollment.subject_ids.filter((id) =>
+            opts.some((o) => o.id === id)
+          );
+        }
+        return filtered;
+      });
+      setSubjectsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, student.class_id, initialSubjectEnrollment.subject_ids]);
+
+  const allSubjectsSelected = useMemo(
+    () =>
+      classSubjectOptions.length > 0 &&
+      selectedSubjectIds.length === classSubjectOptions.length,
+    [classSubjectOptions, selectedSubjectIds]
+  );
+  const someSubjectsSelected =
+    selectedSubjectIds.length > 0 && !allSubjectsSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSubjectsSelected;
+    }
+  }, [someSubjectsSelected]);
+
+  function toggleSubject(id: string, checked: boolean) {
+    setSelectedSubjectIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((x) => x !== id);
+    });
+  }
+
+  function toggleAllSubjects(checked: boolean) {
+    setSelectedSubjectIds(
+      checked ? classSubjectOptions.map((s) => s.id) : []
+    );
+  }
+
   function dirty() {
+    const subjectDirty =
+      subjectSelectionKey(subjectAcademicYear, subjectTerm, selectedSubjectIds) !==
+      initialSubjectKey;
     return (
       fullName !== student.full_name ||
       dateOfBirth !== (student.date_of_birth ?? "") ||
@@ -83,7 +194,8 @@ export function CaptureCardEditStudentClient({
       disability !== (student.disability ?? "") ||
       insuranceProvider !== (student.insurance_provider ?? "") ||
       insurancePolicy !== (student.insurance_policy ?? "") ||
-      photoDraft != null
+      photoDraft != null ||
+      subjectDirty
     );
   }
 
@@ -100,6 +212,12 @@ export function CaptureCardEditStudentClient({
   function save(resubmit: boolean) {
     if (pending) return;
     startTransition(async () => {
+      const allergiesUpper = allergies.trim() ? allergies.trim().toUpperCase() : "";
+      const disabilityUpper = disability.trim() ? disability.trim().toUpperCase() : "";
+      const insuranceUpper = insuranceProvider.trim()
+        ? insuranceProvider.trim().toUpperCase()
+        : "";
+
       const fd = new FormData();
       fd.set("full_name", formatPersonName(fullName));
       fd.set("date_of_birth", dateOfBirth);
@@ -108,12 +226,19 @@ export function CaptureCardEditStudentClient({
       fd.set("parent_name", formatPersonName(parentName));
       fd.set("parent_phone", parentPhone);
       if (parentEmail.trim()) fd.set("parent_email", parentEmail);
-      if (allergies.trim()) fd.set("allergies", allergies);
-      if (disability.trim()) fd.set("disability", disability);
-      if (insuranceProvider.trim()) {
-        fd.set("insurance_provider", formatPersonName(insuranceProvider));
+      if (allergiesUpper) fd.set("allergies", allergiesUpper);
+      if (disabilityUpper) fd.set("disability", disabilityUpper);
+      if (insuranceUpper) {
+        fd.set("insurance_provider", insuranceUpper);
       }
       if (insurancePolicy.trim()) fd.set("insurance_policy", insurancePolicy);
+
+      fd.set("subject_sync", "1");
+      fd.set("subject_academic_year", String(subjectAcademicYear));
+      fd.set("subject_term", subjectTerm);
+      for (const sid of selectedSubjectIds) {
+        fd.append("subject_ids", sid);
+      }
 
       const res = await updateCaptureCardStudentAction(student.id, fd, resubmit);
       if (res.error) {
@@ -173,7 +298,7 @@ export function CaptureCardEditStudentClient({
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 pb-24">
+    <div className="mx-auto max-w-lg px-4 py-6 pb-40">
       <CaptureButton
         type="button"
         variant="ghost"
@@ -267,6 +392,9 @@ export function CaptureCardEditStudentClient({
           <textarea
             value={allergies}
             onChange={(e) => setAllergies(e.target.value)}
+            onBlur={() =>
+              setAllergies((v) => (v.trim() ? v.trim().toUpperCase() : v))
+            }
             rows={2}
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
           />
@@ -276,6 +404,9 @@ export function CaptureCardEditStudentClient({
           <textarea
             value={disability}
             onChange={(e) => setDisability(e.target.value)}
+            onBlur={() =>
+              setDisability((v) => (v.trim() ? v.trim().toUpperCase() : v))
+            }
             rows={2}
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
           />
@@ -287,7 +418,7 @@ export function CaptureCardEditStudentClient({
             onChange={(e) => setInsuranceProvider(e.target.value)}
             onBlur={() =>
               setInsuranceProvider((p) =>
-                p.trim() ? formatPersonName(p) : p
+                p.trim() ? p.trim().toUpperCase() : p
               )
             }
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
@@ -328,6 +459,116 @@ export function CaptureCardEditStudentClient({
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
           />
         </label>
+
+        <div
+          className={cn(
+            "space-y-3 border-t border-slate-200 pt-4 dark:border-zinc-800"
+          )}
+        >
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+              Subjects selection
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+              Choose the subjects this student will study for the selected year
+              and term.
+            </p>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-zinc-500">
+            Subjects can also be assigned later by an admin. Leave all
+            unchecked to clear enrolment for this year and term.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+              Academic year
+              <select
+                value={subjectAcademicYear}
+                onChange={(e) =>
+                  setSubjectAcademicYear(Number(e.target.value))
+                }
+                className="mt-1 w-full min-h-11 rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              >
+                {academicYearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+              Term
+              <select
+                value={subjectTerm}
+                onChange={(e) =>
+                  setSubjectTerm(e.target.value as SubjectEnrollmentTerm)
+                }
+                className="mt-1 w-full min-h-11 rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              >
+                {SUBJECT_ENROLLMENT_TERMS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {subjectsLoading ? (
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Loading subjects…
+            </p>
+          ) : classSubjectOptions.length === 0 ? (
+            <p className="text-xs text-amber-800 dark:text-amber-200/90">
+              No subjects linked to this class yet.
+            </p>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
+              <label
+                htmlFor="edit-capture-subj-all"
+                className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-slate-200/80 pb-3 dark:border-zinc-700"
+              >
+                <input
+                  ref={selectAllRef}
+                  id="edit-capture-subj-all"
+                  type="checkbox"
+                  checked={allSubjectsSelected}
+                  onChange={(e) => toggleAllSubjects(e.target.checked)}
+                  className="h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
+                />
+                <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                  Select all subjects
+                </span>
+                <span className="ml-auto text-xs text-slate-500 dark:text-zinc-400">
+                  {selectedSubjectIds.length} of {classSubjectOptions.length}{" "}
+                  selected
+                </span>
+              </label>
+              <ul className="mt-3 grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                {classSubjectOptions.map((sub) => (
+                  <li
+                    key={sub.id}
+                    className="flex min-h-11 items-center gap-3 rounded-lg px-1"
+                  >
+                    <input
+                      type="checkbox"
+                      id={`edit-cap-subj-${sub.id}`}
+                      checked={selectedSubjectIds.includes(sub.id)}
+                      onChange={(e) =>
+                        toggleSubject(sub.id, e.target.checked)
+                      }
+                      className="h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
+                    />
+                    <label
+                      htmlFor={`edit-cap-subj-${sub.id}`}
+                      className="flex-1 cursor-pointer text-sm text-slate-800 dark:text-zinc-200"
+                    >
+                      {sub.name}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">

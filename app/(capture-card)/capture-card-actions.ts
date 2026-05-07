@@ -14,6 +14,12 @@ import {
   readCaptureCardSession,
 } from "@/lib/capture-card/session";
 import { formatPersonName } from "@/lib/format-person-name";
+import {
+  currentAcademicYear,
+  parseSubjectEnrollmentTerm,
+  type SubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
+import { replaceStudentSubjectEnrollments } from "@/lib/student-subject-enrollment-write";
 
 const AVATAR_NAMES = ["avatar.webp", "avatar.jpg", "avatar.png"] as const;
 const ACTION_TIMEOUT_MS = 15_000;
@@ -33,6 +39,52 @@ function isAdmissionUniqueViolation(err: {
     msg.includes("students_school_id_admission_number_key") ||
     msg.includes("duplicate key")
   );
+}
+
+function parseSubjectEnrollmentFields(formData: FormData): {
+  subjectIds: string[];
+  academicYear: number;
+  term: SubjectEnrollmentTerm | null;
+  error: string | null;
+} {
+  const subjectIds = formData
+    .getAll("subject_ids")
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  const subjectYearRaw = (
+    formData.get("subject_academic_year") as string | null
+  )?.trim();
+  const academicYear =
+    subjectYearRaw !== "" && subjectYearRaw != null
+      ? Number(subjectYearRaw)
+      : currentAcademicYear();
+  const term = parseSubjectEnrollmentTerm(
+    formData.get("subject_term") as string
+  );
+
+  if (subjectIds.length === 0) {
+    return { subjectIds, academicYear, term, error: null };
+  }
+  if (
+    !Number.isInteger(academicYear) ||
+    academicYear < 2000 ||
+    academicYear > 2100
+  ) {
+    return {
+      subjectIds,
+      academicYear,
+      term,
+      error: "Enter a valid academic year for subject enrolment.",
+    };
+  }
+  if (!term) {
+    return {
+      subjectIds,
+      academicYear,
+      term: null,
+      error: "Select Term 1 or Term 2 for subject enrolment.",
+    };
+  }
+  return { subjectIds, academicYear, term, error: null };
 }
 
 function friendlyAdmissionRpcError(message: string): string | null {
@@ -153,6 +205,79 @@ async function requireCaptureSession() {
     admin: supabase as unknown as ReturnType<typeof createAdminClient>,
     ccu: row,
   };
+}
+
+function isNextRedirectError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    typeof (err as { digest: unknown }).digest === "string" &&
+    String((err as { digest: string }).digest).startsWith("NEXT_REDIRECT")
+  );
+}
+
+/**
+ * Subjects linked to the class via `subject_classes` (same as dashboard
+ * `getSubjectsForClass` — verified against the capture card user's school).
+ */
+export async function getCaptureCardSubjectsForClass(
+  classId: string
+): Promise<{ id: string; name: string }[]> {
+  try {
+    const { admin, ccu } = await withTimeout(
+      "requireCaptureSession subjects",
+      requireCaptureSession()
+    );
+    const schoolId = ccu.school_id;
+    const trimmedClassId = classId.trim();
+    if (!trimmedClassId) return [];
+
+    const { data: klass } = await admin
+      .from("classes")
+      .select("id, school_id")
+      .eq("id", trimmedClassId)
+      .maybeSingle();
+
+    const c = klass as { id: string; school_id: string } | null;
+    if (!c || c.school_id !== schoolId) return [];
+
+    const { data: linkRows, error: linkErr } = await admin
+      .from("subject_classes")
+      .select("subject_id")
+      .eq("class_id", trimmedClassId);
+
+    if (linkErr) return [];
+
+    const subjectIds = [
+      ...new Set(
+        (linkRows ?? []).map((r: { subject_id: string }) => r.subject_id)
+      ),
+    ].filter(Boolean);
+
+    if (subjectIds.length === 0) return [];
+
+    const { data: subjectRows, error: subErr } = await admin
+      .from("subjects")
+      .select("id, name")
+      .eq("school_id", schoolId)
+      .in("id", subjectIds);
+
+    if (subErr) return [];
+
+    const out = (subjectRows ?? [])
+      .map((s: { id: string; name: string }) => s)
+      .filter((s: { id: string; name: string }) =>
+        Boolean(s.id && (s.name ?? "").trim() !== "")
+      );
+    out.sort((a: { name: string }, b: { name: string }) =>
+      a.name.localeCompare(b.name)
+    );
+    return out;
+  } catch (e) {
+    if (isNextRedirectError(e)) throw e;
+    return [];
+  }
 }
 
 /**
@@ -377,14 +502,14 @@ export async function createCaptureCardStudentAction(formData: FormData) {
   const parentEmail =
     String(formData.get("parent_email") ?? "").trim() || null;
   const dob = String(formData.get("date_of_birth") ?? "").trim();
-  const allergies =
-    String(formData.get("allergies") ?? "").trim() || null;
-  const disability =
-    String(formData.get("disability") ?? "").trim() || null;
+  const allergiesRaw = String(formData.get("allergies") ?? "").trim();
+  const allergies = allergiesRaw ? allergiesRaw.toUpperCase() : null;
+  const disabilityRaw = String(formData.get("disability") ?? "").trim();
+  const disability = disabilityRaw ? disabilityRaw.toUpperCase() : null;
   const insuranceProviderRaw =
     String(formData.get("insurance_provider") ?? "").trim();
   const insuranceProvider = insuranceProviderRaw
-    ? formatPersonName(insuranceProviderRaw)
+    ? insuranceProviderRaw.toUpperCase()
     : null;
   const insurancePolicy =
     String(formData.get("insurance_policy") ?? "").trim() || null;
@@ -397,6 +522,16 @@ export async function createCaptureCardStudentAction(formData: FormData) {
   if (!parentName) return { error: "Parent or guardian name is required." };
   if (!parentPhone) return { error: "Parent phone number is required." };
   if (!dob) return { error: "Date of birth is required." };
+
+  const se = parseSubjectEnrollmentFields(formData);
+  if (se.subjectIds.length > 0 && se.error) {
+    return { error: se.error };
+  }
+  if (se.subjectIds.length > 0 && !se.term) {
+    return {
+      error: se.error ?? "Select Term 1 or Term 2 for subject enrolment.",
+    };
+  }
 
   const approvalStatus = ccu.requires_approval ? "pending" : "approved";
 
@@ -438,6 +573,28 @@ export async function createCaptureCardStudentAction(formData: FormData) {
   }
 
   const studentId = created.studentId;
+  if (studentId && se.subjectIds.length > 0 && se.term) {
+    try {
+      await withTimeout(
+        "replaceStudentSubjectEnrollments",
+        replaceStudentSubjectEnrollments(admin, {
+          studentId,
+          classId,
+          subjectIds: se.subjectIds,
+          academicYear: se.academicYear,
+          term: se.term,
+          enrolledFrom: todayIsoLocal(),
+        })
+      );
+    } catch (e) {
+      return {
+        error: `Student was saved, but subject enrolment failed: ${
+          e instanceof Error ? e.message : "Unknown error"
+        }`,
+      };
+    }
+  }
+
   revalidatePath("/capture-card");
   return {
     ok: true as const,
@@ -496,14 +653,14 @@ export async function updateCaptureCardStudentAction(
   const parentEmail =
     String(formData.get("parent_email") ?? "").trim() || null;
   const dob = String(formData.get("date_of_birth") ?? "").trim();
-  const allergies =
-    String(formData.get("allergies") ?? "").trim() || null;
-  const disability =
-    String(formData.get("disability") ?? "").trim() || null;
+  const allergiesRaw = String(formData.get("allergies") ?? "").trim();
+  const allergies = allergiesRaw ? allergiesRaw.toUpperCase() : null;
+  const disabilityRaw = String(formData.get("disability") ?? "").trim();
+  const disability = disabilityRaw ? disabilityRaw.toUpperCase() : null;
   const insuranceProviderRaw =
     String(formData.get("insurance_provider") ?? "").trim();
   const insuranceProvider = insuranceProviderRaw
-    ? formatPersonName(insuranceProviderRaw)
+    ? insuranceProviderRaw.toUpperCase()
     : null;
   const insurancePolicy =
     String(formData.get("insurance_policy") ?? "").trim() || null;
@@ -543,6 +700,38 @@ export async function updateCaptureCardStudentAction(
   );
 
   if (upErr) return { error: upErr.message };
+
+  const subjectSync = String(formData.get("subject_sync") ?? "") === "1";
+  if (subjectSync) {
+    const se = parseSubjectEnrollmentFields(formData);
+    if (se.subjectIds.length > 0 && se.error) {
+      return { error: se.error };
+    }
+    if (se.subjectIds.length > 0 && !se.term) {
+      return { error: "Select Term 1 or Term 2 for subject enrolment." };
+    }
+    if (se.term) {
+      try {
+        await withTimeout(
+          "replaceStudentSubjectEnrollments",
+          replaceStudentSubjectEnrollments(admin, {
+            studentId,
+            classId,
+            subjectIds: se.subjectIds,
+            academicYear: se.academicYear,
+            term: se.term,
+            enrolledFrom: null,
+          })
+        );
+      } catch (e) {
+        return {
+          error: `Saved student details, but subjects failed: ${
+            e instanceof Error ? e.message : "Unknown error"
+          }`,
+        };
+      }
+    }
+  }
 
   revalidatePath("/capture-card");
   return {

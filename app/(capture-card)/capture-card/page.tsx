@@ -119,6 +119,7 @@ export default async function CaptureCardHomePage({
         "id, full_name, admission_number, enrollment_date, approval_status, avatar_url, date_of_birth, class:classes(name)"
       )
       .eq("enrolled_by", ccu.auth_user_id)
+      .eq("approval_status", "pending")
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -128,6 +129,7 @@ export default async function CaptureCardHomePage({
         "id, full_name, admission_number, enrollment_date, approval_status, avatar_url, date_of_birth, class:classes(name)"
       )
       .eq("enrolled_by", ccu.auth_user_id)
+      .eq("approval_status", "pending")
       .order("created_at", { ascending: false })
       .range(from, to);
     if (stErr) {
@@ -217,6 +219,7 @@ export default async function CaptureCardHomePage({
       "id, full_name, admission_number, enrollment_date, approval_status, avatar_url, date_of_birth, class:classes(name)"
     )
     .eq("enrolled_by", user.id)
+    .eq("approval_status", "pending")
     .order("created_at", { ascending: false })
     .limit(1);
 
@@ -226,6 +229,7 @@ export default async function CaptureCardHomePage({
       "id, full_name, admission_number, enrollment_date, approval_status, avatar_url, date_of_birth, class:classes(name)"
     )
     .eq("enrolled_by", user.id)
+    .eq("approval_status", "pending")
     .order("created_at", { ascending: false })
     .range(from, to);
 

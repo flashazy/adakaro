@@ -16,6 +16,7 @@ import {
   parseSubjectEnrollmentTerm,
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
+import { replaceStudentSubjectEnrollments } from "@/lib/student-subject-enrollment-write";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
@@ -298,74 +299,6 @@ function optionalVarchar(
   const t = nullableTrimmedText(formData.get(key) as string | undefined);
   if (t == null) return null;
   return t.length > max ? t.slice(0, max) : t;
-}
-
-async function assertSubjectsAllowedForClass(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  classId: string,
-  subjectIds: string[]
-) {
-  if (subjectIds.length === 0) return;
-  const { data, error } = await supabase
-    .from("subject_classes")
-    .select("subject_id")
-    .eq("class_id", classId)
-    .in("subject_id", subjectIds);
-  if (error) throw new Error(error.message);
-  const allowed = new Set((data ?? []).map((r) => (r as { subject_id: string }).subject_id));
-  for (const id of subjectIds) {
-    if (!allowed.has(id)) {
-      throw new Error("One or more selected subjects are not offered for this class.");
-    }
-  }
-}
-
-async function replaceStudentSubjectEnrollments(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  params: {
-    studentId: string;
-    classId: string;
-    subjectIds: string[];
-    academicYear: number;
-    term: SubjectEnrollmentTerm;
-    enrolledFrom?: string | null;
-  }
-) {
-  const { studentId, classId, subjectIds, academicYear, term, enrolledFrom } =
-    params;
-  const uniqueIds = [...new Set(subjectIds.filter(Boolean))];
-  await assertSubjectsAllowedForClass(supabase, classId, uniqueIds);
-
-  const { error: delErr } = await supabase
-    .from("student_subject_enrollment")
-    .delete()
-    .eq("student_id", studentId)
-    .eq("academic_year", academicYear)
-    .eq("term", term);
-
-  if (delErr) throw new Error(delErr.message);
-
-  if (uniqueIds.length === 0) return;
-
-  const from =
-    enrolledFrom && enrolledFrom.trim() !== ""
-      ? enrolledFrom.trim()
-      : todayIsoLocal();
-
-  const rows = uniqueIds.map((subject_id) => ({
-    student_id: studentId,
-    subject_id,
-    class_id: classId,
-    academic_year: academicYear,
-    term,
-    enrolled_from: from,
-  }));
-
-  const { error: insErr } = await supabase
-    .from("student_subject_enrollment")
-    .insert(rows as never);
-
-  if (insErr) throw new Error(insErr.message);
 }
 
 /**

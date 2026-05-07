@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { filterLeafClassOptions } from "@/lib/class-options";
 import { readCaptureCardSession } from "@/lib/capture-card/session";
+import { resolveCaptureCardInitialSubjectEnrollment } from "@/lib/capture-card-initial-subject-enrollment";
 import { CaptureCardEditStudentClient } from "./edit-student-client";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +108,11 @@ export default async function CaptureCardEditStudentPage({
       notFound();
     }
 
+    if (row.approval_status === "approved") {
+      // Capture card is for capture-only; approved students are managed by admins.
+      redirect("/capture-card");
+    }
+
     const { data: classRows, error: classErr } = await admin
       .from("classes")
       .select("id, name, parent_class_id")
@@ -123,6 +129,9 @@ export default async function CaptureCardEditStudentPage({
         parent_class_id: string | null;
       }[]
     ).map((c) => ({ id: c.id, name: c.name }));
+
+    const initialSubjectEnrollment =
+      await resolveCaptureCardInitialSubjectEnrollment(admin, row.id);
 
     return (
       <CaptureCardEditStudentClient
@@ -143,6 +152,7 @@ export default async function CaptureCardEditStudentPage({
           avatar_url: row.avatar_url,
         }}
         classes={classes}
+        initialSubjectEnrollment={initialSubjectEnrollment}
       />
     );
   }
@@ -206,6 +216,10 @@ export default async function CaptureCardEditStudentPage({
     notFound();
   }
 
+  if (row.approval_status === "approved") {
+    redirect("/capture-card");
+  }
+
   const { data: classRows } = await supabase
     .from("classes")
     .select("id, name, parent_class_id")
@@ -219,6 +233,18 @@ export default async function CaptureCardEditStudentPage({
       parent_class_id: string | null;
     }[]
   ).map((c) => ({ id: c.id, name: c.name }));
+
+  let adminForSubjects;
+  try {
+    adminForSubjects = createAdminClient();
+  } catch {
+    redirect("/login");
+  }
+  const initialSubjectEnrollmentLegacy =
+    await resolveCaptureCardInitialSubjectEnrollment(
+      adminForSubjects,
+      row.id
+    );
 
   return (
     <CaptureCardEditStudentClient
@@ -239,6 +265,7 @@ export default async function CaptureCardEditStudentPage({
         avatar_url: row.avatar_url,
       }}
       classes={classes}
+      initialSubjectEnrollment={initialSubjectEnrollmentLegacy}
     />
   );
 }

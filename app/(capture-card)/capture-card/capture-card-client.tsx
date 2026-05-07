@@ -6,12 +6,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
 import { toast } from "sonner";
 import {
   createCaptureCardStudentAction,
+  getCaptureCardSubjectsForClass,
   signOutCaptureCardAction,
   uploadCaptureCardStudentPhotoAction,
 } from "@/app/(capture-card)/capture-card-actions";
@@ -24,6 +26,12 @@ import { cn } from "@/lib/utils";
 import { formatPersonName } from "@/lib/format-person-name";
 import { CaptureButton, CaptureLinkButton } from "@/components/ui/capture-button";
 import { useFormStatus } from "react-dom";
+import {
+  SUBJECT_ENROLLMENT_TERMS,
+  currentAcademicYear,
+  getCurrentAcademicYearAndTerm,
+  type SubjectEnrollmentTerm,
+} from "@/lib/student-subject-enrollment";
 
 function LogoutButton({ error }: { error?: string }) {
   const { pending } = useFormStatus();
@@ -47,9 +55,9 @@ function LogoutButton({ error }: { error?: string }) {
 
 const STEPS = [
   "Student",
-  "Photo",
-  "Health",
   "Parent",
+  "Health",
+  "Subjects",
   "Review",
 ] as const;
 
@@ -150,6 +158,26 @@ export function CaptureCardClient({
   const [insuranceProvider, setInsuranceProvider] = useState("");
   const [insurancePolicy, setInsurancePolicy] = useState("");
 
+  const [subjectAcademicYear, setSubjectAcademicYear] = useState(
+    () => getCurrentAcademicYearAndTerm().academicYear
+  );
+  const [subjectTerm, setSubjectTerm] = useState<SubjectEnrollmentTerm>(
+    () => getCurrentAcademicYearAndTerm().term
+  );
+  const [classSubjectOptions, setClassSubjectOptions] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  const academicYearOptions = useMemo(() => {
+    const c = currentAcademicYear();
+    const out: number[] = [];
+    for (let y = c - 2; y <= c + 3; y++) out.push(y);
+    return out;
+  }, []);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
@@ -161,6 +189,7 @@ export function CaptureCardClient({
   }, [myStudents, search]);
 
   function resetWizard() {
+    const d = getCurrentAcademicYearAndTerm();
     setStep(1);
     setFullName("");
     setDateOfBirth("");
@@ -174,6 +203,11 @@ export function CaptureCardClient({
     setInsuranceProvider("");
     setInsurancePolicy("");
     setPhotoDraft(null);
+    setSubjectAcademicYear(d.academicYear);
+    setSubjectTerm(d.term);
+    setClassSubjectOptions([]);
+    setSelectedSubjectIds([]);
+    setSubjectsLoading(false);
   }
 
   function openWizard() {
@@ -195,7 +229,8 @@ export function CaptureCardClient({
       disability.trim() !== "" ||
       insuranceProvider.trim() !== "" ||
       insurancePolicy.trim() !== "" ||
-      photoDraft != null;
+      photoDraft != null ||
+      selectedSubjectIds.length > 0;
     if (
       dirty &&
       !window.confirm("Discard your changes and go back to the home screen?")
@@ -218,17 +253,74 @@ export function CaptureCardClient({
     insuranceProvider,
     insurancePolicy,
     photoDraft,
+    selectedSubjectIds.length,
   ]);
+
+  useEffect(() => {
+    if (!classId) {
+      setClassSubjectOptions([]);
+      setSelectedSubjectIds([]);
+      return;
+    }
+    let cancelled = false;
+    setSubjectsLoading(true);
+    void getCaptureCardSubjectsForClass(classId).then((opts) => {
+      if (cancelled) return;
+      setClassSubjectOptions(opts);
+      setSelectedSubjectIds([]);
+      setSubjectsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [classId]);
+
+  const allSubjectsSelected = useMemo(
+    () =>
+      classSubjectOptions.length > 0 &&
+      selectedSubjectIds.length === classSubjectOptions.length,
+    [classSubjectOptions, selectedSubjectIds]
+  );
+  const someSubjectsSelected =
+    selectedSubjectIds.length > 0 && !allSubjectsSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSubjectsSelected;
+    }
+  }, [someSubjectsSelected]);
+
+  function toggleSubject(subjectId: string, checked: boolean) {
+    setSelectedSubjectIds((prev) => {
+      if (checked) return prev.includes(subjectId) ? prev : [...prev, subjectId];
+      return prev.filter((id) => id !== subjectId);
+    });
+  }
+
+  function toggleAllSubjects(checked: boolean) {
+    setSelectedSubjectIds(
+      checked ? classSubjectOptions.map((s) => s.id) : []
+    );
+  }
+
+  const selectedSubjectLabels = useMemo(() => {
+    const m = new Map(classSubjectOptions.map((s) => [s.id, s.name]));
+    return selectedSubjectIds.map((id) => m.get(id) ?? "Subject");
+  }, [classSubjectOptions, selectedSubjectIds]);
 
   function submitEnrollment() {
     if (pending) return;
     const nameFormatted = formatPersonName(fullName);
     const parentFormatted = formatPersonName(parentName);
+    const allergiesFormatted = allergies.trim() ? allergies.trim().toUpperCase() : "";
+    const disabilityFormatted = disability.trim() ? disability.trim().toUpperCase() : "";
     const insuranceFormatted = insuranceProvider.trim()
-      ? formatPersonName(insuranceProvider)
+      ? insuranceProvider.trim().toUpperCase()
       : "";
     setFullName(nameFormatted);
     setParentName(parentFormatted);
+    if (allergiesFormatted) setAllergies(allergiesFormatted);
+    if (disabilityFormatted) setDisability(disabilityFormatted);
     if (insuranceFormatted) setInsuranceProvider(insuranceFormatted);
     startTransition(async () => {
       const fd = new FormData();
@@ -239,12 +331,18 @@ export function CaptureCardClient({
       fd.set("parent_name", parentFormatted);
       fd.set("parent_phone", parentPhone);
       if (parentEmail.trim()) fd.set("parent_email", parentEmail);
-      if (allergies.trim()) fd.set("allergies", allergies);
-      if (disability.trim()) fd.set("disability", disability);
+      if (allergiesFormatted) fd.set("allergies", allergiesFormatted);
+      if (disabilityFormatted) fd.set("disability", disabilityFormatted);
       if (insuranceFormatted) {
         fd.set("insurance_provider", insuranceFormatted);
       }
       if (insurancePolicy.trim()) fd.set("insurance_policy", insurancePolicy);
+
+      fd.set("subject_academic_year", String(subjectAcademicYear));
+      fd.set("subject_term", subjectTerm);
+      for (const sid of selectedSubjectIds) {
+        fd.append("subject_ids", sid);
+      }
 
       const res = await createCaptureCardStudentAction(fd);
       if ("error" in res && res.error) {
@@ -287,17 +385,28 @@ export function CaptureCardClient({
 
   const stepValid =
     step === 1
-      ? fullName.trim() &&
-        dateOfBirth &&
-        classId &&
-        (gender === "male" || gender === "female")
+      ? Boolean(
+          fullName.trim() &&
+            dateOfBirth &&
+            classId &&
+            (gender === "male" || gender === "female")
+        )
       : step === 2
-        ? true
-        : step === 3
-          ? true
-          : step === 4
-            ? parentName.trim() && parentPhone.trim()
-            : true;
+        ? Boolean(parentName.trim() && parentPhone.trim())
+        : true;
+
+  const canSubmitEnrollment = useMemo(
+    () =>
+      Boolean(
+        fullName.trim() &&
+          dateOfBirth &&
+          classId &&
+          (gender === "male" || gender === "female") &&
+          parentName.trim() &&
+          parentPhone.trim()
+      ),
+    [fullName, dateOfBirth, classId, gender, parentName, parentPhone]
+  );
 
   return (
     <div className="min-h-svh bg-slate-50 pb-24 dark:bg-zinc-950">
@@ -365,15 +474,13 @@ export function CaptureCardClient({
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <ApprovalBadge status={latest.approval_status} />
-                  {latest.approval_status !== "approved" ? (
-                    <CaptureLinkButton
-                      href={`/capture-card/edit/${latest.id}`}
-                      variant="primary"
-                      size="sm"
-                    >
-                      Edit
-                    </CaptureLinkButton>
-                  ) : null}
+                  <CaptureLinkButton
+                    href={`/capture-card/edit/${latest.id}`}
+                    variant="primary"
+                    size="sm"
+                  >
+                    Edit
+                  </CaptureLinkButton>
                 </div>
               </div>
             </div>
@@ -414,20 +521,14 @@ export function CaptureCardClient({
                       {s.admission_number ?? "—"}
                     </p>
                   </div>
-                  {s.approval_status !== "approved" ? (
-                    <CaptureLinkButton
-                      href={`/capture-card/edit/${s.id}`}
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                    >
-                      Edit
-                    </CaptureLinkButton>
-                  ) : (
-                    <span className="shrink-0 text-xs text-slate-500 dark:text-zinc-500">
-                      Approved
-                    </span>
-                  )}
+                  <CaptureLinkButton
+                    href={`/capture-card/edit/${s.id}`}
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                  >
+                    Edit
+                  </CaptureLinkButton>
                 </div>
               ))
             )}
@@ -486,9 +587,14 @@ export function CaptureCardClient({
             >
               Close
             </CaptureButton>
-            <p className="text-sm font-medium text-slate-900 dark:text-white">
-              Step {step} of {STEPS.length}
-            </p>
+            <div className="flex flex-col items-center">
+              <p className="text-sm font-medium text-slate-900 dark:text-white">
+                Step {step} of {STEPS.length}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-zinc-500">
+                {Math.round((step / STEPS.length) * 100)}% complete
+              </p>
+            </div>
             <span className="w-10" />
           </div>
           <div className="flex justify-center gap-1.5 px-4 py-3">
@@ -574,24 +680,61 @@ export function CaptureCardClient({
                     </label>
                   </div>
                 </fieldset>
+                <div className="space-y-2 border-t border-slate-100 pt-4 dark:border-zinc-800">
+                  <h4 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">
+                    Student photo
+                  </h4>
+                  <p className="text-sm text-slate-600 dark:text-zinc-400">
+                    Optional. You can add a photo now or skip.
+                  </p>
+                  <StudentPhotoPicker
+                    studentName={fullName || "Student"}
+                    draft={photoDraft}
+                    onDraftChange={setPhotoDraft}
+                    disabled={pending}
+                    allowRemove={false}
+                  />
+                </div>
               </div>
             ) : null}
 
             {step === 2 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Student photo
+                  Parent or guardian
                 </h3>
                 <p className="text-sm text-slate-600 dark:text-zinc-400">
-                  Optional. You can skip this step.
+                  Contact details for the student&apos;s family.
                 </p>
-                <StudentPhotoPicker
-                  studentName={fullName || "Student"}
-                  draft={photoDraft}
-                  onDraftChange={setPhotoDraft}
-                  disabled={pending}
-                  allowRemove={false}
-                />
+                <label className="block">
+                  <span className="text-sm font-medium">Name</span>
+                  <input
+                    value={parentName}
+                    onChange={(e) => setParentName(e.target.value)}
+                    onBlur={() => {
+                      setParentName((n) => formatPersonName(n));
+                    }}
+                    className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium">Phone</span>
+                  <input
+                    value={parentPhone}
+                    onChange={(e) => setParentPhone(e.target.value)}
+                    inputMode="tel"
+                    className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium">Email (optional)</span>
+                  <input
+                    type="email"
+                    value={parentEmail}
+                    onChange={(e) => setParentEmail(e.target.value)}
+                    className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                  />
+                </label>
               </div>
             ) : null}
 
@@ -608,6 +751,9 @@ export function CaptureCardClient({
                   <textarea
                     value={allergies}
                     onChange={(e) => setAllergies(e.target.value)}
+                    onBlur={() =>
+                      setAllergies((v) => (v.trim() ? v.trim().toUpperCase() : v))
+                    }
                     rows={2}
                     className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                   />
@@ -617,6 +763,9 @@ export function CaptureCardClient({
                   <textarea
                     value={disability}
                     onChange={(e) => setDisability(e.target.value)}
+                    onBlur={() =>
+                      setDisability((v) => (v.trim() ? v.trim().toUpperCase() : v))
+                    }
                     rows={2}
                     className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                   />
@@ -628,10 +777,10 @@ export function CaptureCardClient({
                     onChange={(e) => setInsuranceProvider(e.target.value)}
                     onBlur={() => {
                       setInsuranceProvider((p) =>
-                        p.trim() ? formatPersonName(p) : p
+                        p.trim() ? p.trim().toUpperCase() : p
                       );
                     }}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                    className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                   />
                 </label>
                 <label className="block">
@@ -639,7 +788,7 @@ export function CaptureCardClient({
                   <input
                     value={insurancePolicy}
                     onChange={(e) => setInsurancePolicy(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                    className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
                   />
                 </label>
               </div>
@@ -647,45 +796,121 @@ export function CaptureCardClient({
 
             {step === 4 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Parent or guardian
-                </h3>
-                <label className="block">
-                  <span className="text-sm font-medium">Name</span>
-                  <input
-                    value={parentName}
-                    onChange={(e) => setParentName(e.target.value)}
-                    onBlur={() => {
-                      setParentName((n) => formatPersonName(n));
-                    }}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-medium">Phone</span>
-                  <input
-                    value={parentPhone}
-                    onChange={(e) => setParentPhone(e.target.value)}
-                    inputMode="tel"
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-medium">Email (optional)</span>
-                  <input
-                    type="email"
-                    value={parentEmail}
-                    onChange={(e) => setParentEmail(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-                  />
-                </label>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    Subjects selection
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-zinc-400">
+                    Choose the subjects this student will study.
+                  </p>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-zinc-500">
+                  Subjects can also be assigned later by an admin if you skip
+                  this.
+                </p>
+                {!classId ? (
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+                    Choose a class in step 1 to load subjects.
+                  </p>
+                ) : null}
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                    Academic year
+                    <select
+                      value={subjectAcademicYear}
+                      onChange={(e) =>
+                        setSubjectAcademicYear(Number(e.target.value))
+                      }
+                      className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                    >
+                      {academicYearOptions.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+                    Term
+                    <select
+                      value={subjectTerm}
+                      onChange={(e) =>
+                        setSubjectTerm(e.target.value as SubjectEnrollmentTerm)
+                      }
+                      className="mt-1 w-full min-h-11 touch-manipulation rounded-xl border border-slate-200 px-3 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                    >
+                      {SUBJECT_ENROLLMENT_TERMS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {subjectsLoading ? (
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Loading subjects…
+                  </p>
+                ) : classId && classSubjectOptions.length === 0 ? (
+                  <p className="text-xs text-amber-800 dark:text-amber-200/90">
+                    No subjects linked to this class yet. An admin can set them
+                    under Manage Subjects.
+                  </p>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
+                    <label
+                      htmlFor="capture-subj-select-all"
+                      className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-slate-200/80 pb-3 touch-manipulation dark:border-zinc-700"
+                    >
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        id="capture-subj-select-all"
+                        checked={allSubjectsSelected}
+                        onChange={(e) => toggleAllSubjects(e.target.checked)}
+                        className="h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
+                      />
+                      <span className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                        Select all subjects
+                      </span>
+                      <span className="ml-auto text-xs text-slate-500 dark:text-zinc-400">
+                        {selectedSubjectIds.length} of{" "}
+                        {classSubjectOptions.length} selected
+                      </span>
+                    </label>
+                    <ul className="mt-3 grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 sm:gap-3">
+                      {classSubjectOptions.map((sub) => (
+                        <li
+                          key={sub.id}
+                          className="flex min-h-11 items-center gap-3 rounded-lg px-1 py-0.5"
+                        >
+                          <input
+                            type="checkbox"
+                            id={`capture-subj-${sub.id}`}
+                            checked={selectedSubjectIds.includes(sub.id)}
+                            onChange={(e) =>
+                              toggleSubject(sub.id, e.target.checked)
+                            }
+                            className="h-5 w-5 shrink-0 rounded border-gray-300 text-school-primary focus:ring-school-primary dark:border-zinc-600"
+                          />
+                          <label
+                            htmlFor={`capture-subj-${sub.id}`}
+                            className="flex-1 cursor-pointer text-sm text-slate-800 dark:text-zinc-200"
+                          >
+                            {sub.name}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             ) : null}
 
             {step === 5 ? (
               <div className="mx-auto max-w-lg space-y-4 pt-2">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Review
+                  Review &amp; submit
                 </h3>
                 <ul className="space-y-2 text-sm text-slate-700 dark:text-zinc-300">
                   <li>
@@ -708,11 +933,53 @@ export function CaptureCardClient({
                   </li>
                   <li>
                     <span className="font-medium text-slate-900 dark:text-white">
+                      Parent / guardian:{" "}
+                    </span>
+                    {parentName || "—"}
+                  </li>
+                  <li>
+                    <span className="font-medium text-slate-900 dark:text-white">
                       Parent phone:{" "}
                     </span>
                     {parentPhone}
                   </li>
+                  {parentEmail.trim() ? (
+                    <li>
+                      <span className="font-medium text-slate-900 dark:text-white">
+                        Parent email:{" "}
+                      </span>
+                      {parentEmail}
+                    </li>
+                  ) : null}
+                  <li>
+                    <span className="font-medium text-slate-900 dark:text-white">
+                      Academic year:{" "}
+                    </span>
+                    {subjectAcademicYear}
+                  </li>
+                  <li>
+                    <span className="font-medium text-slate-900 dark:text-white">
+                      Term:{" "}
+                    </span>
+                    {subjectTerm}
+                  </li>
                 </ul>
+                <div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-white">
+                    Subjects
+                  </p>
+                  {selectedSubjectLabels.length === 0 ? (
+                    <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+                      None selected — an admin can assign subjects later.
+                    </p>
+                  ) : (
+                    <ul className="mt-1 list-inside list-disc space-y-0.5 text-sm text-slate-700 dark:text-zinc-300">
+                      {selectedSubjectLabels.map((name, idx) => (
+                        <li key={`${name}-${idx}`}>{name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 {photoDraft?.previewUrl ? (
                   <div>
                     <p className="text-sm font-medium text-slate-900 dark:text-white">
@@ -765,8 +1032,10 @@ export function CaptureCardClient({
                     if (step === 1) {
                       setFullName((n) => formatPersonName(n));
                     }
-                    if (step === 4) {
+                    if (step === 2) {
                       setParentName((n) => formatPersonName(n));
+                    }
+                    if (step === 3) {
                       setInsuranceProvider((p) =>
                         p.trim() ? formatPersonName(p) : p
                       );
@@ -780,7 +1049,7 @@ export function CaptureCardClient({
               ) : (
                 <CaptureButton
                   type="button"
-                  disabled={pending || !stepValid}
+                  disabled={pending || !canSubmitEnrollment}
                   onClick={submitEnrollment}
                   loading={pending}
                   loadingLabel="Saving…"
