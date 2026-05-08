@@ -7,9 +7,9 @@ function paymentRecorderRoleLabel(role: UserRole | null | undefined): string {
     case "super_admin":
       return "Admin";
     case "finance":
-      return "Finance";
+      return "Finance Officer";
     case "accounts":
-      return "Accounts";
+      return "Bursar";
     case "teacher":
       return "Teacher";
     case "parent":

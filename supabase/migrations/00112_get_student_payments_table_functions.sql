@@ -41,8 +41,8 @@ BEGIN
     p.id,
     p.amount,
     p.recorded_at,
-    pr.full_name::text,
-    (pr.role)::text,
+    coalesce(p.recorded_by_name, pr.full_name)::text,
+    coalesce(p.recorded_by_role, pr.role::text)::text,
     p.reference_number,
     p.payment_date,
     rec.receipt_number
@@ -65,10 +65,10 @@ BEGIN
         (p.reference_number IS NOT NULL
           AND p.reference_number ILIKE ('%' || v_q || '%'))
         OR p.amount::text ILIKE ('%' || v_q || '%')
-        OR (pr.full_name IS NOT NULL
-          AND pr.full_name ILIKE ('%' || v_q || '%'))
-        OR (pr.role IS NOT NULL
-          AND pr.role::text ILIKE ('%' || v_q || '%'))
+        OR (coalesce(p.recorded_by_name, pr.full_name) IS NOT NULL
+          AND coalesce(p.recorded_by_name, pr.full_name) ILIKE ('%' || v_q || '%'))
+        OR (coalesce(p.recorded_by_role, pr.role::text) IS NOT NULL
+          AND coalesce(p.recorded_by_role, pr.role::text) ILIKE ('%' || v_q || '%'))
       )
     )
   ORDER BY p.recorded_at DESC
@@ -112,10 +112,10 @@ BEGIN
         (p.reference_number IS NOT NULL
           AND p.reference_number ILIKE ('%' || v_q || '%'))
         OR p.amount::text ILIKE ('%' || v_q || '%')
-        OR (pr.full_name IS NOT NULL
-          AND pr.full_name ILIKE ('%' || v_q || '%'))
-        OR (pr.role IS NOT NULL
-          AND pr.role::text ILIKE ('%' || v_q || '%'))
+        OR (coalesce(p.recorded_by_name, pr.full_name) IS NOT NULL
+          AND coalesce(p.recorded_by_name, pr.full_name) ILIKE ('%' || v_q || '%'))
+        OR (coalesce(p.recorded_by_role, pr.role::text) IS NOT NULL
+          AND coalesce(p.recorded_by_role, pr.role::text) ILIKE ('%' || v_q || '%'))
       )
     );
 

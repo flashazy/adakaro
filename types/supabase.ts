@@ -1384,6 +1384,10 @@ export interface Database {
           payment_date: string;
           reference_number: string | null;
           recorded_by_id: string;
+          /** Snapshot of recorder profile at record time (audit). */
+          recorded_by_name: string | null;
+          /** Snapshot of recorder profile at record time (audit). */
+          recorded_by_role: string | null;
           /** When the row was saved (wall-clock) — use school zone in the UI. */
           recorded_at: string;
           notes: string | null;
@@ -1400,6 +1404,8 @@ export interface Database {
           payment_date?: string;
           reference_number?: string | null;
           recorded_by_id: string;
+          recorded_by_name?: string | null;
+          recorded_by_role?: string | null;
           recorded_at?: string;
           notes?: string | null;
           created_at?: string;
@@ -1412,6 +1418,8 @@ export interface Database {
           payment_date?: string;
           reference_number?: string | null;
           notes?: string | null;
+          recorded_by_name?: string | null;
+          recorded_by_role?: string | null;
           updated_at?: string;
         };
       };

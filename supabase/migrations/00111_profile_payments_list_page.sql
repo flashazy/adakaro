@@ -47,9 +47,10 @@ BEGIN
         (p.reference_number IS NOT NULL
           AND p.reference_number ILIKE ('%' || v_q || '%'))
         OR p.amount::text ILIKE ('%' || v_q || '%')
-        OR (pr.full_name IS NOT NULL AND pr.full_name ILIKE ('%' || v_q || '%'))
-        OR (pr.role IS NOT NULL
-          AND pr.role::text ILIKE ('%' || v_q || '%'))
+        OR (coalesce(p.recorded_by_name, pr.full_name) IS NOT NULL
+          AND coalesce(p.recorded_by_name, pr.full_name) ILIKE ('%' || v_q || '%'))
+        OR (coalesce(p.recorded_by_role, pr.role::text) IS NOT NULL
+          AND coalesce(p.recorded_by_role, pr.role::text) ILIKE ('%' || v_q || '%'))
       )
     );
 
@@ -61,8 +62,8 @@ BEGIN
       p.recorded_at,
       p.recorded_by_id,
       r.receipt_number,
-      pr.full_name AS recorder_full_name,
-      pr.role::text AS recorder_role
+      coalesce(p.recorded_by_name, pr.full_name)::text AS recorder_full_name,
+      coalesce(p.recorded_by_role, pr.role::text)::text AS recorder_role
     FROM public.payments p
     LEFT JOIN public.profiles pr ON pr.id = p.recorded_by_id
     LEFT JOIN LATERAL (
@@ -82,10 +83,10 @@ BEGIN
           (p.reference_number IS NOT NULL
             AND p.reference_number ILIKE ('%' || v_q || '%'))
           OR p.amount::text ILIKE ('%' || v_q || '%')
-          OR (pr.full_name IS NOT NULL
-            AND pr.full_name ILIKE ('%' || v_q || '%'))
-          OR (pr.role IS NOT NULL
-            AND pr.role::text ILIKE ('%' || v_q || '%'))
+          OR (coalesce(p.recorded_by_name, pr.full_name) IS NOT NULL
+            AND coalesce(p.recorded_by_name, pr.full_name) ILIKE ('%' || v_q || '%'))
+          OR (coalesce(p.recorded_by_role, pr.role::text) IS NOT NULL
+            AND coalesce(p.recorded_by_role, pr.role::text) ILIKE ('%' || v_q || '%'))
         )
       )
     ORDER BY p.recorded_at DESC

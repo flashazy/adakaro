@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
-import type { PaymentMethod } from "@/types/supabase";
+import type { PaymentMethod, UserRole } from "@/types/supabase";
 
 const VALID_METHODS: PaymentMethod[] = [
   "cash",
@@ -64,6 +64,16 @@ export async function recordPayment(
     } = await supabase.auth.getUser();
 
     if (!user) return { error: "Not authenticated." };
+
+    const { data: recorderProfileRaw } = await supabase
+      .from("profiles")
+      .select("full_name, role")
+      .eq("id", user.id)
+      .maybeSingle();
+    const recorderProfile = recorderProfileRaw as {
+      full_name: string;
+      role: UserRole;
+    } | null;
 
     const userSchoolId = await getSchoolIdForUser(supabase, user.id);
     const { data: isSuper, error: superRpcErr } = await supabase.rpc(
@@ -153,6 +163,8 @@ export async function recordPayment(
         payment_date: paymentDate,
         notes,
         recorded_by_id: user.id,
+        recorded_by_name: recorderProfile?.full_name ?? null,
+        recorded_by_role: recorderProfile?.role ?? null,
         recorded_at: recordedAt,
       } as never)
       .select("id")

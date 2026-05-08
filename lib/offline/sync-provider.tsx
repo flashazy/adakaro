@@ -1,11 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import {
-  drainQueue,
-  getMsUntilNextRetry,
-  vacuumOfflineCaches,
-} from "./sync-queue";
 
 /**
  * Top-level mount that drives the offline-write queue.
@@ -25,16 +20,20 @@ import {
  * The wake-up timer is the main retry mechanism; the interval is just
  * insurance. Both stop while the tab is hidden to be polite to battery.
  *
- * Renders nothing — pure side-effect provider.
+ * **SSR:** Do not statically import `./sync-queue` (Dexie indexedDB). Lazy
+ * `import()` runs only inside `useEffect` on the client.
  */
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const intervalRef = useRef<number | null>(null);
   const wakeupRef = useRef<number | null>(null);
-  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    cancelledRef.current = false;
+
+    const aborted = { current: false };
+
+    let removeOnline: (() => void) | null = null;
+    let removeVisibility: (() => void) | null = null;
 
     function clearWakeup() {
       if (wakeupRef.current != null) {
@@ -43,96 +42,88 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    function clearInterval() {
+    function clearIntervalTimer() {
       if (intervalRef.current != null) {
         window.clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
     }
 
-    /**
-     * Look up the soonest-due item and arm a `setTimeout` for it. If
-     * everything is already due (wait === 0) we trigger a drain right
-     * away instead of recursing — drainAndReschedule will arm the next
-     * timer when it finishes.
-     */
-    async function rescheduleWakeup() {
-      if (cancelledRef.current) return;
-      clearWakeup();
-      const wait = await getMsUntilNextRetry();
-      if (wait == null) return; // queue empty
-      if (wait <= 0) {
-        void drainAndReschedule();
-        return;
-      }
-      // Cap the wake-up at 5 minutes to avoid setTimeout drift on long
-      // sleeps; the safety interval covers the rest.
-      const capped = Math.min(wait, 5 * 60_000);
-      wakeupRef.current = window.setTimeout(() => {
-        wakeupRef.current = null;
-        void drainAndReschedule();
-      }, capped);
-    }
+    void import("./sync-queue").then((sync) => {
+      if (aborted.current) return;
 
-    async function drainAndReschedule() {
-      if (cancelledRef.current) return;
-      if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        // Don't drain while offline — it would just bump every retry
-        // counter for no reason. The `online` listener will rerun us.
-        return;
-      }
-      try {
-        await drainQueue();
-      } catch (err) {
-        console.error("[sync] drain failed:", err);
-      }
-      void rescheduleWakeup();
-    }
+      const { drainQueue, getMsUntilNextRetry, vacuumOfflineCaches } = sync;
 
-    function startInterval() {
-      clearInterval();
-      intervalRef.current = window.setInterval(() => {
-        void drainAndReschedule();
-      }, 60_000);
-    }
-
-    function handleOnline() {
-      // When the network comes back we want to retry every item now —
-      // not whatever they were waiting on individually. The drain pass
-      // itself handles that (lastAttemptAt is reset implicitly by the
-      // wake-up math: now - lastAttemptAt >= 0 for items just enqueued).
-      // But we explicitly reschedule so a 5-minute-old "rescheduled"
-      // item gets attempted immediately.
-      void drainAndReschedule();
-    }
-
-    function handleVisibility() {
-      if (document.visibilityState === "visible") {
-        void drainAndReschedule();
-        startInterval();
-      } else {
-        clearInterval();
+      async function rescheduleWakeup() {
+        if (aborted.current) return;
         clearWakeup();
+        const wait = await getMsUntilNextRetry();
+        if (aborted.current) return;
+        if (wait == null) return; // queue empty
+        if (wait <= 0) {
+          void drainAndReschedule();
+          return;
+        }
+        const capped = Math.min(wait, 5 * 60_000);
+        wakeupRef.current = window.setTimeout(() => {
+          wakeupRef.current = null;
+          void drainAndReschedule();
+        }, capped);
       }
-    }
 
-    void drainAndReschedule();
-    // One-shot vacuum on mount — clears synced payment + student rows
-    // older than 24h that were kept around for the brief "just synced"
-    // UI state.
-    void vacuumOfflineCaches().catch((err) => {
-      console.warn("[sync] vacuum failed:", err);
+      async function drainAndReschedule() {
+        if (aborted.current) return;
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          return;
+        }
+        try {
+          await drainQueue();
+        } catch (err) {
+          console.error("[sync] drain failed:", err);
+        }
+        void rescheduleWakeup();
+      }
+
+      function startInterval() {
+        clearIntervalTimer();
+        intervalRef.current = window.setInterval(() => {
+          void drainAndReschedule();
+        }, 60_000);
+      }
+
+      function handleOnline() {
+        void drainAndReschedule();
+      }
+
+      function handleVisibility() {
+        if (document.visibilityState === "visible") {
+          void drainAndReschedule();
+          startInterval();
+        } else {
+          clearIntervalTimer();
+          clearWakeup();
+        }
+      }
+
+      void drainAndReschedule();
+      void vacuumOfflineCaches().catch((err) => {
+        console.warn("[sync] vacuum failed:", err);
+      });
+      startInterval();
+      window.addEventListener("online", handleOnline);
+      document.addEventListener("visibilitychange", handleVisibility);
+      removeOnline = () =>
+        window.removeEventListener("online", handleOnline);
+      removeVisibility = () =>
+        document.removeEventListener("visibilitychange", handleVisibility);
     });
-    startInterval();
-    window.addEventListener("online", handleOnline);
-    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      cancelledRef.current = true;
-      clearInterval();
+      aborted.current = true;
+      clearIntervalTimer();
       clearWakeup();
-      window.removeEventListener("online", handleOnline);
-      document.removeEventListener("visibilitychange", handleVisibility);
+      removeOnline?.();
+      removeVisibility?.();
     };
   }, []);
 

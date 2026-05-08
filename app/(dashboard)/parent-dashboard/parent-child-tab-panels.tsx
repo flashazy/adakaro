@@ -1,7 +1,7 @@
 import type { ChildTabData } from "./parent-child-tab-data";
 import { ParentReportCardsTabClient } from "./parent-report-cards-tab-client";
 import { ParentClassResultSheetsTabClient } from "./parent-class-result-sheets-tab-client";
-import { ParentClassTeacherMessagesTabClient } from "@/components/chat/parent-class-teacher-messages-tab-client";
+import { ParentClassTeacherMessagesTabContentClient } from "./parent-class-teacher-messages-tab-lazy";
 import { DEFAULT_SCHOOL_DISPLAY_TIMEZONE } from "@/lib/school-timezone";
 import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
 export { ParentClassResultsTabContent } from "./parent-class-results-tab-content-client";
@@ -20,7 +20,7 @@ export function ParentClassTeacherMessagesTabContent({
   onMessagesUnreadChange?: (count: number) => void;
 }) {
   return (
-    <ParentClassTeacherMessagesTabClient
+    <ParentClassTeacherMessagesTabContentClient
       parentId={parentId}
       classId={classId}
       classTeacherId={classTeacherId}

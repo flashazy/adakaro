@@ -9,7 +9,7 @@ import {
 import { PrintButton } from "../../../dashboard/receipts/[id]/print-button";
 import { ReceiptWatchdogTracker } from "../../../dashboard/receipts/[id]/receipt-watchdog-tracker";
 import "../../../dashboard/receipts/[id]/receipt-print.css";
-import Link from "next/link";
+import { ReceiptBackButton } from "@/components/dashboard/receipt-back-button";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { Building2 } from "lucide-react";
 import {
@@ -154,6 +154,7 @@ function paymentStatusBadgeLabel(status: string): string {
 
 export default async function ParentReceiptPage({ params }: PageProps) {
   const { id: paymentId } = await params;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -321,12 +322,9 @@ export default async function ParentReceiptPage({ params }: PageProps) {
           <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
             Payment Receipt
           </h1>
-          <Link
-            href="/parent-dashboard"
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
+          <ReceiptBackButton className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">
             Back
-          </Link>
+          </ReceiptBackButton>
         </div>
       </header>
 
