@@ -68,7 +68,7 @@ interface StudentData {
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
-  /** Distinct subjects enrolled for the current calendar year (any term). */
+  /** Distinct `subject_id` count from `student_subject_enrollment` (all years/terms on file). */
   subject_enrollment_count?: number;
   approval_status?: "approved" | "pending" | "rejected";
 }

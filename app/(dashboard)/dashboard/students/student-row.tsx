@@ -38,6 +38,7 @@ export interface StudentData {
   parent_name: string | null;
   parent_email: string | null;
   parent_phone: string | null;
+  /** Distinct subjects in `student_subject_enrollment` (all years/terms). */
   subject_enrollment_count?: number;
   approval_status?: "approved" | "pending" | "rejected";
 }

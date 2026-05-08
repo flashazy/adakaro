@@ -50,6 +50,9 @@ const STUDENTS_DASHBOARD_LIST_SELECT = [
   "class:classes(id, name)",
 ].join(", ");
 
+/** Max UUIDs per `.in(...)` batch to avoid oversized PostgREST URLs on large schools. */
+const STUDENT_SUBJECT_COUNT_IN_CHUNK = 120;
+
 /** DB migration not applied yet — do not block the whole page. */
 function isMissingStudentSubjectEnrollmentTable(err: unknown): boolean {
   const o = err as { code?: string; message?: string } | null;
@@ -111,24 +114,50 @@ export default async function StudentsPage({
   const { data: students, error: studentsError } =
     await orderStudentsByGenderThenName(studentsQuery);
 
-  const enrollmentYear = new Date().getFullYear();
-  const { data: enrollmentRows, error: enrollmentError } = await supabase
-    .from("student_subject_enrollment")
-    .select("student_id, subject_id")
-    .eq("academic_year", enrollmentYear);
+  const studentRows = students ?? [];
+  const studentIds = studentRows.map((s) => (s as { id: string }).id);
 
-  const enrollmentMissingTable =
-    enrollmentError != null &&
-    isMissingStudentSubjectEnrollmentTable(enrollmentError);
+  /** All enrollment rows on the loaded list window; dedupe subject_id later. */
+  const enrollmentAccumulator: { student_id: string; subject_id: string }[] =
+    [];
+  let enrollmentError: unknown = null;
+  let enrollmentMissingTable = false;
+
+  if (studentIds.length > 0) {
+    for (
+      let offset = 0;
+      offset < studentIds.length;
+      offset += STUDENT_SUBJECT_COUNT_IN_CHUNK
+    ) {
+      const chunk = studentIds.slice(
+        offset,
+        offset + STUDENT_SUBJECT_COUNT_IN_CHUNK
+      );
+      const { data: chunkRows, error: chunkErr } = await supabase
+        .from("student_subject_enrollment")
+        .select("student_id, subject_id")
+        .in("student_id", chunk);
+
+      if (chunkErr) {
+        enrollmentError = chunkErr;
+        enrollmentMissingTable =
+          isMissingStudentSubjectEnrollmentTable(chunkErr);
+        enrollmentAccumulator.length = 0;
+        break;
+      }
+      enrollmentAccumulator.push(
+        ...((chunkRows ?? []) as { student_id: string; subject_id: string }[])
+      );
+    }
+  }
+
+  const enrollmentRowsForCounts = enrollmentAccumulator;
 
   const listError = combineSupabaseErrors([
     classesError,
     studentsError,
     enrollmentMissingTable ? null : enrollmentError,
   ]);
-
-  const enrollmentRowsForCounts =
-    enrollmentMissingTable ? [] : (enrollmentRows ?? []);
   if (listError) {
     console.error("[students] query error:", listError);
   }
