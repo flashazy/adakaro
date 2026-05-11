@@ -7,6 +7,7 @@ class FeeBalanceRow {
     required this.totalPaid,
     required this.balance,
     this.dueDate,
+    this.term,
   });
 
   final String studentId;
@@ -17,8 +18,12 @@ class FeeBalanceRow {
   final double balance;
   final String? dueDate;
 
+  /// From `student_fee_balances.term` when selected (used for report fee statement).
+  final String? term;
+
   static FeeBalanceRow fromJson(Map<String, dynamic> j) {
-    double n(dynamic v) => (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
+    double n(dynamic v) =>
+        (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
     return FeeBalanceRow(
       studentId: j['student_id'] as String,
       feeStructureId: j['fee_structure_id'] as String,
@@ -27,6 +32,7 @@ class FeeBalanceRow {
       totalPaid: n(j['total_paid']),
       balance: n(j['balance']),
       dueDate: j['due_date'] as String?,
+      term: j['term'] as String?,
     );
   }
 }

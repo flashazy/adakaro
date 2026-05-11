@@ -13,7 +13,8 @@ import '../../widgets/student_avatar.dart';
 import '../../core/currency_format.dart';
 import 'student_profile_hub_tabs.dart';
 
-/// Full student hub: tabs for overview, attendance, results, report cards, fees, messages.
+/// Full student hub: same sections as the web parent child card — attendance, subject /
+/// exam results, report cards, fees, and messages (native tab layout).
 class StudentProfileScreen extends StatefulWidget {
   const StudentProfileScreen({
     super.key,
@@ -81,8 +82,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    final totalDue =
-        widget.balances.fold<double>(0, (a, b) => a + b.balance);
+    final totalDue = widget.balances.fold<double>(0, (a, b) => a + b.balance);
     final extra = _extra;
 
     return Scaffold(
@@ -109,10 +109,10 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
                 fontSize: 13,
               ),
               tabs: const [
-                Tab(text: 'Overview'),
                 Tab(text: 'Attendance'),
-                Tab(text: 'Results'),
-                Tab(text: 'Reports'),
+                Tab(text: 'Subject results'),
+                Tab(text: 'Exam results'),
+                Tab(text: 'Report cards'),
                 Tab(text: 'Fees'),
                 Tab(text: 'Messages'),
               ],
@@ -122,21 +122,25 @@ class _StudentProfileScreenState extends State<StudentProfileScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                ProfileOverviewTab(
-                  student: widget.student,
-                  balances: widget.balances,
-                  extra: extra,
-                  loadingExtra: _loadingExtra,
-                ),
                 ProfileAttendanceTab(
                   records: extra?.attendance ?? const [],
                   loading: _loadingExtra,
                 ),
-                ProfileResultsTab(
+                ProfileSubjectResultsTab(
+                  reportCards: extra?.reportCards ?? const [],
+                  comments: extra?.reportComments ?? const [],
+                  loading: _loadingExtra,
+                ),
+                ProfileExamResultsTab(
+                  student: widget.student,
+                  balances: widget.balances,
+                  cards: extra?.reportCards ?? const [],
                   comments: extra?.reportComments ?? const [],
                   loading: _loadingExtra,
                 ),
                 ProfileReportCardsTab(
+                  student: widget.student,
+                  balances: widget.balances,
                   cards: extra?.reportCards ?? const [],
                   comments: extra?.reportComments ?? const [],
                   loading: _loadingExtra,

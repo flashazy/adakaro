@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/currency_format.dart';
+import '../../core/report_card_academic.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/parent_ui_tokens.dart';
 import '../../data/models/attendance_record.dart';
-import '../../data/models/chat_message_row.dart';
 import '../../data/models/fee_balance_row.dart';
 import '../../data/models/payment_row.dart';
 import '../../data/models/report_card_comment_row.dart';
@@ -14,7 +14,8 @@ import '../../data/models/student_profile_extra_data.dart';
 import '../../data/models/student_summary.dart';
 import '../../data/parent_data_repository.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/status_chip.dart';
+import 'parent_publish_filter.dart';
+import 'parent_report_card_detail_screen.dart';
 import 'receipt_detail_screen.dart';
 
 String _paymentMethodLabel(String? raw) {
@@ -58,353 +59,6 @@ Color _statusColor(String s) {
       return AppColors.warning;
     default:
       return AppColors.textSecondary;
-  }
-}
-
-class ProfileOverviewTab extends StatelessWidget {
-  const ProfileOverviewTab({
-    super.key,
-    required this.student,
-    required this.balances,
-    required this.extra,
-    required this.loadingExtra,
-  });
-
-  final StudentSummary student;
-  final List<FeeBalanceRow> balances;
-  final StudentProfileExtraData? extra;
-  final bool loadingExtra;
-
-  @override
-  Widget build(BuildContext context) {
-    final totalDue = balances.fold<double>(0, (a, b) => a + b.balance);
-    final totalFees = balances.fold<double>(0, (a, b) => a + b.totalFee);
-    final totalPaid = balances.fold<double>(0, (a, b) => a + b.totalPaid);
-    final att = extra?.attendance ?? const <AttendanceRecord>[];
-    final latestAtt = att.isNotEmpty ? att.first : null;
-    final comments = extra?.reportComments ?? const <ReportCardCommentRow>[];
-    final latestResult = comments.isNotEmpty ? comments.first : null;
-    final msgs = extra?.messages ?? const <ChatMessageRow>[];
-    final latestMsg = msgs.isNotEmpty ? msgs.last : null;
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        ParentUiTokens.horizontalPadding,
-        12,
-        ParentUiTokens.horizontalPadding,
-        24,
-      ),
-      children: [
-        if (loadingExtra)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: LinearProgressIndicator(minHeight: 3),
-          ),
-        _OverviewCard(
-          icon: Icons.account_balance_wallet_rounded,
-          title: 'Fee balance',
-          child: balances.isEmpty
-              ? Text(
-                  'No fee lines yet.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _MiniMoney(
-                            label: 'Total',
-                            value: formatCurrency(
-                              totalFees,
-                              student.currencyCode,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: _MiniMoney(
-                            label: 'Paid',
-                            value: formatCurrency(
-                              totalPaid,
-                              student.currencyCode,
-                            ),
-                            color: AppColors.success,
-                          ),
-                        ),
-                        Expanded(
-                          child: _MiniMoney(
-                            label: 'Due',
-                            value: formatCurrency(
-                              totalDue,
-                              student.currencyCode,
-                            ),
-                            color: totalDue > 0
-                                ? AppColors.warning
-                                : AppColors.success,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: totalDue > 0
-                          ? StatusChip.balanceDue('Balance outstanding')
-                          : StatusChip.paidUp(),
-                    ),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 12),
-        _OverviewCard(
-          icon: Icons.event_available_rounded,
-          title: 'Latest attendance',
-          child: latestAtt == null
-              ? Text(
-                  'No attendance records yet, or your school has not published them here.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                        height: 1.4,
-                      ),
-                )
-              : Row(
-                  children: [
-                    Icon(
-                      _statusIcon(latestAtt.status),
-                      color: _statusColor(latestAtt.status),
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            latestAtt.attendanceDate.split('T').first,
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                          Text(
-                            _statusLabel(latestAtt.status),
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 12),
-        _OverviewCard(
-          icon: Icons.workspace_premium_rounded,
-          title: 'Latest results',
-          child: latestResult == null
-              ? Text(
-                  'Subject and exam results appear here when teachers submit report cards.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                        height: 1.4,
-                      ),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      latestResult.subject,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${latestResult.term} · ${latestResult.academicYear}',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                    ),
-                    if (latestResult.calculatedGrade != null &&
-                        latestResult.calculatedGrade!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Grade: ${latestResult.calculatedGrade}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ] else if (latestResult.letterGrade != null &&
-                        latestResult.letterGrade!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Grade: ${latestResult.letterGrade}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ],
-                  ],
-                ),
-        ),
-        const SizedBox(height: 12),
-        _OverviewCard(
-          icon: Icons.chat_bubble_outline_rounded,
-          title: 'Messages',
-          child: latestMsg == null
-              ? Text(
-                  'No conversation yet. When your class teacher starts a thread, messages will show here.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                        height: 1.4,
-                      ),
-                )
-              : Text(
-                  latestMsg.message,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-        ),
-        const SizedBox(height: 12),
-        _OverviewCard(
-          icon: Icons.person_outline_rounded,
-          title: 'Student info',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (student.gender?.trim().isNotEmpty == true)
-                _InfoLine('Gender', student.gender!.trim()),
-              if (student.dateOfBirth?.trim().isNotEmpty == true)
-                _InfoLine(
-                  'Date of birth',
-                  student.dateOfBirth!.split('T').first,
-                ),
-              if (student.status?.trim().isNotEmpty == true)
-                _InfoLine('Status', student.status!.trim()),
-              if (student.parentPhone?.trim().isNotEmpty == true)
-                _InfoLine('Contact on file', student.parentPhone!.trim()),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MiniMoney extends StatelessWidget {
-  const _MiniMoney({
-    required this.label,
-    required this.value,
-    this.color,
-  });
-
-  final String label;
-  final String value;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: color ?? const Color(0xFF0F172A),
-              ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  const _InfoLine(this.label, this.value);
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OverviewCard extends StatelessWidget {
-  const _OverviewCard({
-    required this.icon,
-    required this.title,
-    required this.child,
-  });
-
-  final IconData icon;
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: ParentUiTokens.softCard(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AppColors.primary, size: 22),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          child,
-        ],
-      ),
-    );
   }
 }
 
@@ -518,37 +172,42 @@ class ProfileAttendanceTab extends StatelessWidget {
   }
 }
 
-class ProfileResultsTab extends StatelessWidget {
-  const ProfileResultsTab({
+class ProfileSubjectResultsTab extends StatelessWidget {
+  const ProfileSubjectResultsTab({
     super.key,
+    required this.reportCards,
     required this.comments,
     this.loading = false,
   });
 
+  final List<ReportCardSummary> reportCards;
   final List<ReportCardCommentRow> comments;
   final bool loading;
 
   @override
   Widget build(BuildContext context) {
-    if (loading && comments.isEmpty) {
+    final visible =
+        commentsForParentSubjectResults(reportCards, comments);
+    if (loading && visible.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (comments.isEmpty) {
+    if (visible.isEmpty) {
       return ListView(
         padding: const EdgeInsets.all(24),
         children: [
           EmptyState(
             icon: Icons.school_outlined,
-            title: 'No published results',
+            title: 'No subject results yet',
             message:
-                'Results from report cards will show here when your teachers submit them for review or approval.',
+                'No results available for this student yet.\n\n'
+                'Published subject lines from approved report cards will appear here.',
           ),
         ],
       );
     }
 
     final byTerm = <String, List<ReportCardCommentRow>>{};
-    for (final c in comments) {
+    for (final c in visible) {
       final k = '${c.academicYear} · ${c.term}';
       byTerm.putIfAbsent(k, () => []).add(c);
     }
@@ -573,80 +232,101 @@ class ProfileResultsTab extends StatelessWidget {
                   ),
             ),
           ),
-          ...byTerm[k]!.map((c) => Padding(
+          Builder(
+            builder: (context) {
+              final first = byTerm[k]!.first;
+              final labels = examLabelsForTerm(first.term);
+              return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: ParentUiTokens.softCard(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        c.subject,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                child: Text(
+                  '${labels.exam1} and ${labels.exam2}',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
                       ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          if (c.exam1Score != null)
-                            _ResultChip(
-                              label: 'Exam 1',
-                              value: c.exam1Score!.toStringAsFixed(0),
-                            ),
-                          if (c.exam2Score != null)
-                            _ResultChip(
-                              label: 'Exam 2',
-                              value: c.exam2Score!.toStringAsFixed(0),
-                            ),
-                          if (c.calculatedScore != null)
-                            _ResultChip(
-                              label: 'Score',
-                              value: c.calculatedScore!.toStringAsFixed(1),
-                            ),
-                          if (c.scorePercent != null)
-                            _ResultChip(
-                              label: '%',
-                              value:
-                                  '${c.scorePercent!.toStringAsFixed(0)}%',
-                            ),
-                          if (c.calculatedGrade != null &&
-                              c.calculatedGrade!.trim().isNotEmpty)
-                            _ResultChip(
-                              label: 'Grade',
-                              value: c.calculatedGrade!,
-                            )
-                          else if (c.letterGrade != null &&
-                              c.letterGrade!.trim().isNotEmpty)
-                            _ResultChip(
-                              label: 'Grade',
-                              value: c.letterGrade!,
-                            ),
-                          if (c.position != null)
-                            _ResultChip(
-                              label: 'Position',
-                              value: '${c.position}',
-                            ),
-                        ],
-                      ),
-                      if (c.comment != null && c.comment!.trim().isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          c.comment!.trim(),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                height: 1.45,
-                                color: AppColors.textSecondary,
-                              ),
-                        ),
-                      ],
-                    ],
-                  ),
                 ),
-              )),
+              );
+            },
+          ),
+          ...byTerm[k]!.map((c) {
+            final labels = examLabelsForTerm(c.term);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: ParentUiTokens.softCard(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c.subject,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (c.exam1Score != null)
+                          _ResultChip(
+                            label: labels.exam1,
+                            value: c.exam1Score!.toStringAsFixed(0),
+                          ),
+                        if (c.exam2Score != null)
+                          _ResultChip(
+                            label: labels.exam2,
+                            value: c.exam2Score!.toStringAsFixed(0),
+                          ),
+                        if (c.calculatedScore != null)
+                          _ResultChip(
+                            label: 'Average',
+                            value: c.calculatedScore!.toStringAsFixed(1),
+                          ),
+                        if (c.scorePercent != null)
+                          _ResultChip(
+                            label: '%',
+                            value: '${c.scorePercent!.toStringAsFixed(0)}%',
+                          ),
+                        if (c.calculatedGrade != null &&
+                            c.calculatedGrade!.trim().isNotEmpty)
+                          _ResultChip(
+                            label: 'Grade',
+                            value: c.calculatedGrade!,
+                          )
+                        else if (c.letterGrade != null &&
+                            c.letterGrade!.trim().isNotEmpty)
+                          _ResultChip(
+                            label: 'Grade',
+                            value: c.letterGrade!,
+                          ),
+                        if (c.position != null)
+                          _ResultChip(
+                            label: 'Position',
+                            value: '${c.position}',
+                          ),
+                      ],
+                    ),
+                    if (c.comment != null &&
+                        c.comment!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        c.comment!.trim(),
+                        style:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  height: 1.45,
+                                  color: AppColors.textSecondary,
+                                ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }),
         ],
       ],
     );
@@ -672,7 +352,272 @@ class _ResultChip extends StatelessWidget {
       ),
       child: Text(
         '$label: $value',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryDark,
+              height: 1.2,
+            ),
+      ),
+    );
+  }
+}
+
+class ProfileExamResultsTab extends StatelessWidget {
+  const ProfileExamResultsTab({
+    super.key,
+    required this.student,
+    required this.balances,
+    required this.cards,
+    required this.comments,
+    this.loading = false,
+  });
+
+  final StudentSummary student;
+  final List<FeeBalanceRow> balances;
+  final List<ReportCardSummary> cards;
+  final List<ReportCardCommentRow> comments;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && cards.isEmpty && comments.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final published = approvedReportCards(cards);
+    if (published.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          EmptyState(
+            icon: Icons.assignment_turned_in_outlined,
+            title: 'No exam results yet',
+            message:
+                'Term exam marks appear here after a report card is approved by your school.\n\n'
+                'Subject lines are listed under Subject results; open Report cards for the full official document.',
+          ),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        ParentUiTokens.horizontalPadding,
+        12,
+        ParentUiTokens.horizontalPadding,
+        24,
+      ),
+      children: [
+        for (final card in published) ...[
+          _ExamReportPeriodCard(
+            card: card,
+            lines: comments
+                .where((x) => x.reportCardId == card.id)
+                .toList()
+              ..sort(
+                (a, b) =>
+                    a.subject.toLowerCase().compareTo(b.subject.toLowerCase()),
+              ),
+            student: student,
+            balances: balances,
+          ),
+          const SizedBox(height: 14),
+        ],
+      ],
+    );
+  }
+}
+
+class _ExamReportPeriodCard extends StatelessWidget {
+  const _ExamReportPeriodCard({
+    required this.card,
+    required this.lines,
+    required this.student,
+    required this.balances,
+  });
+
+  final ReportCardSummary card;
+  final List<ReportCardCommentRow> lines;
+  final StudentSummary student;
+  final List<FeeBalanceRow> balances;
+
+  @override
+  Widget build(BuildContext context) {
+    final schoolLevel = normalizeSchoolLevel(card.schoolLevel);
+    final labels = examLabelsForTerm(card.term);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: ParentUiTokens.softCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.fact_check_rounded,
+                  color: AppColors.primary, size: 26),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${card.term} · ${card.academicYear}',
+                      style:
+                          Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Published exam period',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (lines.isEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'No subject marks are on file for this report yet.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Text(
+              '${labels.exam1} / ${labels.exam2}',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            ...lines.map((line) {
+              final avg = termAverageFromComment(line);
+              final grade = displayGradeForSubject(line, schoolLevel);
+              final e1 = line.exam1Score;
+              final e2 = line.exam2Score;
+              final pos = displaySubjectPosition(line);
+              final o1 = line.exam1ScoreOverridden == true;
+              final o2 = line.exam2ScoreOverridden == true;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Theme(
+                  data: Theme.of(context)
+                      .copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.only(bottom: 8),
+                    title: Text(
+                      line.subject,
+                      style:
+                          Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          _ExamSubtitleChip(
+                            'Avg ${formatPercentOrDash(avg)}',
+                          ),
+                          _ExamSubtitleChip('Grade $grade'),
+                          _ExamSubtitleChip('Position $pos'),
+                        ],
+                      ),
+                    ),
+                    children: [
+                      _ExamScoreLine(
+                        '${labels.exam1} (%)',
+                        formatPercentOrDash(e1),
+                        o1,
+                      ),
+                      _ExamScoreLine(
+                        '${labels.exam2} (%)',
+                        formatPercentOrDash(e2),
+                        o2,
+                      ),
+                      if (line.comment?.trim().isNotEmpty == true) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Teacher comment',
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textSecondary,
+                                  ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          line.comment!.trim(),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    height: 1.45,
+                                  ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ParentReportCardDetailScreen(
+                    card: card,
+                    lines: lines,
+                    student: student,
+                    balances: balances,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.article_rounded),
+            label: const Text('Open full report card'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExamSubtitleChip extends StatelessWidget {
+  const _ExamSubtitleChip(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.indigoWash,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontWeight: FontWeight.w700,
               color: AppColors.primaryDark,
             ),
@@ -681,14 +626,58 @@ class _ResultChip extends StatelessWidget {
   }
 }
 
+class _ExamScoreLine extends StatelessWidget {
+  const _ExamScoreLine(this.label, this.value, this.overridden);
+
+  final String label;
+  final String value;
+  final bool overridden;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 3,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '$value${overridden ? ' · adjusted' : ''}',
+              textAlign: TextAlign.right,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ProfileReportCardsTab extends StatelessWidget {
   const ProfileReportCardsTab({
     super.key,
+    required this.student,
+    required this.balances,
     required this.cards,
     required this.comments,
     this.loading = false,
   });
 
+  final StudentSummary student;
+  final List<FeeBalanceRow> balances;
   final List<ReportCardSummary> cards;
   final List<ReportCardCommentRow> comments;
   final bool loading;
@@ -723,13 +712,23 @@ class ProfileReportCardsTab extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, i) {
         final c = cards[i];
-        final lines =
-            comments.where((x) => x.reportCardId == c.id).toList();
+        final lines = comments.where((x) => x.reportCardId == c.id).toList();
         return Material(
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(ParentUiTokens.radiusLg),
-            onTap: () => _openReportCardSheet(context, c, lines),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ParentReportCardDetailScreen(
+                    card: c,
+                    lines: lines,
+                    student: student,
+                    balances: balances,
+                  ),
+                ),
+              );
+            },
             child: Ink(
               padding: const EdgeInsets.all(18),
               decoration: ParentUiTokens.softCard(),
@@ -743,7 +742,7 @@ class ProfileReportCardsTab extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Report card',
+                          'Official report card',
                           style: Theme.of(context)
                               .textTheme
                               .titleSmall
@@ -770,7 +769,8 @@ class ProfileReportCardsTab extends StatelessWidget {
                           ),
                     ),
                   ],
-                  if (c.adminNote != null && c.adminNote!.trim().isNotEmpty) ...[
+                  if (c.adminNote != null &&
+                      c.adminNote!.trim().isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text(
                       c.adminNote!.trim(),
@@ -786,10 +786,11 @@ class ProfileReportCardsTab extends StatelessWidget {
                     children: [
                       Text(
                         '${lines.length} subject line${lines.length == 1 ? '' : 's'}',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: AppColors.textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                       ),
                       const Spacer(),
                       Text(
@@ -811,149 +812,6 @@ class ProfileReportCardsTab extends StatelessWidget {
       },
     );
   }
-}
-
-void _openReportCardSheet(
-  BuildContext context,
-  ReportCardSummary card,
-  List<ReportCardCommentRow> lines,
-) {
-  showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (ctx) {
-      return DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.55,
-        maxChildSize: 0.92,
-        minChildSize: 0.35,
-        builder: (_, scroll) {
-          return ListView(
-            controller: scroll,
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-            children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBorder,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  ),
-                ),
-                Text(
-                  '${card.term} · ${card.academicYear}',
-                  style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                _ReportStatusChip(status: card.status),
-                if (card.adminNote != null &&
-                    card.adminNote!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    'School note',
-                    style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textSecondary,
-                        ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    card.adminNote!.trim(),
-                    style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                          height: 1.45,
-                        ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                Text(
-                  'Subjects',
-                  style: Theme.of(ctx).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 10),
-                if (lines.isEmpty)
-                  Text(
-                    'No subject lines on file for this card.',
-                    style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                  )
-                else
-                  ...lines.map(
-                    (l) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: ParentUiTokens.insetWell(),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              l.subject,
-                              style: Theme.of(ctx)
-                                  .textTheme
-                                  .titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                if (l.calculatedGrade != null &&
-                                    l.calculatedGrade!.trim().isNotEmpty)
-                                  Text(
-                                    'Grade ${l.calculatedGrade}',
-                                    style: Theme.of(ctx)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                                if (l.scorePercent != null)
-                                  Text(
-                                    '${l.scorePercent!.toStringAsFixed(0)}%',
-                                    style: Theme.of(ctx)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                              ],
-                            ),
-                            if (l.comment != null &&
-                                l.comment!.trim().isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                l.comment!.trim(),
-                                style: Theme.of(ctx)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: AppColors.textSecondary,
-                                      height: 1.4,
-                                    ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-          );
-        },
-      );
-    },
-  );
 }
 
 class _ReportStatusChip extends StatelessWidget {
@@ -1093,12 +951,13 @@ class ProfileFeesTab extends StatelessWidget {
                       children: [
                         Text(
                           formatCurrency(b.balance, student.currencyCode),
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w900,
-                                color: b.balance > 0
-                                    ? AppColors.warning
-                                    : AppColors.success,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: b.balance > 0
+                                        ? AppColors.warning
+                                        : AppColors.success,
+                                  ),
                         ),
                         Text(
                           'of ${formatCurrency(b.totalFee, student.currencyCode)}',
@@ -1148,9 +1007,10 @@ class ProfileFeesTab extends StatelessWidget {
                         ),
                         Text(
                           p.paymentDate.split('T').first,
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
                         ),
                       ],
                     ),

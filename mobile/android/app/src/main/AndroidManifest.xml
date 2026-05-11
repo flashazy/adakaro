@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Release builds merge this manifest; without INTERNET, HTTPS to Supabase fails. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="adakaro_mobile"
         android:name="${applicationName}"

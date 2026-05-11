@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
@@ -23,18 +23,43 @@ import type { ParentCredentialSheetPayload } from "@/lib/parent-credential-sheet
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
+/**
+ * Resolves the signed-in user for school-scoped server actions.
+ *
+ * Prefer `getSession()` first: it reads the session from cookies without a round
+ * trip to Supabase Auth. `getUser()` always calls Auth and can return no user
+ * when the network times out (common in dev) even though the dashboard page
+ * loaded with a valid cookie session — which surfaced as "Not authenticated".
+ */
 async function getSchoolId() {
+  noStore();
   const supabase = await createClient();
+
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  let userId = session?.user?.id ?? null;
 
-  if (!user) throw new Error("Not authenticated");
+  if (!userId) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      userId = user?.id ?? null;
+    } catch {
+      // Auth server unreachable; session cookie may still be usable below.
+      userId = null;
+    }
+  }
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!userId) {
+    throw new Error("Not authenticated");
+  }
+
+  const schoolId = await getSchoolIdForUser(supabase, userId);
   if (!schoolId) throw new Error("No school found");
 
-  return { supabase, schoolId, userId: user.id };
+  return { supabase, schoolId, userId };
 }
 
 async function requireAdminForSchool(
@@ -991,21 +1016,369 @@ export async function updateStudent(
   }
 }
 
-export async function deleteStudent(
+/** Used by the delete confirmation UI and `deleteStudent` (plain-language copy for staff). */
+export interface StudentDeletionEligibility {
+  paymentCount: number;
+  receiptCount: number;
+  reportCardCommentCount: number;
+  reportCardsCount: number;
+  teacherScoreCount: number;
+  teacherAttendanceCount: number;
+  /** One-click delete: no fees on file and no teacher notes blocking. */
+  canDelete: boolean;
+  /** Fees clear but teacher notes exist — full remove needs the “all records” button or hide. */
+  canDeleteWithReportCascade: boolean;
+  /** Show “hide” when notes block full remove or when fees/receipts block full remove. */
+  canArchiveInstead: boolean;
+  /** Short headline for the dialog */
+  summaryLine: string;
+  /** Why full remove may not be available (fees / receipts). */
+  financeBlockerLines: string[];
+  /** Why an extra remove step is needed (teacher notes). */
+  cascadeBlockerLines: string[];
+  /** What else disappears if staff proceed with delete (scores, attendance, etc.). */
+  includedWithDeleteLines: string[];
+}
+
+async function computeStudentDeletionEligibility(
+  supabase: Awaited<ReturnType<typeof createClient>>,
   studentId: string
+): Promise<StudentDeletionEligibility> {
+  const { count: paymentCountRaw, error: paymentErr } = await supabase
+    .from("payments")
+    .select("id", { count: "exact", head: true })
+    .eq("student_id", studentId);
+
+  if (paymentErr) {
+    throw new Error(paymentErr.message);
+  }
+
+  const paymentCount = paymentCountRaw ?? 0;
+
+  let receiptCount = 0;
+  if (paymentCount > 0) {
+    const { data: paymentRows, error: prErr } = await supabase
+      .from("payments")
+      .select("id")
+      .eq("student_id", studentId);
+    if (prErr) {
+      throw new Error(prErr.message);
+    }
+    const ids = (paymentRows ?? []).map((r: { id: string }) => r.id);
+    if (ids.length > 0) {
+      const { count: receiptCountRaw, error: recErr } = await supabase
+        .from("receipts")
+        .select("id", { count: "exact", head: true })
+        .in("payment_id", ids);
+      if (recErr) {
+        throw new Error(recErr.message);
+      }
+      receiptCount = receiptCountRaw ?? 0;
+    }
+  }
+
+  const { count: commentCountRaw, error: commentErr } = await supabase
+    .from("teacher_report_card_comments")
+    .select("id", { count: "exact", head: true })
+    .eq("student_id", studentId);
+
+  if (commentErr) {
+    throw new Error(commentErr.message);
+  }
+  const reportCardCommentCount = commentCountRaw ?? 0;
+
+  const { count: reportCardsRaw, error: rcErr } = await supabase
+    .from("report_cards")
+    .select("id", { count: "exact", head: true })
+    .eq("student_id", studentId);
+
+  if (rcErr) {
+    throw new Error(rcErr.message);
+  }
+  const reportCardsCount = reportCardsRaw ?? 0;
+
+  const { count: scoreCountRaw, error: scoreErr } = await supabase
+    .from("teacher_scores")
+    .select("id", { count: "exact", head: true })
+    .eq("student_id", studentId);
+
+  if (scoreErr) {
+    throw new Error(scoreErr.message);
+  }
+  const teacherScoreCount = scoreCountRaw ?? 0;
+
+  const { count: attCountRaw, error: attErr } = await supabase
+    .from("teacher_attendance")
+    .select("id", { count: "exact", head: true })
+    .eq("student_id", studentId);
+
+  if (attErr) {
+    throw new Error(attErr.message);
+  }
+  const teacherAttendanceCount = attCountRaw ?? 0;
+
+  const financeClear = paymentCount === 0 && receiptCount === 0;
+  const commentsBlock = reportCardCommentCount > 0;
+  const canDelete = financeClear && !commentsBlock;
+  const canDeleteWithReportCascade = financeClear && commentsBlock;
+  const canArchiveInstead = canDeleteWithReportCascade || !financeClear;
+
+  const financeBlockerLines: string[] = [];
+  if (paymentCount > 0) {
+    financeBlockerLines.push("Has school fees recorded.");
+  }
+  if (receiptCount > 0) {
+    financeBlockerLines.push("Has payment receipts on file.");
+  }
+
+  const cascadeBlockerLines: string[] = [];
+  if (reportCardCommentCount > 0) {
+    cascadeBlockerLines.push("Has teacher notes on the report card.");
+  }
+
+  const includedWithDeleteLines: string[] = [];
+  if (financeClear) {
+    if (teacherScoreCount > 0) {
+      includedWithDeleteLines.push("Has exam scores — these will be removed if you delete.");
+    }
+    if (teacherAttendanceCount > 0) {
+      includedWithDeleteLines.push(
+        "Has attendance records — these will be removed if you delete."
+      );
+    }
+    if (commentsBlock) {
+      if (reportCardsCount > 0) {
+        includedWithDeleteLines.push(
+          "“Delete student and all records” also removes those teacher notes and the linked report card pages, along with scores and attendance above."
+        );
+      } else {
+        includedWithDeleteLines.push(
+          "“Delete student and all records” also removes those teacher notes, along with scores and attendance above."
+        );
+      }
+    } else if (reportCardsCount > 0) {
+      includedWithDeleteLines.push(
+        "Report card pages on file will be removed with this student."
+      );
+    }
+    if (
+      teacherScoreCount === 0 &&
+      teacherAttendanceCount === 0 &&
+      !commentsBlock &&
+      reportCardsCount === 0
+    ) {
+      includedWithDeleteLines.push(
+        "No exam scores, attendance, or report card pages on file."
+      );
+    }
+  }
+
+  let summaryLine: string;
+  if (canDelete) {
+    summaryLine = "Ready to delete. No school fees recorded.";
+  } else if (canDeleteWithReportCascade) {
+    summaryLine =
+      "This student has teacher notes on file. Delete them with the student, or hide the student and keep everything.";
+  } else {
+    summaryLine =
+      "This student has school fees recorded. They can’t be fully removed from the system yet. You can hide them instead (keeps all records), or clear the fees first.";
+  }
+
+  return {
+    paymentCount,
+    receiptCount,
+    reportCardCommentCount,
+    reportCardsCount,
+    teacherScoreCount,
+    teacherAttendanceCount,
+    canDelete,
+    canDeleteWithReportCascade,
+    canArchiveInstead,
+    summaryLine,
+    financeBlockerLines,
+    cascadeBlockerLines,
+    includedWithDeleteLines,
+  };
+}
+
+/** Pre-delete check for the staff-facing remove / hide dialog (plain-language strings). */
+export async function getStudentDeletionEligibility(
+  studentId: string
+): Promise<
+  { ok: true; eligibility: StudentDeletionEligibility } | { ok: false; error: string }
+> {
+  try {
+    const { supabase, schoolId } = await getSchoolId();
+
+    const { data: student, error: stErr } = await supabase
+      .from("students")
+      .select("id")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (stErr) {
+      return { ok: false, error: stErr.message };
+    }
+    if (!student) {
+      return {
+        ok: false,
+        error: "Student not found or you do not have access.",
+      };
+    }
+
+    const eligibility = await computeStudentDeletionEligibility(
+      supabase,
+      studentId
+    );
+    return { ok: true, eligibility };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+async function removeReportCardRowsForStudent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  studentId: string
+): Promise<{ error?: string }> {
+  const { error: cErr } = await supabase
+    .from("teacher_report_card_comments")
+    .delete()
+    .eq("student_id", studentId);
+
+  if (cErr) {
+    return {
+      error: `We couldn’t clear teacher notes before removing this student. ${cErr.message}`,
+    };
+  }
+
+  const { error: rErr } = await supabase
+    .from("report_cards")
+    .delete()
+    .eq("student_id", studentId);
+
+  if (rErr) {
+    return {
+      error: `We couldn’t clear report card pages before removing this student. ${rErr.message}`,
+    };
+  }
+
+  return {};
+}
+
+/**
+ * Gradebook scores and class attendance reference the student. Repo migrations use
+ * ON DELETE CASCADE, but some databases still have RESTRICT — remove explicitly
+ * so accidental enrollments delete cleanly when finance is clear.
+ */
+async function removeGradebookScoresAndAttendanceForStudent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  studentId: string
+): Promise<{ error?: string }> {
+  const { error: scoresErr } = await supabase
+    .from("teacher_scores")
+    .delete()
+    .eq("student_id", studentId);
+
+  if (scoresErr) {
+    return {
+      error: `We couldn’t clear exam scores before removing this student. ${scoresErr.message}`,
+    };
+  }
+
+  const { error: attErr } = await supabase
+    .from("teacher_attendance")
+    .delete()
+    .eq("student_id", studentId);
+
+  if (attErr) {
+    return {
+      error: `We couldn’t clear attendance before removing this student. ${attErr.message}`,
+    };
+  }
+
+  return {};
+}
+
+export async function deleteStudent(
+  studentId: string,
+  options?: { removeReportCardData?: boolean }
 ): Promise<StudentActionState> {
   try {
     const { supabase, schoolId, userId } = await getSchoolId();
+    await requireAdminForSchool(supabase, userId);
+
+    const { data: student, error: stErr } = await supabase
+      .from("students")
+      .select("id")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (stErr) {
+      return { error: stErr.message };
+    }
+    if (!student) {
+      return { error: "Student not found or you do not have access." };
+    }
+
+    const elig = await computeStudentDeletionEligibility(supabase, studentId);
+    const financeClear =
+      elig.paymentCount === 0 && elig.receiptCount === 0;
+
+    if (options?.removeReportCardData) {
+      if (!financeClear) {
+        return {
+          error:
+            "School fees or receipts are still on file. Clear those first, or hide the student instead.",
+        };
+      }
+      const rm = await removeReportCardRowsForStudent(supabase, studentId);
+      if (rm.error) {
+        return { error: rm.error };
+      }
+    } else {
+      if (!elig.canDelete) {
+        if (elig.canDeleteWithReportCascade) {
+          const parts = [
+            ...elig.financeBlockerLines,
+            ...elig.cascadeBlockerLines,
+          ].join(" ");
+          return {
+            error: `${elig.summaryLine} ${parts}`.trim(),
+          };
+        }
+        const extra = [
+          ...elig.financeBlockerLines,
+          ...elig.cascadeBlockerLines,
+        ].join(" ");
+        return {
+          error: `${elig.summaryLine}${extra ? ` ${extra}` : ""}`.trim(),
+        };
+      }
+    }
+
+    if (financeClear) {
+      const ga = await removeGradebookScoresAndAttendanceForStudent(
+        supabase,
+        studentId
+      );
+      if (ga.error) {
+        return { error: ga.error };
+      }
+    }
 
     const { error } = await supabase
       .from("students")
       .delete()
-      .eq("id", studentId);
+      .eq("id", studentId)
+      .eq("school_id", schoolId);
 
     if (error) {
       if (error.code === "23503") {
         return {
-          error: "Cannot delete a student with existing payments or fee records.",
+          error:
+            "Something is still tied to this student and we couldn’t finish the removal. Please try again shortly, or ask for help if it keeps happening.",
         };
       }
       return { error: error.message };
@@ -1016,11 +1389,72 @@ export async function deleteStudent(
     void logAdminActionFromServerAction(
       userId,
       "delete_student",
+      {
+        student_id: studentId,
+        removed_report_card_data: Boolean(options?.removeReportCardData),
+        removed_gradebook_scores_and_attendance: financeClear,
+      },
+      schoolId
+    );
+
+    return {
+      success: options?.removeReportCardData
+        ? "Student removed. Notes and report pages were cleared too."
+        : "Student removed from the school list.",
+    };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+/**
+ * Soft-remove: sets `status` to `inactive` so the student drops off the default
+ * dashboard list while keeping finance and academic history intact.
+ */
+export async function archiveStudent(
+  studentId: string
+): Promise<StudentActionState> {
+  try {
+    const { supabase, schoolId, userId } = await getSchoolId();
+    await requireAdminForSchool(supabase, userId);
+
+    const { data: student, error: stErr } = await supabase
+      .from("students")
+      .select("id, status")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (stErr) {
+      return { error: stErr.message };
+    }
+    if (!student) {
+      return { error: "Student not found or you do not have access." };
+    }
+
+    const { error } = await supabase
+      .from("students")
+      .update({ status: "inactive" } as never)
+      .eq("id", studentId)
+      .eq("school_id", schoolId);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/dashboard/students");
+
+    void logAdminActionFromServerAction(
+      userId,
+      "archive_student",
       { student_id: studentId },
       schoolId
     );
 
-    return { success: "Student deleted." };
+    return {
+      success:
+        "Student hidden. They no longer show on this list, but all records stay in the system.",
+    };
   } catch (e) {
     return { error: (e as Error).message };
   }

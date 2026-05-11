@@ -64,4 +64,99 @@ abstract final class ParentUiTokens {
           Color(0xFF7C3AED),
         ],
       );
+
+  /// Parent home hero — softer blend than profile header gradients.
+  static LinearGradient get parentWelcomeGradient => const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF5F56EB),
+          Color(0xFF6468EE),
+          Color(0xFF7366ED),
+          Color(0xFF7F72E9),
+        ],
+        stops: [0.0, 0.32, 0.62, 1.0],
+      );
+
+  /// Lighter lift for the compact parent home hero card.
+  static List<BoxShadow> get parentHeroElevatedShadow => const [
+        BoxShadow(
+          color: Color(0x0B0F172A),
+          blurRadius: 20,
+          offset: Offset(0, 10),
+          spreadRadius: -6,
+        ),
+        BoxShadow(
+          color: Color(0x050F172A),
+          blurRadius: 8,
+          offset: Offset(0, 3),
+        ),
+      ];
+
+  /// Softer layered shadow for prominent cards.
+  static List<BoxShadow> get softElevatedShadow => const [
+        BoxShadow(
+          color: Color(0x0E0F172A),
+          blurRadius: 28,
+          offset: Offset(0, 14),
+          spreadRadius: -8,
+        ),
+        BoxShadow(
+          color: Color(0x050F172A),
+          blurRadius: 8,
+          offset: Offset(0, 4),
+        ),
+      ];
+
+  static List<BoxShadow> get subtleTileShadow => const [
+        BoxShadow(
+          color: Color(0x080F172A),
+          blurRadius: 20,
+          offset: Offset(0, 8),
+          spreadRadius: -6,
+        ),
+      ];
+
+  /// Quick-action tiles — soft lift, minimal edge definition.
+  static List<BoxShadow> get quickActionPremiumShadow => const [
+        BoxShadow(
+          color: Color(0x070F172A),
+          blurRadius: 18,
+          offset: Offset(0, 6),
+          spreadRadius: -3,
+        ),
+        BoxShadow(
+          color: Color(0x030F172A),
+          blurRadius: 4,
+          offset: Offset(0, 1),
+        ),
+      ];
+
+  /// Gentle extra lift for a few highlighted shortcut tiles only.
+  static List<BoxShadow> get quickActionEmphasisLift => const [
+        BoxShadow(
+          color: Color(0x050F172A),
+          blurRadius: 14,
+          offset: Offset(0, 5),
+          spreadRadius: -2,
+        ),
+      ];
+
+  /// Home “Your child” card — airy, anchored finish without harsh contrast.
+  static List<BoxShadow> get homeStudentAnchorShadow => const [
+        BoxShadow(
+          color: Color(0x0525356A),
+          blurRadius: 24,
+          offset: Offset(0, 10),
+          spreadRadius: -5,
+        ),
+        BoxShadow(
+          color: Color(0x04202850),
+          blurRadius: 8,
+          offset: Offset(0, 2),
+        ),
+      ];
+
+  /// Muted canvas behind parent home scroll.
+  static const Color parentHomeCanvas = Color(0xFFF2F5FB);
 }

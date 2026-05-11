@@ -1,11 +1,18 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { Check, Pencil, Trash2, UserCircle, X } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { RejectEnrollmentGuidanceDialog } from "@/components/dashboard/RejectEnrollmentGuidanceDialog";
-import { approveStudent, deleteStudent, rejectStudent } from "./actions";
+import {
+  approveStudent,
+  archiveStudent,
+  deleteStudent,
+  getStudentDeletionEligibility,
+  rejectStudent,
+  type StudentDeletionEligibility,
+} from "./actions";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import { formatEnrollmentDateDisplay } from "@/lib/enrollment-date";
 import { cn } from "@/lib/utils";
@@ -53,26 +60,134 @@ interface DeleteConfirmDialogProps {
   studentName: string;
   isPending: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirmDelete: () => void;
+  onConfirmDeleteWithReports?: () => void;
+  onArchiveStudent?: () => void;
+  eligibilityLoading: boolean;
+  eligibility: StudentDeletionEligibility | null;
+  eligibilityError: string | null;
 }
 
 function DeleteConfirmDialog({
   studentName,
   isPending,
   onCancel,
-  onConfirm,
+  onConfirmDelete,
+  onConfirmDeleteWithReports,
+  onArchiveStudent,
+  eligibilityLoading,
+  eligibility,
+  eligibilityError,
 }: DeleteConfirmDialogProps) {
+  const financeClear = Boolean(
+    eligibility &&
+      eligibility.paymentCount === 0 &&
+      eligibility.receiptCount === 0
+  );
+
+  const simpleDeleteDisabled =
+    isPending ||
+    eligibilityLoading ||
+    Boolean(eligibilityError) ||
+    !eligibility?.canDelete;
+
+  const cascadeDisabled =
+    isPending ||
+    eligibilityLoading ||
+    Boolean(eligibilityError) ||
+    !eligibility?.canDeleteWithReportCascade;
+
+  const archiveDisabled =
+    isPending ||
+    eligibilityLoading ||
+    Boolean(eligibilityError) ||
+    !eligibility?.canArchiveInstead;
+
+  const showFinanceBlockers =
+    eligibility && eligibility.financeBlockerLines.length > 0;
+  const showCascadeBlockers =
+    eligibility && eligibility.cascadeBlockerLines.length > 0;
+  const showIncluded =
+    eligibility &&
+    financeClear &&
+    eligibility.includedWithDeleteLines.length > 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
         <h3 className="text-base font-semibold text-slate-900 dark:text-white">
           Delete &ldquo;{studentName}&rdquo;?
         </h3>
-        <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-          This will permanently remove the student record. Any associated
-          payments must be removed first.
-        </p>
-        <div className="mt-5 flex justify-end gap-3">
+        <div className="mt-2 space-y-3 text-sm text-slate-600 dark:text-zinc-300">
+          {eligibilityLoading ? (
+            <p>Checking fees, receipts, notes, scores, and attendance…</p>
+          ) : eligibilityError ? (
+            <p className="text-red-600 dark:text-red-400">{eligibilityError}</p>
+          ) : eligibility ? (
+            <>
+              <p className="font-medium text-slate-800 dark:text-zinc-100">
+                {eligibility.summaryLine}
+              </p>
+
+              {showFinanceBlockers ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 dark:border-amber-900/50 dark:bg-amber-950/30">
+                  <p className="font-semibold text-amber-900 dark:text-amber-100">
+                    Why full remove isn’t available yet
+                  </p>
+                  <ul className="mt-1 list-inside list-disc space-y-1 text-amber-950/90 dark:text-amber-100/90">
+                    {eligibility.financeBlockerLines.map((line, i) => (
+                      <li key={`f-${i}`}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {showCascadeBlockers ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800/60">
+                  <p className="font-semibold text-slate-800 dark:text-zinc-100">
+                    What needs an extra step
+                  </p>
+                  <ul className="mt-1 list-inside list-disc space-y-1 text-slate-700 dark:text-zinc-200">
+                    {eligibility.cascadeBlockerLines.map((line, i) => (
+                      <li key={`c-${i}`}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {showIncluded ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 dark:border-emerald-900/40 dark:bg-emerald-950/25">
+                  <p className="font-semibold text-emerald-900 dark:text-emerald-100">
+                    {eligibility.canDeleteWithReportCascade
+                      ? "If you delete student and all records"
+                      : "If you go ahead with delete"}
+                  </p>
+                  <ul className="mt-1 list-inside list-disc space-y-1 text-emerald-950/90 dark:text-emerald-100/90">
+                    {eligibility.includedWithDeleteLines.map((line, i) => (
+                      <li key={`i-${i}`}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <p className="text-slate-500 dark:text-zinc-400">
+                {financeClear
+                  ? "A fee plan by itself is fine. Only saved school fees, receipts, or teacher notes can pause a simple remove."
+                  : "You can hide this student anytime — fees and receipts stay on file for your records."}
+              </p>
+
+              {eligibility.canArchiveInstead ? (
+                <p className="rounded-md bg-slate-100 px-3 py-2 text-slate-700 dark:bg-zinc-800 dark:text-zinc-200">
+                  <span className="font-semibold">Hide student (keep records): </span>
+                  {!financeClear
+                    ? "They drop off this list, but fees, receipts, scores, and notes all stay where they are."
+                    : "They drop off this list and teacher notes stay too — nothing is wiped away."}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <button
             type="button"
             onClick={onCancel}
@@ -81,18 +196,80 @@ function DeleteConfirmDialog({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isPending}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
-          >
-            {isPending ? "Deleting…" : "Delete"}
-          </button>
+          {eligibility?.canArchiveInstead && onArchiveStudent ? (
+            <button
+              type="button"
+              onClick={onArchiveStudent}
+              disabled={archiveDisabled}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              {isPending ? "Please wait…" : "Hide student (keep records)"}
+            </button>
+          ) : null}
+          {eligibility?.canDeleteWithReportCascade &&
+          onConfirmDeleteWithReports ? (
+            <button
+              type="button"
+              onClick={onConfirmDeleteWithReports}
+              disabled={cascadeDisabled}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+            >
+              {isPending
+                ? "Removing…"
+                : "Delete student and all records"}
+            </button>
+          ) : null}
+          {!eligibility?.canDeleteWithReportCascade ? (
+            <button
+              type="button"
+              onClick={onConfirmDelete}
+              disabled={simpleDeleteDisabled}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+            >
+              {isPending ? "Removing…" : "Delete student"}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
   );
+}
+
+function useDeleteStudentEligibility(studentId: string, dialogOpen: boolean) {
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const [eligibility, setEligibility] =
+    useState<StudentDeletionEligibility | null>(null);
+  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      setEligibility(null);
+      setEligibilityError(null);
+      setEligibilityLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setEligibilityLoading(true);
+    setEligibilityError(null);
+    setEligibility(null);
+
+    void getStudentDeletionEligibility(studentId).then((res) => {
+      if (cancelled) return;
+      setEligibilityLoading(false);
+      if (!res.ok) {
+        setEligibilityError(res.error);
+        return;
+      }
+      setEligibility(res.eligibility);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dialogOpen, studentId]);
+
+  return { eligibilityLoading, eligibility, eligibilityError };
 }
 
 export interface StudentRowProps {
@@ -148,6 +325,9 @@ export function StudentRow({
   const [isPending, startTransition] = useTransition();
   const [approvalPending, setApprovalPending] = useState(false);
 
+  const { eligibilityLoading, eligibility, eligibilityError } =
+    useDeleteStudentEligibility(student.id, showDeleteConfirm);
+
   const approvalStatus = student.approval_status ?? "approved";
   const canApproveOrReject = approvalStatus === "pending";
 
@@ -182,6 +362,64 @@ export function StudentRow({
       const result = wrapped.result;
       if (result.error) {
         setError(result.error);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      setError(null);
+      setShowDeleteConfirm(false);
+      onDeleted?.();
+    });
+  }
+
+  function handleDeleteWithReports() {
+    startTransition(async () => {
+      const wrapped = await enqueueOrRun({
+        kind: "delete-student",
+        payload: {
+          _targetStudentId: student.id,
+          removeReportCardData: true,
+        },
+        run: () =>
+          deleteStudent(student.id, { removeReportCardData: true }),
+        hint: {
+          label: `Delete · ${student.full_name}`,
+          students: {
+            tempStudentId: student.id,
+            fullName: student.full_name,
+            classId: student.class_id ?? null,
+            parentPhone: student.parent_phone ?? null,
+            op: "delete",
+          },
+        },
+      });
+      if (!wrapped.ok) {
+        setError(wrapped.error);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      if (wrapped.queued) {
+        setError(null);
+        setShowDeleteConfirm(false);
+        onDeleted?.();
+        return;
+      }
+      const result = wrapped.result;
+      if (result.error) {
+        setError(result.error);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      setError(null);
+      setShowDeleteConfirm(false);
+      onDeleted?.();
+    });
+  }
+
+  function handleArchiveStudent() {
+    startTransition(async () => {
+      const res = await archiveStudent(student.id);
+      if (res.error) {
+        setError(res.error);
         setShowDeleteConfirm(false);
         return;
       }
@@ -362,7 +600,12 @@ export function StudentRow({
               studentName={student.full_name}
               isPending={isPending}
               onCancel={() => setShowDeleteConfirm(false)}
-              onConfirm={handleDelete}
+              onConfirmDelete={handleDelete}
+              onConfirmDeleteWithReports={handleDeleteWithReports}
+              onArchiveStudent={handleArchiveStudent}
+              eligibilityLoading={eligibilityLoading}
+              eligibility={eligibility}
+              eligibilityError={eligibilityError}
             />
           </td>
         </tr>
@@ -407,6 +650,9 @@ export function StudentCard({
   const [isPending, startTransition] = useTransition();
   const [approvalPending, setApprovalPending] = useState(false);
 
+  const { eligibilityLoading, eligibility, eligibilityError } =
+    useDeleteStudentEligibility(student.id, showDeleteConfirm);
+
   const approvalStatus = student.approval_status ?? "approved";
   const canApproveOrReject = approvalStatus === "pending";
 
@@ -441,6 +687,64 @@ export function StudentCard({
       const result = wrapped.result;
       if (result.error) {
         setError(result.error);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      setError(null);
+      setShowDeleteConfirm(false);
+      onDeleted?.();
+    });
+  }
+
+  function handleDeleteWithReports() {
+    startTransition(async () => {
+      const wrapped = await enqueueOrRun({
+        kind: "delete-student",
+        payload: {
+          _targetStudentId: student.id,
+          removeReportCardData: true,
+        },
+        run: () =>
+          deleteStudent(student.id, { removeReportCardData: true }),
+        hint: {
+          label: `Delete · ${student.full_name}`,
+          students: {
+            tempStudentId: student.id,
+            fullName: student.full_name,
+            classId: student.class_id ?? null,
+            parentPhone: student.parent_phone ?? null,
+            op: "delete",
+          },
+        },
+      });
+      if (!wrapped.ok) {
+        setError(wrapped.error);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      if (wrapped.queued) {
+        setError(null);
+        setShowDeleteConfirm(false);
+        onDeleted?.();
+        return;
+      }
+      const result = wrapped.result;
+      if (result.error) {
+        setError(result.error);
+        setShowDeleteConfirm(false);
+        return;
+      }
+      setError(null);
+      setShowDeleteConfirm(false);
+      onDeleted?.();
+    });
+  }
+
+  function handleArchiveStudent() {
+    startTransition(async () => {
+      const res = await archiveStudent(student.id);
+      if (res.error) {
+        setError(res.error);
         setShowDeleteConfirm(false);
         return;
       }
@@ -630,7 +934,12 @@ export function StudentCard({
           studentName={student.full_name}
           isPending={isPending}
           onCancel={() => setShowDeleteConfirm(false)}
-          onConfirm={handleDelete}
+          onConfirmDelete={handleDelete}
+          onConfirmDeleteWithReports={handleDeleteWithReports}
+          onArchiveStudent={handleArchiveStudent}
+          eligibilityLoading={eligibilityLoading}
+          eligibility={eligibility}
+          eligibilityError={eligibilityError}
         />
       ) : null}
 

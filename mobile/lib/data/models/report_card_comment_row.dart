@@ -15,6 +15,8 @@ class ReportCardCommentRow {
     this.calculatedScore,
     this.calculatedGrade,
     this.position,
+    this.exam1ScoreOverridden,
+    this.exam2ScoreOverridden,
   });
 
   final String id;
@@ -31,12 +33,22 @@ class ReportCardCommentRow {
   final double? calculatedScore;
   final String? calculatedGrade;
   final int? position;
+  final bool? exam1ScoreOverridden;
+  final bool? exam2ScoreOverridden;
 
   factory ReportCardCommentRow.fromJson(Map<String, dynamic> j) {
     double? d(dynamic v) =>
         v == null ? null : (v is num ? v.toDouble() : double.tryParse('$v'));
-    int? i(dynamic v) =>
-        v == null ? null : (v is int ? v : int.tryParse('$v'));
+    int? i(dynamic v) => v == null ? null : (v is int ? v : int.tryParse('$v'));
+    bool? boolOrNull(dynamic v) {
+      if (v == null) return null;
+      if (v is bool) return v;
+      if (v is num) return v != 0;
+      final s = '$v'.trim().toLowerCase();
+      if (s == 'true' || s == 't' || s == '1') return true;
+      if (s == 'false' || s == 'f' || s == '0') return false;
+      return null;
+    }
 
     return ReportCardCommentRow(
       id: j['id'] as String,
@@ -45,9 +57,8 @@ class ReportCardCommentRow {
           ? (j['subject'] as String).trim()
           : 'Subject',
       term: (j['term'] as String?) ?? '—',
-      academicYear: j['academic_year'] == null
-          ? '—'
-          : j['academic_year'].toString(),
+      academicYear:
+          j['academic_year'] == null ? '—' : j['academic_year'].toString(),
       status: (j['status'] as String?) ?? 'draft',
       comment: j['comment'] as String?,
       scorePercent: d(j['score_percent']),
@@ -57,6 +68,18 @@ class ReportCardCommentRow {
       calculatedScore: d(j['calculated_score']),
       calculatedGrade: j['calculated_grade'] as String?,
       position: i(j['position']),
+      exam1ScoreOverridden: boolOrNull(j['exam1_score_overridden']),
+      exam2ScoreOverridden: boolOrNull(j['exam2_score_overridden']),
     );
+  }
+
+  /// Never throws; skips rows that cannot be parsed (keeps Results tab resilient).
+  static ReportCardCommentRow? tryFromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    try {
+      return ReportCardCommentRow.fromJson(Map<String, dynamic>.from(raw));
+    } catch (_) {
+      return null;
+    }
   }
 }

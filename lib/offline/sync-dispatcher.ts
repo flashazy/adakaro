@@ -250,12 +250,16 @@ async function dispatchDeleteStudent(
   if (!studentId) {
     return { ok: false, error: "Missing target student id.", permanent: true };
   }
+  const removeReportCardData = Boolean(p["removeReportCardData"]);
   let raw: AnyActionResult;
   try {
     const mod = await import(
       "@/app/(dashboard)/dashboard/students/actions"
     );
-    raw = (await mod.deleteStudent(studentId)) as AnyActionResult;
+    raw = (await mod.deleteStudent(
+      studentId,
+      removeReportCardData ? { removeReportCardData: true } : undefined
+    )) as AnyActionResult;
   } catch (e) {
     return {
       ok: false,

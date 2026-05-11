@@ -101,7 +101,8 @@ export default async function StudentsPage({
   let studentsQuery = supabase
     .from("students")
     .select(STUDENTS_DASHBOARD_LIST_SELECT)
-    .eq("school_id", schoolId);
+    .eq("school_id", schoolId)
+    .neq("status", "inactive");
 
   if (approvalFilter === "approved") {
     studentsQuery = studentsQuery.eq("approval_status", "approved");

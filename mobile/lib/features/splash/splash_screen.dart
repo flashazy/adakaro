@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -13,6 +15,8 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  static const _bootstrapTimeout = Duration(seconds: 28);
+
   @override
   void initState() {
     super.initState();
@@ -23,16 +27,48 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
 
-    final session = Supabase.instance.client.auth.currentSession;
-    final user = session?.user;
-    if (user == null) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
-      );
-      return;
-    }
+    final client = Supabase.instance.client;
 
-    await navigateAfterAuth(context, user);
+    try {
+      final session = client.auth.currentSession;
+      final user = session?.user;
+      if (user == null) {
+        _toLogin();
+        return;
+      }
+
+      await navigateAfterAuth(context, user).timeout(_bootstrapTimeout);
+    } on TimeoutException catch (e) {
+      debugPrint('Splash: bootstrap timed out: $e');
+      await _signOutBestEffort(client);
+      if (!mounted) return;
+      _toLogin(
+        'Connection timed out. Check Wi‑Fi or that the emulator can reach the internet, then sign in.',
+      );
+    } catch (e, st) {
+      debugPrint('Splash: bootstrap failed: $e\n$st');
+      await _signOutBestEffort(client);
+      if (!mounted) return;
+      _toLogin(
+        'Could not reach Adakaro. On Android Emulator: cold boot, set DNS 8.8.8.8, or check VPN/firewall. Then sign in.',
+      );
+    }
+  }
+
+  Future<void> _signOutBestEffort(SupabaseClient client) async {
+    try {
+      await client.auth.signOut();
+    } catch (_) {}
+  }
+
+  void _toLogin([String? recoveryMessage]) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => recoveryMessage == null || recoveryMessage.isEmpty
+            ? const LoginScreen()
+            : LoginScreen(sessionRecoveryMessage: recoveryMessage),
+      ),
+    );
   }
 
   @override

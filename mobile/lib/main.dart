@@ -2,10 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/auth/auth_login_diagnostics.dart';
+import 'core/config/clear_local_supabase_cache.dart';
 import 'core/config/env.dart';
+import 'core/network/adakaro_debug_http_client.dart';
 
 /// Values passed with `--dart-define` (non-empty entries win over dotenv files).
 Map<String, String> _dartDefineEnv() {
@@ -38,9 +42,30 @@ Future<void> main() async {
 
   await _loadDotenv();
 
+  const clearAuthCache =
+      bool.fromEnvironment('CLEAR_AUTH_CACHE', defaultValue: false);
+  if (clearAuthCache) {
+    await clearLocalSupabaseAuthCache(supabaseUrl: Env.supabaseUrl);
+    if (kDebugMode) {
+      debugPrint(
+        'Adakaro: cleared local Supabase auth cache (CLEAR_AUTH_CACHE=true)',
+      );
+    }
+  }
+
+  if (kDebugMode) {
+    debugPrint('Adakaro: effective SUPABASE_URL=${Env.supabaseUrl}');
+    debugPrint(
+      'Adakaro: SUPABASE_ANON_KEY set=${Env.supabaseAnonKey.isNotEmpty} '
+      'length=${Env.supabaseAnonKey.length}',
+    );
+  }
+
   if (kDebugMode && !Env.isConfigured) {
     debugPrint(
-      'Adakaro: Supabase keys missing. Use .env / .env.example assets or --dart-define.',
+      'Adakaro: Supabase anon key missing. URL may use [SupabaseConfig] default; '
+      'set SUPABASE_ANON_KEY in mobile/.env (same as web NEXT_PUBLIC_SUPABASE_ANON_KEY) '
+      'or --dart-define.',
     );
   }
 
@@ -49,15 +74,24 @@ Future<void> main() async {
     return;
   }
 
+  if (kDebugMode) {
+    debugPrint('Adakaro: Supabase.initialize → ${Env.supabaseUrl}');
+  }
+
   await Supabase.initialize(
     url: Env.supabaseUrl,
     anonKey: Env.supabaseAnonKey,
+    httpClient: AdakaroDebugHttpClient(http.Client()),
     authOptions: const FlutterAuthClientOptions(
       /// Opens recovery / OAuth sessions when the app is launched from an email
       /// link or custom URL scheme (see README).
       detectSessionInUri: true,
     ),
   );
+
+  if (kDebugMode) {
+    AuthLoginDiagnostics.logStartupEnv();
+  }
 
   runApp(const AdakaroApp());
 }
@@ -82,16 +116,16 @@ class _MissingConfigApp extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Add your public Supabase URL and anon key using either:\n\n'
-                  '• Files: `flutter_dotenv` loads `.env.example` from assets, then an optional '
-                  'bundled `.env` (list `- .env` under `flutter: assets:` in pubspec.yaml after '
-                  '`cp .env.example .env`). Precedence: `--dart-define` > `.env` > `.env.example`.\n\n'
-                  '• CLI: flutter run '
-                  '--dart-define=SUPABASE_URL=... '
-                  '--dart-define=SUPABASE_ANON_KEY=...\n\n'
-                  '`--dart-define` always wins when set.\n\n'
-                  'Optional: --dart-define=AUTH_REDIRECT_URL=adakaro://auth-callback\n'
-                  'for in-app password reset (see mobile/README.md).',
+                  'The production Supabase URL is baked into `lib/config/supabase_config.dart` '
+                  'and bundled `.env.example` as a fallback. You still need the **anon public key** '
+                  '(same as web `NEXT_PUBLIC_SUPABASE_ANON_KEY`):\n\n'
+                  '• Add `SUPABASE_ANON_KEY=...` to `mobile/.env` (copy from web `.env.local`), or\n'
+                  '• `flutter run --dart-define=SUPABASE_ANON_KEY=...`\n\n'
+                  'Precedence: `--dart-define` > `.env` > `supabase_config.dart` (URL only).\n\n'
+                  'Clear cached auth session: '
+                  '`flutter run --dart-define=CLEAR_AUTH_CACHE=true` (then remove the flag).\n\n'
+                  'Optional: `--dart-define=AUTH_REDIRECT_URL=adakaro://auth-callback` '
+                  'for in-app password reset.',
                 ),
               ],
             ),

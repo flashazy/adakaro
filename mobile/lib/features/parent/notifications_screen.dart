@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/empty_state.dart';
 
-/// Placeholder for in-app / push notifications. The web app uses broadcasts and
-/// other channels; wiring those here can follow the same Supabase RLS rules.
+/// Placeholder inbox for school messages. Use home quick actions for class chat;
+/// system-wide messages can share this tab later.
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({
     super.key,
@@ -15,11 +15,13 @@ class NotificationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = EmptyState(
-      icon: Icons.notifications_active_outlined,
-      title: embedded ? 'No alerts yet' : 'Notifications',
-      message:
-          'School announcements and fee reminders will show here when that feature is enabled. '
-          'Until then, your school may reach you by email or SMS.',
+      icon: Icons.chat_bubble_outline_rounded,
+      title: embedded ? 'No messages here yet' : 'Messages',
+      message: embedded
+          ? 'Use Home → Messages to chat with your child\'s teacher. School-wide '
+              'announcements will show here when available.'
+          : 'School announcements and fee reminders will show here when enabled. '
+              'Until then, your school may reach you by email or SMS.',
     );
 
     if (embedded) {
@@ -27,7 +29,7 @@ class NotificationsScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(title: const Text('Messages')),
       body: content,
     );
   }

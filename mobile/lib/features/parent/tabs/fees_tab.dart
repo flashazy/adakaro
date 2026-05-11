@@ -340,9 +340,8 @@ class _FeeLineTile extends StatelessWidget {
                   formatCurrency(balance, cur),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w900,
-                        color: balance > 0
-                            ? AppColors.warning
-                            : AppColors.success,
+                        color:
+                            balance > 0 ? AppColors.warning : AppColors.success,
                       ),
                 ),
                 const SizedBox(height: 6),

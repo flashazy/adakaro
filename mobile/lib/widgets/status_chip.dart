@@ -11,6 +11,7 @@ class StatusChip extends StatelessWidget {
     required this.background,
     this.borderColor,
     this.icon,
+    this.compact = false,
   });
 
   final String label;
@@ -18,11 +19,16 @@ class StatusChip extends StatelessWidget {
   final Color background;
   final Color? borderColor;
   final IconData? icon;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final pad = compact
+        ? const EdgeInsets.symmetric(horizontal: 7, vertical: 3)
+        : const EdgeInsets.symmetric(horizontal: 10, vertical: 6);
+    final iconSize = compact ? 12.0 : 14.0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: pad,
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
@@ -35,15 +41,16 @@ class StatusChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 14, color: foreground),
-            const SizedBox(width: 4),
+            Icon(icon, size: iconSize, color: foreground),
+            SizedBox(width: compact ? 3 : 4),
           ],
           Text(
             label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: foreground,
-                  letterSpacing: 0.2,
+                  letterSpacing: compact ? 0.05 : 0.2,
+                  fontSize: compact ? 10 : null,
                 ),
           ),
         ],
@@ -51,7 +58,31 @@ class StatusChip extends StatelessWidget {
     );
   }
 
-  /// Outstanding balance (amber).
+  /// Outstanding balance — calm, neutral tone for low-stress surfaces.
+  static StatusChip balanceCalm(String text, {bool compact = false}) {
+    return StatusChip(
+      label: text,
+      foreground: const Color(0xFF44403C),
+      background: const Color(0xFFF5F5F4),
+      borderColor: const Color(0xFFE7E5E4),
+      icon: Icons.account_balance_wallet_outlined,
+      compact: compact,
+    );
+  }
+
+  /// Home privacy: balance amount not shown until parent reveals.
+  static StatusChip balancePrivate({bool compact = false}) {
+    return StatusChip(
+      label: compact ? 'Private' : 'Balance private',
+      foreground: AppColors.textSecondary,
+      background: const Color(0xFFF8FAFC),
+      borderColor: AppColors.cardBorder,
+      icon: Icons.lock_outline_rounded,
+      compact: compact,
+    );
+  }
+
+  /// Strong “due” state (prefer [balanceCalm] on calming surfaces like parent home).
   static StatusChip balanceDue(String text) {
     return StatusChip(
       label: text,
@@ -63,13 +94,14 @@ class StatusChip extends StatelessWidget {
   }
 
   /// Paid up / cleared (green).
-  static StatusChip paidUp() {
+  static StatusChip paidUp({bool compact = false}) {
     return StatusChip(
-      label: 'Paid up',
+      label: compact ? 'Paid' : 'Paid up',
       foreground: const Color(0xFF047857),
       background: AppColors.successBg,
       borderColor: AppColors.successBorder,
       icon: Icons.check_circle_rounded,
+      compact: compact,
     );
   }
 
