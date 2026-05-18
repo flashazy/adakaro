@@ -33,6 +33,10 @@ import type {
   StudentReportRow,
 } from "../report-cards/report-card-types";
 import { termDateRange } from "../report-cards/report-card-dates";
+import {
+  emptyAttendanceRollup,
+  tallyAttendanceByStudent,
+} from "@/lib/attendance-counts";
 import { isMissingColumnSchemaError } from "../report-cards/report-card-schema-compat";
 import {
   getStudentEnrolledSubjects,
@@ -825,10 +829,22 @@ async function loadClassReportCards(
   });
   const attendanceByStudent = new Map<
     string,
-    { present: number; absent: number; late: number }
+    {
+      present: number;
+      absent: number;
+      late: number;
+      ill: number;
+      permitted: number;
+    }
   >();
   for (const sid of studentIds) {
-    attendanceByStudent.set(sid, { present: 0, absent: 0, late: 0 });
+    attendanceByStudent.set(sid, {
+      present: 0,
+      absent: 0,
+      late: 0,
+      ill: 0,
+      permitted: 0,
+    });
   }
 
   const { start, end } = termDateRange(gbTerm, params.academicYear);
@@ -858,12 +874,47 @@ async function loadClassReportCards(
       status: "present" | "absent" | "late";
     }[]
   );
-  for (const a of attRows) {
-    const b = attendanceByStudent.get(a.student_id);
-    if (!b) continue;
-    if (a.status === "present") b.present += 1;
-    else if (a.status === "absent") b.absent += 1;
-    else if (a.status === "late") b.late += 1;
+  const healthByStudent: Record<
+    string,
+    { status: "ill" | "permitted"; marked_at: string }
+  > = {};
+  if (studentIds.length > 0) {
+    const { data: healthRows } = await admin
+      .from("student_attendance_status")
+      .select("student_id, status, marked_at")
+      .in("student_id", studentIds);
+    for (const h of (healthRows ?? []) as {
+      student_id: string;
+      status: string;
+      marked_at: string;
+    }[]) {
+      if (h.status === "ill" || h.status === "permitted") {
+        healthByStudent[h.student_id] = {
+          status: h.status,
+          marked_at: h.marked_at,
+        };
+      }
+    }
+  }
+
+  const tallies = tallyAttendanceByStudent(
+    attRows.map((a) => ({
+      student_id: a.student_id,
+      status: a.status,
+      attendance_date: a.attendance_date,
+    })),
+    healthByStudent
+  );
+
+  for (const sid of studentIds) {
+    const t = tallies[sid] ?? emptyAttendanceRollup();
+    attendanceByStudent.set(sid, {
+      present: t.present,
+      absent: t.absent,
+      late: t.late,
+      ill: t.ill,
+      permitted: t.permitted,
+    });
   }
 
   const teacherIds = [
@@ -1086,6 +1137,8 @@ async function loadClassReportCards(
       present: 0,
       absent: 0,
       late: 0,
+      ill: 0,
+      permitted: 0,
     };
 
     const streamLabel =
@@ -1121,6 +1174,8 @@ async function loadClassReportCards(
         present: attendance.present,
         absent: attendance.absent,
         late: attendance.late,
+        ill: attendance.ill,
+        permitted: attendance.permitted,
         daysInTermLabel: `${start} – ${end}`,
       },
       summary,

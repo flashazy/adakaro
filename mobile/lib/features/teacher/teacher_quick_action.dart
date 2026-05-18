@@ -7,9 +7,6 @@ enum TeacherQuickDestination {
   marks,
   documents,
 
-  /// In-app drawer / sheet listing assignments (not bottom-nav).
-  classesSubjects,
-
   /// Subject statistics (web “Evaluate Subject”).
   evaluateSubject,
 

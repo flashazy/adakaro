@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import { ClassTeacherStudentHealthButtons } from "@/components/class-teacher/class-teacher-student-health-buttons";
 import type {
   ClassTeacherAttendanceRow,
   ClassTeacherGradeRow,
@@ -422,7 +423,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
         headingId="class-teacher-students-heading"
         panelId="class-teacher-students-panel"
         title="Students and guardian contacts"
-        description="Linked parents or guardians from the school directory."
+        description="Mark sick or permitted absence; subject teachers see these on attendance."
       >
         <TableToolbar
           searchId="class-teacher-students-search"
@@ -446,14 +447,15 @@ export function ClassTeacherClassDetailTablesClient(props: {
                 <th className="px-4 py-2">Guardian name(s)</th>
                 <th className="px-4 py-2">Phone</th>
                 <th className="px-4 py-2">Email</th>
-                <th className="px-4 py-2 text-center">Actions</th>
+                <th className="px-4 py-2 text-center">Health / excused</th>
+                <th className="px-4 py-2 text-center">Message</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
               {students.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-6 text-center text-slate-500 dark:text-zinc-400"
                   >
                     No active students in this class.
@@ -462,7 +464,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
               ) : filteredStudents.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-6 text-center text-slate-500 dark:text-zinc-400"
                   >
                     No students match your search.
@@ -485,6 +487,12 @@ export function ClassTeacherClassDetailTablesClient(props: {
                     </td>
                     <td className="px-4 py-2 text-slate-700 dark:text-zinc-300">
                       {s.parentEmail ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 text-center align-middle">
+                      <ClassTeacherStudentHealthButtons
+                        studentId={s.studentId}
+                        healthStatus={s.healthStatus}
+                      />
                     </td>
                     <td className="px-4 py-2 text-center align-middle">
                       {s.linkedParentId ? (

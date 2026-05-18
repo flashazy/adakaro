@@ -22,6 +22,10 @@ import {
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { resolveSchoolDisplayTimezone } from "@/lib/school-timezone";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import {
+  isStudentHealthAttendanceStatus,
+  type StudentHealthAttendanceStatus,
+} from "@/lib/student-attendance-status";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -334,10 +338,37 @@ export async function loadAttendanceData(
     ({ id, full_name }) => ({ id, full_name })
   );
 
+  const healthStatusByStudent: Record<string, StudentHealthAttendanceStatus> =
+    {};
+  if (students.length > 0) {
+    const { data: healthRows, error: healthErr } = await supabase
+      .from("student_attendance_status")
+      .select("student_id, status")
+      .in(
+        "student_id",
+        students.map((s) => s.id)
+      );
+    if (healthErr) {
+      console.error(
+        "[loadAttendanceData] student_attendance_status",
+        healthErr.message
+      );
+    }
+    for (const h of (healthRows ?? []) as {
+      student_id: string;
+      status: string;
+    }[]) {
+      if (isStudentHealthAttendanceStatus(h.status)) {
+        healthStatusByStudent[h.student_id] = h.status;
+      }
+    }
+  }
+
   return {
     ok: true as const,
     students,
     attendance: byStudent,
+    healthStatusByStudent,
   };
 }
 
@@ -437,6 +468,35 @@ export async function saveAttendanceAction(input: {
   const scopeKey = subjectId ? subjectId : "";
 
   const studentIds = uniqueRecords.map((r) => r.studentId);
+
+  const healthLockedIds = new Set<string>();
+  if (studentIds.length > 0) {
+    const { data: healthRows, error: healthErr } = await supabase
+      .from("student_attendance_status")
+      .select("student_id, status")
+      .in("student_id", studentIds);
+    if (healthErr) {
+      console.error(
+        "[saveAttendanceAction] student_attendance_status",
+        healthErr.message
+      );
+    }
+    for (const h of (healthRows ?? []) as {
+      student_id: string;
+      status: string;
+    }[]) {
+      if (isStudentHealthAttendanceStatus(h.status)) {
+        healthLockedIds.add(h.student_id);
+      }
+    }
+  }
+
+  const recordsToPersist = uniqueRecords.map((r) =>
+    healthLockedIds.has(r.studentId)
+      ? { studentId: r.studentId, status: "absent" as AttendanceStatus }
+      : r
+  );
+
   const { data: existingRows, error: existingErr } = await admin
     .from("teacher_attendance")
     .select("id, student_id, status")
@@ -479,7 +539,7 @@ export async function saveAttendanceAction(input: {
   const toInsert: typeof uniqueRecords = [];
   const toUpdate: { id: string; status: AttendanceStatus }[] = [];
 
-  for (const r of uniqueRecords) {
+  for (const r of recordsToPersist) {
     const ex = existingByStudent.get(r.studentId);
     const nextNorm = normStatus(r.status);
     if (!ex) {
@@ -494,7 +554,7 @@ export async function saveAttendanceAction(input: {
       classId: input.classId,
       date: dateOnly,
       subjectId,
-      recordCount: uniqueRecords.length,
+      recordCount: recordsToPersist.length,
     });
     revalidatePath("/teacher-dashboard");
     revalidatePath("/teacher-dashboard/attendance");
@@ -506,9 +566,10 @@ export async function saveAttendanceAction(input: {
     date: dateOnly,
     subjectId,
     scopeKey,
-    recordCount: uniqueRecords.length,
+    recordCount: recordsToPersist.length,
     insertCount: toInsert.length,
     updateCount: toUpdate.length,
+    healthLockedCount: healthLockedIds.size,
   });
 
   const insertPayload = toInsert.map((r) => ({
@@ -669,6 +730,10 @@ export async function loadAttendanceHistory(
   }
   const ids = [...new Set(list.map((r) => r.student_id))];
   const nameById = new Map<string, string>();
+  const healthByStudent: Record<
+    string,
+    { status: StudentHealthAttendanceStatus; marked_at: string }
+  > = {};
   if (ids.length > 0) {
     const { data: studs } = await orderStudentsByGenderThenName(
       admin.from("students").select("id, full_name").in("id", ids)
@@ -676,6 +741,29 @@ export async function loadAttendanceHistory(
     for (const s of studs ?? []) {
       const row = s as { id: string; full_name: string };
       nameById.set(row.id, row.full_name);
+    }
+
+    const { data: healthRows, error: healthErr } = await supabase
+      .from("student_attendance_status")
+      .select("student_id, status, marked_at")
+      .in("student_id", ids);
+    if (healthErr) {
+      console.error(
+        "[loadAttendanceHistory] student_attendance_status",
+        healthErr.message
+      );
+    }
+    for (const h of (healthRows ?? []) as {
+      student_id: string;
+      status: string;
+      marked_at: string;
+    }[]) {
+      if (isStudentHealthAttendanceStatus(h.status)) {
+        healthByStudent[h.student_id] = {
+          status: h.status,
+          marked_at: h.marked_at,
+        };
+      }
     }
   }
 
@@ -723,6 +811,7 @@ export async function loadAttendanceHistory(
     >,
     lastModifiedIsoByDate: lastModifiedForDates,
     displayTimeZone,
+    healthByStudent,
   };
 }
 

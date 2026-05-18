@@ -45,6 +45,7 @@ export interface Database {
           password_forced_reset: boolean;
           must_change_password: boolean;
           teacher_temp_password_expires_at: string | null;
+          last_sign_in_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -61,6 +62,7 @@ export interface Database {
           password_forced_reset?: boolean;
           must_change_password?: boolean;
           teacher_temp_password_expires_at?: string | null;
+          last_sign_in_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -77,6 +79,7 @@ export interface Database {
           password_forced_reset?: boolean;
           must_change_password?: boolean;
           teacher_temp_password_expires_at?: string | null;
+          last_sign_in_at?: string | null;
           updated_at?: string;
         };
       };
@@ -195,6 +198,186 @@ export interface Database {
           {
             foreignKeyName: "academic_reports_generated_by_fkey";
             columns: ["generated_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      duty_book_events: {
+        Row: {
+          id: string;
+          report_id: string;
+          school_id: string;
+          event_time: string;
+          event_type: string;
+          description: string;
+          recorded_by_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          report_id: string;
+          school_id: string;
+          event_time: string;
+          event_type: string;
+          description: string;
+          recorded_by_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          report_id?: string;
+          school_id?: string;
+          event_time?: string;
+          event_type?: string;
+          description?: string;
+          recorded_by_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "duty_book_events_report_id_fkey";
+            columns: ["report_id"];
+            referencedRelation: "duty_book_reports";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "duty_book_events_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "duty_book_events_recorded_by_id_fkey";
+            columns: ["recorded_by_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      duty_book_reports: {
+        Row: {
+          id: string;
+          school_id: string;
+          report_date: string;
+          events: Json;
+          remarks: string | null;
+          head_teacher_comment: string | null;
+          head_teacher_signature: string | null;
+          head_teacher_id: string | null;
+          signed_at: string | null;
+          created_by: string;
+          remarks_last_modified_by_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          report_date: string;
+          events?: Json;
+          remarks?: string | null;
+          head_teacher_comment?: string | null;
+          head_teacher_signature?: string | null;
+          head_teacher_id?: string | null;
+          signed_at?: string | null;
+          created_by: string;
+          remarks_last_modified_by_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          school_id?: string;
+          report_date?: string;
+          events?: Json;
+          remarks?: string | null;
+          head_teacher_comment?: string | null;
+          head_teacher_signature?: string | null;
+          head_teacher_id?: string | null;
+          signed_at?: string | null;
+          created_by?: string;
+          remarks_last_modified_by_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "duty_book_reports_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "duty_book_reports_head_teacher_id_fkey";
+            columns: ["head_teacher_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "duty_book_reports_created_by_fkey";
+            columns: ["created_by"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "duty_book_reports_remarks_last_modified_by_id_fkey";
+            columns: ["remarks_last_modified_by_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      teacher_duty_assignments: {
+        Row: {
+          id: string;
+          school_id: string;
+          teacher_id: string;
+          start_date: string;
+          end_date: string;
+          is_active: boolean;
+          created_by: string | null;
+          revoked_by: string | null;
+          revoked_at: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          teacher_id: string;
+          start_date: string;
+          end_date: string;
+          is_active?: boolean;
+          created_by?: string | null;
+          revoked_by?: string | null;
+          revoked_at?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          school_id?: string;
+          teacher_id?: string;
+          start_date?: string;
+          end_date?: string;
+          is_active?: boolean;
+          created_by?: string | null;
+          revoked_by?: string | null;
+          revoked_at?: string | null;
+          notes?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "teacher_duty_assignments_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "teacher_duty_assignments_teacher_id_fkey";
+            columns: ["teacher_id"];
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
@@ -362,6 +545,7 @@ export interface Database {
           logo_url: string | null;
           school_stamp_url: string | null;
           head_teacher_signature_url: string | null;
+          head_teacher_id: string | null;
           currency: string;
           plan: string;
           status: SchoolStatus;
@@ -398,6 +582,7 @@ export interface Database {
           logo_url?: string | null;
           school_stamp_url?: string | null;
           head_teacher_signature_url?: string | null;
+          head_teacher_id?: string | null;
           currency?: string;
           plan?: string;
           status?: SchoolStatus;
@@ -433,6 +618,7 @@ export interface Database {
           logo_url?: string | null;
           school_stamp_url?: string | null;
           head_teacher_signature_url?: string | null;
+          head_teacher_id?: string | null;
           currency?: string;
           plan?: string;
           status?: SchoolStatus;
@@ -2235,6 +2421,26 @@ export interface Database {
       };
       is_teacher_for_school: {
         Args: { p_school_id: string };
+        Returns: boolean;
+      };
+      is_school_head_teacher: {
+        Args: { p_school_id: string };
+        Returns: boolean;
+      };
+      can_view_duty_book: {
+        Args: { p_school_id: string };
+        Returns: boolean;
+      };
+      can_sign_duty_book_report: {
+        Args: { p_school_id: string };
+        Returns: boolean;
+      };
+      is_teacher_on_duty: {
+        Args: {
+          p_school_id: string;
+          p_teacher_id?: string;
+          p_on_date?: string;
+        };
         Returns: boolean;
       };
       is_teacher_for_student_by_id: {

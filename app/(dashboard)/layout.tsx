@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { BroadcastBanner } from "@/app/(dashboard)/school-admin/components/BroadcastBanner";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { TeacherDashboardHeader } from "@/components/layout/TeacherDashboardHeader";
+import { getTeacherDutyAssignment } from "@/lib/teacher-on-duty/teacher-duty";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { getDisplayName } from "@/lib/display-name";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { isSchoolAdminBroadcastAudience } from "@/lib/broadcasts/school-admin-audience";
@@ -114,6 +116,19 @@ export default async function DashboardGroupLayout({
     const classTeacherClasses = await fetchClassesWhereUserIsClassTeacher(
       user.id
     );
+
+    const teacherSchoolId = await getSchoolIdForUser(supabase, user.id);
+    let showDutyBookNav = false;
+    if (teacherSchoolId) {
+      const [{ data: isHeadTeacher }, dutyCtx] = await Promise.all([
+        supabase.rpc("is_school_head_teacher", {
+          p_school_id: teacherSchoolId,
+        } as never),
+        getTeacherDutyAssignment(supabase, teacherSchoolId, user.id),
+      ]);
+      showDutyBookNav = Boolean(isHeadTeacher || dutyCtx.isOnDuty);
+    }
+
     return (
       <>
         <SchoolPrimaryCssVars primaryColor={schoolDisplay?.primary_color} />
@@ -135,6 +150,7 @@ export default async function DashboardGroupLayout({
             isCoordinator={isCoordinator}
             showClassTeacherNav={classTeacherClasses.length > 0}
             showDashboardRoleToggle={dualSchoolDashboard}
+            showDutyBookNav={showDutyBookNav}
           />
         </div>
         <div className="min-h-screen max-w-full min-w-0 overflow-x-hidden bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:overflow-visible print:bg-white">

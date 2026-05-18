@@ -1,8 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getSchoolPlanRow } from "@/lib/plan-limits";
-import { FREE_TIER_STUDENT_LIMIT, normalizePlanId } from "@/lib/plans";
+import {
+  FREE_TIER_STUDENT_LIMIT,
+  isPaidPlanId,
+  normalizePlanId,
+  type PlanId,
+} from "@/lib/plans";
+import { resolveSchoolPlanIdForFeatures } from "@/lib/plan-limits";
 
 export interface UpgradeRequestSummary {
   id: string;
@@ -16,7 +21,7 @@ export interface DashboardBlockState {
   blocked: boolean;
   schoolId: string | null;
   /** Authoritative current plan (normalized). */
-  plan: string;
+  plan: PlanId;
   /** Live student head-count for the school. */
   studentCount: number;
   /** The free-tier cap surfaced to UI copy. */
@@ -29,19 +34,34 @@ export interface DashboardBlockState {
 
 const FREE_LIMIT = FREE_TIER_STUDENT_LIMIT ?? 20;
 
+async function loadAuthoritativePlan(
+  supabase: SupabaseClient<Database>,
+  schoolId: string,
+  admin: SupabaseClient<Database> | null
+): Promise<PlanId> {
+  const reader = admin ?? supabase;
+  const { data, error } = await reader
+    .from("schools")
+    .select("plan")
+    .eq("id", schoolId)
+    .maybeSingle();
+
+  const planRaw = error
+    ? null
+    : (data as { plan: string | null } | null)?.plan;
+
+  return resolveSchoolPlanIdForFeatures(supabase, schoolId, planRaw);
+}
+
 /**
  * Server-side gate evaluated on every dashboard load.
  *
  * Returns `blocked: true` ONLY when:
- *   - the school is currently on the `free` plan, AND
+ *   - the school is on the free plan (not basic / pro / enterprise / "paid"), AND
  *   - the school's live student count is strictly greater than 20.
  *
- * Schools on any paid plan (basic / pro / enterprise) are never blocked,
- * even if they exceed 20 students — paid = unlimited under the new model.
- *
- * Uses the service role for the count + upgrade-request lookup so RLS
- * variations on `students` / `upgrade_requests` cannot accidentally hide
- * the row and let a school slip past the cap.
+ * Paid schools are never blocked by this gate, even with a stale `student_limit`
+ * column still set to 20.
  */
 export async function getDashboardBlockState(
   supabase: SupabaseClient<Database>,
@@ -59,19 +79,18 @@ export async function getDashboardBlockState(
     };
   }
 
-  const planRow = await getSchoolPlanRow(supabase, schoolId);
-  const plan = normalizePlanId(planRow?.plan);
-
-  let studentCount = 0;
-  let pendingRequest: UpgradeRequestSummary | null = null;
-  let lastRejected: UpgradeRequestSummary | null = null;
-
   let admin: SupabaseClient<Database> | null = null;
   try {
     admin = createAdminClient();
   } catch {
     admin = null;
   }
+
+  const plan = await loadAuthoritativePlan(supabase, schoolId, admin);
+
+  let studentCount = 0;
+  let pendingRequest: UpgradeRequestSummary | null = null;
+  let lastRejected: UpgradeRequestSummary | null = null;
 
   const counter = admin ?? supabase;
   const { count, error: countErr } = await counter
@@ -131,7 +150,17 @@ export async function getDashboardBlockState(
     };
   }
 
-  const blocked = plan === "free" && studentCount > FREE_LIMIT;
+  const blocked = !isPaidPlanId(plan) && studentCount > FREE_LIMIT;
+
+  if (process.env.NODE_ENV === "development" && blocked) {
+    console.info("[dashboard-block] school blocked", {
+      schoolId,
+      plan,
+      normalized: normalizePlanId(plan),
+      studentCount,
+      freeLimit: FREE_LIMIT,
+    });
+  }
 
   return {
     blocked,

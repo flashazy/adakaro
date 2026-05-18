@@ -19,7 +19,7 @@ import {
   formatDateRange,
   formatFeeBalanceReminder,
   formatItems,
-  formatAttendance,
+  formatAttendanceFromRollup,
 } from "@/lib/reportFormatter";
 
 export type { ReportCardPreviewData } from "../report-card-preview-types";
@@ -129,11 +129,7 @@ export function ReportCardPreview({
       ? formatItems(data.requiredNextTermItems)
       : "";
 
-  const attendancePresentDays = data.attendance.present + data.attendance.late;
-  const attendanceText = formatAttendance(
-    attendancePresentDays,
-    data.attendance.absent
-  );
+  const attendanceText = formatAttendanceFromRollup(data.attendance);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 border border-slate-200 bg-white p-5 text-slate-900 shadow-sm sm:p-6 print:shadow-none print:border-slate-300">

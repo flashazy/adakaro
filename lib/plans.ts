@@ -58,10 +58,22 @@ export const PLAN_LIMITS = {
   enterprise: { maxAdmins: 999 },
 } as const;
 
+const PAID_PLAN_ALIASES = new Set([
+  "paid",
+  "premium",
+  "plus",
+  "standard",
+  "starter",
+]);
+
 export function normalizePlanId(plan: string | null | undefined): PlanId {
   const p = String(plan ?? "free").toLowerCase().trim();
   if (p === "basic" || p === "pro" || p === "enterprise" || p === "free") {
     return p;
+  }
+  // UI / legacy values (e.g. super-admin "Paid" label stored literally in DB).
+  if (PAID_PLAN_ALIASES.has(p)) {
+    return "basic";
   }
   return "free";
 }
@@ -69,6 +81,11 @@ export function normalizePlanId(plan: string | null | undefined): PlanId {
 /** True when the school is on any paid plan (basic / pro / enterprise). */
 export function isPaidPlanId(plan: string | null | undefined): boolean {
   return normalizePlanId(plan) !== "free";
+}
+
+/** True when the school should not be subject to the free-tier student cap. */
+export function isUnlimitedStudentPlan(plan: string | null | undefined): boolean {
+  return isPaidPlanId(plan);
 }
 
 /** Free-tier student cap surfaced to UI copy / API errors. */

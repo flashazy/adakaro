@@ -668,6 +668,81 @@ export async function removeHeadTeacherSignature(
   };
 }
 
+export async function updateSchoolHeadTeacher(
+  _prev: SchoolSettingsState,
+  formData: FormData
+): Promise<SchoolSettingsState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+
+  const { data: isAdmin, error: adminErr } = await supabase.rpc(
+    "is_school_admin",
+    { p_school_id: schoolId } as never
+  );
+  if (adminErr || !isAdmin) {
+    return { error: "You must be a school admin to assign the head teacher." };
+  }
+
+  const raw = String(formData.get("head_teacher_id") ?? "").trim();
+  const headTeacherId = raw.length > 0 ? raw : null;
+
+  if (headTeacherId) {
+    const admin = getSchoolsAdminOrNull();
+    if (!admin) {
+      return {
+        error:
+          "Could not update school. Check server configuration (service role).",
+      };
+    }
+    const { data: member } = await admin
+      .from("school_members")
+      .select("user_id")
+      .eq("school_id", schoolId)
+      .eq("user_id", headTeacherId)
+      .maybeSingle();
+    const { data: assignment } = await admin
+      .from("teacher_assignments")
+      .select("teacher_id")
+      .eq("school_id", schoolId)
+      .eq("teacher_id", headTeacherId)
+      .maybeSingle();
+    if (!member && !assignment) {
+      return { error: "Selected person is not a teacher at this school." };
+    }
+  }
+
+  const admin = getSchoolsAdminOrNull();
+  if (!admin) {
+    return {
+      error:
+        "Could not update school. Check server configuration (service role).",
+    };
+  }
+
+  const { error } = await admin
+    .from("schools")
+    .update({ head_teacher_id: headTeacherId } as never)
+    .eq("id", schoolId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard/school-settings");
+  revalidatePath("/dashboard/duty-book");
+  return { success: true };
+}
+
 export async function updateSchoolCurrency(
   _prev: SchoolSettingsState,
   formData: FormData

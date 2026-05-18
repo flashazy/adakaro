@@ -33,6 +33,12 @@ import {
 } from "@/lib/student-subject-enrollment-queries";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
 import {
+  emptyAttendanceRollup,
+  tallyAttendanceByStudent,
+  type StudentHealthRecord,
+} from "@/lib/attendance-counts";
+import { isStudentHealthAttendanceStatus } from "@/lib/student-attendance-status";
+import {
   normalizeSchoolLevel,
   type SchoolLevel,
 } from "@/lib/school-level";
@@ -505,7 +511,13 @@ export async function loadStudentsReportData(
       students: StudentReportRow[];
       attendanceByStudent: Record<
         string,
-        { present: number; absent: number; late: number }
+        {
+          present: number;
+          absent: number;
+          late: number;
+          ill: number;
+          permitted: number;
+        }
       >;
       subjectFilterOptions: ReportCardSubjectFilterOption[];
     }
@@ -739,11 +751,43 @@ export async function loadStudentsReportData(
   const { start, end } = termDateRange(termNorm, yearNorm);
   const attendanceByStudent: Record<
     string,
-    { present: number; absent: number; late: number }
+    {
+      present: number;
+      absent: number;
+      late: number;
+      ill: number;
+      permitted: number;
+    }
   > = {};
 
   for (const sid of studentIds) {
-    attendanceByStudent[sid] = { present: 0, absent: 0, late: 0 };
+    attendanceByStudent[sid] = {
+      present: 0,
+      absent: 0,
+      late: 0,
+      ill: 0,
+      permitted: 0,
+    };
+  }
+
+  const healthByStudent: Record<string, StudentHealthRecord | undefined> = {};
+  if (studentIds.length > 0) {
+    const { data: healthRows } = await admin
+      .from("student_attendance_status")
+      .select("student_id, status, marked_at")
+      .in("student_id", studentIds);
+    for (const h of (healthRows ?? []) as {
+      student_id: string;
+      status: string;
+      marked_at: string;
+    }[]) {
+      if (isStudentHealthAttendanceStatus(h.status)) {
+        healthByStudent[h.student_id] = {
+          status: h.status,
+          marked_at: h.marked_at,
+        };
+      }
+    }
   }
 
   const { data: attRowsRaw } = await admin
@@ -763,12 +807,24 @@ export async function loadStudentsReportData(
     }[]
   );
 
-  for (const a of attRows) {
-    const b = attendanceByStudent[a.student_id];
-    if (!b) continue;
-    if (a.status === "present") b.present += 1;
-    else if (a.status === "absent") b.absent += 1;
-    else if (a.status === "late") b.late += 1;
+  const tallies = tallyAttendanceByStudent(
+    attRows.map((a) => ({
+      student_id: a.student_id,
+      status: a.status,
+      attendance_date: a.attendance_date,
+    })),
+    healthByStudent
+  );
+
+  for (const sid of studentIds) {
+    const t = tallies[sid] ?? emptyAttendanceRollup();
+    attendanceByStudent[sid] = {
+      present: t.present,
+      absent: t.absent,
+      late: t.late,
+      ill: t.ill,
+      permitted: t.permitted,
+    };
   }
 
   const students: StudentReportRow[] = (studs as {

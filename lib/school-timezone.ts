@@ -1,6 +1,56 @@
 /** East Africa Time — default when `schools.timezone` is unset */
 export const DEFAULT_SCHOOL_DISPLAY_TIMEZONE = "Africa/Dar_es_Salaam";
 
+/** Fixed UTC offsets (minutes east of UTC) for stable SSR/client formatting. */
+const STABLE_TZ_OFFSET_MINUTES: Record<string, number> = {
+  "Africa/Dar_es_Salaam": 180,
+  "Africa/Nairobi": 180,
+  "Africa/Kampala": 180,
+};
+
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/**
+ * Format an ISO timestamp identically on server and browser (avoids hydration mismatch).
+ * Uses a fixed offset for known school zones instead of Intl ICU differences in Node vs Chrome.
+ */
+export function formatDateTimeStable(
+  iso: string,
+  timeZone: string = DEFAULT_SCHOOL_DISPLAY_TIMEZONE
+): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+
+  const offsetMinutes =
+    STABLE_TZ_OFFSET_MINUTES[timeZone] ??
+    STABLE_TZ_OFFSET_MINUTES[DEFAULT_SCHOOL_DISPLAY_TIMEZONE] ??
+    0;
+  const local = new Date(d.getTime() + offsetMinutes * 60 * 1000);
+
+  const day = local.getUTCDate();
+  const month = MONTHS_SHORT[local.getUTCMonth()] ?? "???";
+  const year = local.getUTCFullYear();
+  let hours = local.getUTCHours();
+  const minutes = String(local.getUTCMinutes()).padStart(2, "0");
+  const ampm = hours >= 12 ? "pm" : "am";
+  hours = hours % 12 || 12;
+
+  return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`;
+}
+
 export function resolveSchoolDisplayTimezone(
   stored: string | null | undefined
 ): string {

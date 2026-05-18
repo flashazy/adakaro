@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
-import { getPlanLimits, normalizePlanId, type PlanId } from "@/lib/plans";
+import {
+  getPlanLimits,
+  isPaidPlanId,
+  normalizePlanId,
+  type PlanId,
+} from "@/lib/plans";
 
 export interface SchoolPlanRow {
   plan: string;
@@ -8,13 +13,15 @@ export interface SchoolPlanRow {
   admin_limit: number | null;
 }
 
-/** Prefer DB columns when set; otherwise derive from plan name. */
+/** Prefer paid = unlimited; then DB columns; then derive from plan name. */
 export function effectiveStudentLimit(row: SchoolPlanRow): number | null {
+  if (isPaidPlanId(row.plan)) return null;
   if (row.student_limit != null) return row.student_limit;
   return getPlanLimits(row.plan).studentLimit;
 }
 
 export function effectiveAdminLimit(row: SchoolPlanRow): number | null {
+  if (isPaidPlanId(row.plan)) return null;
   if (row.admin_limit != null) return row.admin_limit;
   return getPlanLimits(row.plan).adminLimit;
 }

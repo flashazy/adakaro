@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -6,6 +8,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/teacher_ui_tokens.dart';
 import '../../data/models/teacher_models.dart';
 import '../../data/teacher_repository.dart';
+import 'teacher_lesson_plan_detail_screen.dart';
+import 'teacher_new_lesson_plan_screen.dart';
 
 class TeacherLessonPlansScreen extends StatefulWidget {
   const TeacherLessonPlansScreen({
@@ -56,7 +60,7 @@ class _TeacherLessonPlansScreenState extends State<TeacherLessonPlansScreen> {
     }
   }
 
-  Future<void> _showNewPlan() async {
+  Future<void> _openNewPlan() async {
     final assigns = widget.data.assignments
         .where((a) => a.subjectId != null && a.subjectId!.isNotEmpty)
         .toList();
@@ -73,147 +77,54 @@ class _TeacherLessonPlansScreenState extends State<TeacherLessonPlansScreen> {
       return;
     }
 
-    final assignIx = ValueNotifier<int>(0);
-    final periodCtrl = TextEditingController(text: '1st period');
-    final durationCtrl = TextEditingController(text: '40');
-    final date = ValueNotifier<DateTime>(DateTime.now());
-
-    try {
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) {
-          return AlertDialog(
-            title: const Text('New lesson plan'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ValueListenableBuilder<int>(
-                    valueListenable: assignIx,
-                    builder: (context, ix, _) {
-                      return DropdownButtonFormField<int>(
-                        value: ix,
-                        decoration: const InputDecoration(
-                          labelText: 'Class & subject',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          for (var i = 0; i < assigns.length; i++)
-                            DropdownMenuItem(
-                              value: i,
-                              child: Text(
-                                '${assigns[i].className} · ${assigns[i].subjectLabel}',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: (v) =>
-                            assignIx.value = v ?? 0,
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  ValueListenableBuilder<DateTime>(
-                    valueListenable: date,
-                    builder: (_, d, __) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title:
-                          Text('Lesson date · ${d.year}-${d.month}-${d.day}'),
-                      trailing: const Icon(Icons.event_rounded),
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: ctx,
-                          initialDate: date.value,
-                          firstDate: DateTime(2020),
-                          lastDate:
-                              DateTime.now().add(const Duration(days: 730)),
-                        );
-                        if (picked != null) date.value = picked;
-                      },
-                    ),
-                  ),
-                  TextField(
-                    controller: periodCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Period',
-                      border: OutlineInputBorder(),
-                      hintText: 'e.g. 1st period',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: durationCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Duration (minutes)',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final a = assigns[assignIx.value];
-                  final dur = int.tryParse(durationCtrl.text.trim()) ?? 0;
-                  if (dur < 1 || periodCtrl.text.trim().isEmpty) return;
-
-                  try {
-                    await _repo.insertLessonPlan(
-                      teacherId: widget.user.id,
-                      payload: {
-                        'class_id': a.classId,
-                        'subject_id': a.subjectId,
-                        'lesson_date':
-                            '${date.value.year}-${date.value.month.toString().padLeft(2, '0')}-${date.value.day.toString().padLeft(2, '0')}',
-                        'period': periodCtrl.text.trim(),
-                        'duration_minutes': dur,
-                        'total_boys': 0,
-                        'total_girls': 0,
-                        'total_pupils': 0,
-                        'present_count': 0,
-                        'main_competence': '',
-                        'specific_competence': '',
-                        'main_activities': '',
-                        'specific_activities': '',
-                        'teaching_resources': '',
-                        'references': '',
-                        'remarks': '',
-                        'teaching_learning_process': <String, dynamic>{},
-                      },
-                    );
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    await _load();
-                  } catch (e) {
-                    if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text(friendlyDataLoadError(e))),
-                      );
-                    }
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      assignIx.dispose();
-      periodCtrl.dispose();
-      durationCtrl.dispose();
-      date.dispose();
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (ctx) => TeacherNewLessonPlanScreen(
+          user: widget.user,
+          data: widget.data,
+        ),
+      ),
+    );
+    if (saved == true && mounted) {
+      await _load();
     }
+  }
+
+  void _openPlanDetail(TeacherLessonPlanListRow plan) {
+    Navigator.of(context)
+        .push<void>(
+      MaterialPageRoute<void>(
+        builder: (ctx) => TeacherLessonPlanDetailScreen(
+          user: widget.user,
+          data: widget.data,
+          summary: plan,
+        ),
+      ),
+    )
+        .then((_) {
+      if (mounted) unawaited(_load());
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final cardBorder =
+        AppColors.cardBorder.withValues(alpha: dark ? 0.42 : 0.88);
+    final cardFill = dark
+        ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.22)
+        : Colors.white.withValues(alpha: 0.92);
+    final pageBg = dark
+        ? Color.lerp(
+            theme.colorScheme.surfaceContainerLowest,
+            theme.colorScheme.surface,
+            0.25,
+          )!
+        : Color.lerp(AppColors.surface, Colors.white, 0.35)!;
+
     return Scaffold(
+      backgroundColor: pageBg,
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
@@ -231,18 +142,29 @@ class _TeacherLessonPlansScreenState extends State<TeacherLessonPlansScreen> {
                 children: [
                   Text(
                     'Lesson plans',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tap a plan to view details',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: AppColors.textSecondary.withValues(
+                        alpha: dark ? 0.55 : 0.72,
+                      ),
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
                         _error!,
-                        style:
-                            TextStyle(color: Theme.of(context).colorScheme.error),
+                        style: TextStyle(color: theme.colorScheme.error),
                       ),
                     ),
                   if (_plans.isEmpty)
@@ -253,28 +175,109 @@ class _TeacherLessonPlansScreenState extends State<TeacherLessonPlansScreen> {
                             ? 'No lesson plans yet. Tap + to create one.'
                             : 'Assignments are required to publish lesson plans here.',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textSecondary,
-                              height: 1.4,
-                            ),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textSecondary,
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ..._plans.map((p) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: Card(
-                        child: ListTile(
-                          title: Text(
-                            p.subjectName,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          subtitle: Text(
-                            '${p.className} · ${p.lessonDate}\nPeriod ${p.period} · ${p.durationMinutes} min',
-                          ),
-                          isThreeLine: true,
-                          trailing: Text(
-                            p.lessonDate,
-                            style: Theme.of(context).textTheme.labelSmall,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _openPlanDetail(p),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Ink(
+                            decoration: BoxDecoration(
+                              color: cardFill,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: cardBorder),
+                              boxShadow: TeacherUiTokens.cardLift,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                14,
+                                10,
+                                14,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          p.subjectName,
+                                          style: theme.textTheme.titleSmall
+                                              ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: -0.15,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          '${p.className} · ${p.lessonDate}',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: AppColors.textSecondary
+                                                .withValues(
+                                              alpha: dark ? 0.62 : 0.88,
+                                            ),
+                                            height: 1.35,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Period ${p.period} · ${p.durationMinutes} min',
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                            color: AppColors.textSecondary
+                                                .withValues(
+                                              alpha: dark ? 0.5 : 0.72,
+                                            ),
+                                            fontWeight: FontWeight.w600,
+                                            letterSpacing: 0.12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        color: AppColors.textSecondary
+                                            .withValues(
+                                          alpha: dark ? 0.45 : 0.55,
+                                        ),
+                                        size: 26,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'View',
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                          color: AppColors.textSecondary
+                                              .withValues(
+                                            alpha: dark ? 0.5 : 0.65,
+                                          ),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 10,
+                                          letterSpacing: 0.35,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -285,7 +288,7 @@ class _TeacherLessonPlansScreenState extends State<TeacherLessonPlansScreen> {
       ),
       floatingActionButton: widget.data.hasTeachingAssignments
           ? FloatingActionButton(
-              onPressed: _showNewPlan,
+              onPressed: _openNewPlan,
               child: const Icon(Icons.add_rounded),
             )
           : null,

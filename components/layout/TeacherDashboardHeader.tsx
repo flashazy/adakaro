@@ -31,9 +31,10 @@ function userInitials(displayName: string): string {
   return t.slice(0, 2).toUpperCase() || "?";
 }
 
-const NAV = [
+const BASE_NAV = [
   { href: "/teacher-dashboard", label: "Dashboard" },
   { href: "/teacher-dashboard/attendance", label: "Attendance" },
+  { href: "/dashboard/duty-book", label: "Duty Book", dutyBook: true as const },
   { href: "/teacher-dashboard/lesson-plans", label: "Lesson Plans" },
   { href: "/teacher-dashboard/grades", label: "Marks" },
 ] as const;
@@ -61,6 +62,8 @@ interface TeacherDashboardHeaderProps {
   showClassTeacherNav?: boolean;
   /** Teacher also has school admin membership — show admin/teacher switch. */
   showDashboardRoleToggle?: boolean;
+  /** Show Duty Book in nav when teacher has active TOD assignment or is head teacher. */
+  showDutyBookNav?: boolean;
 }
 
 function schoolLogoSrcWithCacheBust(url: string, version: number): string {
@@ -79,7 +82,11 @@ export function TeacherDashboardHeader({
   isCoordinator = false,
   showClassTeacherNav = false,
   showDashboardRoleToggle = false,
+  showDutyBookNav = false,
 }: TeacherDashboardHeaderProps) {
+  const navItems = BASE_NAV.filter(
+    (item) => !("dutyBook" in item && item.dutyBook) || showDutyBookNav
+  );
   const pathname = usePathname();
   const [headerElevated, setHeaderElevated] = useState(false);
 
@@ -243,7 +250,7 @@ export function TeacherDashboardHeader({
             className={navShellClass}
             aria-label="Teacher navigation"
           >
-            {NAV.map(({ href, label }) => (
+            {navItems.map(({ href, label }) => (
               <NavLinkWithLoading key={href} href={href} className={navLinkClass(href)}>
                 {label}
               </NavLinkWithLoading>
@@ -369,7 +376,7 @@ export function TeacherDashboardHeader({
           className={navShellClass}
           aria-label="Teacher navigation"
         >
-          {NAV.map(({ href, label }) => (
+          {navItems.map(({ href, label }) => (
             <NavLinkWithLoading key={href} href={href} className={navLinkClass(href)}>
               {label}
             </NavLinkWithLoading>

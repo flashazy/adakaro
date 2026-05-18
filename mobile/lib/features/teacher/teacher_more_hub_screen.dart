@@ -11,12 +11,10 @@ class TeacherMoreHubScreen extends StatelessWidget {
   const TeacherMoreHubScreen({
     super.key,
     required this.data,
-    required this.onOpenClassesSubjects,
     required this.onDeskRefresh,
   });
 
   final TeacherDeskData data;
-  final VoidCallback onOpenClassesSubjects;
   final Future<void> Function() onDeskRefresh;
 
   static const _respShadows = [
@@ -66,7 +64,16 @@ class TeacherMoreHubScreen extends StatelessWidget {
             iconBoxSize: _iconBoxSize,
             iconBoxRadius: _iconBoxRadius,
             iconGlyphSize: _iconGlyphSize,
-            onTap: onOpenClassesSubjects,
+            onTap: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TeacherRolePlaceholderScreen(
+                    title: 'Class teacher',
+                    body: 'Class teacher tools will appear here.',
+                  ),
+                ),
+              );
+            },
           ));
     }
     if (data.showsCoordinatorResponsibility) {

@@ -13,6 +13,8 @@ export type ClassTeacherStudentParentRow = {
    * Null when the student has no linked parent.
    */
   linkedParentId: string | null;
+  /** Class-teacher health / excused flag (ill, permitted). */
+  healthStatus: "ill" | "permitted" | null;
 };
 
 export type ClassTeacherAttendanceRow = {

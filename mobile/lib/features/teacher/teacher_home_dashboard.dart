@@ -38,6 +38,10 @@ class TeacherHomeDashboard extends StatelessWidget {
             ? 'No teaching assignments loaded'
             : '${data.assignments.length} class / subject pairing${data.assignments.length == 1 ? '' : 's'}';
 
+    final bottomSafe = MediaQuery.paddingOf(context).bottom;
+    final compactHero = MediaQuery.sizeOf(context).height < 720;
+    final listBottomPadding = 36.0 + bottomSafe;
+
     return ColoredBox(
       color: const Color(0xFFF4F6FA),
       child: RefreshIndicator(
@@ -45,11 +49,11 @@ class TeacherHomeDashboard extends StatelessWidget {
         color: AppColors.primary,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             TeacherUiTokens.horizontalPadding,
-            10,
+            12,
             TeacherUiTokens.horizontalPadding,
-            28,
+            listBottomPadding,
           ),
           children: [
             if (refreshError != null) ...[
@@ -95,6 +99,7 @@ class TeacherHomeDashboard extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             _DeskHeroCard(
+              compact: compactHero,
               displayName: name,
               schoolLine: school,
               schoolLogoUrl: data.schoolLogoUrl,
@@ -102,7 +107,7 @@ class TeacherHomeDashboard extends StatelessWidget {
               attendanceToday: todayAttendanceDedupCount,
               lessonsToday: todayLessonPlansCount ?? 0,
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 22),
             Text(
               'Working desk',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -112,22 +117,36 @@ class TeacherHomeDashboard extends StatelessWidget {
                     fontSize: 13,
                   ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 9,
-              crossAxisSpacing: 9,
-              childAspectRatio: 1.68,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 1.48,
               children: [
-                for (final k in TeacherDeskTileKind.values)
+                for (final k in TeacherDeskTileKind.gridTiles)
                   _DeskShortcutTile(
                     kind: k,
                     enabled: !_tileDisabled(k),
                     onTap: () => _onTileTap(k),
                   ),
               ],
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'Support tools',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.06,
+                    color: const Color(0xFF94A3B8),
+                    fontSize: 13,
+                  ),
+            ),
+            const SizedBox(height: 10),
+            _DeskDocumentsSupportTile(
+              onTap: () => _onTileTap(TeacherDeskTileKind.documents),
             ),
           ],
         ),
@@ -143,7 +162,6 @@ class TeacherHomeDashboard extends StatelessWidget {
       case TeacherDeskTileKind.marks:
         return noTeach;
       case TeacherDeskTileKind.documents:
-      case TeacherDeskTileKind.classesSubjects:
         return false;
       case TeacherDeskTileKind.evaluateSubject:
         return noTeach;
@@ -163,9 +181,6 @@ class TeacherHomeDashboard extends StatelessWidget {
         break;
       case TeacherDeskTileKind.documents:
         onNavigate(TeacherQuickDestination.documents);
-        break;
-      case TeacherDeskTileKind.classesSubjects:
-        onNavigate(TeacherQuickDestination.classesSubjects);
         break;
       case TeacherDeskTileKind.evaluateSubject:
         onNavigate(TeacherQuickDestination.evaluateSubject);
@@ -349,7 +364,7 @@ class _HeroSchoolLogoBadge extends StatelessWidget {
   final String? logoUrl;
   final String schoolName;
 
-  static const double _innerSize = 36;
+  static const double _innerSize = 32;
 
   @override
   Widget build(BuildContext context) {
@@ -384,6 +399,7 @@ class _HeroSchoolLogoBadge extends StatelessWidget {
 
 class _DeskHeroCard extends StatefulWidget {
   const _DeskHeroCard({
+    required this.compact,
     required this.displayName,
     required this.schoolLine,
     required this.schoolLogoUrl,
@@ -392,6 +408,7 @@ class _DeskHeroCard extends StatefulWidget {
     required this.lessonsToday,
   });
 
+  final bool compact;
   final String displayName;
   final String schoolLine;
   final String? schoolLogoUrl;
@@ -450,22 +467,31 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
     final theme = Theme.of(context);
     final markSchool =
         widget.schoolLine.trim().isNotEmpty ? widget.schoolLine.trim() : 'School';
+    final compact = widget.compact;
+    final outerPad = compact
+        ? const EdgeInsets.fromLTRB(14, 14, 14, 14)
+        : const EdgeInsets.fromLTRB(16, 16, 16, 16);
+    final blockGap = compact ? 9.0 : 11.0;
+    final statsGap = compact ? 8.0 : 10.0;
+    final nameSize = compact ? 17.0 : 18.0;
 
-    return Container(
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Container(
       decoration: BoxDecoration(
         borderRadius: _radius,
         boxShadow: [
           const BoxShadow(
             color: Color(0x0C0F172A),
-            blurRadius: 30,
+            blurRadius: 22,
             spreadRadius: -2,
-            offset: Offset(0, 10),
+            offset: Offset(0, 6),
           ),
           BoxShadow(
-            color: Color(0xFF4F46E5).withValues(alpha: 0.07),
-            blurRadius: 40,
-            spreadRadius: -14,
-            offset: const Offset(0, 18),
+            color: Color(0xFF4F46E5).withValues(alpha: 0.06),
+            blurRadius: 28,
+            spreadRadius: -10,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -552,14 +578,20 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
+            padding: outerPad,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 _DeskGlassPlate(
                   depth: _DeskGlassDepth.primary,
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                  borderRadius: 18,
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 10 : 12,
+                    compact ? 10 : 12,
+                    compact ? 10 : 12,
+                    compact ? 10 : 12,
+                  ),
+                  borderRadius: 16,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -582,7 +614,7 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
                                     fontSize: 12.5,
                                   ),
                             ),
-                            const SizedBox(height: 5),
+                            const SizedBox(height: 4),
                             Text(
                               widget.displayName,
                               maxLines: 2,
@@ -590,46 +622,39 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
                               style: theme.textTheme.titleLarge?.copyWith(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.36,
-                                    height: 1.2,
-                                    fontSize: 20,
+                                    letterSpacing: -0.32,
+                                    height: 1.18,
+                                    fontSize: nameSize,
                                   ),
                             ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Your teaching desk is ready.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.74),
-                                    fontWeight: FontWeight.w400,
-                                    height: 1.45,
-                                  ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              "Ready for today's classroom work",
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.44),
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.35,
-                                    fontSize: 11,
-                                    letterSpacing: 0.02,
-                                  ),
-                            ),
+                            if (!compact) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                'Your teaching desk is ready.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.72),
+                                      fontWeight: FontWeight.w400,
+                                      height: 1.35,
+                                      fontSize: 12,
+                                    ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: blockGap),
                 if (widget.schoolLine.isNotEmpty)
                   _DeskGlassPlate(
                     depth: _DeskGlassDepth.secondary,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
-                      vertical: 7,
+                      vertical: 6,
                     ),
-                    borderRadius: 13,
+                    borderRadius: 12,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -655,14 +680,15 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
                       ],
                     ),
                   ),
-                if (widget.schoolLine.isNotEmpty) const SizedBox(height: 7),
+                if (widget.schoolLine.isNotEmpty)
+                  SizedBox(height: compact ? 5 : 6),
                 _DeskGlassPlate(
                   depth: _DeskGlassDepth.secondaryQuiet,
-                  padding: const EdgeInsets.symmetric(
+                  padding: EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 6,
+                    vertical: compact ? 4 : 5,
                   ),
-                  borderRadius: 13,
+                  borderRadius: 12,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -688,10 +714,10 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: statsGap),
                 DecoratedBox(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     color: Colors.white.withValues(alpha: 0.020),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.055),
@@ -707,11 +733,12 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
                     ],
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+                    padding: const EdgeInsets.fromLTRB(5, 5, 5, 5),
                     child: Row(
                       children: [
                         Expanded(
                           child: _HeroStatChip(
+                            compact: compact,
                             label: 'Attendance today',
                             value: '${widget.attendanceToday}',
                           ),
@@ -719,6 +746,7 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
                         const SizedBox(width: 8),
                         Expanded(
                           child: _HeroStatChip(
+                            compact: compact,
                             label: 'Lesson plans today',
                             value: '${widget.lessonsToday}',
                           ),
@@ -732,16 +760,19 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
           ),
         ],
       ),
+      ),
     );
   }
 }
 
 class _HeroStatChip extends StatefulWidget {
   const _HeroStatChip({
+    required this.compact,
     required this.label,
     required this.value,
   });
 
+  final bool compact;
   final String label;
   final String value;
 
@@ -797,7 +828,12 @@ class _HeroStatChipState extends State<_HeroStatChip> {
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
+            padding: EdgeInsets.fromLTRB(
+              widget.compact ? 10 : 11,
+              widget.compact ? 8 : 9,
+              widget.compact ? 10 : 11,
+              widget.compact ? 8 : 10,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -810,19 +846,22 @@ class _HeroStatChipState extends State<_HeroStatChip> {
                     style: theme.textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w900,
                           color: Colors.white,
-                          letterSpacing: -0.65,
+                          letterSpacing: -0.55,
                           height: 1.02,
-                          fontSize: 28,
+                          fontSize: widget.compact ? 22 : 24,
                         ),
                   ),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: widget.compact ? 3 : 4),
                 Text(
                   widget.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
                         color: Colors.white.withValues(alpha: 0.48),
                         fontWeight: FontWeight.w500,
-                        height: 1.25,
+                        height: 1.2,
+                        fontSize: widget.compact ? 10.5 : null,
                         letterSpacing: 0.02,
                       ),
                 ),
@@ -851,7 +890,7 @@ class _DeskShortcutTile extends StatelessWidget {
     final palette = kind.palette;
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(17),
+      borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: enabled ? onTap : null,
@@ -860,33 +899,33 @@ class _DeskShortcutTile extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             color: enabled ? palette.cardBg : palette.cardBg.withValues(alpha: 0.56),
-            borderRadius: BorderRadius.circular(17),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white.withValues(alpha: 0.95)),
             boxShadow: TeacherUiTokens.cardLift,
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(11, 8, 11, 12),
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 14),
             child: Column(
               children: [
                 SizedBox(
-                  height: 34,
+                  height: 40,
                   child: Center(
                     child: Container(
-                      width: 34,
-                      height: 34,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: palette.iconDisc,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: Colors.white.withValues(alpha: 0.97),
-                          width: 1.05,
+                          width: 1.1,
                         ),
                       ),
-                      child: Icon(kind.icon, size: 18, color: palette.iconFg),
+                      child: Icon(kind.icon, size: 20, color: palette.iconFg),
                     ),
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 7),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -898,13 +937,13 @@ class _DeskShortcutTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.labelMedium?.copyWith(
                               fontWeight: FontWeight.w800,
-                              fontSize: 11.5,
-                              height: 1.12,
+                              fontSize: 12,
+                              height: 1.14,
                               letterSpacing: -0.06,
                               color: const Color(0xFF0F172A),
                             ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 4),
                       Text(
                         enabled ? kind.subtitle : 'Requires assignment',
                         maxLines: 2,
@@ -913,14 +952,114 @@ class _DeskShortcutTile extends StatelessWidget {
                         style: TextStyle(
                           fontWeight: FontWeight.w500,
                           fontSize: 12,
-                          height: 1.18,
+                          height: 1.2,
                           color: AppColors.textSecondary.withValues(
-                            alpha: enabled ? 0.7 : 0.48,
+                            alpha: enabled ? 0.72 : 0.48,
                           ),
                         ),
                       ),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Full-width utility row for support tools (not part of daily teaching workflow).
+class _DeskDocumentsSupportTile extends StatelessWidget {
+  const _DeskDocumentsSupportTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final kind = TeacherDeskTileKind.documents;
+    final theme = Theme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        splashColor: AppColors.primary.withValues(alpha: 0.04),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppColors.cardBorder.withValues(alpha: 0.55),
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A0F172A),
+                blurRadius: 16,
+                offset: Offset(0, 4),
+                spreadRadius: -4,
+              ),
+              BoxShadow(
+                color: Color(0x050F172A),
+                blurRadius: 6,
+                offset: Offset(0, 1),
+                spreadRadius: -1,
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 11, 12, 11),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8ECF1),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  child: Icon(
+                    kind.icon,
+                    size: 20,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        kind.title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.1,
+                          color: const Color(0xFF334155),
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        kind.subtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          height: 1.22,
+                          fontSize: 12,
+                          color: AppColors.textSecondary.withValues(alpha: 0.82),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 22,
+                  color: AppColors.textSecondary.withValues(alpha: 0.58),
                 ),
               ],
             ),

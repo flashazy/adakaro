@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isStudentHealthAttendanceStatus } from "@/lib/student-attendance-status";
 import type {
   ClassTeacherAttendanceRow,
   ClassTeacherGradeRow,
@@ -72,6 +73,22 @@ export async function loadClassTeacherStudentsWithParents(
     parentIdsByStudent.set(l.student_id, list);
   }
 
+  const healthByStudent = new Map<string, "ill" | "permitted">();
+  if (studentIds.length > 0) {
+    const { data: healthRows } = await admin
+      .from("student_attendance_status")
+      .select("student_id, status")
+      .in("student_id", studentIds);
+    for (const h of (healthRows ?? []) as {
+      student_id: string;
+      status: string;
+    }[]) {
+      if (isStudentHealthAttendanceStatus(h.status)) {
+        healthByStudent.set(h.student_id, h.status);
+      }
+    }
+  }
+
   const rows: ClassTeacherStudentParentRow[] = [];
   for (const s of studs as {
     id: string;
@@ -111,6 +128,7 @@ export async function loadClassTeacherStudentsWithParents(
       parentPhone: phones.length ? phones.join("; ") : null,
       parentEmail: emails.length ? emails.join("; ") : null,
       linkedParentId: pids.length > 0 ? pids[0]! : null,
+      healthStatus: healthByStudent.get(s.id) ?? null,
     });
   }
   return rows;

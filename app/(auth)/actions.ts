@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveLoginEmailForSignIn } from "@/lib/resolve-teacher-login-email";
 import { blockLoginIfTeacherTempPasswordExpired } from "@/lib/teacher-temp-password-expiry";
+import { touchProfileLastSignInAt } from "@/lib/profiles/touch-last-sign-in";
 import {
   clearCaptureCardSessionCookie,
   setCaptureCardSessionCookie,
@@ -162,6 +163,12 @@ export async function login(
   // Supabase succeeded: proceed with original role routing.
   if (authUser) {
     const user = authUser;
+
+    try {
+      await touchProfileLastSignInAt(supabase, user.id);
+    } catch {
+      /* non-fatal until migration 00142 is applied */
+    }
 
     const expiredBlock = await blockLoginIfTeacherTempPasswordExpired(
       supabase,

@@ -840,12 +840,90 @@ class TeacherRepository {
   ) async {
     final row = await _client
         .from('lesson_plans')
-        .select('*')
+        .select(
+          '*, classes:class_id(name), subjects:subject_id(name)',
+        )
         .eq('id', id)
         .eq('teacher_id', teacherId)
         .maybeSingle();
     if (row == null) return null;
     return Map<String, dynamic>.from(row as Map);
+  }
+
+  /// Registered + present counts (enrolment-aware roster + teacher attendance), mirroring web.
+  Future<TeacherLessonPlanClassProfile> loadLessonPlanClassProfile({
+    required String teacherId,
+    required String classId,
+    required String? subjectId,
+    required String assignmentAcademicYear,
+    required String lessonDateYmd,
+  }) async {
+    try {
+      final period = teacherCurrentEnrollmentPeriod();
+      final ay = enrollmentYearFromAssignmentString(assignmentAcademicYear);
+      final roster = await teacherGetStudentsForSubject(
+        _client,
+        classId: classId,
+        subjectId: subjectId,
+        academicYear: ay,
+        term: period.term,
+        enrollmentDateOnOrBefore: null,
+      );
+      var rg = 0;
+      var rb = 0;
+      for (final s in roster) {
+        final g = (s['gender'] ?? '').toString().toLowerCase().trim();
+        if (g == 'female' || g == 'f') {
+          rg++;
+        } else if (g == 'male' || g == 'm') {
+          rb++;
+        }
+      }
+      final rt = roster.length;
+
+      final att = await loadAttendanceForDate(
+        teacherId: teacherId,
+        classId: classId,
+        dateYmd: lessonDateYmd,
+        subjectId: subjectId,
+      );
+
+      final genderById = <String, String>{
+        for (final s in roster) s['id']!: (s['gender'] ?? '').toString().toLowerCase(),
+      };
+
+      final presentStudentIds = <String>[];
+      for (final s in roster) {
+        final id = s['id']!;
+        final st = att[id];
+        if (st == 'present' || st == 'late') {
+          presentStudentIds.add(id);
+        }
+      }
+
+      var pg = 0;
+      var pb = 0;
+      for (final id in presentStudentIds) {
+        final g = genderById[id] ?? '';
+        if (g == 'female' || g == 'f') {
+          pg++;
+        } else if (g == 'male' || g == 'm') {
+          pb++;
+        }
+      }
+      final pt = presentStudentIds.length;
+
+      return TeacherLessonPlanClassProfile(
+        registeredGirls: rg,
+        registeredBoys: rb,
+        registeredTotal: rt,
+        presentGirls: pg,
+        presentBoys: pb,
+        presentTotal: pt,
+      );
+    } catch (_) {
+      return TeacherLessonPlanClassProfile.zeros;
+    }
   }
 
   Future<void> insertLessonPlan({
@@ -926,6 +1004,57 @@ class TeacherRepository {
       'category': category,
       'file_size': fileSize,
     });
+  }
+
+  /// Updates display name and category only (file in storage is unchanged).
+  Future<void> updateDocument({
+    required String documentId,
+    required String teacherId,
+    required String documentName,
+    required String category,
+  }) async {
+    final name = documentName.trim();
+    if (name.isEmpty) {
+      throw StateError('Display name is required.');
+    }
+    final safeName = name.length > 200 ? name.substring(0, 200) : name;
+    final safeCategory = category.trim().isEmpty ? 'Other' : category.trim();
+
+    await _client
+        .from('teacher_documents')
+        .update({
+          'document_name': safeName,
+          'category': safeCategory,
+        })
+        .eq('id', documentId)
+        .eq('teacher_id', teacherId);
+  }
+
+  /// Removes storage object then DB row (matches web `deleteDocumentAction`).
+  Future<void> deleteDocument({
+    required String documentId,
+    required String teacherId,
+  }) async {
+    final row = await _client
+        .from('teacher_documents')
+        .select('id, teacher_id, file_url')
+        .eq('id', documentId)
+        .maybeSingle();
+    if (row == null) {
+      throw StateError('Document not found.');
+    }
+    if (row['teacher_id'] != teacherId) {
+      throw StateError('Not allowed.');
+    }
+    final path = '${row['file_url']}'.trim();
+    if (path.isNotEmpty) {
+      await _client.storage.from('teacher-docs').remove([path]);
+    }
+    await _client
+        .from('teacher_documents')
+        .delete()
+        .eq('id', documentId)
+        .eq('teacher_id', teacherId);
   }
 
   Future<List<Map<String, dynamic>>> loadAcademicReportsForSchool(

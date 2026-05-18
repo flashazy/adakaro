@@ -3,11 +3,14 @@ import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
 import { formatShortLocaleDate } from "@/lib/format-date";
+import { listTeacherDutyAssignmentsForSchool } from "@/lib/teacher-on-duty/teacher-duty";
 import {
   fetchSchoolTeacherMembersForTeachersPage,
+  fetchSchoolTeachersEligibleForDutyRotation,
   fetchTeacherCoordinatorClassesForSchool,
   fetchTeacherDepartmentRolesForSchool,
 } from "./actions";
+import { assignTeacherDutyRotationAction } from "./duty-rotation-actions";
 import { normalizeTeacherDepartmentRoles } from "./types";
 import { TeachersPageClient, type TeacherRow } from "./teachers-page-client";
 
@@ -54,18 +57,26 @@ export default async function TeachersPage() {
     return "Unknown";
   };
 
-  const teachers: TeacherRow[] = memberRows.map((m) => ({
+  const mapMemberToTeacherRow = (m: (typeof memberRows)[number]): TeacherRow => ({
     membershipId: m.id,
     userId: m.user_id,
     fullName: teacherDisplayName(m.profileFullName, m.profileEmail),
     email: m.profileEmail,
     joinedAtLabel: formatShortLocaleDate(m.created_at),
     passwordChanged: m.profilePasswordChanged,
+    hasJoined: m.profileLastSignInAt != null,
     departmentRoles: normalizeTeacherDepartmentRoles(
       departmentRolesByUser[m.user_id] ?? []
     ),
     coordinatorClassIds: coordinatorClassesByUser[m.user_id] ?? [],
-  }));
+  });
+
+  const teachers: TeacherRow[] = memberRows.map(mapMemberToTeacherRow);
+
+  const dutyEligibleMembers =
+    await fetchSchoolTeachersEligibleForDutyRotation(schoolId);
+  const teachersForDuty: TeacherRow[] =
+    dutyEligibleMembers.map(mapMemberToTeacherRow);
 
   const { data: classRows } = await supabase
     .from("classes")
@@ -86,6 +97,8 @@ export default async function TeachersPage() {
     parent_class_id: c.parent_class_id,
   }));
 
+  const dutyAssignments = await listTeacherDutyAssignmentsForSchool(schoolId);
+
   return (
     <>
       <div className="space-y-6">
@@ -99,7 +112,10 @@ export default async function TeachersPage() {
         </div>
         <TeachersPageClient
           teachers={teachers}
+          teachersForDuty={teachersForDuty}
           coordinatorClassOptions={coordinatorClassOptions}
+          dutyAssignments={dutyAssignments}
+          assignDutyRotationAction={assignTeacherDutyRotationAction}
         />
       </div>
       <div className="print:hidden">

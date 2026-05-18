@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { touchProfileLastSignInAt } from "@/lib/profiles/touch-last-sign-in";
 import type { Database } from "@/types/supabase";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase v2 update payload narrows to `never` without generated Relationships
@@ -105,6 +106,8 @@ export async function changeForcedPasswordAction(
         "Password was updated but your profile could not be marked complete. Contact support.",
     };
   }
+
+  await touchProfileLastSignInAt(supabase, user.id);
 
   if (nextRaw.startsWith("/") && !nextRaw.startsWith("//")) {
     redirect(nextRaw);

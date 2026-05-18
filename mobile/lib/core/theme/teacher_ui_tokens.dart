@@ -29,15 +29,21 @@ enum TeacherDeskTileKind {
   lessonPlans,
   marks,
   documents,
-  classesSubjects,
   evaluateSubject;
+
+  /// Daily teaching workflow tiles in the 2×2 working-desk grid.
+  static const List<TeacherDeskTileKind> gridTiles = [
+    attendance,
+    lessonPlans,
+    marks,
+    evaluateSubject,
+  ];
 
   IconData get icon => switch (this) {
         TeacherDeskTileKind.attendance => Icons.how_to_reg_rounded,
         TeacherDeskTileKind.lessonPlans => Icons.menu_book_rounded,
         TeacherDeskTileKind.marks => Icons.grade_rounded,
         TeacherDeskTileKind.documents => Icons.folder_special_rounded,
-        TeacherDeskTileKind.classesSubjects => Icons.class_rounded,
         TeacherDeskTileKind.evaluateSubject => Icons.insights_rounded,
       };
 
@@ -46,7 +52,6 @@ enum TeacherDeskTileKind {
         TeacherDeskTileKind.lessonPlans => 'Lesson plans',
         TeacherDeskTileKind.marks => 'Marks',
         TeacherDeskTileKind.documents => 'My documents',
-        TeacherDeskTileKind.classesSubjects => 'Classes & subjects',
         TeacherDeskTileKind.evaluateSubject => 'Evaluate subject',
       };
 
@@ -55,7 +60,6 @@ enum TeacherDeskTileKind {
         TeacherDeskTileKind.lessonPlans => 'Plan lessons',
         TeacherDeskTileKind.marks => 'Enter scores',
         TeacherDeskTileKind.documents => 'Files & certs',
-        TeacherDeskTileKind.classesSubjects => 'Assignments',
         TeacherDeskTileKind.evaluateSubject => 'Review marks',
       };
 
@@ -79,11 +83,6 @@ enum TeacherDeskTileKind {
             cardBg: const Color(0xFFEEF2FF),
             iconDisc: const Color(0xFFC7D2FE),
             iconFg: const Color(0xFF4338CA),
-          ),
-        TeacherDeskTileKind.classesSubjects => (
-            cardBg: const Color(0xFFF5F3FF),
-            iconDisc: const Color(0xFFE9D5FF),
-            iconFg: const Color(0xFF3730A3),
           ),
         TeacherDeskTileKind.evaluateSubject => (
             cardBg: const Color(0xFFEFF6FF),

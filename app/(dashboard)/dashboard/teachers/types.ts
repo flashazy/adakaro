@@ -24,6 +24,13 @@ export interface SchoolTeacherMemberRow {
   profileEmail: string | null;
   /** profiles.password_changed — false until first password change */
   profilePasswordChanged: boolean;
+  /** profiles.last_sign_in_at — set after first successful login */
+  profileLastSignInAt: string | null;
+}
+
+/** Teacher has joined (logged in at least once); eligible for duty rotation. */
+export function isTeacherJoinedSchool(member: SchoolTeacherMemberRow): boolean {
+  return member.profileLastSignInAt != null;
 }
 
 /** Departments admins can assign in Manage department roles (excludes legacy `accounts`). */

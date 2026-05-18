@@ -71,6 +71,8 @@ export interface ReportCardPreviewData {
     present: number;
     absent: number;
     late: number;
+    ill: number;
+    permitted: number;
     daysInTermLabel: string;
   };
   /**

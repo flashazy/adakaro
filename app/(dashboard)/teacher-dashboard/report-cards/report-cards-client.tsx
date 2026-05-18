@@ -246,7 +246,13 @@ function toPreviewData(args: {
   academicYear: string;
   subjects: string[];
   student: StudentReportRow;
-  attendance: { present: number; absent: number; late: number };
+  attendance: {
+    present: number;
+    absent: number;
+    late: number;
+    ill: number;
+    permitted: number;
+  };
   /** Per-subject ranks for this student, keyed by subject name. */
   positionBySubject?: Record<string, string>;
   /**
@@ -357,7 +363,16 @@ export function ReportCardsPageClient({
     Record<string, ReportCardSupplementaryPreviewSlice>
   >({});
   const [attendanceByStudent, setAttendanceByStudent] = useState<
-    Record<string, { present: number; absent: number; late: number }>
+    Record<
+      string,
+      {
+        present: number;
+        absent: number;
+        late: number;
+        ill: number;
+        permitted: number;
+      }
+    >
   >({});
   const [loading, setLoading] = useState(false);
   const [studentId, setStudentId] = useState<string | null>(null);
@@ -775,6 +790,8 @@ export function ReportCardsPageClient({
         present: 0,
         absent: 0,
         late: 0,
+        ill: 0,
+        permitted: 0,
       },
       positionBySubject: positionBySubjectForPreview,
       cohort: studentsMergedForPreview,
@@ -1728,6 +1745,8 @@ export function ReportCardsPageClient({
                     present: 0,
                     absent: 0,
                     late: 0,
+                    ill: 0,
+                    permitted: 0,
                   },
                   positionBySubject: positions,
                   cohort: allMerged,

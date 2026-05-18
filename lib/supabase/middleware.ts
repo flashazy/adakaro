@@ -592,6 +592,22 @@ export async function updateSession(request: NextRequest) {
       role === "teacher" &&
       /^\/dashboard\/students\/[^/]+\/profile(?:\/|$)/.test(pathname);
 
+    // Teachers on duty (or head teacher) may open the duty book.
+    let isTeacherDutyBookRoute = false;
+    if (
+      role === "teacher" &&
+      (pathname === "/dashboard/duty-book" ||
+        pathname.startsWith("/dashboard/duty-book/"))
+    ) {
+      const { data: schoolId } = await supabase.rpc("get_my_school_id", {} as never);
+      if (schoolId) {
+        const { data: canView } = await supabase.rpc("can_view_duty_book", {
+          p_school_id: schoolId,
+        } as never);
+        isTeacherDutyBookRoute = canView === true;
+      }
+    }
+
     // Finance department teachers may open payment receipts (read-only).
     let isTeacherFinanceReceiptRoute = false;
     if (
@@ -610,7 +626,9 @@ export async function updateSession(request: NextRequest) {
     }
 
     let isTeacherAllowedAdminRoute =
-      isTeacherStudentProfileRoute || isTeacherFinanceReceiptRoute;
+      isTeacherStudentProfileRoute ||
+      isTeacherFinanceReceiptRoute ||
+      isTeacherDutyBookRoute;
 
     if (
       !isTeacherAllowedAdminRoute &&
@@ -633,6 +651,17 @@ export async function updateSession(request: NextRequest) {
       role !== "capture_card_user" &&
       !isTeacherAllowedAdminRoute
     ) {
+      if (debug) {
+        console.info("[middleware] redirect away from admin route", {
+          pathname,
+          role,
+          isTeacherStudentProfileRoute,
+          isTeacherFinanceReceiptRoute,
+          isTeacherDutyBookRoute,
+          schoolDashboardMode:
+            request.cookies.get("school_dashboard_mode")?.value ?? null,
+        });
+      }
       const url = request.nextUrl.clone();
       url.pathname =
         role === "teacher" ? "/teacher-dashboard" : "/parent-dashboard";

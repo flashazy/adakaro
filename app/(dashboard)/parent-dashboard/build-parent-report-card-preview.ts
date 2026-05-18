@@ -19,6 +19,11 @@ import type {
 import { termDateRange } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-dates";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
 import {
+  emptyAttendanceRollup,
+  tallyAttendanceByStudent,
+} from "@/lib/attendance-counts";
+import { isStudentHealthAttendanceStatus } from "@/lib/student-attendance-status";
+import {
   mergeReportCardCommentsWithGradebookForParent,
   resolveCoordinatorSignatureUrlForClassCluster,
 } from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
@@ -290,15 +295,37 @@ export async function buildParentReportCardPreviewData(
         )
       : attDeduped;
 
-  let present = 0;
-  let absent = 0;
-  let late = 0;
-  for (const a of attRows) {
-    const st = a.status;
-    if (st === "present") present += 1;
-    else if (st === "absent") absent += 1;
-    else if (st === "late") late += 1;
+  const healthByStudent: Record<
+    string,
+    { status: "ill" | "permitted"; marked_at: string }
+  > = {};
+  const adminForHealth = createAdminClient();
+  const { data: healthRow } = await adminForHealth
+    .from("student_attendance_status")
+    .select("status, marked_at")
+    .eq("student_id", params.studentId)
+    .maybeSingle();
+  if (
+    healthRow &&
+    isStudentHealthAttendanceStatus(
+      (healthRow as { status: string }).status
+    )
+  ) {
+    healthByStudent[params.studentId] = {
+      status: (healthRow as { status: "ill" | "permitted" }).status,
+      marked_at: (healthRow as { marked_at: string }).marked_at,
+    };
   }
+
+  const attendanceRollup =
+    tallyAttendanceByStudent(
+      attRows.map((a) => ({
+        student_id: a.student_id,
+        status: a.status,
+        attendance_date: a.attendance_date,
+      })),
+      healthByStudent
+    )[params.studentId] ?? emptyAttendanceRollup();
 
   const { name: teacherName, isCoordinator: teacherIsCoordinator } =
     await loadTeacherLineForParentReport(row.class_id, row.teacher_id);
@@ -347,9 +374,11 @@ export async function buildParentReportCardPreviewData(
     statusLabel: bannerLabelForParent(row.status),
     subjects,
     attendance: {
-      present,
-      absent,
-      late,
+      present: attendanceRollup.present,
+      absent: attendanceRollup.absent,
+      late: attendanceRollup.late,
+      ill: attendanceRollup.ill,
+      permitted: attendanceRollup.permitted,
       daysInTermLabel: "this term (from school calendar)",
     },
     summary,

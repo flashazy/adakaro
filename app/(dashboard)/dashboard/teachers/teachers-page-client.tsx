@@ -17,6 +17,8 @@ import { ManageDepartmentRolesModal } from "./components/ManageDepartmentRolesMo
 import { AssignCoordinatorModal } from "./components/AssignCoordinatorModal";
 import { BulkAddTeachersModal } from "./components/BulkAddTeachersModal";
 import { ResetTeacherPasswordModal } from "./components/ResetTeacherPasswordModal";
+import { TeacherDutyRotationSection } from "./components/TeacherDutyRotationSection";
+import type { TeacherDutyAssignment } from "@/lib/teacher-on-duty/types";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import {
   DASHBOARD_TEACHERS_ACCOUNTS_ROWS_STORAGE_KEY,
@@ -53,6 +55,8 @@ export interface TeacherRow {
   joinedAtLabel: string;
   /** True after the teacher has completed the first-time password change. */
   passwordChanged: boolean;
+  /** True when the teacher has signed in at least once (active account). */
+  hasJoined: boolean;
   /** Department roles assigned to this teacher for the active school. */
   departmentRoles: ManageableTeacherDepartment[];
   /**
@@ -71,6 +75,8 @@ const DEPARTMENT_LABELS: Record<ManageableTeacherDepartment, string> = {
 
 interface TeachersPageClientProps {
   teachers: TeacherRow[];
+  /** Subset with last_sign_in_at set — for duty rotation assignment only. */
+  teachersForDuty: TeacherRow[];
   /**
    * Full class list including parent classes. Coordinators (form masters)
    * may be assigned to a parent class.
@@ -80,6 +86,11 @@ interface TeachersPageClientProps {
     name: string;
     parent_class_id: string | null;
   }[];
+  dutyAssignments: TeacherDutyAssignment[];
+  assignDutyRotationAction: (
+    prev: TeacherActionState | null,
+    formData: FormData
+  ) => Promise<TeacherActionState>;
 }
 
 function isSyntheticTeacherListEmail(email: string | null): boolean {
@@ -104,7 +115,10 @@ function formatTeacherFullNameInput(raw: string): string {
 
 export function TeachersPageClient({
   teachers,
+  teachersForDuty,
   coordinatorClassOptions,
+  dutyAssignments,
+  assignDutyRotationAction,
 }: TeachersPageClientProps) {
   const [teacherListTab, setTeacherListTab] = useState<"all" | "registered">(
     "all"
@@ -195,7 +209,7 @@ export function TeachersPageClient({
   const teachersTabList = useMemo(
     () =>
       teacherListTab === "registered"
-        ? teachers.filter((t) => t.passwordChanged)
+        ? teachers.filter((t) => t.hasJoined)
         : teachers,
     [teachers, teacherListTab]
   );
@@ -344,6 +358,12 @@ export function TeachersPageClient({
         </form>
       </section>
 
+      <TeacherDutyRotationSection
+        teachers={teachersForDuty}
+        initialAssignments={dutyAssignments}
+        assignAction={assignDutyRotationAction}
+      />
+
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -381,7 +401,7 @@ export function TeachersPageClient({
             >
               Registered teachers
               <span className="ml-1 font-normal text-slate-500 dark:text-zinc-500">
-                ({teachers.filter((x) => x.passwordChanged).length})
+                ({teachers.filter((x) => x.hasJoined).length})
               </span>
             </button>
           </div>
@@ -431,11 +451,15 @@ export function TeachersPageClient({
                         <h3 className="min-w-0 flex-1 break-words text-base font-semibold text-slate-900 dark:text-white">
                           {t.fullName}
                         </h3>
-                        {!t.passwordChanged ? (
+                        {!t.hasJoined ? (
                           <span className="shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
                             Pending first login
                           </span>
-                        ) : null}
+                        ) : (
+                          <span className="shrink-0 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-800">
+                            Active
+                          </span>
+                        )}
                       </div>
 
                       <p className="mt-1 truncate text-sm text-slate-500 dark:text-zinc-400">
@@ -570,11 +594,15 @@ export function TeachersPageClient({
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-slate-900 dark:text-white">
                           {t.fullName}
-                          {!t.passwordChanged ? (
+                          {!t.hasJoined ? (
                             <span className="ml-2 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
                               Pending first login
                             </span>
-                          ) : null}
+                          ) : (
+                            <span className="ml-2 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-800">
+                              Active
+                            </span>
+                          )}
                         </p>
                         <p className="text-sm text-slate-500 dark:text-zinc-400">
                           {isSyntheticTeacherListEmail(t.email) ? (

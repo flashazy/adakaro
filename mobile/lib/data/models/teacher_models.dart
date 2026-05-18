@@ -96,6 +96,45 @@ class TeacherLessonPlanListRow {
   final int durationMinutes;
 }
 
+/// Edit mode: [row] is a `lesson_plans` map from [TeacherRepository.loadLessonPlanDetail].
+class TeacherLessonPlanEditSeed {
+  const TeacherLessonPlanEditSeed({
+    required this.id,
+    required this.row,
+  });
+
+  final String id;
+  final Map<String, dynamic> row;
+}
+
+/// Registered / present counts for lesson plan class profile (mirrors web demographics + attendance).
+class TeacherLessonPlanClassProfile {
+  const TeacherLessonPlanClassProfile({
+    required this.registeredGirls,
+    required this.registeredBoys,
+    required this.registeredTotal,
+    required this.presentGirls,
+    required this.presentBoys,
+    required this.presentTotal,
+  });
+
+  final int registeredGirls;
+  final int registeredBoys;
+  final int registeredTotal;
+  final int presentGirls;
+  final int presentBoys;
+  final int presentTotal;
+
+  static const TeacherLessonPlanClassProfile zeros = TeacherLessonPlanClassProfile(
+    registeredGirls: 0,
+    registeredBoys: 0,
+    registeredTotal: 0,
+    presentGirls: 0,
+    presentBoys: 0,
+    presentTotal: 0,
+  );
+}
+
 class TeacherGradebookAssignmentMini {
   TeacherGradebookAssignmentMini({
     required this.id,
@@ -177,6 +216,8 @@ class TeacherEvaluateReportMeta {
   final String className;
   final String subject;
   final String teacherName;
+
+  /// Academic year label from assignments (may be `—`).
   final String termLabel;
 }
 

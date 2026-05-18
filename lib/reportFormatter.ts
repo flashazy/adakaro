@@ -220,29 +220,78 @@ export function formatAcademicReportSummary(
   return (neutral + divisionSentence).trimEnd();
 }
 
+export interface AttendanceReportDays {
+  present: number;
+  /** Unexcused absences only. */
+  absent: number;
+  late?: number;
+  ill?: number;
+  permitted?: number;
+}
+
 /**
- * Report-card attendance: human sentence from days present (incl. late) and
- * days absent. Returns `null` when there is no meaningful data (e.g. both
- * zero or non-numeric) so the section can be hidden.
+ * Report-card attendance: human sentence from daily roll-up totals.
+ * Returns `null` when there is no meaningful data so the section can be hidden.
  */
 export function formatAttendance(
   presentDays?: number,
-  absentDays?: number
+  absentDays?: number,
+  opts?: { late?: number; ill?: number; permitted?: number }
 ): string | null {
-  const hasPresent =
-    typeof presentDays === "number" && Number.isFinite(presentDays) && presentDays > 0;
-  const hasAbsent =
-    typeof absentDays === "number" && Number.isFinite(absentDays) && absentDays > 0;
+  const present =
+    typeof presentDays === "number" && Number.isFinite(presentDays)
+      ? presentDays
+      : 0;
+  const absent =
+    typeof absentDays === "number" && Number.isFinite(absentDays)
+      ? absentDays
+      : 0;
+  const late =
+    typeof opts?.late === "number" && Number.isFinite(opts.late) ? opts.late : 0;
+  const ill =
+    typeof opts?.ill === "number" && Number.isFinite(opts.ill) ? opts.ill : 0;
+  const permitted =
+    typeof opts?.permitted === "number" && Number.isFinite(opts.permitted)
+      ? opts.permitted
+      : 0;
 
-  if (!hasPresent && !hasAbsent) {
-    return null;
+  const attendedDays = present + late;
+  const parts: string[] = [];
+
+  if (attendedDays > 0) {
+    parts.push(
+      `attended ${attendedDays} school day${attendedDays === 1 ? "" : "s"}`
+    );
+  }
+  if (late > 0) {
+    parts.push(`was late ${late} time${late === 1 ? "" : "s"}`);
+  }
+  if (ill > 0) {
+    parts.push(`was sick for ${ill} day${ill === 1 ? "" : "s"}`);
+  }
+  if (permitted > 0) {
+    parts.push(
+      `had ${permitted} permitted absence${permitted === 1 ? "" : "s"}`
+    );
+  }
+  if (absent > 0) {
+    parts.push(
+      `was absent without excuse for ${absent} day${absent === 1 ? "" : "s"}`
+    );
   }
 
-  if (hasPresent && hasAbsent) {
-    return `The student attended ${presentDays} school days and was absent for ${absentDays} days during the term.`;
-  }
-  if (hasPresent) {
-    return `The student attended ${presentDays} school days during the term.`;
-  }
-  return `The student was absent for ${absentDays} days during the term.`;
+  if (parts.length === 0) return null;
+
+  return `The student ${parts.join(", ")} during the term.`;
+}
+
+export function formatAttendanceFromRollup(
+  rollup: AttendanceReportDays
+): string | null {
+  const attendedPresent = rollup.present;
+  return formatAttendance(attendedPresent, rollup.absent, {
+    late: rollup.late,
+    ill: rollup.ill,
+    permitted: rollup.permitted,
+  });
 }

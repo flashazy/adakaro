@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Lock, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { countAttendanceRollup } from "@/lib/attendance-counts";
+import {
+  countAttendanceRollupWithHealth,
+  type StudentHealthRecord,
+} from "@/lib/attendance-counts";
+import { AttendanceRollupChips } from "@/components/attendance/attendance-rollup-chips";
 import {
   loadAttendanceData,
   loadAttendanceHistory,
@@ -22,6 +26,12 @@ import {
   type StudentListRowOption,
 } from "@/lib/student-list-pagination";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  getAttendanceDisplayLabel,
+  getHealthAttendanceTooltip,
+  isAttendanceLockedByHealth,
+  type StudentHealthAttendanceStatus,
+} from "@/lib/student-attendance-status";
 
 /** Recent history is paginated at a fixed page size — the user
  * specifically asked for 5 entries per page, no rows-per-page
@@ -93,7 +103,8 @@ function groupHistoryDatesByMonth(dates: string[]) {
 
 function isFrequentAbsentee(
   studentId: string,
-  attendanceRecords: HistoryRow[]
+  attendanceRecords: (HistoryRow & { attendance_date: string })[],
+  healthByStudent: Record<string, StudentHealthRecord | undefined>
 ): boolean {
   if (!attendanceRecords.length) return false;
   const now = new Date();
@@ -109,11 +120,18 @@ function isFrequentAbsentee(
     return d >= sevenDaysAgo;
   });
 
-  const absentCount = recentRecords.filter(
-    (record) => String(record.status).toLowerCase() === "absent"
-  ).length;
+  const unexcusedAbsentCount = recentRecords.filter((record) => {
+    const bucket = countAttendanceRollupWithHealth(
+      [{ student_id: record.student_id, status: record.status }],
+      {
+        byStudent: healthByStudent,
+        attendanceDate: record.attendance_date,
+      }
+    );
+    return bucket.absent > 0;
+  }).length;
 
-  return absentCount >= 3;
+  return unexcusedAbsentCount >= 3;
 }
 
 function subjectChoiceKeyForOption(o: TeacherClassOption): string {
@@ -143,6 +161,12 @@ export function TeacherAttendanceForm({
   );
   const [statusByStudent, setStatusByStudent] = useState<
     Record<string, Status>
+  >({});
+  const [healthStatusByStudent, setHealthStatusByStudent] = useState<
+    Record<string, StudentHealthAttendanceStatus>
+  >({});
+  const [historyHealthByStudent, setHistoryHealthByStudent] = useState<
+    Record<string, StudentHealthRecord>
   >({});
   const [historyDates, setHistoryDates] = useState<string[]>([]);
   const [historyByDate, setHistoryByDate] = useState<
@@ -297,17 +321,24 @@ export function TeacherAttendanceForm({
       setLoadError(res.error);
       setStudents([]);
       setStatusByStudent({});
+      setHealthStatusByStudent({});
+      setHistoryHealthByStudent({});
       setHistoryLastModifiedIsoByDate({});
       setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
       setHasChanges(false);
       return;
     }
     setStudents(res.students);
+    const healthMap = res.healthStatusByStudent ?? {};
     const next: Record<string, Status> = {};
     for (const s of res.students) {
-      next[s.id] = res.attendance[s.id] ?? "present";
+      const health = healthMap[s.id];
+      next[s.id] = isAttendanceLockedByHealth(health)
+        ? "absent"
+        : (res.attendance[s.id] ?? "present");
     }
     setStatusByStudent(next);
+    setHealthStatusByStudent(res.healthStatusByStudent ?? {});
     setHasChanges(false);
 
     const hist = await loadAttendanceHistory(classId, {
@@ -317,6 +348,7 @@ export function TeacherAttendanceForm({
     if (hist.ok) {
       setHistoryDates(hist.dates);
       setHistoryByDate(hist.byDate);
+      setHistoryHealthByStudent(hist.healthByStudent ?? {});
       setHistoryLastModifiedIsoByDate(hist.lastModifiedIsoByDate ?? {});
       setHistoryDisplayTimeZone(
         hist.displayTimeZone ?? DEFAULT_SCHOOL_DISPLAY_TIMEZONE
@@ -328,6 +360,7 @@ export function TeacherAttendanceForm({
       );
       setHistoryDates([]);
       setHistoryByDate({});
+      setHistoryHealthByStudent({});
       setHistoryLastModifiedIsoByDate({});
       setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
     }
@@ -346,6 +379,7 @@ export function TeacherAttendanceForm({
   }, [syncAttendance]);
 
   const setStatus = (studentId: string, status: Status) => {
+    if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) return;
     setStatusByStudent((prev) => ({ ...prev, [studentId]: status }));
     setHasChanges(true);
   };
@@ -355,20 +389,28 @@ export function TeacherAttendanceForm({
   };
 
   const markAllPresent = () => {
-    const next: Record<string, Status> = {};
-    students.forEach((s) => {
-      next[s.id] = "present";
+    setStatusByStudent((prev) => {
+      const next = { ...prev };
+      students.forEach((s) => {
+        if (!isAttendanceLockedByHealth(healthStatusByStudent[s.id])) {
+          next[s.id] = "present";
+        }
+      });
+      return next;
     });
-    setStatusByStudent(next);
     setHasChanges(true);
   };
 
   const markAllAbsent = () => {
-    const next: Record<string, Status> = {};
-    students.forEach((s) => {
-      next[s.id] = "absent";
+    setStatusByStudent((prev) => {
+      const next = { ...prev };
+      students.forEach((s) => {
+        if (!isAttendanceLockedByHealth(healthStatusByStudent[s.id])) {
+          next[s.id] = "absent";
+        }
+      });
+      return next;
     });
-    setStatusByStudent(next);
     setHasChanges(true);
   };
 
@@ -575,20 +617,40 @@ export function TeacherAttendanceForm({
     [historyPageDates]
   );
 
+  const healthRecordsForRollup = useMemo(() => {
+    const map: Record<string, StudentHealthRecord | undefined> = {};
+    for (const [id, status] of Object.entries(healthStatusByStudent)) {
+      const hist = historyHealthByStudent[id];
+      map[id] = hist ?? { status, marked_at: "" };
+    }
+    return map;
+  }, [healthStatusByStudent, historyHealthByStudent]);
+
+  const currentAttendanceRollup = useMemo(() => {
+    const rows = students.map((s) => ({
+      student_id: s.id,
+      status: statusByStudent[s.id] ?? "present",
+    }));
+    return countAttendanceRollupWithHealth(rows, {
+      byStudent: healthRecordsForRollup,
+      attendanceDate: date,
+    });
+  }, [students, statusByStudent, healthRecordsForRollup, date]);
+
   const frequentAbsenteeIds = useMemo(() => {
     const ids = new Set<string>();
-    const flat: HistoryRow[] = [];
+    const flat: (HistoryRow & { attendance_date: string })[] = [];
     for (const d of Object.keys(historyByDate)) {
       for (const row of historyByDate[d] ?? []) {
-        flat.push(row);
+        flat.push({ ...row, attendance_date: d });
       }
     }
     if (flat.length === 0) return ids;
     for (const s of students) {
-      if (isFrequentAbsentee(s.id, flat)) ids.add(s.id);
+      if (isFrequentAbsentee(s.id, flat, historyHealthByStudent)) ids.add(s.id);
     }
     return ids;
-  }, [historyByDate, students]);
+  }, [historyByDate, students, historyHealthByStudent]);
 
   const toggleMonthCollapsed = (monthKey: string) => {
     setCollapsedMonths((prev) => {
@@ -602,7 +664,34 @@ export function TeacherAttendanceForm({
   const isMonthExpanded = (monthKey: string) =>
     !collapsedMonths.has(monthKey);
 
+  const renderHealthLockedAttendance = (
+    health: StudentHealthAttendanceStatus
+  ) => {
+    const isIll = health === "ill";
+    const tooltip = getHealthAttendanceTooltip(health);
+    return (
+      <div
+        title={tooltip}
+        aria-label={tooltip}
+        className={cn(
+          "inline-flex max-w-[14rem] items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm",
+          isIll
+            ? "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950/50 dark:text-orange-100"
+            : "border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-100"
+        )}
+      >
+        <Lock className="h-4 w-4 shrink-0 opacity-75" aria-hidden />
+        <span className="whitespace-nowrap">
+          {getAttendanceDisplayLabel("absent", health)}
+        </span>
+      </div>
+    );
+  };
+
   const renderSymbolButtons = (studentId: string, currentStatus: Status) => {
+    if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) {
+      return renderHealthLockedAttendance(healthStatusByStudent[studentId]);
+    }
     const buttons = [
       {
         status: "present" as const,
@@ -654,6 +743,9 @@ export function TeacherAttendanceForm({
   };
 
   const renderTextButtons = (studentId: string, currentStatus: Status) => {
+    if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) {
+      return renderHealthLockedAttendance(healthStatusByStudent[studentId]);
+    }
     return (
       <div className="flex flex-wrap items-center gap-4">
         <label
@@ -800,6 +892,15 @@ export function TeacherAttendanceForm({
             </a>
           </p>
         )}
+
+        {students.length > 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-slate-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-800/40">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+              Today&apos;s summary · {formatDisplayDate(date)}
+            </p>
+            <AttendanceRollupChips counts={currentAttendanceRollup} />
+          </div>
+        ) : null}
 
         <div className="flex h-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
           <div className="sticky top-0 z-10 rounded-t-lg border-b border-gray-100 bg-white dark:border-zinc-700 dark:bg-zinc-900">
@@ -1023,27 +1124,68 @@ export function TeacherAttendanceForm({
               <div>
                 {studentPageSlice.map((s) => {
                   const currentStatus = getStatusForStudent(s.id);
+                  const healthStatus = healthStatusByStudent[s.id] ?? null;
+                  const displayLabel = getAttendanceDisplayLabel(
+                    currentStatus,
+                    healthStatus
+                  );
+                  const healthLocked = isAttendanceLockedByHealth(healthStatus);
                   return (
                     <div
                       key={s.id}
                       className={cn(
                         "flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 transition hover:bg-gray-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50",
-                        // Status-tinted row backgrounds need explicit dark
-                        // variants — without them the bg-{color}-50 classes
-                        // stay light in dark mode and the white name text
-                        // becomes unreadable against them.
-                        currentStatus === "present" &&
+                        healthStatus === "ill" &&
+                          "bg-orange-50/90 dark:bg-orange-950/25",
+                        healthStatus === "permitted" &&
+                          "bg-blue-50/90 dark:bg-blue-950/25",
+                        !healthLocked &&
+                          currentStatus === "present" &&
                           "bg-green-50 dark:bg-green-950/30",
-                        currentStatus === "absent" &&
+                        !healthLocked &&
+                          currentStatus === "absent" &&
                           "bg-red-50 dark:bg-red-950/30",
-                        currentStatus === "late" &&
+                        !healthLocked &&
+                          currentStatus === "late" &&
                           "bg-yellow-50 dark:bg-yellow-950/30"
                       )}
                     >
                       <div className="min-w-0 flex-1">
                         <span className="inline-flex flex-wrap items-center gap-y-1 font-medium text-gray-900 dark:text-white">
                           {s.full_name}
-                          {frequentAbsenteeIds.has(s.id) ? (
+                          {healthLocked ? (
+                            <span
+                              title={getHealthAttendanceTooltip(healthStatus)}
+                              className={cn(
+                                "ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                                healthStatus === "ill" &&
+                                  "bg-orange-100 text-orange-900 dark:bg-orange-950/60 dark:text-orange-100",
+                                healthStatus === "permitted" &&
+                                  "bg-blue-100 text-blue-900 dark:bg-blue-950/60 dark:text-blue-100"
+                              )}
+                            >
+                              <Lock
+                                className="h-3 w-3 shrink-0 opacity-80"
+                                aria-hidden
+                              />
+                              {displayLabel}
+                            </span>
+                          ) : (
+                            <span
+                              className={cn(
+                                "ml-2 rounded-full px-2 py-0.5 text-xs font-medium",
+                                currentStatus === "present" &&
+                                  "bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-200",
+                                currentStatus === "late" &&
+                                  "bg-yellow-100 text-yellow-900 dark:bg-yellow-950/50 dark:text-yellow-200",
+                                currentStatus === "absent" &&
+                                  "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-200"
+                              )}
+                            >
+                              {displayLabel}
+                            </span>
+                          )}
+                          {frequentAbsenteeIds.has(s.id) && !healthLocked ? (
                             <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-300">
                               Frequent Absentee
                             </span>
@@ -1293,8 +1435,16 @@ export function TeacherAttendanceForm({
                     <div className="space-y-2 border-t border-gray-200 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900 md:px-4">
                       {dates.map((d) => {
                         const rows = historyByDate[d] ?? [];
-                        const { present, absent, late } =
-                          countAttendanceRollup(rows);
+                        const historyCounts = countAttendanceRollupWithHealth(
+                          rows.map((r) => ({
+                            student_id: r.student_id,
+                            status: r.status,
+                          })),
+                          {
+                            byStudent: historyHealthByStudent,
+                            attendanceDate: d,
+                          }
+                        );
                         // `formatDateTimeInSchoolZone` returns
                         // "30 Apr 2026 - 7:27 am". Split for the mobile
                         // card so the date and time render on separate
@@ -1329,15 +1479,7 @@ export function TeacherAttendanceForm({
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                                   ✓ Saved
                                 </span>
-                                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950/40 dark:text-green-300">
-                                  {present} present
-                                </span>
-                                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
-                                  {absent} absent
-                                </span>
-                                <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-300">
-                                  {late} late
-                                </span>
+                                <AttendanceRollupChips counts={historyCounts} />
                               </div>
                             </div>
 
@@ -1346,23 +1488,10 @@ export function TeacherAttendanceForm({
                               <span className="font-medium text-slate-800 dark:text-zinc-200">
                                 {lastModLabel ?? formatDisplayDate(d)}
                               </span>
-                              <span className="text-right text-slate-600 dark:text-zinc-400">
-                                <span className="text-green-600 dark:text-green-400">
-                                  {present} present
-                                </span>
-                                <span className="mx-1.5 text-gray-300 dark:text-zinc-600">
-                                  ·
-                                </span>
-                                <span className="text-red-600 dark:text-red-400">
-                                  {absent} absent
-                                </span>
-                                <span className="mx-1.5 text-gray-300 dark:text-zinc-600">
-                                  ·
-                                </span>
-                                <span className="text-yellow-600 dark:text-yellow-400">
-                                  {late} late
-                                </span>
-                              </span>
+                              <AttendanceRollupChips
+                                counts={historyCounts}
+                                variant="inline"
+                              />
                             </div>
                           </div>
                         );

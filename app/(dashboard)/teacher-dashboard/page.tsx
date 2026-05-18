@@ -23,6 +23,9 @@ import { getTeacherTeachingClasses } from "./data";
 import { TeacherDashboardLocked } from "./components/TeacherDashboardLocked";
 import { TeacherDashboardOpenClassTeacherButton } from "./components/TeacherDashboardOpenClassTeacherButton";
 import { TeacherDocuments } from "./components/TeacherDocuments";
+import { TeacherOnDutyCard } from "./components/TeacherOnDutyCard";
+import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { getTeacherDutyAssignment } from "@/lib/teacher-on-duty/teacher-duty";
 
 export const dynamic = "force-dynamic";
 
@@ -170,6 +173,11 @@ export default async function TeacherDashboardPage() {
   );
 
   const today = new Date().toISOString().slice(0, 10);
+
+  const teacherSchoolId = await getSchoolIdForUser(supabase, user.id);
+  const dutyContext = teacherSchoolId
+    ? await getTeacherDutyAssignment(supabase, teacherSchoolId, user.id, today)
+    : { isOnDuty: false, assignment: null };
 
   const attTodayRows = await fetchAllRows<{
     student_id: string;
@@ -482,6 +490,10 @@ export default async function TeacherDashboardPage() {
               <TeacherDashboardOpenClassTeacherButton />
             </div>
           </section>
+        ) : null}
+
+        {dutyContext.isOnDuty && dutyContext.assignment ? (
+          <TeacherOnDutyCard endDate={dutyContext.assignment.endDate} />
         ) : null}
 
         <section className="mb-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">

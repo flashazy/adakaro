@@ -167,11 +167,6 @@ class _TeacherMainScaffoldState extends State<TeacherMainScaffold> {
           ),
         );
         break;
-      case TeacherQuickDestination.classesSubjects:
-        final desk = _desk;
-        if (desk == null) return;
-        _showClassesSubjectsSheet(context, desk);
-        break;
       case TeacherQuickDestination.academicReports:
         final desk = _desk;
         if (desk == null) return;
@@ -189,109 +184,6 @@ class _TeacherMainScaffoldState extends State<TeacherMainScaffold> {
         openAcademicReportsOncePlausible(context, data: desk);
         break;
     }
-  }
-
-  void _showClassesSubjectsSheet(BuildContext context, TeacherDeskData desk) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Classes & subjects',
-                    style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (desk.assignments.isEmpty)
-                    Text(
-                      desk.showClassTeacherOnly
-                          ? 'You are assigned as class teacher — subject assignments will appear separately.'
-                          : 'No assignments to list yet.',
-                      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                    )
-                  else
-                    ...desk.assignments.map(
-                      (a) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Material(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          elevation: 0,
-                          shadowColor: Colors.transparent,
-                          child: ExpansionTile(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(
-                                color: AppColors.cardBorder.withValues(
-                                  alpha: 0.7,
-                                ),
-                              ),
-                            ),
-                            title: Text(
-                              a.className,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            subtitle: Text(a.subjectLabel),
-                            childrenPadding:
-                                const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                            children: [
-                              Text(
-                                'Year · ${a.academicYear}',
-                                style: Theme.of(ctx)
-                                    .textTheme
-                                    .labelMedium
-                                    ?.copyWith(
-                                      color: AppColors.textSecondary,
-                                    ),
-                              ),
-                              const Divider(),
-                              ...(desk.studentsByClassId[a.classId] ??
-                                      const [])
-                                  .take(120)
-                                  .map(
-                                    (s) => ListTile(
-                                      dense: true,
-                                      contentPadding: EdgeInsets.zero,
-                                      title: Text(
-                                        s.fullName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      subtitle: (s.admissionNumber
-                                                  ?.trim()
-                                                  .isNotEmpty ==
-                                              true)
-                                          ? Text('Adm: ${s.admissionNumber}')
-                                          : null,
-                                    ),
-                                  ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   @override
@@ -515,7 +407,6 @@ class _TeacherMainScaffoldState extends State<TeacherMainScaffold> {
       TeacherLessonPlansScreen(user: widget.user, data: desk),
       TeacherMoreHubScreen(
         data: desk,
-        onOpenClassesSubjects: () => _showClassesSubjectsSheet(context, desk),
         onDeskRefresh: _load,
       ),
     ];

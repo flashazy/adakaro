@@ -12,7 +12,7 @@ import {
   formatDateRange,
   formatFeeBalanceReminder,
   formatItemsForPdf,
-  formatAttendance,
+  formatAttendanceFromRollup,
 } from "@/lib/reportFormatter";
 
 /** Stamp box on PDF (mm); aspect ratio preserved; kept modest so HT signature stays readable. */
@@ -429,11 +429,7 @@ function buildPdf(
     doc.setFontSize(10);
   }
 
-  const presentDays = data.attendance.present + data.attendance.late;
-  const attendanceSentence = formatAttendance(
-    presentDays,
-    data.attendance.absent
-  );
+  const attendanceSentence = formatAttendanceFromRollup(data.attendance);
   if (attendanceSentence) {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);

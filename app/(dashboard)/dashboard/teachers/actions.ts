@@ -10,6 +10,7 @@ import type { Database } from "@/types/supabase";
 import { generateTeacherTempPassword } from "@/lib/generate-teacher-temp-password";
 import {
   MANAGEABLE_TEACHER_DEPARTMENTS,
+  isTeacherJoinedSchool,
   type SchoolTeacherMemberRow,
   type ResetTeacherPasswordState,
   type TeacherActionState,
@@ -133,7 +134,7 @@ async function fetchSchoolTeacherMembersFallback(
 
     const { data: profs } = await (admin as Db)
       .from("profiles")
-      .select("id, full_name, email, password_changed")
+      .select("id, full_name, email, password_changed, last_sign_in_at")
       .in("id", ids);
 
     const profList = (profs ?? []) as {
@@ -141,6 +142,7 @@ async function fetchSchoolTeacherMembersFallback(
       full_name: string;
       email: string | null;
       password_changed: boolean | null;
+      last_sign_in_at: string | null;
     }[];
 
     const byId = new Map(profList.map((p) => [p.id, p]));
@@ -154,11 +156,22 @@ async function fetchSchoolTeacherMembersFallback(
         profileFullName: p?.full_name ?? null,
         profileEmail: p?.email ?? null,
         profilePasswordChanged: p?.password_changed !== false,
+        profileLastSignInAt: p?.last_sign_in_at ?? null,
       };
     });
   } catch {
     return [];
   }
+}
+
+/**
+ * Teachers who have logged in at least once — eligible for duty rotation.
+ */
+export async function fetchSchoolTeachersEligibleForDutyRotation(
+  schoolId: string
+): Promise<SchoolTeacherMemberRow[]> {
+  const members = await fetchSchoolTeacherMembersForTeachersPage(schoolId);
+  return members.filter(isTeacherJoinedSchool);
 }
 
 /**
@@ -181,7 +194,8 @@ export async function fetchSchoolTeacherMembersForTeachersPage(
         profiles!inner (
           full_name,
           email,
-          password_changed
+          password_changed,
+          last_sign_in_at
         )
       `
       )
@@ -203,11 +217,13 @@ export async function fetchSchoolTeacherMembersForTeachersPage(
             full_name: string | null;
             email: string | null;
             password_changed: boolean | null;
+            last_sign_in_at: string | null;
           }
         | {
             full_name: string | null;
             email: string | null;
             password_changed: boolean | null;
+            last_sign_in_at: string | null;
           }[]
         | null;
     }[];
@@ -215,14 +231,15 @@ export async function fetchSchoolTeacherMembersForTeachersPage(
     return rows
       .filter((r) => r.role === "teacher")
       .map((r) => {
-        const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+        const profile = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
         return {
           id: r.id,
           user_id: r.user_id,
           created_at: r.created_at,
-          profileFullName: p?.full_name ?? null,
-          profileEmail: p?.email ?? null,
-          profilePasswordChanged: p?.password_changed !== false,
+          profileFullName: profile?.full_name ?? null,
+          profileEmail: profile?.email ?? null,
+          profilePasswordChanged: profile?.password_changed !== false,
+          profileLastSignInAt: profile?.last_sign_in_at ?? null,
         };
       });
   } catch {
