@@ -161,10 +161,7 @@ export async function getActiveDutyTeachersForSchool(
   if (error || !data?.length) return [];
 
   const rows = data as AssignmentDbRow[];
-  const names = await resolveUserDisplayNames(
-    rows.map((r) => r.teacher_id),
-    "Teacher"
-  );
+  const names = await resolveUserDisplayNames(rows.map((r) => r.teacher_id));
 
   return rows.map((r) => ({
     teacherId: r.teacher_id,
@@ -191,10 +188,7 @@ export async function listTeacherDutyAssignmentsForSchool(
   if (error || !data?.length) return [];
 
   const rows = data as AssignmentDbRow[];
-  const names = await resolveUserDisplayNames(
-    rows.map((r) => r.teacher_id),
-    "Teacher"
-  );
+  const names = await resolveUserDisplayNames(rows.map((r) => r.teacher_id));
   const today = todayIsoUtc();
 
   return rows.map((r) => {
