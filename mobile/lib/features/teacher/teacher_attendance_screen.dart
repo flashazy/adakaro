@@ -1505,7 +1505,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
         ),
         sliver: SliverToBoxAdapter(
           child: Text(
-            'Attendance',
+            'Class List',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.2,
@@ -1800,7 +1800,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Attendance opens when your school assigns you to a class.',
+            'Class list opens when your school assigns you to a class.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: AppColors.textSecondary,

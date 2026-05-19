@@ -80,7 +80,7 @@ class TeacherLockedDeskPlaceholder extends StatelessWidget {
   final bool isRefreshing;
 
   static const _footerReassurance =
-      'Your attendance, marks, plans, and documents will appear automatically once access is granted.';
+      'Your class lists, marks, plans, and documents will appear automatically once access is granted.';
 
   @override
   Widget build(BuildContext context) {

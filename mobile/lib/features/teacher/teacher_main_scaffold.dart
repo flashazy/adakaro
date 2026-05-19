@@ -454,9 +454,9 @@ class _TeacherMainScaffoldState extends State<TeacherMainScaffold> {
                   label: 'Home',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.how_to_reg_outlined),
-                  selectedIcon: Icon(Icons.how_to_reg_rounded),
-                  label: 'Attendance',
+                  icon: Icon(Icons.groups_outlined),
+                  selectedIcon: Icon(Icons.groups_rounded),
+                  label: 'Class List',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.grading_outlined),

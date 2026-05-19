@@ -24,7 +24,7 @@ import {
 import type { PendingSyncRow, SyncItemKind } from "@/lib/offline/db";
 
 const KIND_LABELS: Record<SyncItemKind, string> = {
-  "save-attendance": "Attendance",
+  "save-attendance": "Class List",
   "save-scores": "Marks",
   "create-gradebook-assignment": "New assignment",
   "delete-gradebook-assignment": "Deleted assignment",

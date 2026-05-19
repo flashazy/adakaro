@@ -40,7 +40,7 @@ enum TeacherDeskTileKind {
   ];
 
   IconData get icon => switch (this) {
-        TeacherDeskTileKind.attendance => Icons.how_to_reg_rounded,
+        TeacherDeskTileKind.attendance => Icons.groups_rounded,
         TeacherDeskTileKind.lessonPlans => Icons.menu_book_rounded,
         TeacherDeskTileKind.marks => Icons.grade_rounded,
         TeacherDeskTileKind.documents => Icons.folder_special_rounded,
@@ -48,7 +48,7 @@ enum TeacherDeskTileKind {
       };
 
   String get title => switch (this) {
-        TeacherDeskTileKind.attendance => 'Attendance',
+        TeacherDeskTileKind.attendance => 'Class List',
         TeacherDeskTileKind.lessonPlans => 'Lesson plans',
         TeacherDeskTileKind.marks => 'Marks',
         TeacherDeskTileKind.documents => 'My documents',
@@ -56,7 +56,7 @@ enum TeacherDeskTileKind {
       };
 
   String get subtitle => switch (this) {
-        TeacherDeskTileKind.attendance => 'Daily roll',
+        TeacherDeskTileKind.attendance => 'Your students',
         TeacherDeskTileKind.lessonPlans => 'Plan lessons',
         TeacherDeskTileKind.marks => 'Enter scores',
         TeacherDeskTileKind.documents => 'Files & certs',

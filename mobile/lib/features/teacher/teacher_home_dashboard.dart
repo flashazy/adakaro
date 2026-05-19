@@ -739,7 +739,7 @@ class _DeskHeroCardState extends State<_DeskHeroCard>
                         Expanded(
                           child: _HeroStatChip(
                             compact: compact,
-                            label: 'Attendance today',
+                            label: 'Class list today',
                             value: '${widget.attendanceToday}',
                           ),
                         ),

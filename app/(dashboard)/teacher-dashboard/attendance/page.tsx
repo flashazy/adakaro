@@ -8,7 +8,7 @@ import { TeacherAttendanceForm } from "../components/TeacherAttendanceForm";
 import { getTeacherTeachingClasses } from "../data";
 
 export const metadata = {
-  title: "Attendance — Teacher",
+  title: "Class List — Teacher",
 };
 
 export default async function TeacherAttendancePage({
@@ -33,10 +33,10 @@ export default async function TeacherAttendancePage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
-              Attendance
+              Class List
             </h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-              Record daily attendance for your classes.
+              View students assigned to your classes.
             </p>
           </div>
           <Link

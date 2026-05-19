@@ -33,7 +33,7 @@ function userInitials(displayName: string): string {
 
 const BASE_NAV = [
   { href: "/teacher-dashboard", label: "Dashboard" },
-  { href: "/teacher-dashboard/attendance", label: "Attendance" },
+  { href: "/teacher-dashboard/attendance", label: "Class List" },
   { href: "/dashboard/duty-book", label: "Duty Book", dutyBook: true as const },
   { href: "/teacher-dashboard/lesson-plans", label: "Lesson Plans" },
   { href: "/teacher-dashboard/grades", label: "Marks" },

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { CalendarDays, ClipboardCheck, ListChecks } from "lucide-react";
+import { CalendarDays, ListChecks, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
@@ -435,7 +435,7 @@ export default async function TeacherDashboardPage() {
 
   const attendanceSubtext =
     (todayAttendanceCount ?? 0) === 0
-      ? "No attendance recorded yet today. Start by taking attendance."
+      ? "Open a class below to view your class list."
       : "Records saved for today";
 
   const gradesSubtext =
@@ -451,12 +451,12 @@ export default async function TeacherDashboardPage() {
   let insightMessage: string;
   if ((todayAttendanceCount ?? 0) === 0) {
     insightMessage =
-      "You have no attendance recorded today — open a class below to take attendance.";
+      "You have not opened your class list today — view a class below.";
   } else if (pendingGrades > 0) {
     insightMessage = `You have ${pendingGrades} pending mark slot${pendingGrades === 1 ? "" : "s"} to enter across your classes.`;
   } else {
     insightMessage =
-      "You're up to date on attendance and marks for now. Check upcoming lessons in Today Overview.";
+      "You're up to date on class lists and marks for now. Check upcoming lessons in Today Overview.";
   }
 
   return (
@@ -467,7 +467,7 @@ export default async function TeacherDashboardPage() {
             Welcome, {welcomeName}
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-            Your classes, attendance, marks, and lesson plans in one place.
+            Your classes, class lists, marks, and lesson plans in one place.
           </p>
         </div>
 
@@ -504,14 +504,14 @@ export default async function TeacherDashboardPage() {
             <div className="flex flex-col space-y-2 pt-0 pb-6 text-center sm:items-stretch sm:px-2 sm:pb-0 sm:text-left sm:first:pl-0">
               <div className="flex items-center justify-center gap-3 sm:justify-start">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.16)] dark:text-school-primary">
-                  <ClipboardCheck className="h-5 w-5" aria-hidden />
+                  <Users className="h-5 w-5" aria-hidden />
                 </span>
                 <p className="text-4xl font-semibold tabular-nums text-slate-900 dark:text-white">
                   {todayAttendanceCount ?? 0}
                 </p>
               </div>
               <p className="text-sm text-gray-500 dark:text-zinc-400">
-                Today&apos;s attendance
+                Today&apos;s class list
               </p>
               <p className="text-sm text-gray-400 dark:text-zinc-500">
                 {attendanceSubtext}
@@ -589,7 +589,7 @@ export default async function TeacherDashboardPage() {
                       href={`/teacher-dashboard/attendance?classId=${item.classId}`}
                       className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-school-primary px-4 text-sm font-medium text-white transition-colors duration-150 hover:brightness-105 sm:flex-none"
                     >
-                      Take attendance
+                      View class list
                     </Link>
                     <Link
                       href={`/teacher-dashboard/grades?classId=${item.classId}`}

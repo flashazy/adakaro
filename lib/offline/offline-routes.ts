@@ -37,8 +37,8 @@ export interface OfflineRoute {
 export const OFFLINE_ROUTES: readonly OfflineRoute[] = [
   {
     path: "/teacher-dashboard/attendance",
-    label: "Attendance",
-    description: "Record daily attendance for your classes.",
+    label: "Class List",
+    description: "View students assigned to your classes.",
     audience: "teacher",
   },
   {

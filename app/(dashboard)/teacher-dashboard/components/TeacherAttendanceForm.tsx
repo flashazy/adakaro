@@ -914,7 +914,7 @@ export function TeacherAttendanceForm({
                 <div
                   className="hidden rounded-lg bg-gray-100 p-1 dark:bg-zinc-800 md:inline-flex"
                   role="group"
-                  aria-label="Attendance view"
+                  aria-label="Class list view"
                 >
                   <button
                     type="button"
