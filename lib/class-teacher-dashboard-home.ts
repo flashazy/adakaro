@@ -1,6 +1,8 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { ClassAttendanceTodaySummary } from "@/lib/class-attendance/class-attendance-types";
+import { loadClassAttendanceTodaySummary } from "@/lib/class-attendance/load-class-attendance";
 
 export type ClassTeacherHomeRecentMessage = {
   messageId: string;
@@ -20,6 +22,7 @@ export type ClassTeacherHomeSummary = {
   linkedParentCount: number;
   unreadMessageCount: number;
   recentFromParents: ClassTeacherHomeRecentMessage[];
+  classAttendanceToday: ClassAttendanceTodaySummary | null;
 };
 
 export type ClassTeacherAcademicBanner = {
@@ -121,6 +124,7 @@ export async function loadClassTeacherHomeSummary(
     linkedParentCount: 0,
     unreadMessageCount: 0,
     recentFromParents: [],
+    classAttendanceToday: null,
   };
   try {
     const admin = createAdminClient();
@@ -269,11 +273,14 @@ export async function loadClassTeacherHomeSummary(
       }
     }
 
+    const classAttendanceToday = await loadClassAttendanceTodaySummary(classId);
+
     return {
       activeStudentCount,
       linkedParentCount,
       unreadMessageCount,
       recentFromParents,
+      classAttendanceToday,
     };
   } catch {
     return empty;

@@ -61,6 +61,31 @@ export const TEACHER_ASSIGNMENTS_ROWS_STORAGE_KEY =
 export const TEACHER_ATTENDANCE_ROWS_STORAGE_KEY =
   "adakaro:teacherAttendance:rowsPerPage";
 
+/** Class attendance + class teacher student tables (10–100). */
+export const LARGE_STUDENT_LIST_ROW_OPTIONS = [10, 25, 50, 100] as const;
+
+export type LargeStudentListRowOption =
+  (typeof LARGE_STUDENT_LIST_ROW_OPTIONS)[number];
+
+export const DEFAULT_LARGE_STUDENT_LIST_ROWS: LargeStudentListRowOption = 25;
+
+export const CLASS_ATTENDANCE_ROWS_STORAGE_KEY =
+  "adakaro:classAttendance:rowsPerPage";
+
+export const CLASS_TEACHER_STUDENTS_ROWS_STORAGE_KEY =
+  "adakaro:classTeacherStudents:rowsPerPage";
+
+export function parseLargeStudentListRowsPerPage(
+  raw: string | null
+): LargeStudentListRowOption | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return (LARGE_STUDENT_LIST_ROW_OPTIONS as readonly number[]).includes(n)
+    ? (n as LargeStudentListRowOption)
+    : null;
+}
+
 /** Coordinator dashboard · report cards roster (subset of student list options). */
 export const COORDINATOR_REPORT_CARDS_ROW_OPTIONS = [5, 10, 25, 50] as const;
 

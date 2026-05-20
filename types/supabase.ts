@@ -1824,6 +1824,57 @@ export interface Database {
           updated_at?: string;
         };
       };
+      class_attendance: {
+        Row: {
+          id: string;
+          school_id: string;
+          class_id: string;
+          student_id: string;
+          attendance_date: string;
+          status:
+            | "present"
+            | "absent"
+            | "late"
+            | "sick"
+            | "permitted";
+          notes: string | null;
+          recorded_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          class_id: string;
+          student_id: string;
+          attendance_date: string;
+          status:
+            | "present"
+            | "absent"
+            | "late"
+            | "sick"
+            | "permitted";
+          notes?: string | null;
+          recorded_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          school_id?: string;
+          class_id?: string;
+          student_id?: string;
+          attendance_date?: string;
+          status?:
+            | "present"
+            | "absent"
+            | "late"
+            | "sick"
+            | "permitted";
+          notes?: string | null;
+          recorded_by?: string;
+          updated_at?: string;
+        };
+      };
       teacher_attendance: {
         Row: {
           id: string;
@@ -2425,6 +2476,14 @@ export interface Database {
       };
       is_school_head_teacher: {
         Args: { p_school_id: string };
+        Returns: boolean;
+      };
+      is_class_teacher_for_class: {
+        Args: { p_class_id: string };
+        Returns: boolean;
+      };
+      can_manage_class_attendance: {
+        Args: { p_class_id: string };
         Returns: boolean;
       };
       can_view_duty_book: {

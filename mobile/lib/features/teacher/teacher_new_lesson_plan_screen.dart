@@ -1279,7 +1279,7 @@ class _TeacherNewLessonPlanScreenState
             _assistantSectionCard(
               context,
               title: 'Class profile',
-              helperText: 'Auto-filled from enrollment and attendance.',
+              helperText: 'Auto-filled from enrollment and class list.',
               status: _statusClassSection,
               children: [
                 if (_profileLoading)
@@ -1307,7 +1307,7 @@ class _TeacherNewLessonPlanScreenState
                   Text('Total: ${_profile.presentTotal}'),
                   const SizedBox(height: 6),
                   Text(
-                    'Auto-filled from enrolment and attendance for ${a.className} on ${_ymd(_lessonDate)}.',
+                    'Auto-filled from enrolment and class list for ${a.className} on ${_ymd(_lessonDate)}.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

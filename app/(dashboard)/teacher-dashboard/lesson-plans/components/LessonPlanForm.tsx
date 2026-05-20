@@ -431,7 +431,7 @@ export function LessonPlanForm({
         </h2>
         <p className="mb-4 text-sm text-slate-500 dark:text-zinc-400">
           Registered counts come from active enrolment for the class. Present
-          counts students marked present or late in saved attendance for the
+          counts students marked present or late in the saved class list for the
           selected date (0 if none recorded), split by gender where known.
         </p>
         <div className="mt-4 max-w-full min-w-0 overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700">

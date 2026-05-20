@@ -177,7 +177,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
     final r = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Unsaved attendance changes'),
+        title: const Text('Unsaved class list changes'),
         content: const Text(
           'You have changes that are not saved yet. What would you like to do?',
         ),
@@ -491,7 +491,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Reload attendance?'),
+          title: const Text('Reload class list?'),
           content: const Text(
             'Reloading will fetch the latest records from the server. '
             'Unsaved changes on this screen will be discarded.',
@@ -518,10 +518,10 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
         context,
         variant: _PremiumSnackVariant.info,
         icon: Icons.cloud_done_rounded,
-        title: 'Attendance updated',
+        title: 'Class list updated',
         subtitle: _isViewingToday
-            ? "Today's roster and attendance reloaded."
-            : 'Attendance reloaded for the selected date.',
+            ? "Today's roster and class list reloaded."
+            : 'Class list reloaded for the selected date.',
         duration: const Duration(seconds: 2),
       );
     }
@@ -606,7 +606,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
       context,
       variant: _PremiumSnackVariant.info,
       icon: Icons.restart_alt_rounded,
-      title: 'Attendance reset',
+      title: 'Class list reset',
       subtitle: 'Save to confirm changes',
       duration: const Duration(milliseconds: 2800),
     );
@@ -617,10 +617,10 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
       context: context,
       useRootNavigator: true,
       builder: (ctx) => AlertDialog(
-        title: const Text('Reset attendance?'),
+        title: const Text('Reset class list?'),
         content: const Text(
           'This will reset the currently visible students back to Present. '
-          'Save again to update today\'s attendance.',
+          'Save again to update today\'s class list.',
         ),
         actions: [
           TextButton(
@@ -733,7 +733,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
                 _BulkActionTile(
                   icon: Icons.restart_alt_rounded,
                   iconColor: AppColors.primary,
-                  title: 'Reset attendance',
+                  title: 'Reset class list',
                   subtitle: 'Visible students back to Present',
                   onTap: () {
                     _debugLogReset('reset tapped');
@@ -761,9 +761,9 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
           context,
           variant: _PremiumSnackVariant.error,
           icon: Icons.info_outline_rounded,
-          title: 'Cannot save attendance',
+          title: 'Cannot save class list',
           subtitle:
-              'Past attendance is view-only. Attendance can only be edited today.',
+              'Past class list is view-only. Class list can only be edited today.',
         );
       }
       return;
@@ -777,9 +777,9 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
           context,
           variant: _PremiumSnackVariant.error,
           icon: Icons.info_outline_rounded,
-          title: 'Cannot save attendance',
+          title: 'Cannot save class list',
           subtitle:
-              'Past attendance is view-only. Attendance can only be edited today.',
+              'Past class list is view-only. Class list can only be edited today.',
         );
       }
       return;
@@ -850,7 +850,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
         context,
         variant: _PremiumSnackVariant.success,
         icon: Icons.check_circle_rounded,
-        title: 'Attendance saved successfully',
+        title: 'Class list saved successfully',
         subtitle:
             '$updatedCount student${updatedCount == 1 ? '' : 's'} updated',
         duration: const Duration(seconds: 3),
@@ -993,7 +993,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       icon: const Icon(Icons.save_rounded),
-      label: const Text('Save attendance'),
+      label: const Text('Save class list'),
     );
   }
 
@@ -1430,7 +1430,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
               ),
               if (!_isViewingToday) ...[
                 const SizedBox(height: 10),
-                Text('Viewing past attendance', style: readOnlyTitleStyle),
+                Text('Viewing past class list', style: readOnlyTitleStyle),
                 const SizedBox(height: 4),
                 Text('Past records are read-only', style: readOnlySubStyle),
               ],

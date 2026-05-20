@@ -233,8 +233,8 @@ export function DutyBookClassTable(props: {
           Breakdown by class
         </h2>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-          Registered students without a roll call on this date count as absent
-          (unexcused), unless flagged {ILL_STATUS_DISPLAY_LOWER} or permitted.
+          Attendance columns reflect class attendance saved for this date only.
+          Classes with no recorded attendance show —.
         </p>
       </div>
 

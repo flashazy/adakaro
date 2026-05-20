@@ -1,13 +1,10 @@
 import "server-only";
 
 import {
-  classifyStudentDayAttendance,
   emptyAttendanceRollup,
   type AttendanceRollupCounts,
-  type StudentHealthRecord,
 } from "@/lib/attendance-counts";
 import { sortClassRowsByHierarchy } from "@/lib/class-options";
-import { isStudentHealthAttendanceStatus } from "@/lib/student-attendance-status";
 import type { DutyBookGenderFilter } from "./duty-book-class-filters";
 import { isBoyGender, isGirlGender, studentInGenderView } from "./duty-book-gender";
 import type {
@@ -45,11 +42,32 @@ function emptyClassSegment(): ClassSegmentStats {
   };
 }
 
-function addRollup(
-  target: AttendanceRollupCounts,
-  bucket: keyof AttendanceRollupCounts
-) {
-  target[bucket] += 1;
+/** Map official class_attendance status into duty book rollup buckets. */
+function applyClassAttendanceStatus(
+  rollup: AttendanceRollupCounts,
+  status: string
+): void {
+  const s = status.toLowerCase();
+  switch (s) {
+    case "present":
+      rollup.present += 1;
+      break;
+    case "late":
+      rollup.late += 1;
+      rollup.present += 1;
+      break;
+    case "absent":
+      rollup.absent += 1;
+      break;
+    case "sick":
+      rollup.ill += 1;
+      break;
+    case "permitted":
+      rollup.permitted += 1;
+      break;
+    default:
+      break;
+  }
 }
 
 function buildClassRow(
@@ -77,26 +95,33 @@ function buildClassRow(
   };
 }
 
+function emptySchoolRollupByView(): Record<
+  DutyBookGenderFilter,
+  AttendanceRollupCounts
+> {
+  return {
+    all: emptyAttendanceRollup(),
+    boys: emptyAttendanceRollup(),
+    girls: emptyAttendanceRollup(),
+  };
+}
+
 /**
  * School-wide duty book snapshot for one calendar date.
- * Uses students, teacher_attendance (all subjects), and student_attendance_status.
- *
- * `healthClient` must be an authenticated Supabase client (admin session). The service-role
- * client cannot read `student_attendance_status` until that table is granted to service_role.
+ * Registered / boys / girls from active students; attendance from class_attendance only.
  */
 export async function loadDutyBookData(
   admin: Db,
   schoolId: string,
   schoolName: string,
-  dateInput: string,
-  healthClient: Db
+  dateInput: string
 ): Promise<{ ok: true; data: DutyBookPayload } | { ok: false; error: string }> {
   const date = normalizeDateOnly(dateInput);
   if (!date) {
     return { ok: false, error: "Invalid date. Use YYYY-MM-DD." };
   }
 
-  const [{ data: classRows }, { data: studentRows }, { data: attRowsRaw }] =
+  const [{ data: classRows }, { data: studentRows }, attResult] =
     await Promise.all([
       admin
         .from("classes")
@@ -107,14 +132,32 @@ export async function loadDutyBookData(
         .from("students")
         .select("id, class_id, gender")
         .eq("school_id", schoolId)
-        .eq("approval_status", "approved")
-        .neq("status", "inactive"),
+        .eq("status", "active"),
       admin
-        .from("teacher_attendance")
-        .select("student_id, status, attendance_date, subject_id, class_id")
+        .from("class_attendance")
+        .select("student_id, class_id, status")
         .eq("school_id", schoolId)
         .eq("attendance_date", date),
     ]);
+
+  let attendanceRows: {
+    student_id: string;
+    class_id: string;
+    status: string;
+  }[] = [];
+
+  if (attResult.error) {
+    const msg = attResult.error.message ?? "";
+    if (!/class_attendance|does not exist|schema cache/i.test(msg)) {
+      console.error("[loadDutyBookData] class_attendance", msg);
+    }
+  } else {
+    attendanceRows = (attResult.data ?? []) as {
+      student_id: string;
+      class_id: string;
+      status: string;
+    }[];
+  }
 
   const classes = sortClassRowsByHierarchy(
     (classRows ?? []) as {
@@ -131,54 +174,16 @@ export async function loadDutyBookData(
     gender: string | null;
   };
   const students = (studentRows ?? []) as StudentRow[];
-  const studentIds = students.map((s) => s.id);
-
-  const healthByStudent: Record<string, StudentHealthRecord | undefined> = {};
-  if (studentIds.length > 0) {
-    const { data: healthRows, error: healthErr } = await healthClient
-      .from("student_attendance_status")
-      .select("student_id, status, marked_at")
-      .in("student_id", studentIds);
-    if (healthErr) {
-      console.error(
-        "[loadDutyBookData] student_attendance_status",
-        healthErr.message
-      );
-    }
-    for (const h of (healthRows ?? []) as {
-      student_id: string;
-      status: string;
-      marked_at: string;
-    }[]) {
-      if (isStudentHealthAttendanceStatus(h.status)) {
-        healthByStudent[h.student_id] = {
-          status: h.status,
-          marked_at: h.marked_at,
-        };
-      }
-    }
-  }
-
-  const healthContext = { byStudent: healthByStudent, attendanceDate: date };
-
-  const statusesByStudent = new Map<string, string[]>();
-  for (const row of (attRowsRaw ?? []) as { student_id: string; status: string }[]) {
-    const list = statusesByStudent.get(row.student_id) ?? [];
-    list.push(row.status);
-    statusesByStudent.set(row.student_id, list);
-  }
+  const genderByStudentId = new Map(
+    students.map((s) => [s.id, s.gender] as const)
+  );
 
   const classStatsByView = new Map<
     string,
     Record<DutyBookGenderFilter, ClassSegmentStats>
   >();
 
-  const schoolRollupByView: Record<DutyBookGenderFilter, AttendanceRollupCounts> =
-    {
-      all: emptyAttendanceRollup(),
-      boys: emptyAttendanceRollup(),
-      girls: emptyAttendanceRollup(),
-    };
+  const schoolRollupByView = emptySchoolRollupByView();
   const schoolBoysByView: Record<DutyBookGenderFilter, number> = {
     all: 0,
     boys: 0,
@@ -204,12 +209,6 @@ export async function loadDutyBookData(
       });
     }
     const classSegments = classStatsByView.get(s.class_id)!;
-    const rollCallStatuses = statusesByStudent.get(s.id) ?? [];
-    const bucket = classifyStudentDayAttendance({
-      studentId: s.id,
-      rollCallStatuses,
-      health: healthContext,
-    });
 
     for (const view of GENDER_VIEWS) {
       if (!studentInGenderView(s.gender, view)) continue;
@@ -222,10 +221,26 @@ export async function loadDutyBookData(
         schoolGirlsByView[view] += 1;
         classSegments[view].girls += 1;
       }
+    }
+  }
+
+  for (const row of attendanceRows) {
+    const gender = genderByStudentId.get(row.student_id);
+    if (!classStatsByView.has(row.class_id)) {
+      classStatsByView.set(row.class_id, {
+        all: emptyClassSegment(),
+        boys: emptyClassSegment(),
+        girls: emptyClassSegment(),
+      });
+    }
+    const classSegments = classStatsByView.get(row.class_id)!;
+
+    for (const view of GENDER_VIEWS) {
+      if (!studentInGenderView(gender, view)) continue;
 
       classSegments[view].hasAttendance = true;
-      addRollup(classSegments[view].rollup, bucket);
-      addRollup(schoolRollupByView[view], bucket);
+      applyClassAttendanceStatus(classSegments[view].rollup, row.status);
+      applyClassAttendanceStatus(schoolRollupByView[view], row.status);
     }
   }
 

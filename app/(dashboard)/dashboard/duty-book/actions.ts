@@ -31,5 +31,5 @@ export async function loadDutyBookDataAction(
     (schoolRow as { name: string } | null)?.name?.trim() || "School";
 
   const admin = createAdminClient();
-  return loadDutyBookData(admin, schoolId, schoolName, date, supabase);
+  return loadDutyBookData(admin, schoolId, schoolName, date);
 }

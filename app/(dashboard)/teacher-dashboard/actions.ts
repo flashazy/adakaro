@@ -514,7 +514,7 @@ export async function saveAttendanceAction(input: {
     return {
       ok: false,
       error:
-        "Could not verify existing attendance. Check your connection and try again.",
+        "Could not verify existing class list. Check your connection and try again.",
     };
   }
 
@@ -602,13 +602,13 @@ export async function saveAttendanceAction(input: {
         raw.includes("teacher_attendance_unique_record")
       ) {
         userMessage =
-          "This student already has attendance saved today under another subject. Your school database needs a one-time update so each subject can keep its own attendance. Please ask your administrator to apply the latest Supabase migrations, then try again.";
+          "This student already has a class list saved today under another subject. Your school database needs a one-time update so each subject can keep its own class list. Please ask your administrator to apply the latest Supabase migrations, then try again.";
       } else if (code === "23505") {
         userMessage =
-          "Could not save this attendance because it conflicts with existing data. Refresh the page and try again. If it keeps happening, contact your administrator.";
+          "Could not save this class list because it conflicts with existing data. Refresh the page and try again. If it keeps happening, contact your administrator.";
       } else if (code === "42501" || /permission denied/i.test(insertError.message)) {
         userMessage =
-          "You do not have permission to save attendance for this class. Contact your school administrator if this persists.";
+          "You do not have permission to save the class list for this class. Contact your school administrator if this persists.";
       } else if (/violates foreign key/i.test(insertError.message)) {
         userMessage =
           "A student or class reference is no longer valid. Refresh the page and try again.";
@@ -637,7 +637,7 @@ export async function saveAttendanceAction(input: {
       let userMessage = err.message;
       if (code === "42501" || /permission denied/i.test(err.message)) {
         userMessage =
-          "You do not have permission to save attendance for this class. Contact your school administrator if this persists.";
+          "You do not have permission to save the class list for this class. Contact your school administrator if this persists.";
       }
       return { ok: false, error: userMessage };
     }

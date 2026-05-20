@@ -9,141 +9,36 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import { ClassTeacherStudentHealthButtons } from "@/components/class-teacher/class-teacher-student-health-buttons";
+import {
+  StudentListPaginationBar,
+  StudentListTableToolbar,
+} from "@/components/shared/student-list-table-controls";
+import {
+  CLASS_TEACHER_STUDENTS_ROWS_STORAGE_KEY,
+  DEFAULT_LARGE_STUDENT_LIST_ROWS,
+  parseLargeStudentListRowsPerPage,
+  type LargeStudentListRowOption,
+} from "@/lib/student-list-pagination";
 import type {
   ClassTeacherAttendanceRow,
   ClassTeacherGradeRow,
   ClassTeacherStudentParentRow,
 } from "./class-teacher-table-types";
 
-const ROW_OPTIONS = [5, 10, 25, 50] as const;
-type RowOption = (typeof ROW_OPTIONS)[number];
+type RowOption = LargeStudentListRowOption;
 
 function matchesHaystack(haystack: string, needle: string): boolean {
   if (!needle) return true;
   return haystack.toLowerCase().includes(needle);
 }
 
-function PaginationBar(props: {
-  page: number;
-  totalPages: number;
-  onPage: (p: number) => void;
-}) {
-  const { page, totalPages, onPage } = props;
-  const items = getCompactPaginationItems(page, totalPages);
-  if (totalPages <= 1) return null;
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 dark:border-zinc-800 sm:px-4">
-      <button
-        type="button"
-        onClick={() => onPage(Math.max(1, page - 1))}
-        disabled={page === 1}
-        className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-      >
-        Previous
-      </button>
-      <div className="flex flex-wrap items-center justify-center gap-1">
-        {items.map((p, idx) =>
-          p === "ellipsis" ? (
-            <span
-              key={`e-${idx}`}
-              className="px-2 text-xs text-slate-400 dark:text-zinc-500"
-            >
-              …
-            </span>
-          ) : (
-            <button
-              key={p}
-              type="button"
-              onClick={() => onPage(p)}
-              aria-current={p === page ? "page" : undefined}
-              className={`min-w-[2rem] rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                p === page
-                  ? "bg-school-primary text-white shadow-sm hover:brightness-105"
-                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-              }`}
-            >
-              {p}
-            </button>
-          )
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={() => onPage(Math.min(totalPages, page + 1))}
-        disabled={page === totalPages}
-        className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-      >
-        Next
-      </button>
-    </div>
-  );
-}
-
-function TableToolbar(props: {
-  searchId: string;
-  searchPlaceholder: string;
-  query: string;
-  onQueryChange: (v: string) => void;
-  rowsPerPage: RowOption;
-  onRowsPerPage: (n: RowOption) => void;
-  summary: ReactNode;
-}) {
-  const {
-    searchId,
-    searchPlaceholder,
-    query,
-    onQueryChange,
-    rowsPerPage,
-    onRowsPerPage,
-    summary,
-  } = props;
-  return (
-    <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 dark:border-zinc-800 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
-      <div className="relative min-w-0 flex-1 sm:max-w-xs">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          aria-hidden
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-zinc-500"
-        >
-          <path
-            fillRule="evenodd"
-            d="M9 3.5a5.5 5.5 0 1 0 3.38 9.85l3.39 3.39a.75.75 0 1 0 1.06-1.06l-3.39-3.39A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z"
-            clipRule="evenodd"
-          />
-        </svg>
-        <input
-          id={searchId}
-          type="search"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="block w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:placeholder:text-zinc-500"
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
-          <span>Rows</span>
-          <select
-            value={rowsPerPage}
-            onChange={(e) => onRowsPerPage(Number(e.target.value) as RowOption)}
-            aria-label="Rows per page"
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
-          >
-            {ROW_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="text-xs text-slate-500 dark:text-zinc-400">{summary}</p>
-      </div>
-    </div>
-  );
+function persistStudentRows(n: RowOption) {
+  try {
+    localStorage.setItem(CLASS_TEACHER_STUDENTS_ROWS_STORAGE_KEY, String(n));
+  } catch {
+    /* ignore */
+  }
 }
 
 const CLASS_TEACHER_SECTION_STORAGE = {
@@ -273,19 +168,26 @@ export function ClassTeacherClassDetailTablesClient(props: {
   const [studentQuery, setStudentQuery] = useState("");
   const deferredStudentQuery = useDeferredValue(studentQuery);
   const [studentPage, setStudentPage] = useState(1);
-  const [studentRows, setStudentRows] = useState<RowOption>(5);
+  const [studentRows, setStudentRows] = useState<RowOption>(
+    DEFAULT_LARGE_STUDENT_LIST_ROWS
+  );
+
+  useEffect(() => {
+    try {
+      const stored = parseLargeStudentListRowsPerPage(
+        localStorage.getItem(CLASS_TEACHER_STUDENTS_ROWS_STORAGE_KEY)
+      );
+      if (stored) setStudentRows(stored);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const filteredStudents = useMemo(() => {
     const q = deferredStudentQuery.trim().toLowerCase();
     if (!q) return students;
     return students.filter((s) => {
-      const hay = [
-        s.studentName,
-        s.admissionNumber ?? "",
-        s.parentName,
-        s.parentPhone ?? "",
-        s.parentEmail ?? "",
-      ].join(" ");
+      const hay = [s.studentName, s.admissionNumber ?? ""].join(" ");
       return matchesHaystack(hay, q);
     });
   }, [students, deferredStudentQuery]);
@@ -326,7 +228,9 @@ export function ClassTeacherClassDetailTablesClient(props: {
   const [attQuery, setAttQuery] = useState("");
   const deferredAttQuery = useDeferredValue(attQuery);
   const [attPage, setAttPage] = useState(1);
-  const [attRows, setAttRows] = useState<RowOption>(5);
+  const [attRows, setAttRows] = useState<RowOption>(
+    DEFAULT_LARGE_STUDENT_LIST_ROWS
+  );
 
   const filteredAtt = useMemo(() => {
     const q = deferredAttQuery.trim().toLowerCase();
@@ -371,7 +275,9 @@ export function ClassTeacherClassDetailTablesClient(props: {
   const [gradeQuery, setGradeQuery] = useState("");
   const deferredGradeQuery = useDeferredValue(gradeQuery);
   const [gradePage, setGradePage] = useState(1);
-  const [gradeRows, setGradeRows] = useState<RowOption>(5);
+  const [gradeRows, setGradeRows] = useState<RowOption>(
+    DEFAULT_LARGE_STUDENT_LIST_ROWS
+  );
 
   const filteredGrades = useMemo(() => {
     const q = deferredGradeQuery.trim().toLowerCase();
@@ -423,19 +329,22 @@ export function ClassTeacherClassDetailTablesClient(props: {
         headingId="class-teacher-students-heading"
         panelId="class-teacher-students-panel"
         title="Students and guardian contacts"
-        description="Mark sick or permitted absence; subject teachers see these on attendance."
+        description="Mark sick or permitted absence; subject teachers see these on their class list."
       >
-        <TableToolbar
+        <StudentListTableToolbar
           searchId="class-teacher-students-search"
-          searchPlaceholder="Search students, admission, guardians…"
+          searchPlaceholder="Search by name or admission number…"
           query={studentQuery}
           onQueryChange={setStudentQuery}
           rowsPerPage={studentRows}
-          onRowsPerPage={setStudentRows}
+          onRowsPerPage={(n) => {
+            setStudentRows(n);
+            persistStudentRows(n);
+          }}
           summary={
             filteredStudents.length === 0
-              ? "Showing 0 of 0 students"
-              : `Showing ${studentStart}–${studentEnd} of ${filteredStudents.length} students`
+              ? "Showing 0 to 0 of 0 students"
+              : `Showing ${studentStart} to ${studentEnd} of ${filteredStudents.length} student${filteredStudents.length !== 1 ? "s" : ""}`
           }
         />
         <ScrollTableWithOverlay isFiltering={studentStale}>
@@ -467,7 +376,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
                     colSpan={7}
                     className="px-4 py-6 text-center text-slate-500 dark:text-zinc-400"
                   >
-                    No students match your search.
+                    No students found
                   </td>
                 </tr>
               ) : (
@@ -521,7 +430,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
             </tbody>
           </table>
         </ScrollTableWithOverlay>
-        <PaginationBar
+        <StudentListPaginationBar
           page={safeStudentPage}
           totalPages={studentTotalPages}
           onPage={setStudentPage}
@@ -533,10 +442,10 @@ export function ClassTeacherClassDetailTablesClient(props: {
         storageKey={CLASS_TEACHER_SECTION_STORAGE.attendance}
         headingId="class-teacher-attendance-heading"
         panelId="class-teacher-attendance-panel"
-        title="Attendance (all subjects)"
+        title="Class List (all subjects)"
         description="Recent records from all teachers for this class."
       >
-        <TableToolbar
+        <StudentListTableToolbar
           searchId="class-teacher-attendance-search"
           searchPlaceholder="Search student, subject, status, recorded by…"
           query={attQuery}
@@ -545,8 +454,8 @@ export function ClassTeacherClassDetailTablesClient(props: {
           onRowsPerPage={setAttRows}
           summary={
             filteredAtt.length === 0
-              ? "Showing 0 of 0 records"
-              : `Showing ${attStart}–${attEnd} of ${filteredAtt.length} records`
+              ? "Showing 0 to 0 of 0 records"
+              : `Showing ${attStart} to ${attEnd} of ${filteredAtt.length} record${filteredAtt.length !== 1 ? "s" : ""}`
           }
         />
         <ScrollTableWithOverlay isFiltering={attStale}>
@@ -567,7 +476,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
                     colSpan={5}
                     className="px-4 py-6 text-center text-slate-500 dark:text-zinc-400"
                   >
-                    No attendance rows yet.
+                    No class list rows yet.
                   </td>
                 </tr>
               ) : filteredAtt.length === 0 ? (
@@ -603,7 +512,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
             </tbody>
           </table>
         </ScrollTableWithOverlay>
-        <PaginationBar
+        <StudentListPaginationBar
           page={safeAttPage}
           totalPages={attTotalPages}
           onPage={setAttPage}
@@ -618,7 +527,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
         title="Marks (read-only)"
         description="Gradebook entries from all subject teachers for this class."
       >
-        <TableToolbar
+        <StudentListTableToolbar
           searchId="class-teacher-grades-search"
           searchPlaceholder="Search student, subject, assignment, teacher…"
           query={gradeQuery}
@@ -627,8 +536,8 @@ export function ClassTeacherClassDetailTablesClient(props: {
           onRowsPerPage={setGradeRows}
           summary={
             filteredGrades.length === 0
-              ? "Showing 0 of 0 entries"
-              : `Showing ${gradeStart}–${gradeEnd} of ${filteredGrades.length} entries`
+              ? "Showing 0 to 0 of 0 entries"
+              : `Showing ${gradeStart} to ${gradeEnd} of ${filteredGrades.length} entr${filteredGrades.length !== 1 ? "ies" : "y"}`
           }
         />
         <ScrollTableWithOverlay isFiltering={gradeStale}>
@@ -687,7 +596,7 @@ export function ClassTeacherClassDetailTablesClient(props: {
             </tbody>
           </table>
         </ScrollTableWithOverlay>
-        <PaginationBar
+        <StudentListPaginationBar
           page={safeGradePage}
           totalPages={gradeTotalPages}
           onPage={setGradePage}

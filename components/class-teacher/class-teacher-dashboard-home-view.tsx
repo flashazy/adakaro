@@ -41,8 +41,10 @@ export function ClassTeacherDashboardHomeView(props: {
     teacherPhone,
   } = props;
   const overviewHref = `/teacher-dashboard/class-teacher/${selectedClassId}`;
+  const classAttendanceHref = `${overviewHref}/class-attendance`;
   const messagesHref = "/teacher-dashboard/class-teacher/messages";
   const unread = summary.unreadMessageCount;
+  const todayAttendance = summary.classAttendanceToday;
 
   return (
     <div className="space-y-8">
@@ -96,7 +98,7 @@ export function ClassTeacherDashboardHomeView(props: {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
             Students
@@ -137,6 +139,39 @@ export function ClassTeacherDashboardHomeView(props: {
             In this class
           </p>
         </div>
+        <NavLinkWithLoading
+          href={classAttendanceHref}
+          className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-school-primary/40 hover:bg-school-primary/5 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-school-primary/40"
+        >
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+            Today&apos;s Attendance
+          </p>
+          {todayAttendance ? (
+            <>
+              <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">
+                {todayAttendance.percentPresent}% present
+              </p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+                {todayAttendance.inClass} of {todayAttendance.total} in class
+                {todayAttendance.late > 0
+                  ? ` (${todayAttendance.late} late)`
+                  : ""}
+                {todayAttendance.notInClass > 0
+                  ? ` · ${todayAttendance.notInClass} not in class`
+                  : ""}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
+                Not recorded yet
+              </p>
+              <p className="mt-1 text-sm text-school-primary group-hover:underline dark:text-school-primary">
+                Open Class Attendance →
+              </p>
+            </>
+          )}
+        </NavLinkWithLoading>
       </div>
 
       <ClassTeacherPhoneSection initialPhone={teacherPhone} />
@@ -150,6 +185,11 @@ export function ClassTeacherDashboardHomeView(props: {
             href={overviewHref}
             icon="👥"
             label="View students"
+          />
+          <ClassTeacherDashboardQuickNavButton
+            href={classAttendanceHref}
+            icon="✓"
+            label="Class Attendance"
           />
           <ClassTeacherDashboardQuickNavButton
             href={messagesHref}

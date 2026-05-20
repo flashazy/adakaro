@@ -805,7 +805,7 @@ export function TeacherAttendanceForm({
     return (
       <p className="text-sm text-slate-600 dark:text-zinc-400">
         You have no class assignments yet. Your school administrator must assign
-        you to classes before you can take attendance.
+        you to classes before you can record your class list.
       </p>
     );
   }
@@ -878,7 +878,7 @@ export function TeacherAttendanceForm({
         )}
         {saveOk && (
           <p className="text-sm text-emerald-700 dark:text-emerald-400">
-            Attendance saved for {selectedLabel} on {date}.
+            Class list saved for {selectedLabel} on {date}.
           </p>
         )}
         {savedOffline && (
@@ -1022,7 +1022,7 @@ export function TeacherAttendanceForm({
                 <div
                   className="grid grid-cols-4 gap-2 md:flex md:flex-wrap"
                   role="group"
-                  aria-label="Filter by attendance status"
+                  aria-label="Filter by status"
                 >
                   {(
                     [
@@ -1328,7 +1328,7 @@ export function TeacherAttendanceForm({
                     : "bg-school-primary hover:brightness-105"
                 )}
               >
-                {isSaving ? "Saving…" : "Save attendance"}
+                {isSaving ? "Saving…" : "Save class list"}
               </button>
             </div>
           </div>
@@ -1342,7 +1342,7 @@ export function TeacherAttendanceForm({
         <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
           {selectedSubjectMeta?.subjectId
             ? `Latest saved days for ${selectedSubjectMeta.label} in this class (most recent first).`
-            : "Latest saved days for this class (class-wide attendance, most recent first)."}
+            : "Latest saved days for this class (class-wide class list, most recent first)."}
         </p>
 
         {/* Optional date-range filter. Both bounds are inclusive and
@@ -1398,8 +1398,8 @@ export function TeacherAttendanceForm({
           {historyDates.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               {selectedSubjectMeta?.subjectId
-                ? "No attendance recorded yet for this subject."
-                : "No attendance recorded yet for this class."}
+                ? "No class list recorded yet for this subject."
+                : "No class list recorded yet for this class."}
             </p>
           ) : historyFiltered.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-zinc-400">

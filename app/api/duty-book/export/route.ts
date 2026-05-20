@@ -67,8 +67,7 @@ export async function GET(request: NextRequest) {
     admin,
     schoolId,
     schoolName,
-    date,
-    supabase
+    date
   );
   if (!loaded.ok) {
     return NextResponse.json({ error: loaded.error }, { status: 400 });

@@ -284,8 +284,8 @@ export function DutyBookClient(props: {
         </h2>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
           {genderScoped
-            ? `Counts include only ${genderFilter === "boys" ? "male" : "female"} students for this date (excused absences shown separately).`
-            : `Registered students for this date; unmarked students count as absent unless flagged ${ILL_STATUS_DISPLAY_LOWER} or permitted.`}
+            ? `Counts include only ${genderFilter === "boys" ? "male" : "female"} active students; attendance from class attendance records on this date.`
+            : "Registered students are active enrollments. Present, absent, sick, and permitted counts reflect official class attendance recorded for this date (late counts as present)."}
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
           <StatCard label="Registered" value={summary.registered} />

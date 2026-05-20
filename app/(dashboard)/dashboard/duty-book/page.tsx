@@ -78,8 +78,7 @@ export default async function DutyBookPage() {
     admin,
     schoolId,
     schoolName,
-    today,
-    supabase
+    today
   );
 
   let reportPayload = { report: null, signer: null } as Awaited<
