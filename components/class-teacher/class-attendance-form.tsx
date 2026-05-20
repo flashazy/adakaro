@@ -16,10 +16,9 @@ import type {
   ClassAttendanceStudentRow,
 } from "@/lib/class-attendance/class-attendance-types";
 import type { ClassAttendanceDaySummary } from "@/lib/class-attendance/class-attendance-types";
-import {
-  formatSaveConfirmation,
-  todayIsoDate,
-} from "@/lib/class-attendance/class-attendance-utils";
+import { formatSaveConfirmation } from "@/lib/class-attendance/class-attendance-utils";
+import { getAttendanceDateEditMode } from "@/lib/attendance-date-policy";
+import { AttendanceDateRestrictionBanner } from "@/components/attendance/attendance-date-restriction-banner";
 import {
   loadClassAttendancePageAction,
   loadClassAttendanceStudentsPageAction,
@@ -68,13 +67,14 @@ export function ClassAttendanceForm(props: {
   classId: string;
   className: string;
   initialDate: string;
+  serverToday: string;
   initialHasRecords: boolean;
   initialHistory: ClassAttendanceHistoryRow[];
   totalClassStudents: number;
   initialDaySummary: ClassAttendanceDaySummary | null;
 }) {
   const router = useRouter();
-  const today = todayIsoDate();
+  const today = props.serverToday;
   const [attendanceDate, setAttendanceDate] = useState(props.initialDate);
   const [hasRecords, setHasRecords] = useState(props.initialHasRecords);
   const [history, setHistory] = useState(props.initialHistory);
@@ -111,6 +111,13 @@ export function ClassAttendanceForm(props: {
 
   const showRecordedTodayBadge =
     attendanceDate === today && (hasRecords || recordedToday);
+
+  const dateEditMode = useMemo(
+    () => getAttendanceDateEditMode(attendanceDate, today),
+    [attendanceDate, today]
+  );
+  const readOnly = dateEditMode !== "editable";
+  const futureBlocked = dateEditMode === "future_blocked";
 
   const totalPages = Math.max(1, Math.ceil(totalCount / rowsPerPage));
   const safePage = Math.min(page, totalPages);
@@ -214,6 +221,7 @@ export function ClassAttendanceForm(props: {
 
   const setStatus = useCallback(
     (studentId: string, status: ClassAttendanceStatus) => {
+      if (readOnly) return;
       const edits = attendanceEditsRef.current;
       const prev = edits.get(studentId);
       edits.set(studentId, {
@@ -228,11 +236,12 @@ export function ClassAttendanceForm(props: {
       setError(null);
       bumpSummary();
     },
-    [bumpSummary]
+    [bumpSummary, readOnly]
   );
 
   const applyToCurrentPage = useCallback(
     (status: ClassAttendanceStatus) => {
+      if (readOnly) return;
       const edits = attendanceEditsRef.current;
       for (const s of pageStudents) {
         const prev = edits.get(s.id);
@@ -243,12 +252,12 @@ export function ClassAttendanceForm(props: {
       setSelected(new Set());
       bumpSummary();
     },
-    [pageStudents, bumpSummary]
+    [pageStudents, bumpSummary, readOnly]
   );
 
   const applyToSelected = useCallback(
     (status: ClassAttendanceStatus) => {
-      if (selected.size === 0) return;
+      if (readOnly || selected.size === 0) return;
       const edits = attendanceEditsRef.current;
       for (const id of selected) {
         const prev = edits.get(id);
@@ -260,7 +269,7 @@ export function ClassAttendanceForm(props: {
       setDirty(true);
       bumpSummary();
     },
-    [selected, bumpSummary]
+    [selected, bumpSummary, readOnly]
   );
 
   const toggleSelect = useCallback((studentId: string) => {
@@ -333,6 +342,7 @@ export function ClassAttendanceForm(props: {
   };
 
   const onSave = () => {
+    if (readOnly) return;
     startTransition(async () => {
       setMessage(null);
       setError(null);
@@ -390,12 +400,16 @@ export function ClassAttendanceForm(props: {
       <ClassAttendancePageHeader
         className={props.className}
         attendanceDate={attendanceDate}
+        todayIso={today}
+        dateEditMode={dateEditMode}
         showRecordedTodayBadge={showRecordedTodayBadge}
         hasRecords={hasRecords}
         loadingDate={loadingDate}
         listBusy={listBusy}
         onDateChange={onDateChange}
       />
+
+      <AttendanceDateRestrictionBanner mode={dateEditMode} />
 
       {!noStudentsInClass ? (
         <ClassAttendanceSummaryStrip
@@ -424,15 +438,18 @@ export function ClassAttendanceForm(props: {
       ) : null}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        {!futureBlocked ? (
         <ClassAttendanceQuickActions
           listBusy={listBusy}
           pageEmpty={pageStudents.length === 0}
           selectedCount={selected.size}
+          readOnly={readOnly}
           onResetPresent={() => applyToCurrentPage("present")}
           onResetAbsent={() => applyToCurrentPage("absent")}
           onMarkSelectedPresent={() => applyToSelected("present")}
           onMarkSelectedAbsent={() => applyToSelected("absent")}
         />
+        ) : null}
 
         <ClassAttendanceSearchToolbar
           searchId="class-attendance-student-search"
@@ -451,6 +468,10 @@ export function ClassAttendanceForm(props: {
           <p className="px-4 py-12 text-center text-sm text-slate-500 dark:text-zinc-400">
             No active students in this class.
           </p>
+        ) : futureBlocked ? (
+          <p className="px-4 py-12 text-center text-sm text-slate-500 dark:text-zinc-400">
+            Select today or a past date to view attendance.
+          </p>
         ) : noSearchResults ? (
           <p className="px-4 py-12 text-center text-sm text-slate-500 dark:text-zinc-400">
             No students found
@@ -468,6 +489,7 @@ export function ClassAttendanceForm(props: {
                 <ClassAttendanceDesktopTableHeader
                   allPageSelected={allPageSelected}
                   onToggleSelectPage={toggleSelectPage}
+                  readOnly={readOnly}
                 />
                 <tbody>
                   {pageStudents.map((s) => (
@@ -477,6 +499,7 @@ export function ClassAttendanceForm(props: {
                       selected={selected.has(s.id)}
                       onToggleSelect={() => toggleSelect(s.id)}
                       onSelectStatus={(st) => handleSelectStatus(s.id, st)}
+                      readOnly={readOnly}
                     />
                   ))}
                 </tbody>
@@ -491,6 +514,7 @@ export function ClassAttendanceForm(props: {
                     selected={selected.has(s.id)}
                     onToggleSelect={() => toggleSelect(s.id)}
                     onSelectStatus={(st) => handleSelectStatus(s.id, st)}
+                    readOnly={readOnly}
                   />
                 </li>
               ))}
@@ -504,7 +528,7 @@ export function ClassAttendanceForm(props: {
           </>
         )}
 
-        {!dirty ? (
+        {!dirty && !readOnly ? (
           <div className="hidden border-t border-slate-100 px-4 py-4 dark:border-zinc-800 sm:block">
             <button
               type="button"
@@ -524,9 +548,9 @@ export function ClassAttendanceForm(props: {
       />
 
       <ClassAttendanceStickySaveBar
-        dirty={dirty}
+        dirty={dirty && !readOnly}
         pending={pending}
-        disabled={listBusy || noStudentsInClass}
+        disabled={listBusy || noStudentsInClass || readOnly}
         onSave={onSave}
       />
     </div>

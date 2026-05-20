@@ -15,6 +15,7 @@ import {
   parseAttendanceDate,
   tallyStatuses,
 } from "@/lib/class-attendance/class-attendance-utils";
+import { assertAttendanceDateEditableForSave } from "@/lib/attendance-date-policy";
 import {
   loadClassAttendancePageData,
   loadClassAttendanceStudentsPage,
@@ -51,10 +52,15 @@ export async function saveClassAttendanceAction(input: {
   | { ok: false; error: string }
 > {
   const classId = input.classId?.trim();
-  const attendanceDate = parseAttendanceDate(input.attendanceDate);
-  if (!classId || !attendanceDate) {
+  if (!classId) {
     return { ok: false, error: "Invalid class or date." };
   }
+
+  const dateCheck = assertAttendanceDateEditableForSave(input.attendanceDate);
+  if (!dateCheck.ok) {
+    return { ok: false, error: dateCheck.error };
+  }
+  const attendanceDate = dateCheck.date;
 
   const supabase = await createClient();
   const {

@@ -6,6 +6,7 @@ import { ensureTeacherHasAssignmentsOrRedirect } from "@/lib/teacher-assignment-
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { TeacherAttendanceForm } from "../components/TeacherAttendanceForm";
 import { getTeacherTeachingClasses } from "../data";
+import { todayIsoDate } from "@/lib/class-attendance/class-attendance-utils";
 
 export const metadata = {
   title: "Class List — Teacher",
@@ -50,6 +51,7 @@ export default async function TeacherAttendancePage({
           <TeacherAttendanceForm
             options={options}
             initialClassId={sp.classId?.trim() ?? null}
+            serverToday={todayIsoDate()}
           />
         </div>
       </div>

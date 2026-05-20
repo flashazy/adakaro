@@ -41,6 +41,7 @@ export default async function ClassAttendancePage({
         classId={data.classId}
         className={data.className}
         initialDate={data.attendanceDate}
+        serverToday={todayIsoDate()}
         initialHasRecords={data.hasRecordsForDate}
         initialHistory={data.history}
         totalClassStudents={data.totalClassStudents}

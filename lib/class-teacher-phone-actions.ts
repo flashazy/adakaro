@@ -21,8 +21,21 @@ export async function updateClassTeacherOwnPhoneAction(
   }
 
   const trimmed = raw.trim();
-  const phone = trimmed.length === 0 ? null : trimmed;
 
+  const { data: rpcPhone, error: rpcErr } = await supabase.rpc(
+    "update_own_profile_phone",
+    { p_phone: trimmed } as never
+  );
+
+  if (!rpcErr) {
+    const rawPhone =
+      typeof rpcPhone === "string" ? rpcPhone : rpcPhone == null ? null : String(rpcPhone);
+    const phone =
+      rawPhone != null && rawPhone.trim().length > 0 ? rawPhone.trim() : null;
+    return { ok: true, phone };
+  }
+
+  const phone = trimmed.length === 0 ? null : trimmed;
   type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
   const { error } = await (supabase as Db)
     .from("profiles")

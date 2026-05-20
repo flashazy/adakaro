@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { CalendarDays, CheckCircle2, Users } from "lucide-react";
+import { CalendarDays, CheckCircle2, Lock, Users } from "lucide-react";
+import type { AttendanceDateEditMode } from "@/lib/attendance-date-policy";
 import { cn } from "@/lib/utils";
 import {
   CLASS_ATTENDANCE_STATUSES,
@@ -259,6 +260,8 @@ export function ClassAttendanceSummaryStrip({
 export function ClassAttendancePageHeader({
   className: classLabel,
   attendanceDate,
+  todayIso,
+  dateEditMode,
   showRecordedTodayBadge,
   hasRecords,
   loadingDate,
@@ -267,12 +270,15 @@ export function ClassAttendancePageHeader({
 }: {
   className: string;
   attendanceDate: string;
+  todayIso: string;
+  dateEditMode: AttendanceDateEditMode;
   showRecordedTodayBadge: boolean;
   hasRecords: boolean;
   loadingDate: boolean;
   listBusy: boolean;
   onDateChange: (value: string) => void;
 }) {
+  const readOnly = dateEditMode !== "editable";
   return (
     <header className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-sm dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900 dark:to-zinc-950/80">
       <div className="border-b border-slate-100 px-4 py-5 dark:border-zinc-800 sm:px-6">
@@ -311,9 +317,13 @@ export function ClassAttendancePageHeader({
           )}
           role="note"
         >
-          {hasRecords
-            ? "Attendance already recorded for this date. You can update and save changes."
-            : "Everyone is marked Present by default. Adjust only the students who are absent, late, sick, or permitted."}
+          {dateEditMode === "future_blocked"
+            ? "Future dates cannot be edited. Choose today or a past date to view records."
+            : dateEditMode === "readonly"
+              ? "View-only: attendance for this date cannot be changed."
+              : hasRecords
+                ? "Attendance already recorded for this date. You can update and save changes."
+                : "Everyone is marked Present by default. Adjust only the students who are absent, late, sick, or permitted."}
         </p>
         <div className="flex shrink-0 flex-col gap-1.5">
           <label
@@ -326,8 +336,10 @@ export function ClassAttendancePageHeader({
             id="class-attendance-date"
             type="date"
             value={attendanceDate}
+            max={todayIso}
             onChange={(e) => onDateChange(e.target.value)}
             disabled={listBusy}
+            aria-readonly={readOnly}
             className="h-11 min-w-[10.5rem] rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/25 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
           />
           {loadingDate ? (
@@ -345,6 +357,7 @@ export function ClassAttendanceQuickActions({
   listBusy,
   pageEmpty,
   selectedCount,
+  readOnly,
   onResetPresent,
   onResetAbsent,
   onMarkSelectedPresent,
@@ -353,11 +366,13 @@ export function ClassAttendanceQuickActions({
   listBusy: boolean;
   pageEmpty: boolean;
   selectedCount: number;
+  readOnly?: boolean;
   onResetPresent: () => void;
   onResetAbsent: () => void;
   onMarkSelectedPresent: () => void;
   onMarkSelectedAbsent: () => void;
 }) {
+  const disabled = listBusy || pageEmpty || readOnly;
   const btn =
     "inline-flex min-h-[44px] items-center justify-center rounded-xl border px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-[40px]";
   return (
@@ -369,7 +384,7 @@ export function ClassAttendanceQuickActions({
         <button
           type="button"
           onClick={onResetPresent}
-          disabled={listBusy || pageEmpty}
+          disabled={disabled}
           className={cn(
             btn,
             "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
@@ -380,7 +395,7 @@ export function ClassAttendanceQuickActions({
         <button
           type="button"
           onClick={onResetAbsent}
-          disabled={listBusy || pageEmpty}
+          disabled={disabled}
           className={cn(
             btn,
             "border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
@@ -391,7 +406,7 @@ export function ClassAttendanceQuickActions({
         <button
           type="button"
           onClick={onMarkSelectedPresent}
-          disabled={listBusy || selectedCount === 0}
+          disabled={disabled || selectedCount === 0}
           className={cn(
             btn,
             "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
@@ -402,7 +417,7 @@ export function ClassAttendanceQuickActions({
         <button
           type="button"
           onClick={onMarkSelectedAbsent}
-          disabled={listBusy || selectedCount === 0}
+          disabled={disabled || selectedCount === 0}
           className={cn(
             btn,
             "border-red-200 bg-red-50 text-red-900 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
@@ -426,11 +441,13 @@ export function StatusButtonGroup({
   currentStatus,
   studentName,
   onSelect,
+  readOnly,
 }: {
   studentId: string;
   currentStatus: ClassAttendanceStatus;
   studentName: string;
   onSelect: (status: ClassAttendanceStatus) => void;
+  readOnly?: boolean;
 }) {
   return (
     <div
@@ -443,8 +460,13 @@ export function StatusButtonGroup({
           key={st}
           type="button"
           onClick={() => onSelect(st)}
+          disabled={readOnly}
           aria-pressed={currentStatus === st}
-          className={statusButtonClass(st, currentStatus === st)}
+          aria-disabled={readOnly}
+          className={cn(
+            statusButtonClass(st, currentStatus === st),
+            readOnly && "cursor-not-allowed opacity-60"
+          )}
         >
           {CLASS_ATTENDANCE_STATUS_LABELS[st]}
         </button>
@@ -458,6 +480,7 @@ export function ClassAttendanceStudentCard({
   selected,
   onToggleSelect,
   onSelectStatus,
+  readOnly,
 }: {
   student: {
     id: string;
@@ -469,6 +492,7 @@ export function ClassAttendanceStudentCard({
   selected: boolean;
   onToggleSelect: () => void;
   onSelectStatus: (status: ClassAttendanceStatus) => void;
+  readOnly?: boolean;
 }) {
   return (
     <article
@@ -485,8 +509,9 @@ export function ClassAttendanceStudentCard({
           type="checkbox"
           checked={selected}
           onChange={onToggleSelect}
+          disabled={readOnly}
           aria-label={`Select ${student.fullName}`}
-          className="h-5 w-5 shrink-0 rounded border-slate-300 text-school-primary focus:ring-school-primary"
+          className="h-5 w-5 shrink-0 rounded border-slate-300 text-school-primary focus:ring-school-primary disabled:opacity-50"
         />
         <StudentAvatar name={student.fullName} avatarUrl={student.avatarUrl} />
         <div className="min-w-0 flex-1">
@@ -495,6 +520,12 @@ export function ClassAttendanceStudentCard({
               {student.fullName}
             </p>
             <StatusBadge status={student.status} />
+            {readOnly ? (
+              <Lock
+                className="h-3.5 w-3.5 text-slate-400 dark:text-zinc-500"
+                aria-label="Read-only"
+              />
+            ) : null}
           </div>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
             {student.admissionNumber
@@ -509,6 +540,7 @@ export function ClassAttendanceStudentCard({
           currentStatus={student.status}
           studentName={student.fullName}
           onSelect={onSelectStatus}
+          readOnly={readOnly}
         />
       </div>
     </article>
@@ -518,9 +550,11 @@ export function ClassAttendanceStudentCard({
 export function ClassAttendanceDesktopTableHeader({
   allPageSelected,
   onToggleSelectPage,
+  readOnly,
 }: {
   allPageSelected: boolean;
   onToggleSelectPage: () => void;
+  readOnly?: boolean;
 }) {
   return (
     <thead>
@@ -530,8 +564,9 @@ export function ClassAttendanceDesktopTableHeader({
             type="checkbox"
             checked={allPageSelected}
             onChange={onToggleSelectPage}
+            disabled={readOnly}
             aria-label="Select all students on this page"
-            className="h-4 w-4 rounded border-slate-300 text-school-primary focus:ring-school-primary"
+            className="h-4 w-4 rounded border-slate-300 text-school-primary focus:ring-school-primary disabled:opacity-50"
           />
         </th>
         <th className="px-4 py-3">Student</th>
@@ -547,6 +582,7 @@ export function ClassAttendanceDesktopRow({
   selected,
   onToggleSelect,
   onSelectStatus,
+  readOnly,
 }: {
   student: {
     id: string;
@@ -558,6 +594,7 @@ export function ClassAttendanceDesktopRow({
   selected: boolean;
   onToggleSelect: () => void;
   onSelectStatus: (status: ClassAttendanceStatus) => void;
+  readOnly?: boolean;
 }) {
   return (
     <tr
@@ -569,16 +606,23 @@ export function ClassAttendanceDesktopRow({
           type="checkbox"
           checked={selected}
           onChange={onToggleSelect}
+          disabled={readOnly}
           aria-label={`Select ${student.fullName}`}
-          className="h-4 w-4 rounded border-slate-300 text-school-primary focus:ring-school-primary"
+          className="h-4 w-4 rounded border-slate-300 text-school-primary focus:ring-school-primary disabled:opacity-50"
         />
       </td>
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
           <StudentAvatar name={student.fullName} avatarUrl={student.avatarUrl} />
           <div className="min-w-0">
-            <p className="font-medium text-slate-900 dark:text-white">
+            <p className="flex items-center gap-1.5 font-medium text-slate-900 dark:text-white">
               {student.fullName}
+              {readOnly ? (
+                <Lock
+                  className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-zinc-500"
+                  aria-hidden
+                />
+              ) : null}
             </p>
             <p className="text-xs text-slate-500 lg:hidden dark:text-zinc-400">
               {student.admissionNumber ?? "—"}
@@ -595,6 +639,7 @@ export function ClassAttendanceDesktopRow({
           currentStatus={student.status}
           studentName={student.fullName}
           onSelect={onSelectStatus}
+          readOnly={readOnly}
         />
       </td>
     </tr>

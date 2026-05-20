@@ -26,6 +26,7 @@ import {
   isStudentHealthAttendanceStatus,
   type StudentHealthAttendanceStatus,
 } from "@/lib/student-attendance-status";
+import { assertAttendanceDateEditableForSave } from "@/lib/attendance-date-policy";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -400,6 +401,12 @@ export async function saveAttendanceAction(input: {
   if (!dateOnly) {
     console.error("[saveAttendanceAction] invalid date", input.date);
     return { ok: false, error: "Invalid date. Use YYYY-MM-DD." };
+  }
+
+  const dateCheck = assertAttendanceDateEditableForSave(dateOnly);
+  if (!dateCheck.ok) {
+    console.error("[saveAttendanceAction] date not editable", input.date);
+    return { ok: false, error: dateCheck.error };
   }
 
   const schoolId = gate.schoolId;

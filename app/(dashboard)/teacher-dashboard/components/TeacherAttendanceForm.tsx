@@ -32,6 +32,8 @@ import {
   isAttendanceLockedByHealth,
   type StudentHealthAttendanceStatus,
 } from "@/lib/student-attendance-status";
+import { getAttendanceDateEditMode } from "@/lib/attendance-date-policy";
+import { AttendanceDateRestrictionBanner } from "@/components/attendance/attendance-date-restriction-banner";
 
 /** Recent history is paginated at a fixed page size — the user
  * specifically asked for 5 entries per page, no rows-per-page
@@ -141,9 +143,11 @@ function subjectChoiceKeyForOption(o: TeacherClassOption): string {
 export function TeacherAttendanceForm({
   options,
   initialClassId,
+  serverToday,
 }: {
   options: TeacherClassOption[];
   initialClassId: string | null;
+  serverToday: string;
 }) {
   const initialRow =
     options.find((o) => o.classId === initialClassId) ?? options[0];
@@ -153,9 +157,7 @@ export function TeacherAttendanceForm({
   const [subjectChoiceKey, setSubjectChoiceKey] = useState(() =>
     initialRow ? subjectChoiceKeyForOption(initialRow) : ""
   );
-  const [date, setDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
+  const [date, setDate] = useState(serverToday);
   const [students, setStudents] = useState<{ id: string; full_name: string }[]>(
     []
   );
@@ -378,7 +380,15 @@ export function TeacherAttendanceForm({
     });
   }, [syncAttendance]);
 
+  const dateEditMode = useMemo(
+    () => getAttendanceDateEditMode(date, serverToday),
+    [date, serverToday]
+  );
+  const readOnly = dateEditMode !== "editable";
+  const futureBlocked = dateEditMode === "future_blocked";
+
   const setStatus = (studentId: string, status: Status) => {
+    if (readOnly) return;
     if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) return;
     setStatusByStudent((prev) => ({ ...prev, [studentId]: status }));
     setHasChanges(true);
@@ -389,6 +399,7 @@ export function TeacherAttendanceForm({
   };
 
   const markAllPresent = () => {
+    if (readOnly) return;
     setStatusByStudent((prev) => {
       const next = { ...prev };
       students.forEach((s) => {
@@ -402,6 +413,7 @@ export function TeacherAttendanceForm({
   };
 
   const markAllAbsent = () => {
+    if (readOnly) return;
     setStatusByStudent((prev) => {
       const next = { ...prev };
       students.forEach((s) => {
@@ -422,7 +434,7 @@ export function TeacherAttendanceForm({
   };
 
   const handleSave = async () => {
-    if (!classId) return;
+    if (!classId || readOnly) return;
     setSaveError(null);
     setSaveOk(false);
     setSavedOffline(false);
@@ -692,6 +704,14 @@ export function TeacherAttendanceForm({
     if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) {
       return renderHealthLockedAttendance(healthStatusByStudent[studentId]);
     }
+    if (readOnly) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400">
+          <Lock className="h-4 w-4 shrink-0" aria-hidden />
+          <span>{getAttendanceDisplayLabel(currentStatus, null)}</span>
+        </div>
+      );
+    }
     const buttons = [
       {
         status: "present" as const,
@@ -745,6 +765,14 @@ export function TeacherAttendanceForm({
   const renderTextButtons = (studentId: string, currentStatus: Status) => {
     if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) {
       return renderHealthLockedAttendance(healthStatusByStudent[studentId]);
+    }
+    if (readOnly) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400">
+          <Lock className="h-4 w-4 shrink-0" aria-hidden />
+          <span>{getAttendanceDisplayLabel(currentStatus, null)}</span>
+        </div>
+      );
     }
     return (
       <div className="flex flex-wrap items-center gap-4">
@@ -864,11 +892,14 @@ export function TeacherAttendanceForm({
             <input
               type="date"
               value={date}
+              max={serverToday}
               onChange={(e) => setDate(e.target.value)}
               className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 pr-10 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             />
           </div>
         </div>
+
+        <AttendanceDateRestrictionBanner mode={dateEditMode} />
 
         {loadError && (
           <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>
@@ -903,6 +934,8 @@ export function TeacherAttendanceForm({
         ) : null}
 
         <div className="flex h-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+          {!futureBlocked ? (
+          <>
           <div className="sticky top-0 z-10 rounded-t-lg border-b border-gray-100 bg-white dark:border-zinc-700 dark:bg-zinc-900">
             <div className="space-y-4 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -990,14 +1023,16 @@ export function TeacherAttendanceForm({
                     <button
                       type="button"
                       onClick={markAllPresent}
-                      className="h-11 rounded-lg bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200/80 dark:bg-green-950/40 dark:text-green-400 dark:hover:bg-green-950/60 md:h-9"
+                      disabled={readOnly}
+                      className="h-11 rounded-lg bg-green-100 px-3 text-sm font-medium text-green-700 transition-colors hover:bg-green-200/80 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-green-950/40 dark:text-green-400 dark:hover:bg-green-950/60 md:h-9"
                     >
                       Mark all present
                     </button>
                     <button
                       type="button"
                       onClick={markAllAbsent}
-                      className="h-11 rounded-lg bg-red-100 px-3 text-sm font-medium text-red-700 transition-colors hover:bg-red-200/80 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/60 md:h-9"
+                      disabled={readOnly}
+                      className="h-11 rounded-lg bg-red-100 px-3 text-sm font-medium text-red-700 transition-colors hover:bg-red-200/80 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-950/60 md:h-9"
                     >
                       Mark all absent
                     </button>
@@ -1005,7 +1040,9 @@ export function TeacherAttendanceForm({
                   <button
                     type="button"
                     onClick={resetToSavedAttendance}
-                    disabled={!classId || students.length === 0 || isPending}
+                    disabled={
+                      readOnly || !classId || students.length === 0 || isPending
+                    }
                     className="h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 md:h-9"
                   >
                     Reset
@@ -1102,9 +1139,15 @@ export function TeacherAttendanceForm({
               />
             </label>
           </div>
+          </>
+          ) : null}
 
           <div className="mt-4 max-h-[400px] flex-1 overflow-y-auto">
-            {isPending && students.length === 0 ? (
+            {futureBlocked ? (
+              <p className="p-6 text-center text-slate-500 dark:text-zinc-400">
+                Select today or a past date to view attendance.
+              </p>
+            ) : isPending && students.length === 0 ? (
               <p className="p-6 text-slate-500 dark:text-zinc-400">
                 Loading students…
               </p>
@@ -1319,7 +1362,11 @@ export function TeacherAttendanceForm({
                 type="button"
                 onClick={handleSave}
                 disabled={
-                  !classId || students.length === 0 || isPending || isSaving
+                  readOnly ||
+                  !classId ||
+                  students.length === 0 ||
+                  isPending ||
+                  isSaving
                 }
                 className={cn(
                   "h-12 w-full rounded-xl text-base font-medium text-white shadow-sm transition hover:opacity-90",
