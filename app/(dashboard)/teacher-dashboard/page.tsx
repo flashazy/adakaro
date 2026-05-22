@@ -1,6 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { CalendarDays, ListChecks, Users } from "lucide-react";
+import {
+  BookOpen,
+  CalendarDays,
+  ListChecks,
+  PencilLine,
+  Users,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsTeacher } from "@/lib/teacher-auth";
@@ -573,35 +579,50 @@ export default async function TeacherDashboardPage() {
               return (
                 <div
                   key={item.assignmentId}
-                  className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition-shadow duration-200 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
+                  className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-shadow duration-200 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 sm:p-6"
                 >
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white sm:text-lg">
                     {item.className}
                   </h3>
-                  <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-slate-700 dark:text-zinc-300">
+                  <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-sm text-slate-700 dark:text-zinc-300 sm:mt-2">
                     <li>{item.subject}</li>
                   </ul>
-                  <p className="mt-2 text-sm text-gray-500 dark:text-zinc-500">
+                  <p className="mt-1.5 text-sm text-gray-500 dark:text-zinc-500 sm:mt-2">
                     {n} student{n === 1 ? "" : "s"} • Year {yearLabel}
                   </p>
-                  <div className="mt-5 flex flex-wrap gap-2 sm:gap-3">
+                  <div className="mt-4 grid grid-cols-3 gap-1.5 sm:mt-5 sm:flex sm:flex-wrap sm:gap-3">
                     <Link
                       href={`/teacher-dashboard/attendance?classId=${item.classId}`}
-                      className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-school-primary px-4 text-sm font-medium text-white transition-colors duration-150 hover:brightness-105 sm:flex-none"
+                      className="inline-flex h-9 min-w-0 items-center justify-center gap-1 rounded-lg bg-school-primary px-2 text-xs font-medium whitespace-nowrap text-white transition-colors duration-150 hover:brightness-105 sm:h-10 sm:gap-1.5 sm:px-4 sm:text-sm sm:flex-none"
                     >
-                      View class list
+                      <Users
+                        className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4"
+                        aria-hidden
+                      />
+                      <span className="sm:hidden">Class list</span>
+                      <span className="hidden sm:inline">View class list</span>
                     </Link>
                     <Link
                       href={`/teacher-dashboard/grades?classId=${item.classId}`}
-                      className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:flex-none"
+                      className="inline-flex h-9 min-w-0 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 text-xs font-medium whitespace-nowrap text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:h-10 sm:gap-1.5 sm:px-4 sm:text-sm sm:flex-none"
                     >
-                      Enter marks
+                      <PencilLine
+                        className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4"
+                        aria-hidden
+                      />
+                      <span className="sm:hidden">Marks</span>
+                      <span className="hidden sm:inline">Enter marks</span>
                     </Link>
                     <Link
                       href="/teacher-dashboard/lesson-plans"
-                      className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:flex-none"
+                      className="inline-flex h-9 min-w-0 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 text-xs font-medium whitespace-nowrap text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:h-10 sm:gap-1.5 sm:px-4 sm:text-sm sm:flex-none"
                     >
-                      Lesson plans
+                      <BookOpen
+                        className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4"
+                        aria-hidden
+                      />
+                      <span className="sm:hidden">Plans</span>
+                      <span className="hidden sm:inline">Lesson plans</span>
                     </Link>
                   </div>
                 </div>
