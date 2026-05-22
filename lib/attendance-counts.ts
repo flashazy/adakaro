@@ -50,12 +50,14 @@ export function healthExcuseAppliesOnDate(
 /** Health flag active on this calendar day (marked on or before end of that day). */
 export function getApplicableHealthStatus(
   studentId: string,
-  health?: AttendanceRollupHealthContext
+  healthContext?: AttendanceRollupHealthContext
 ): StudentHealthAttendanceStatus | null {
-  if (!health) return null;
-  const record = health.byStudent[studentId];
+  if (!healthContext) return null;
+  const record = healthContext.byStudent[studentId];
   if (!record) return null;
-  if (!healthExcuseAppliesOnDate(record.marked_at, health.attendanceDate)) {
+  if (
+    !healthExcuseAppliesOnDate(record.marked_at, healthContext.attendanceDate)
+  ) {
     return null;
   }
   return record.status;
@@ -63,9 +65,9 @@ export function getApplicableHealthStatus(
 
 function resolveExcusedCategory(
   row: AttendanceRollupRow,
-  health?: AttendanceRollupHealthContext
+  healthContext?: AttendanceRollupHealthContext
 ): StudentHealthAttendanceStatus | null {
-  return getApplicableHealthStatus(row.student_id, health);
+  return getApplicableHealthStatus(row.student_id, healthContext);
 }
 
 /**
@@ -91,9 +93,12 @@ export function classifyStudentDayAttendance(args: {
   studentId: string;
   /** All teacher_attendance status values for this student on this date. */
   rollCallStatuses: string[];
-  health?: AttendanceRollupHealthContext;
+  healthContext?: AttendanceRollupHealthContext;
 }): keyof AttendanceRollupCounts {
-  const healthStatus = getApplicableHealthStatus(args.studentId, args.health);
+  const healthStatus = getApplicableHealthStatus(
+    args.studentId,
+    args.healthContext
+  );
   if (healthStatus === "ill") return "ill";
   if (healthStatus === "permitted") return "permitted";
 
@@ -107,22 +112,22 @@ export function classifyStudentDayAttendance(args: {
 /** Classify one saved roll-call row into the five-way summary buckets. */
 export function classifyAttendanceRow(
   row: AttendanceRollupRow,
-  health?: AttendanceRollupHealthContext
+  healthContext?: AttendanceRollupHealthContext
 ): keyof AttendanceRollupCounts {
   return classifyStudentDayAttendance({
     studentId: row.student_id,
     rollCallStatuses: [row.status],
-    health,
+    healthContext,
   });
 }
 
 export function countAttendanceRollupWithHealth(
   rows: AttendanceRollupRow[],
-  health?: AttendanceRollupHealthContext
+  healthContext?: AttendanceRollupHealthContext
 ): AttendanceRollupCounts {
   const counts = emptyAttendanceRollup();
   for (const row of rows) {
-    counts[classifyAttendanceRow(row, health)]++;
+    counts[classifyAttendanceRow(row, healthContext)]++;
   }
   return counts;
 }

@@ -27,6 +27,10 @@ import {
   type StudentHealthAttendanceStatus,
 } from "@/lib/student-attendance-status";
 import { assertAttendanceDateEditableForSave } from "@/lib/attendance-date-policy";
+import {
+  formatSupabaseEnvError,
+  getSupabaseEnvDiagnostics,
+} from "@/lib/supabase/env-diagnostics";
 
 type AttendanceStatus = "present" | "absent" | "late";
 
@@ -216,15 +220,25 @@ export async function loadAttendanceData(
     term?: SubjectEnrollmentTerm;
   }
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || !(await checkIsTeacher(supabase, user.id))) {
-    return { ok: false as const, error: "Unauthorized." };
-  }
+  const logTag = "[loadAttendanceData]";
+  try {
+    const envDiag = getSupabaseEnvDiagnostics();
+    if (!envDiag.ok) {
+      const msg = formatSupabaseEnvError(envDiag);
+      console.error(logTag, "env missing", envDiag);
+      return { ok: false as const, error: msg };
+    }
 
-  const admin = createAdminClient();
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user || !(await checkIsTeacher(supabase, user.id))) {
+      console.error(logTag, "unauthorized", { classId, date });
+      return { ok: false as const, error: "Unauthorized." };
+    }
+
+    const admin = createAdminClient();
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
@@ -336,7 +350,10 @@ export async function loadAttendanceData(
   );
 
   const students = sortStudentsByGenderThenName(mergedRows).map(
-    ({ id, full_name }) => ({ id, full_name })
+    ({ id, full_name }) => ({
+      id,
+      full_name: (full_name ?? "").trim() || "Student",
+    })
   );
 
   const healthStatusByStudent: Record<string, StudentHealthAttendanceStatus> =
@@ -365,12 +382,30 @@ export async function loadAttendanceData(
     }
   }
 
-  return {
-    ok: true as const,
-    students,
-    attendance: byStudent,
-    healthStatusByStudent,
-  };
+    return {
+      ok: true as const,
+      students,
+      attendance: byStudent,
+      healthStatusByStudent,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(logTag, "failed", {
+      classId,
+      date,
+      subjectId: filters?.subjectId ?? null,
+      error: message,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return {
+      ok: false as const,
+      error:
+        message.includes("SUPABASE_SERVICE_ROLE_KEY") ||
+        message.includes("NEXT_PUBLIC_SUPABASE")
+          ? formatSupabaseEnvError(getSupabaseEnvDiagnostics())
+          : `Could not load class list: ${message}`,
+    };
+  }
 }
 
 export async function saveAttendanceAction(input: {
@@ -666,18 +701,28 @@ export async function loadAttendanceHistory(
   classId: string,
   opts?: { limit?: number; subjectId?: string | null }
 ) {
+  const logTag = "[loadAttendanceHistory]";
   const limit = opts?.limit ?? 14;
   const subjectId = opts?.subjectId;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || !(await checkIsTeacher(supabase, user.id))) {
-    return { ok: false as const, error: "Unauthorized." };
-  }
+  try {
+    const envDiag = getSupabaseEnvDiagnostics();
+    if (!envDiag.ok) {
+      const msg = formatSupabaseEnvError(envDiag);
+      console.error(logTag, "env missing", envDiag);
+      return { ok: false as const, error: msg };
+    }
 
-  const admin = createAdminClient();
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user || !(await checkIsTeacher(supabase, user.id))) {
+      console.error(logTag, "unauthorized", { classId });
+      return { ok: false as const, error: "Unauthorized." };
+    }
+
+    const admin = createAdminClient();
   const gate = await assertTeacherForClass(user.id, classId);
   if (!gate.ok) return { ok: false as const, error: gate.error };
 
@@ -746,8 +791,8 @@ export async function loadAttendanceHistory(
       admin.from("students").select("id, full_name").in("id", ids)
     );
     for (const s of studs ?? []) {
-      const row = s as { id: string; full_name: string };
-      nameById.set(row.id, row.full_name);
+      const row = s as { id: string; full_name: string | null };
+      nameById.set(row.id, (row.full_name ?? "").trim() || "Student");
     }
 
     const { data: healthRows, error: healthErr } = await supabase
@@ -809,17 +854,34 @@ export async function loadAttendanceHistory(
     if (iso) lastModifiedForDates[d] = iso;
   }
 
-  return {
-    ok: true as const,
-    dates,
-    byDate: Object.fromEntries(dates.map((d) => [d, byDate.get(d) ?? []])) as Record<
-      string,
-      { attendance_date: string; status: string; student_id: string; student_name: string }[]
-    >,
-    lastModifiedIsoByDate: lastModifiedForDates,
-    displayTimeZone,
-    healthByStudent,
-  };
+    return {
+      ok: true as const,
+      dates,
+      byDate: Object.fromEntries(dates.map((d) => [d, byDate.get(d) ?? []])) as Record<
+        string,
+        { attendance_date: string; status: string; student_id: string; student_name: string }[]
+      >,
+      lastModifiedIsoByDate: lastModifiedForDates,
+      displayTimeZone,
+      healthByStudent,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(logTag, "failed", {
+      classId,
+      subjectId: subjectId ?? null,
+      error: message,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return {
+      ok: false as const,
+      error:
+        message.includes("SUPABASE_SERVICE_ROLE_KEY") ||
+        message.includes("NEXT_PUBLIC_SUPABASE")
+          ? formatSupabaseEnvError(getSupabaseEnvDiagnostics())
+          : `Could not load attendance history: ${message}`,
+    };
+  }
 }
 
 export async function createGradebookAssignmentAction(input: {

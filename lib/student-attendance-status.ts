@@ -9,15 +9,15 @@ export type RollCallAttendanceStatus = "present" | "absent" | "late";
 
 /** Class-teacher health flag blocks subject-teacher roll call changes. */
 export function isAttendanceLockedByHealth(
-  health: StudentHealthAttendanceStatus | null | undefined
-): health is StudentHealthAttendanceStatus {
-  return health === "ill" || health === "permitted";
+  healthStatus: StudentHealthAttendanceStatus | null | undefined
+): healthStatus is StudentHealthAttendanceStatus {
+  return healthStatus === "ill" || healthStatus === "permitted";
 }
 
 export function getHealthAttendanceTooltip(
-  health: StudentHealthAttendanceStatus
+  healthStatus: StudentHealthAttendanceStatus
 ): string {
-  if (health === "ill") {
+  if (healthStatus === "ill") {
     return "Student is sick (marked by class teacher)";
   }
   return "Student has permission to be absent";
@@ -26,10 +26,10 @@ export function getHealthAttendanceTooltip(
 /** Label shown to subject teachers on the attendance screen. */
 export function getAttendanceDisplayLabel(
   rollCall: RollCallAttendanceStatus,
-  health: StudentHealthAttendanceStatus | null | undefined
+  healthStatus: StudentHealthAttendanceStatus | null | undefined
 ): string {
-  if (health === "ill") return ILL_STATUS_DISPLAY_BADGE;
-  if (health === "permitted") return "Permitted 📝";
+  if (healthStatus === "ill") return ILL_STATUS_DISPLAY_BADGE;
+  if (healthStatus === "permitted") return "Permitted 📝";
   if (rollCall === "present") return "Present ✅";
   if (rollCall === "late") return "Late";
   if (rollCall === "absent") return "Absent ❌";

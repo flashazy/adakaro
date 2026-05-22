@@ -157,7 +157,11 @@ export function TeacherAttendanceForm({
   const [subjectChoiceKey, setSubjectChoiceKey] = useState(() =>
     initialRow ? subjectChoiceKeyForOption(initialRow) : ""
   );
-  const [date, setDate] = useState(serverToday);
+  const serverTodaySafe =
+    serverToday?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(serverToday.trim())
+      ? serverToday.trim()
+      : new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(serverTodaySafe);
   const [students, setStudents] = useState<{ id: string; full_name: string }[]>(
     []
   );
@@ -315,56 +319,94 @@ export function TeacherAttendanceForm({
     if (!classId) return;
     setLoadError(null);
     setSaveOk(false);
-    const res = await loadAttendanceData(classId, date, {
-      subjectId: selectedSubjectMeta?.subjectId ?? null,
-      assignmentAcademicYear: selectedSubjectMeta?.academicYear ?? null,
-    });
-    if (!res.ok) {
-      setLoadError(res.error);
+    try {
+      console.log("[TeacherAttendanceForm] loadAttendanceData", {
+        classId,
+        date,
+        subjectId: selectedSubjectMeta?.subjectId ?? null,
+        academicYear: selectedSubjectMeta?.academicYear ?? null,
+      });
+      const res = await loadAttendanceData(classId, date, {
+        subjectId: selectedSubjectMeta?.subjectId ?? null,
+        assignmentAcademicYear: selectedSubjectMeta?.academicYear ?? null,
+      });
+      if (!res.ok) {
+        console.error("[TeacherAttendanceForm] loadAttendanceData failed", {
+          classId,
+          date,
+          error: res.error,
+        });
+        setLoadError(res.error);
+        setStudents([]);
+        setStatusByStudent({});
+        setHealthStatusByStudent({});
+        setHistoryHealthByStudent({});
+        setHistoryLastModifiedIsoByDate({});
+        setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
+        setHasChanges(false);
+        return;
+      }
+      console.log("[TeacherAttendanceForm] loadAttendanceData ok", {
+        classId,
+        date,
+        studentCount: res.students.length,
+      });
+      setStudents(res.students);
+      const healthMap = res.healthStatusByStudent ?? {};
+      const next: Record<string, Status> = {};
+      for (const s of res.students) {
+        const studentHealth = healthMap[s.id];
+        next[s.id] = isAttendanceLockedByHealth(studentHealth)
+          ? "absent"
+          : (res.attendance[s.id] ?? "present");
+      }
+      setStatusByStudent(next);
+      setHealthStatusByStudent(res.healthStatusByStudent ?? {});
+      setHasChanges(false);
+
+      const hist = await loadAttendanceHistory(classId, {
+        limit: 14,
+        subjectId: selectedSubjectMeta?.subjectId ?? null,
+      });
+      if (hist.ok) {
+        setHistoryDates(hist.dates);
+        setHistoryByDate(hist.byDate);
+        setHistoryHealthByStudent(hist.healthByStudent ?? {});
+        setHistoryLastModifiedIsoByDate(hist.lastModifiedIsoByDate ?? {});
+        setHistoryDisplayTimeZone(
+          hist.displayTimeZone ?? DEFAULT_SCHOOL_DISPLAY_TIMEZONE
+        );
+      } else {
+        console.error(
+          "[TeacherAttendanceForm] loadAttendanceHistory failed",
+          { classId, error: hist.error }
+        );
+        setHistoryDates([]);
+        setHistoryByDate({});
+        setHistoryHealthByStudent({});
+        setHistoryLastModifiedIsoByDate({});
+        setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[TeacherAttendanceForm] syncAttendance threw", {
+        classId,
+        date,
+        error: message,
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      setLoadError(
+        message || "Could not load class list. Check the browser console for details."
+      );
       setStudents([]);
       setStatusByStudent({});
       setHealthStatusByStudent({});
-      setHistoryHealthByStudent({});
-      setHistoryLastModifiedIsoByDate({});
-      setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
-      setHasChanges(false);
-      return;
-    }
-    setStudents(res.students);
-    const healthMap = res.healthStatusByStudent ?? {};
-    const next: Record<string, Status> = {};
-    for (const s of res.students) {
-      const health = healthMap[s.id];
-      next[s.id] = isAttendanceLockedByHealth(health)
-        ? "absent"
-        : (res.attendance[s.id] ?? "present");
-    }
-    setStatusByStudent(next);
-    setHealthStatusByStudent(res.healthStatusByStudent ?? {});
-    setHasChanges(false);
-
-    const hist = await loadAttendanceHistory(classId, {
-      limit: 14,
-      subjectId: selectedSubjectMeta?.subjectId ?? null,
-    });
-    if (hist.ok) {
-      setHistoryDates(hist.dates);
-      setHistoryByDate(hist.byDate);
-      setHistoryHealthByStudent(hist.healthByStudent ?? {});
-      setHistoryLastModifiedIsoByDate(hist.lastModifiedIsoByDate ?? {});
-      setHistoryDisplayTimeZone(
-        hist.displayTimeZone ?? DEFAULT_SCHOOL_DISPLAY_TIMEZONE
-      );
-    } else {
-      console.error(
-        "[TeacherAttendanceForm] loadAttendanceHistory failed",
-        hist.error
-      );
       setHistoryDates([]);
       setHistoryByDate({});
       setHistoryHealthByStudent({});
       setHistoryLastModifiedIsoByDate({});
       setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
+      setHasChanges(false);
     }
   }, [
     classId,
@@ -381,8 +423,8 @@ export function TeacherAttendanceForm({
   }, [syncAttendance]);
 
   const dateEditMode = useMemo(
-    () => getAttendanceDateEditMode(date, serverToday),
-    [date, serverToday]
+    () => getAttendanceDateEditMode(date, serverTodaySafe),
+    [date, serverTodaySafe]
   );
   const readOnly = dateEditMode !== "editable";
   const futureBlocked = dateEditMode === "future_blocked";
@@ -534,7 +576,9 @@ export function TeacherAttendanceForm({
     }
     const q = studentSearch.trim().toLowerCase();
     if (!q) return list;
-    return list.filter((s) => s.full_name.toLowerCase().includes(q));
+    return list.filter((s) =>
+      (s.full_name ?? "").toLowerCase().includes(q)
+    );
   }, [students, studentSearch, statusFilter, statusByStudent]);
 
   // Pagination derived state. Page numbers are 1-indexed; `pageSlice`
@@ -677,10 +721,10 @@ export function TeacherAttendanceForm({
     !collapsedMonths.has(monthKey);
 
   const renderHealthLockedAttendance = (
-    health: StudentHealthAttendanceStatus
+    healthStatus: StudentHealthAttendanceStatus
   ) => {
-    const isIll = health === "ill";
-    const tooltip = getHealthAttendanceTooltip(health);
+    const isIll = healthStatus === "ill";
+    const tooltip = getHealthAttendanceTooltip(healthStatus);
     return (
       <div
         title={tooltip}
@@ -694,15 +738,16 @@ export function TeacherAttendanceForm({
       >
         <Lock className="h-4 w-4 shrink-0 opacity-75" aria-hidden />
         <span className="whitespace-nowrap">
-          {getAttendanceDisplayLabel("absent", health)}
+          {getAttendanceDisplayLabel("absent", healthStatus)}
         </span>
       </div>
     );
   };
 
   const renderSymbolButtons = (studentId: string, currentStatus: Status) => {
-    if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) {
-      return renderHealthLockedAttendance(healthStatusByStudent[studentId]);
+    const studentHealthStatus = healthStatusByStudent[studentId];
+    if (isAttendanceLockedByHealth(studentHealthStatus)) {
+      return renderHealthLockedAttendance(studentHealthStatus);
     }
     if (readOnly) {
       return (
@@ -763,8 +808,9 @@ export function TeacherAttendanceForm({
   };
 
   const renderTextButtons = (studentId: string, currentStatus: Status) => {
-    if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) {
-      return renderHealthLockedAttendance(healthStatusByStudent[studentId]);
+    const studentHealthStatus = healthStatusByStudent[studentId];
+    if (isAttendanceLockedByHealth(studentHealthStatus)) {
+      return renderHealthLockedAttendance(studentHealthStatus);
     }
     if (readOnly) {
       return (
@@ -892,7 +938,7 @@ export function TeacherAttendanceForm({
             <input
               type="date"
               value={date}
-              max={serverToday}
+              max={serverTodaySafe}
               onChange={(e) => setDate(e.target.value)}
               className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 pr-10 text-slate-900 shadow-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             />
@@ -1196,7 +1242,7 @@ export function TeacherAttendanceForm({
                       <div className="min-w-0 flex-1">
                         <span className="inline-flex flex-wrap items-center gap-y-1 font-medium text-gray-900 dark:text-white">
                           {s.full_name}
-                          {healthLocked ? (
+                          {healthLocked && healthStatus != null ? (
                             <span
                               title={getHealthAttendanceTooltip(healthStatus)}
                               className={cn(

@@ -7,6 +7,10 @@ import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { TeacherAttendanceForm } from "../components/TeacherAttendanceForm";
 import { getTeacherTeachingClasses } from "../data";
 import { todayIsoDate } from "@/lib/class-attendance/class-attendance-utils";
+import {
+  formatSupabaseEnvError,
+  getSupabaseEnvDiagnostics,
+} from "@/lib/supabase/env-diagnostics";
 
 export const metadata = {
   title: "Class List — Teacher",
@@ -18,17 +22,25 @@ export default async function TeacherAttendancePage({
   searchParams: Promise<{ classId?: string }>;
 }) {
   const sp = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  if (!(await checkIsTeacher(supabase, user.id))) redirect("/dashboard");
-  await ensureTeacherHasAssignmentsOrRedirect(supabase, user.id);
+  const envDiag = getSupabaseEnvDiagnostics();
+  if (!envDiag.ok) {
+    console.error("[TeacherAttendancePage] missing env", envDiag);
+  }
 
-  const options = await getTeacherTeachingClasses(user.id);
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
+    if (!(await checkIsTeacher(supabase, user.id))) redirect("/dashboard");
+    await ensureTeacherHasAssignmentsOrRedirect(supabase, user.id);
 
-  return (
+    const options = await getTeacherTeachingClasses(user.id);
+    const serverToday = todayIsoDate();
+    const configError = envDiag.ok ? null : formatSupabaseEnvError(envDiag);
+
+    return (
     <>
       <div className="max-w-full min-w-0 space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -48,10 +60,18 @@ export default async function TeacherAttendancePage({
           </Link>
         </div>
         <div className="space-y-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-zinc-800 dark:bg-zinc-900">
+          {configError ? (
+            <p
+              className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"
+              role="alert"
+            >
+              {configError}
+            </p>
+          ) : null}
           <TeacherAttendanceForm
             options={options}
             initialClassId={sp.classId?.trim() ?? null}
-            serverToday={todayIsoDate()}
+            serverToday={serverToday}
           />
         </div>
       </div>
@@ -59,5 +79,14 @@ export default async function TeacherAttendancePage({
         <SmartFloatingScrollButton sectionIds={[]} />
       </div>
     </>
-  );
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[TeacherAttendancePage] failed", {
+      error: message,
+      stack: err instanceof Error ? err.stack : undefined,
+      env: envDiag,
+    });
+    throw err instanceof Error ? err : new Error(message);
+  }
 }
