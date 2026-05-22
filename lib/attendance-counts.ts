@@ -29,6 +29,14 @@ export function emptyAttendanceRollup(): AttendanceRollupCounts {
   return { present: 0, ill: 0, permitted: 0, late: 0, absent: 0 };
 }
 
+/** Normalize optional rollup context (safe for client + server). */
+export function normalizeRollupHealthContext(
+  rollupHealth?: AttendanceRollupHealthContext | null
+): AttendanceRollupHealthContext | undefined {
+  if (rollupHealth == null) return undefined;
+  return rollupHealth;
+}
+
 /** True when class-teacher health flag applies to this attendance date. */
 export function healthExcuseAppliesOnDate(
   markedAt: string | undefined,
@@ -50,14 +58,13 @@ export function healthExcuseAppliesOnDate(
 /** Health flag active on this calendar day (marked on or before end of that day). */
 export function getApplicableHealthStatus(
   studentId: string,
-  healthContext?: AttendanceRollupHealthContext
+  rollupHealth?: AttendanceRollupHealthContext | null
 ): StudentHealthAttendanceStatus | null {
-  if (!healthContext) return null;
-  const record = healthContext.byStudent[studentId];
+  const ctx = normalizeRollupHealthContext(rollupHealth);
+  if (!ctx) return null;
+  const record = ctx.byStudent[studentId];
   if (!record) return null;
-  if (
-    !healthExcuseAppliesOnDate(record.marked_at, healthContext.attendanceDate)
-  ) {
+  if (!healthExcuseAppliesOnDate(record.marked_at, ctx.attendanceDate)) {
     return null;
   }
   return record.status;
@@ -65,9 +72,9 @@ export function getApplicableHealthStatus(
 
 function resolveExcusedCategory(
   row: AttendanceRollupRow,
-  healthContext?: AttendanceRollupHealthContext
+  rollupHealth?: AttendanceRollupHealthContext | null
 ): StudentHealthAttendanceStatus | null {
-  return getApplicableHealthStatus(row.student_id, healthContext);
+  return getApplicableHealthStatus(row.student_id, rollupHealth);
 }
 
 /**
@@ -93,12 +100,10 @@ export function classifyStudentDayAttendance(args: {
   studentId: string;
   /** All teacher_attendance status values for this student on this date. */
   rollCallStatuses: string[];
-  healthContext?: AttendanceRollupHealthContext;
+  healthContext?: AttendanceRollupHealthContext | null;
 }): keyof AttendanceRollupCounts {
-  const healthStatus = getApplicableHealthStatus(
-    args.studentId,
-    args.healthContext
-  );
+  const rollupHealth = normalizeRollupHealthContext(args.healthContext);
+  const healthStatus = getApplicableHealthStatus(args.studentId, rollupHealth);
   if (healthStatus === "ill") return "ill";
   if (healthStatus === "permitted") return "permitted";
 
@@ -112,22 +117,35 @@ export function classifyStudentDayAttendance(args: {
 /** Classify one saved roll-call row into the five-way summary buckets. */
 export function classifyAttendanceRow(
   row: AttendanceRollupRow,
-  healthContext?: AttendanceRollupHealthContext
+  rollupHealth?: AttendanceRollupHealthContext | null
 ): keyof AttendanceRollupCounts {
+  const ctx = normalizeRollupHealthContext(rollupHealth);
   return classifyStudentDayAttendance({
     studentId: row.student_id,
     rollCallStatuses: [row.status],
-    healthContext,
+    healthContext: ctx ?? null,
   });
 }
 
 export function countAttendanceRollupWithHealth(
   rows: AttendanceRollupRow[],
-  healthContext?: AttendanceRollupHealthContext
+  rollupHealth?: AttendanceRollupHealthContext | null
 ): AttendanceRollupCounts {
+  const ctx = normalizeRollupHealthContext(rollupHealth);
+
+  if (typeof window !== "undefined") {
+    console.log("[countAttendanceRollupWithHealth]", {
+      rowCount: rows.length,
+      hasContext: ctx != null,
+      attendanceDate: ctx?.attendanceDate ?? null,
+      studentKeys: ctx ? Object.keys(ctx.byStudent).length : 0,
+    });
+  }
+
   const counts = emptyAttendanceRollup();
   for (const row of rows) {
-    counts[classifyAttendanceRow(row, healthContext)]++;
+    const bucket = classifyAttendanceRow(row, ctx ?? null);
+    counts[bucket]++;
   }
   return counts;
 }
@@ -168,7 +186,7 @@ export function countAttendanceRollup(rows: { status: string }[]): {
     student_id: `__row_${i}`,
     status: r.status,
   }));
-  const counts = countAttendanceRollupWithHealth(indexed, undefined);
+  const counts = countAttendanceRollupWithHealth(indexed, null);
   return {
     present: counts.present + counts.late,
     absent: counts.absent + counts.ill + counts.permitted,

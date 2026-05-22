@@ -687,10 +687,18 @@ export function TeacherAttendanceForm({
       student_id: s.id,
       status: statusByStudent[s.id] ?? "present",
     }));
-    return countAttendanceRollupWithHealth(rows, {
+    const rollupHealth = {
       byStudent: healthRecordsForRollup,
       attendanceDate: date,
-    });
+    };
+    if (typeof window !== "undefined") {
+      console.log("[TeacherAttendanceForm] currentAttendanceRollup", {
+        studentCount: rows.length,
+        date,
+        healthRecordCount: Object.keys(healthRecordsForRollup).length,
+      });
+    }
+    return countAttendanceRollupWithHealth(rows, rollupHealth);
   }, [students, statusByStudent, healthRecordsForRollup, date]);
 
   const frequentAbsenteeIds = useMemo(() => {
@@ -1534,7 +1542,7 @@ export function TeacherAttendanceForm({
                             status: r.status,
                           })),
                           {
-                            byStudent: historyHealthByStudent,
+                            byStudent: historyHealthByStudent ?? {},
                             attendanceDate: d,
                           }
                         );
