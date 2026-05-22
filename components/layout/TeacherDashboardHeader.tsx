@@ -64,7 +64,7 @@ interface TeacherDashboardHeaderProps {
   showDashboardRoleToggle?: boolean;
   /** Show Duty Book in nav when teacher has active TOD assignment or is head teacher. */
   showDutyBookNav?: boolean;
-  /** Finance / accounts staff — payments and report card access rules. */
+  /** Finance / accounts staff — Finance module (payments, rules, reports). */
   showPaymentsNav?: boolean;
 }
 
@@ -283,7 +283,7 @@ export function TeacherDashboardHeader({
                   inactiveWhenPathStartsWith: "/dashboard/fee-rules",
                 })}
               >
-                Payments
+                Finance
               </NavLinkWithLoading>
             ) : null}
             {showClassTeacherNav ? (
@@ -419,7 +419,7 @@ export function TeacherDashboardHeader({
                 inactiveWhenPathStartsWith: "/dashboard/fee-rules",
               })}
             >
-              Payments
+              Finance
             </NavLinkWithLoading>
           ) : null}
           {showClassTeacherNav ? (

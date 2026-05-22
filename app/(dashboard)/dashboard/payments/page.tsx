@@ -17,6 +17,10 @@ import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 import { ReportsClient } from "../reports/reports-client";
 
+export const metadata = {
+  title: "Finance",
+};
+
 export default async function PaymentsPage() {
   const supabase = await createClient();
   const {
@@ -160,11 +164,11 @@ export default async function PaymentsPage() {
         >
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Payments
+              Finance
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               {showFinanceTools
-                ? "Record payments, report card rules, and financial reports in one place."
+                ? "Manage school payments, balances, report access rules, and financial reports."
                 : "Select a student, view balances, and record a payment."}
             </p>
           </div>
@@ -181,13 +185,7 @@ export default async function PaymentsPage() {
         className={`mx-auto space-y-6 py-10 ${showFinanceTools ? "max-w-6xl px-1 sm:px-0" : "max-w-3xl"}`}
       >
         {showFinanceTools ? (
-          <section aria-label="Finance area">
-            <h2 className="mb-1 text-sm font-semibold text-slate-900 dark:text-white">
-              Finance
-            </h2>
-            <p className="mb-3 text-xs text-slate-500 dark:text-zinc-400">
-              Fee payments and parent report card access controls.
-            </p>
+          <section aria-label="Report card access rules">
             <FinanceToolsLink />
           </section>
         ) : null}
