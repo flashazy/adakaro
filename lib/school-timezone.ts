@@ -82,19 +82,28 @@ export function formatDateTimeInSchoolZone(
   if (!iso?.trim()) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const dateStr = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(d);
-  const timeStr = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
-  return `${dateStr} - ${timeStr}`;
+  const zone = resolveSchoolDisplayTimezone(timeZone);
+  try {
+    const dateStr = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(d);
+    const timeStr = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(d);
+    return `${dateStr} - ${timeStr}`;
+  } catch (err) {
+    console.error("[formatDateTimeInSchoolZone] invalid timezone", {
+      timeZone: zone,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return formatDateTimeStable(iso, DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
+  }
 }
 
 /**
