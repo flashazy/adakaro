@@ -5,6 +5,8 @@ import { ReportCardPreview } from "@/app/(dashboard)/teacher-dashboard/report-ca
 import type { ChildTabData } from "./parent-child-tab-data";
 import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
 import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
+import { ParentReportCardFeeLocked } from "@/components/parent/parent-report-card-fee-locked";
+import type { ParentReportEligibilityResult } from "@/lib/report-card-fee/types";
 
 type Row = ChildTabData["reportCards"][number];
 
@@ -86,12 +88,23 @@ export function ParentReportCardsTabClient({ rows }: { rows: Row[] }) {
       </div>
       {selected ? (
         <div className="max-h-[70vh] overflow-y-auto md:max-h-[min(500px,60vh)]">
-          <ReportCardPreview
-            key={selected.id}
-            data={selected.previewData}
-            viewer="parent"
-            reportCardStatus={selected.status}
-          />
+          {(selected as { feeBlocked?: boolean }).feeBlocked &&
+          (selected as { feeEligibility?: ParentReportEligibilityResult })
+            .feeEligibility ? (
+            <ParentReportCardFeeLocked
+              eligibility={
+                (selected as { feeEligibility: ParentReportEligibilityResult })
+                  .feeEligibility
+              }
+            />
+          ) : selected.previewData ? (
+            <ReportCardPreview
+              key={selected.id}
+              data={selected.previewData}
+              viewer="parent"
+              reportCardStatus={selected.status}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>

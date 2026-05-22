@@ -2271,6 +2271,80 @@ export interface Database {
         };
         Relationships: [];
       };
+      report_card_fee_rules: {
+        Row: {
+          id: string;
+          school_id: string;
+          class_id: string;
+          rule_type: "percentage" | "fixed_amount";
+          required_percentage: number | null;
+          required_amount: number | null;
+          is_enabled: boolean;
+          allow_admin_override: boolean;
+          message_to_parent: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          class_id: string;
+          rule_type: "percentage" | "fixed_amount";
+          required_percentage?: number | null;
+          required_amount?: number | null;
+          is_enabled?: boolean;
+          allow_admin_override?: boolean;
+          message_to_parent?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          school_id?: string;
+          class_id?: string;
+          rule_type?: "percentage" | "fixed_amount";
+          required_percentage?: number | null;
+          required_amount?: number | null;
+          is_enabled?: boolean;
+          allow_admin_override?: boolean;
+          message_to_parent?: string | null;
+          created_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      report_card_fee_audit_log: {
+        Row: {
+          id: string;
+          school_id: string;
+          class_id: string | null;
+          student_id: string | null;
+          performed_by: string | null;
+          action: string;
+          details: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          class_id?: string | null;
+          student_id?: string | null;
+          performed_by?: string | null;
+          action: string;
+          details?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          school_id?: string;
+          class_id?: string | null;
+          student_id?: string | null;
+          performed_by?: string | null;
+          action?: string;
+          details?: Json | null;
+        };
+        Relationships: [];
+      };
       teacher_report_card_comments: {
         Row: {
           id: string;

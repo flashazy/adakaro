@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ReportCardPreview } from "@/app/(dashboard)/teacher-dashboard/report-cards/components/ReportCardPreview";
 import { buildParentReportCardPreviewData } from "../build-parent-report-card-preview";
 import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
+import { ParentReportCardFeeLocked } from "@/components/parent/parent-report-card-fee-locked";
 
 export const metadata = {
   title: "Report card — Parent",
@@ -71,6 +72,9 @@ export default async function ParentReportCardPage({
           {PARENT_NO_RESULTS_AFTER_ENROLLMENT}
         </p>
       );
+    }
+    if (built.error === "fee_blocked" && "eligibility" in built) {
+      return <ParentReportCardFeeLocked eligibility={built.eligibility} />;
     }
     return (
       <p className="text-sm text-slate-600">

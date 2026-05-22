@@ -14,6 +14,11 @@ import { normalizeSchoolLevel, type SchoolLevel } from "@/lib/school-level";
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { persistAcademicPerformanceReport } from "@/lib/academic-performance-report";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { buildClassSendEligibilityPreview } from "@/lib/report-card-fee/send-preview";
+import { checkParentReportEligibility } from "@/lib/report-card-fee/eligibility";
+import { logReportCardFeeAudit } from "@/lib/report-card-fee/audit";
+import { verifySchoolAdminPassword } from "@/lib/report-card-fee/verify-admin-password";
+import type { ClassSendEligibilityPreview } from "@/lib/report-card-fee/types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -208,13 +213,48 @@ export async function submitCoordinatorReportCardForReviewAction(
 // ---------------------------------------------------------------------------
 
 export type CoordinatorSendToParentsState =
-  | { ok: true; sentCount: number }
+  | { ok: true; sentCount: number; skippedCount?: number }
   | { ok: false; error: string };
 
+export type CoordinatorSendEligibilityState =
+  | { ok: true; preview: ClassSendEligibilityPreview }
+  | { ok: false; error: string };
+
+/** Preview which pending report cards can be sent to parents (fee rules). */
+export async function loadCoordinatorSendEligibilityAction(
+  classId: string,
+  term: string,
+  academicYear: string
+): Promise<CoordinatorSendEligibilityState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const admin = createAdminClient() as AdminDb;
+  const { data: coordRow } = await admin
+    .from("teacher_coordinators")
+    .select("id")
+    .eq("teacher_id", user.id)
+    .eq("class_id", classId)
+    .maybeSingle();
+  if (!coordRow) {
+    return { ok: false, error: "You are not the coordinator for this class." };
+  }
+
+  const preview = await buildClassSendEligibilityPreview(admin, {
+    classId,
+    term,
+    academicYear,
+  });
+  return { ok: true, preview };
+}
+
 /**
- * Sets `status` to `approved` for all `pending_review` report cards in the
- * class cluster and term + academic year. Does not modify `submitted_at` or
- * any other column (besides RLS / trigger-driven `updated_at` if present).
+ * Sets `status` to `approved` for pending_review report cards in the class
+ * cluster. When fee rules are enabled, only eligible students are approved
+ * unless admin override is confirmed.
  */
 export async function sendCoordinatorClassReportCardsToParentsAction(
   _prev: CoordinatorSendToParentsState | null,
@@ -223,6 +263,9 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
   const classId = String(formData.get("class_id") ?? "").trim();
   const termRaw = String(formData.get("term") ?? "").trim();
   const academicYear = String(formData.get("academic_year") ?? "").trim();
+  const sendMode = String(formData.get("send_mode") ?? "eligible_only");
+  const adminOverride = formData.get("admin_override") === "true";
+  const adminPassword = String(formData.get("admin_password") ?? "");
 
   if (!classId) return { ok: false, error: "Missing class reference." };
   const term: "Term 1" | "Term 2" = termRaw === "Term 2" ? "Term 2" : "Term 1";
@@ -248,24 +291,34 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
     return { ok: false, error: "You are not the coordinator for this class." };
   }
 
+  const { data: classRow } = await admin
+    .from("classes")
+    .select("school_id")
+    .eq("id", classId)
+    .maybeSingle();
+  const schoolId = (classRow as { school_id?: string } | null)?.school_id;
+  if (!schoolId) return { ok: false, error: "Class not found." };
+
   const cluster = await resolveClassCluster(admin, classId);
   const classIds = cluster.classIds;
 
-  const { data: updatedRows, error } = await admin
+  const { data: pendingCards, error: fetchErr } = await admin
     .from("report_cards")
-    .update({ status: "approved" })
+    .select("id, student_id, class_id")
     .in("class_id", classIds)
     .eq("term", term)
     .eq("academic_year", academicYear)
-    .eq("status", "pending_review")
-    .select("id");
+    .eq("status", "pending_review");
 
-  if (error) {
-    return { ok: false, error: error.message };
-  }
+  if (fetchErr) return { ok: false, error: fetchErr.message };
 
-  const sentCount = (updatedRows ?? []).length;
-  if (sentCount === 0) {
+  const pending = (pendingCards ?? []) as {
+    id: string;
+    student_id: string;
+    class_id: string;
+  }[];
+
+  if (pending.length === 0) {
     return {
       ok: false,
       error:
@@ -273,10 +326,103 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
     };
   }
 
+  const preview = await buildClassSendEligibilityPreview(admin, {
+    classId,
+    term,
+    academicYear,
+  });
+
+  let idsToApprove: string[] = pending.map((c) => c.id);
+  let skippedCount = 0;
+
+  if (preview.ruleEnabled) {
+    const eligibleIds = new Set(
+      preview.students.filter((s) => s.eligible).map((s) => s.reportCardId)
+    );
+
+    if (sendMode === "all_with_override" && adminOverride) {
+      if (!preview.allowAdminOverride) {
+        return {
+          ok: false,
+          error: "Admin override is not allowed for this class.",
+        };
+      }
+      const passwordOk = await verifySchoolAdminPassword(
+        admin,
+        schoolId,
+        adminPassword
+      );
+      if (!passwordOk) {
+        return { ok: false, error: "Admin password is incorrect." };
+      }
+      await logReportCardFeeAudit(admin, {
+        schoolId,
+        classId,
+        performedBy: user.id,
+        action: "admin_override_used",
+        details: {
+          term,
+          academic_year: academicYear,
+          sent_all: true,
+          pending_count: pending.length,
+        },
+      });
+      idsToApprove = pending.map((c) => c.id);
+      skippedCount = 0;
+    } else {
+      idsToApprove = pending
+        .filter((c) => eligibleIds.has(c.id))
+        .map((c) => c.id);
+      skippedCount = pending.length - idsToApprove.length;
+    }
+  }
+
+  const approvedSet = new Set(idsToApprove);
+  for (const card of pending) {
+    if (approvedSet.has(card.id)) continue;
+    const elig = await checkParentReportEligibility(
+      card.student_id,
+      card.class_id,
+      admin
+    );
+    await logReportCardFeeAudit(admin, {
+      schoolId,
+      classId: card.class_id,
+      studentId: card.student_id,
+      performedBy: user.id,
+      action: "report_blocked",
+      details: {
+        reason: elig.reason,
+        term,
+        academic_year: academicYear,
+      },
+    });
+  }
+
+  if (idsToApprove.length === 0) {
+    return {
+      ok: false,
+      error:
+        "No eligible students to send. Adjust fee payments or use admin override.",
+    };
+  }
+
+  const { data: updatedRows, error } = await admin
+    .from("report_cards")
+    .update({ status: "approved" })
+    .in("id", idsToApprove)
+    .select("id");
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  const sentCount = (updatedRows ?? []).length;
+
   revalidatePath("/teacher-dashboard/coordinator");
   revalidatePath("/teacher-dashboard/report-cards");
   revalidatePath("/parent-dashboard");
-  return { ok: true, sentCount };
+  return { ok: true, sentCount, skippedCount };
 }
 
 // ---------------------------------------------------------------------------

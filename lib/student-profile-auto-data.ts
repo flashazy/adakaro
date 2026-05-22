@@ -9,6 +9,7 @@ import type {
   StudentReportRow,
 } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-types";
 import { formatPaymentRecorderLine } from "@/lib/payment-recorder-label";
+import { fetchProfilesByIds } from "@/lib/student-profile-admin-client";
 import type { SchoolLevel } from "@/lib/school-level";
 import {
   getCurrentAcademicYearAndTerm,
@@ -412,22 +413,7 @@ export async function loadProfilePayments(
   const byId = new Set(
     data.map((p) => p.recorded_by_id).filter((u): u is string => Boolean(u))
   );
-  const ids = Array.from(byId);
-  const profileById = new Map<string, { full_name: string | null; role: UserRole }>();
-
-  if (ids.length > 0) {
-    const { data: profs } = await supabase
-      .from("profiles")
-      .select("id, full_name, role")
-      .in("id", ids);
-    for (const r of (profs ?? []) as {
-      id: string;
-      full_name: string | null;
-      role: UserRole;
-    }[]) {
-      profileById.set(r.id, { full_name: r.full_name, role: r.role });
-    }
-  }
+  const profileById = await fetchProfilesByIds(supabase, Array.from(byId));
 
   return data.map((p) => {
     const receipt = p.receipt;
@@ -469,23 +455,10 @@ export async function loadProfileFinanceNotes(
     created_by: string;
   }[];
 
-  const byId = new Set(rows.map((r) => r.created_by));
-  const ids = Array.from(byId);
-  const profileById = new Map<string, { full_name: string | null; role: UserRole }>();
-
-  if (ids.length > 0) {
-    const { data: profs } = await supabase
-      .from("profiles")
-      .select("id, full_name, role")
-      .in("id", ids);
-    for (const r of (profs ?? []) as {
-      id: string;
-      full_name: string | null;
-      role: UserRole;
-    }[]) {
-      profileById.set(r.id, { full_name: r.full_name, role: r.role });
-    }
-  }
+  const profileById = await fetchProfilesByIds(
+    supabase,
+    Array.from(new Set(rows.map((r) => r.created_by)))
+  );
 
   return rows.map((r) => {
     const pro = profileById.get(r.created_by) ?? null;

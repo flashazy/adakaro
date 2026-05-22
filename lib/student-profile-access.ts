@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, UserRole } from "@/types/supabase";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { fetchUserProfileForStudentPage } from "@/lib/student-profile-admin-client";
 
 type StudentForAccess = {
   class_id: string;
@@ -36,7 +37,7 @@ export async function canUserAccessStudentProfile(
     { data: teacherForClass },
     { data: scopeRows, error: scopeErr },
     { data: deptRoleRows, error: deptRoleErr },
-    { data: myProfile },
+    { profile: myProfile },
   ] = await Promise.all([
     supabase.rpc("is_school_admin", { p_school_id: schoolId } as never),
     supabase.rpc("is_super_admin" as never),
@@ -51,7 +52,7 @@ export async function canUserAccessStudentProfile(
       .select("department")
       .eq("school_id", schoolId)
       .eq("user_id", userId),
-    supabase.from("profiles").select("role").eq("id", userId).maybeSingle(),
+    fetchUserProfileForStudentPage(supabase, userId),
   ]);
 
   const hasHealthScope =

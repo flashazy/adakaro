@@ -62,6 +62,16 @@ export async function loadParentReportCardsForStudent(
           academic_year: r.academic_year,
           status: r.status,
           previewData: built.data,
+          feeBlocked: false,
+        });
+      } else if (built.error === "fee_blocked" && "eligibility" in built) {
+        out.push({
+          id: r.id,
+          term: r.term,
+          academic_year: r.academic_year,
+          status: r.status,
+          feeBlocked: true,
+          feeEligibility: built.eligibility,
         });
       }
     }

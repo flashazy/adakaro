@@ -21,12 +21,15 @@ import {
 } from "./types";
 import {
   generateReportCardsForClassAction,
+  loadCoordinatorSendEligibilityAction,
   sendCoordinatorClassReportCardsToParentsAction,
   submitCoordinatorReportCardForReviewAction,
   type CoordinatorGenerateState,
+  type CoordinatorSendEligibilityState,
   type CoordinatorSendToParentsState,
   type CoordinatorSubmitReviewState,
 } from "./actions";
+import type { ClassSendEligibilityPreview } from "@/lib/report-card-fee/types";
 import { CoordinatorMySignatureCard } from "./coordinator-my-signature-card";
 import {
   SECONDARY_BEST_SUBJECT_COUNT,
@@ -1011,7 +1014,15 @@ function ParentStyleReportCardModal({
   );
 }
 
-function SendToParentsFormFooter({ onClose }: { onClose: () => void }) {
+function SendToParentsFormFooter({
+  onClose,
+  disabled,
+  label = "Send to parents",
+}: {
+  onClose: () => void;
+  disabled?: boolean;
+  label?: string;
+}) {
   const { pending } = useFormStatus();
   return (
     <div className="flex items-center justify-end gap-2">
@@ -1025,7 +1036,7 @@ function SendToParentsFormFooter({ onClose }: { onClose: () => void }) {
       </button>
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || disabled}
         className="inline-flex min-w-[7.5rem] items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
       >
         {pending ? (
@@ -1034,7 +1045,7 @@ function SendToParentsFormFooter({ onClose }: { onClose: () => void }) {
             Sending...
           </>
         ) : (
-          "Send to parents"
+          label
         )}
       </button>
     </div>
@@ -1055,10 +1066,36 @@ function SendToParentsModal({
   const router = useRouter();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const [preview, setPreview] = useState<ClassSendEligibilityPreview | null>(
+    null
+  );
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(true);
+  const [adminOverride, setAdminOverride] = useState(false);
   const [state, formAction] = useActionState<
     CoordinatorSendToParentsState | null,
     FormData
   >(sendCoordinatorClassReportCardsToParentsAction, null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingPreview(true);
+    loadCoordinatorSendEligibilityAction(classId, term, academicYear).then(
+      (res: CoordinatorSendEligibilityState) => {
+        if (cancelled) return;
+        setLoadingPreview(false);
+        if (res.ok) {
+          setPreview(res.preview);
+          setPreviewError(null);
+        } else {
+          setPreviewError(res.error);
+        }
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, term, academicYear]);
 
   useEffect(() => {
     if (state?.ok) {
@@ -1069,15 +1106,21 @@ function SendToParentsModal({
   useEffect(() => {
     if (state == null) return;
     if (state.ok) {
+      const skipped =
+        state.skippedCount && state.skippedCount > 0
+          ? ` (${state.skippedCount} skipped — fee requirement not met)`
+          : "";
       toast.success(
-        `Report cards sent to parents for ${state.sentCount} students`,
-        { id: "coordinator-send-to-parents", duration: 4000 }
+        `Report cards sent to parents for ${state.sentCount} students${skipped}`,
+        { id: "coordinator-send-to-parents", duration: 5000 }
       );
       closeRef.current();
     } else {
       showAdminErrorToast(state.error);
     }
   }, [state]);
+
+  const blocked = preview?.students.filter((s) => !s.eligible) ?? [];
 
   return (
     <div
@@ -1086,7 +1129,7 @@ function SendToParentsModal({
       aria-labelledby="coordinator-send-parents-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
-      <div className="w-full max-w-md rounded-xl bg-white shadow-xl dark:bg-zinc-900">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-xl dark:bg-zinc-900">
         <div className="border-b border-slate-100 px-5 py-4 dark:border-zinc-800">
           <h3
             id="coordinator-send-parents-title"
@@ -1097,15 +1140,116 @@ function SendToParentsModal({
         </div>
         <form action={formAction}>
           <div className="space-y-4 px-5 py-4">
-            <p className="text-sm text-slate-700 dark:text-zinc-300">
-              Send all report cards to parents? This action cannot be undone.
-            </p>
+            {loadingPreview ? (
+              <p className="flex items-center gap-2 text-sm text-slate-600">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Checking fee eligibility…
+              </p>
+            ) : previewError ? (
+              <p className="text-sm text-red-600">{previewError}</p>
+            ) : preview ? (
+              <>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800/50">
+                  <p className="font-medium text-slate-900 dark:text-white">
+                    Eligible: {preview.eligibleCount} students
+                  </p>
+                  <p className="mt-1 text-slate-600 dark:text-zinc-400">
+                    Blocked: {preview.blockedCount} students
+                    {preview.ruleEnabled
+                      ? " (fee rule active)"
+                      : " (no fee rule)"}
+                  </p>
+                </div>
+                {blocked.length > 0 ? (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Blocked students
+                    </p>
+                    <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto text-sm">
+                      {blocked.map((s) => (
+                        <li
+                          key={s.studentId}
+                          className="rounded-md border border-amber-100 bg-amber-50/80 px-3 py-2 dark:border-amber-900/40 dark:bg-amber-950/30"
+                        >
+                          <span className="font-medium text-slate-900 dark:text-white">
+                            {s.studentName}
+                          </span>
+                          <p className="mt-0.5 text-slate-600 dark:text-zinc-400">
+                            {s.reason}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {preview.ruleEnabled &&
+                preview.blockedCount > 0 &&
+                preview.allowAdminOverride ? (
+                  <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-zinc-700">
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                      <input
+                        type="checkbox"
+                        checked={adminOverride}
+                        onChange={(e) => setAdminOverride(e.target.checked)}
+                      />
+                      Admin override (send all, including blocked)
+                    </label>
+                    {adminOverride ? (
+                      <>
+                        <input
+                          type="hidden"
+                          name="send_mode"
+                          value="all_with_override"
+                        />
+                        <input
+                          type="hidden"
+                          name="admin_override"
+                          value="true"
+                        />
+                        <label className="block text-sm">
+                          <span className="text-slate-600 dark:text-zinc-400">
+                            School admin password
+                          </span>
+                          <input
+                            type="password"
+                            name="admin_password"
+                            autoComplete="current-password"
+                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+                            required
+                          />
+                        </label>
+                      </>
+                    ) : (
+                      <input
+                        type="hidden"
+                        name="send_mode"
+                        value="eligible_only"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <input type="hidden" name="send_mode" value="eligible_only" />
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-slate-600">
+                Send report cards to parents? This action cannot be undone.
+              </p>
+            )}
             <input type="hidden" name="class_id" value={classId} />
             <input type="hidden" name="term" value={term} />
             <input type="hidden" name="academic_year" value={academicYear} />
           </div>
           <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3 dark:border-zinc-800">
-            <SendToParentsFormFooter onClose={onClose} />
+            <SendToParentsFormFooter
+              onClose={onClose}
+              disabled={loadingPreview || Boolean(previewError)}
+              label={
+                preview && preview.eligibleCount === 0 && !adminOverride
+                  ? "No eligible students"
+                  : "Send eligible only"
+              }
+            />
           </div>
         </form>
       </div>

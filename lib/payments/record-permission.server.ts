@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, UserRole } from "@/types/supabase";
+import { fetchUserProfileForStudentPage } from "@/lib/student-profile-admin-client";
 
 type Sb = SupabaseClient<Database>;
 
@@ -21,16 +22,15 @@ export async function canUserRecordStudentPayment(
   );
   if (!adminErr && isAdmin === true) return true;
 
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
+  const { profile, error: profileErr } = await fetchUserProfileForStudentPage(
+    supabase,
+    userId
+  );
 
   if (profileErr) {
     return false;
   }
-  const pr = (profile as { role: UserRole } | null)?.role;
+  const pr = profile?.role;
   if (pr === "finance" || pr === "accounts") return true;
 
   const { data: deptRows, error: deptErr } = await supabase

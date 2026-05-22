@@ -37,6 +37,8 @@ import {
   loadReportCardSupplementaryBatch,
   mergeSupplementaryForPreview,
 } from "@/lib/report-card-supplementary";
+import { checkParentReportEligibility } from "@/lib/report-card-fee/eligibility";
+import type { ParentReportEligibilityResult } from "@/lib/report-card-fee/types";
 
 const PARENT_VISIBLE: ReportCardStatus[] = ["approved"];
 
@@ -103,6 +105,7 @@ export async function buildParentReportCardPreviewData(
       status: string;
       reportCardId: string;
     }
+  | { ok: false; error: "fee_blocked"; eligibility: ParentReportEligibilityResult }
   | { ok: false; error: string }
 > {
   const term = params.term.trim();
@@ -173,6 +176,18 @@ export async function buildParentReportCardPreviewData(
 
   if (!isParentVisibleStatus(row.status)) {
     return { ok: false, error: "not_shared" };
+  }
+
+  const feeEligibility = await checkParentReportEligibility(
+    params.studentId,
+    row.class_id
+  );
+  if (!feeEligibility.eligible) {
+    return {
+      ok: false,
+      error: "fee_blocked",
+      eligibility: feeEligibility,
+    };
   }
 
   const { data: stRow } = await supabase

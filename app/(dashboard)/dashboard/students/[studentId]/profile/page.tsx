@@ -1,7 +1,11 @@
 import { BackButton } from "@/components/dashboard/back-button";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  fetchSchoolForStudentProfile,
+  fetchUserProfileForStudentPage,
+  getStudentProfileDataClient,
+} from "@/lib/student-profile-admin-client";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { normalizeSchoolCurrency } from "@/lib/currency";
 import { resolveSchoolDisplayTimezone } from "@/lib/school-timezone";
@@ -112,7 +116,7 @@ export default async function StudentProfilePage({
     { data: teacherForClass },
     { data: scopeRows, error: scopeErr },
     { data: deptRoleRows, error: deptRoleErr },
-    { data: myProfile, error: myProfileErr },
+    { profile: myProfile, error: myProfileErr },
   ] = await Promise.all([
     supabase.rpc("is_school_admin", { p_school_id: schoolId } as never),
     supabase.rpc("is_super_admin" as never),
@@ -129,11 +133,7 @@ export default async function StudentProfilePage({
       .select("department")
       .eq("school_id", schoolId)
       .eq("user_id", user.id),
-    supabase
-      .from("profiles")
-      .select("full_name, role")
-      .eq("id", user.id)
-      .maybeSingle(),
+    fetchUserProfileForStudentPage(supabase, user.id),
   ]);
 
   const hasHealthScope =
@@ -222,7 +222,7 @@ export default async function StudentProfilePage({
     visibleTabs,
   };
 
-  const adminClient = createAdminClient();
+  const profileDataClient = getStudentProfileDataClient(supabase);
 
   // Department roles unlock full reads for their tab, matching admin behavior.
   // Teachers with a department role see the same data as admin on that tab —
@@ -234,16 +234,16 @@ export default async function StudentProfilePage({
   const canReadFinance =
     adminOk || departmentRoles.has("finance") || isFinanceOrAccountsProfile;
 
-  const academicClient = canReadAcademic ? adminClient : supabase;
-  const disciplineClient = canReadDiscipline ? adminClient : supabase;
-  const healthClient = canReadHealth ? adminClient : supabase;
-  const financeClient = canReadFinance ? adminClient : supabase;
+  const academicClient = canReadAcademic ? profileDataClient : supabase;
+  const disciplineClient = canReadDiscipline ? profileDataClient : supabase;
+  const healthClient = canReadHealth ? profileDataClient : supabase;
+  const financeClient = canReadFinance ? profileDataClient : supabase;
 
   const useFullGradebook = canReadAcademic;
 
   let profileSchoolLevel = normalizeSchoolLevel(undefined);
   try {
-    const { data: schoolLevelRow } = await adminClient
+    const { data: schoolLevelRow } = await profileDataClient
       .from("schools")
       .select("school_level")
       .eq("id", typedStudent.school_id)
@@ -260,7 +260,7 @@ export default async function StudentProfilePage({
     { data: disciplineRows, error: disciplineErr },
     { data: healthRows, error: healthErr },
     profileFinanceNotes,
-    { data: schoolRow, error: schoolErr },
+    schoolFetch,
     profileGradebookScores,
     profileAttendanceSummary,
     profileReportCards,
@@ -283,14 +283,10 @@ export default async function StudentProfilePage({
       .eq("student_id", studentId)
       .order("updated_at", { ascending: false }),
     loadProfileFinanceNotes(financeClient, studentId),
-    supabase
-      .from("schools")
-      .select("currency, timezone, name")
-      .eq("id", schoolId)
-      .maybeSingle(),
+    fetchSchoolForStudentProfile(schoolId),
     useFullGradebook
       ? loadProfileGradebookScores(
-          adminClient,
+          profileDataClient,
           studentId,
           typedStudent.school_id,
           profileSchoolLevel
@@ -328,7 +324,7 @@ export default async function StudentProfilePage({
       );
     }
     const attachmentsClient =
-      canReadDiscipline || canReadHealth ? adminClient : supabase;
+      canReadDiscipline || canReadHealth ? profileDataClient : supabase;
     const { data: attRows, error: attErr } = await attachmentsClient
       .from("student_record_attachments")
       .select("*")
@@ -342,11 +338,9 @@ export default async function StudentProfilePage({
     }
   }
 
-  const schoolRowTyped = schoolRow as {
-    currency: string | null;
-    timezone: string | null;
-    name: string | null;
-  } | null;
+  const schoolRow = schoolFetch.row;
+  const schoolErr = schoolFetch.error;
+  const schoolRowTyped = schoolRow;
   const currencyCode = normalizeSchoolCurrency(schoolRowTyped?.currency);
   const displayTimezone = resolveSchoolDisplayTimezone(schoolRowTyped?.timezone);
   const schoolDisplayName =
@@ -399,10 +393,10 @@ export default async function StudentProfilePage({
     academicErr && `Academic: ${academicErr.message}`,
     disciplineErr && `Discipline: ${disciplineErr.message}`,
     healthErr && `Health: ${healthErr.message}`,
-    schoolErr && `School: ${schoolErr.message}`,
+    schoolErr && `School: ${schoolErr}`,
     scopeErr && `Attachment scopes: ${scopeErr.message}`,
     deptRoleErr && `Department roles: ${deptRoleErr.message}`,
-    myProfileErr && `Profile: ${myProfileErr.message}`,
+    myProfileErr && `Profile: ${myProfileErr}`,
     attachmentErr && `Attachments: ${attachmentErr}`,
     profilePaymentsResult.error && `Payments: ${profilePaymentsResult.error}`,
   ]
