@@ -75,3 +75,5 @@ export function reportCardIsOnOrAfterEnrollment(
 
 export const PARENT_NO_RESULTS_AFTER_ENROLLMENT =
   "No results available for this student yet.";
+
+export const PARENT_NO_REPORT_CARDS_AVAILABLE = "No report cards available";

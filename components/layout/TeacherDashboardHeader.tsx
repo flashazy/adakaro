@@ -64,6 +64,8 @@ interface TeacherDashboardHeaderProps {
   showDashboardRoleToggle?: boolean;
   /** Show Duty Book in nav when teacher has active TOD assignment or is head teacher. */
   showDutyBookNav?: boolean;
+  /** Finance / accounts staff — payments and report card access rules. */
+  showPaymentsNav?: boolean;
 }
 
 function schoolLogoSrcWithCacheBust(url: string, version: number): string {
@@ -83,6 +85,7 @@ export function TeacherDashboardHeader({
   showClassTeacherNav = false,
   showDashboardRoleToggle = false,
   showDutyBookNav = false,
+  showPaymentsNav = false,
 }: TeacherDashboardHeaderProps) {
   const navItems = BASE_NAV.filter(
     (item) => !("dutyBook" in item && item.dutyBook) || showDutyBookNav
@@ -273,6 +276,16 @@ export function TeacherDashboardHeader({
                 Coordinator
               </NavLinkWithLoading>
             ) : null}
+            {showPaymentsNav ? (
+              <NavLinkWithLoading
+                href="/dashboard/payments"
+                className={navLinkClass("/dashboard/payments", {
+                  inactiveWhenPathStartsWith: "/dashboard/fee-rules",
+                })}
+              >
+                Payments
+              </NavLinkWithLoading>
+            ) : null}
             {showClassTeacherNav ? (
               <>
                 <NavLinkWithLoading
@@ -397,6 +410,16 @@ export function TeacherDashboardHeader({
               className={navLinkClass("/teacher-dashboard/coordinator")}
             >
               Coordinator
+            </NavLinkWithLoading>
+          ) : null}
+          {showPaymentsNav ? (
+            <NavLinkWithLoading
+              href="/dashboard/payments"
+              className={navLinkClass("/dashboard/payments", {
+                inactiveWhenPathStartsWith: "/dashboard/fee-rules",
+              })}
+            >
+              Payments
             </NavLinkWithLoading>
           ) : null}
           {showClassTeacherNav ? (

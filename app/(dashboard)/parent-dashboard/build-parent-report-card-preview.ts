@@ -122,7 +122,8 @@ export async function buildParentReportCardPreviewData(
     return { ok: false, error: "not_linked" };
   }
 
-  const { data: rc, error: rcErr } = await supabase
+  const admin = createAdminClient();
+  const { data: rc, error: rcErr } = await admin
     .from("report_cards")
     .select(
       `
@@ -145,6 +146,7 @@ export async function buildParentReportCardPreviewData(
     .eq("student_id", params.studentId)
     .eq("term", term)
     .eq("academic_year", academicYear)
+    .eq("status", "approved")
     .maybeSingle();
 
   if (rcErr || !rc) {
@@ -180,7 +182,13 @@ export async function buildParentReportCardPreviewData(
 
   const feeEligibility = await checkParentReportEligibility(
     params.studentId,
-    row.class_id
+    row.class_id,
+    undefined,
+    {
+      academicYear: row.academic_year,
+      term: row.term,
+      sendMonth: new Date().getMonth() + 1,
+    }
   );
   if (!feeEligibility.eligible) {
     return {

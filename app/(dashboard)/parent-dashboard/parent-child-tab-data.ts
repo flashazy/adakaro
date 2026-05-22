@@ -9,7 +9,8 @@ import {
 import {
   loadParentAttendanceForStudent,
   loadParentClassResultSheets,
-  loadParentReportCardsForStudent,
+  loadParentReportCardsForStudentDebug,
+  type ParentReportCardsLoadDebug,
 } from "./parent-child-tab-loaders";
 import { loadParentSubjectResultsUnread } from "./parent-subject-results-unread";
 import type { SubjectResultsUnreadState } from "@/lib/parent-subject-results-unread-types";
@@ -18,6 +19,8 @@ import { countParentChatUnreadForClass } from "@/lib/chat/parent-messages-unread
 
 export type ChildTabData = {
   reportCards: any[];
+  /** Server-side load trace for the Report cards tab (empty-state debugging). */
+  reportCardsDebug: ParentReportCardsLoadDebug | null;
   classResultSheets: any[];
   attendance: any[];
   majorExamClassResults: any;
@@ -29,6 +32,7 @@ export type ChildTabData = {
 function emptyTabData(): ChildTabData {
   return {
     reportCards: [],
+    reportCardsDebug: null,
     classResultSheets: [],
     attendance: [],
     majorExamClassResults: { options: [], defaultOptionId: "" },
@@ -95,14 +99,39 @@ export async function loadParentChildTabData(
     const enrollmentDate = s.enrollment_date;
 
     let reportCards: any[] = [];
+    let reportCardsDebug: ParentReportCardsLoadDebug | null = null;
     try {
-      reportCards = await loadParentReportCardsForStudent(supabase, {
+      const loaded = await loadParentReportCardsForStudentDebug(supabase, {
         parentUserId,
         studentId,
         enrollmentDate,
       });
-    } catch {
+      reportCards = loaded.rows;
+      reportCardsDebug = loaded.debug;
+    } catch (err) {
       reportCards = [];
+      reportCardsDebug = {
+        studentId,
+        parentUserId,
+        enrollmentDate,
+        query: {
+          table: "report_cards",
+          filters: { student_id: studentId, status: "approved" },
+        },
+        rawApprovedCount: 0,
+        rawApproved: [],
+        afterEnrollmentFilterCount: 0,
+        excludedByEnrollment: [],
+        buildOutcomes: [],
+        finalRowCount: 0,
+        queryError: null,
+        loadError:
+          err instanceof Error ? err.message : "loadParentReportCardsForStudent",
+      };
+      console.log(
+        "[parent-dashboard/report-cards]",
+        JSON.stringify(reportCardsDebug, null, 2)
+      );
     }
 
     let classResultSheets: any[] = [];
@@ -188,6 +217,7 @@ export async function loadParentChildTabData(
     }
 
     entry.reportCards = reportCards;
+    entry.reportCardsDebug = reportCardsDebug;
     entry.classResultSheets = classResultSheets;
     entry.attendance = attendance;
     entry.classResultSubjects = classResultSubjects;

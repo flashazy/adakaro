@@ -40,6 +40,11 @@ export function ParentReportCardFeeLocked({
       <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
         {message}
       </p>
+      {eligibility.appliedRuleLabel ? (
+        <p className="mt-3 text-xs font-medium text-amber-800 dark:text-amber-200/90">
+          {eligibility.appliedRuleLabel}
+        </p>
+      ) : null}
       <dl className="mt-6 space-y-3 rounded-xl bg-slate-50 p-4 text-sm dark:bg-zinc-800/50">
         <div className="flex justify-between gap-4">
           <dt className="text-slate-500 dark:text-zinc-400">Paid</dt>

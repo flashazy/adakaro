@@ -76,6 +76,7 @@ export async function GET(req: Request) {
           name: s.name,
           examStatus: s.examStatus,
         })),
+        parentAccess: k.parentAccess,
         reportCards: k.reportCards.map((r) => ({
           reportCardId: r.reportCardId,
           studentId: r.studentId,
@@ -89,6 +90,7 @@ export async function GET(req: Request) {
         classRoster: k.classRoster.map((row) => ({
           studentId: row.studentId,
           fullName: row.fullName,
+          parentCanOpen: row.parentCanOpen,
           item: row.item
             ? {
                 reportCardId: row.item.reportCardId,

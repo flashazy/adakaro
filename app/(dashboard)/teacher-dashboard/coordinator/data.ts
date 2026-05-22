@@ -63,6 +63,7 @@ import {
   mergeSupplementaryForPreview,
 } from "@/lib/report-card-supplementary";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { buildCoordinatorClassParentAccess } from "@/lib/report-card-fee/coordinator-parent-access";
 
 // Re-export shared types/constants so existing consumers of `./data` continue
 // to work. The underlying definitions live in the client-safe `./types`
@@ -1467,22 +1468,36 @@ export async function loadCoordinatorOverview(params: {
 
     const { data: rosterRows } = await admin
       .from("students")
-      .select("id, full_name")
+      .select("id, full_name, class_id")
       .in("class_id", clusterIds)
       .eq("status", "active")
       .order("full_name", { ascending: true });
 
+    const rosterStudents = (rosterRows ?? []) as {
+      id: string;
+      full_name: string | null;
+      class_id: string;
+    }[];
+
+    const parentAccessResult = await buildCoordinatorClassParentAccess(admin, {
+      students: rosterStudents.map((s) => ({
+        studentId: s.id,
+        classId: s.class_id,
+      })),
+      term: params.term,
+      academicYear,
+    });
+
     const itemByStudent = new Map(
       reportCards.map((r) => [r.studentId, r] as const)
     );
-    const classRoster = (
-      (rosterRows ?? []) as { id: string; full_name: string | null }[]
-    ).map((s) => {
+    const classRoster = rosterStudents.map((s) => {
       const fullName = (s.full_name ?? "").trim() || "Student";
       return {
         studentId: s.id,
         fullName,
         item: itemByStudent.get(s.id) ?? null,
+        parentCanOpen: parentAccessResult.accessByStudentId[s.id] ?? true,
       };
     });
 
@@ -1498,6 +1513,10 @@ export async function loadCoordinatorOverview(params: {
       studentCount: studentCount ?? 0,
       subjects,
       reportCards,
+      parentAccess: {
+        canOpenCount: parentAccessResult.canOpenCount,
+        cannotOpenCount: parentAccessResult.cannotOpenCount,
+      },
       classRoster,
     });
   }

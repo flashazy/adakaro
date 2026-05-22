@@ -41,10 +41,12 @@ function NoData() {
 /** Read-only report card(s) using the same {@link ReportCardPreview} as coordinators. */
 export function ParentReportCardsTabContent({
   rows,
+  loadDebug,
 }: {
   rows: ChildTabData["reportCards"];
+  loadDebug?: ChildTabData["reportCardsDebug"];
 }) {
-  return <ParentReportCardsTabClient rows={rows} />;
+  return <ParentReportCardsTabClient rows={rows} loadDebug={loadDebug ?? null} />;
 }
 
 export function ParentExamResultsTabContent({

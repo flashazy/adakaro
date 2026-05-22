@@ -4,9 +4,10 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { ReportCardPreview } from "@/app/(dashboard)/teacher-dashboard/report-cards/components/ReportCardPreview";
 import type { ChildTabData } from "./parent-child-tab-data";
 import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
-import { PARENT_NO_RESULTS_AFTER_ENROLLMENT } from "@/lib/parent-academic-from-enrollment";
+import { PARENT_NO_REPORT_CARDS_AVAILABLE } from "@/lib/parent-academic-from-enrollment";
 import { ParentReportCardFeeLocked } from "@/components/parent/parent-report-card-fee-locked";
 import type { ParentReportEligibilityResult } from "@/lib/report-card-fee/types";
+import type { ParentReportCardsLoadDebug } from "@/lib/parent-report-cards-load";
 
 type Row = ChildTabData["reportCards"][number];
 
@@ -16,13 +17,45 @@ function formatReportCardOptionLabel(r: Row): string {
   return `${t} ${y}`.replace(/\s+/g, " ").trim();
 }
 
-export function ParentReportCardsTabClient({ rows }: { rows: Row[] }) {
+function ParentReportCardsDebugPanel({
+  debug,
+}: {
+  debug: ParentReportCardsLoadDebug | null;
+}) {
+  if (!debug) return null;
+  return (
+    <details className="mx-4 mb-4 rounded-lg border border-amber-200/80 bg-amber-50/60 px-3 py-2 text-left dark:border-amber-900/50 dark:bg-amber-950/30">
+      <summary className="cursor-pointer text-xs font-semibold text-amber-900 dark:text-amber-100">
+        Report cards debug
+      </summary>
+      <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] text-amber-950 dark:text-amber-100">
+        {JSON.stringify(debug, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+export function ParentReportCardsTabClient({
+  rows,
+  loadDebug,
+}: {
+  rows: Row[];
+  loadDebug: ParentReportCardsLoadDebug | null;
+}) {
   const idBase = useId();
   const sortedRows = useMemo(
     () => sortParentReportCardsByRecency([...rows]),
     [rows]
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loadDebug) return;
+    console.log("[parent-dashboard/report-cards] tab", {
+      displayRowCount: sortedRows.length,
+      loadDebug,
+    });
+  }, [sortedRows.length, loadDebug]);
 
   useEffect(() => {
     if (sortedRows.length === 0) return;
@@ -39,10 +72,11 @@ export function ParentReportCardsTabClient({ rows }: { rows: Row[] }) {
 
   if (sortedRows.length === 0) {
     return (
-      <div className="px-6 py-10 text-center">
-        <p className="text-sm text-slate-500 dark:text-zinc-400">
-          {PARENT_NO_RESULTS_AFTER_ENROLLMENT}
+      <div className="space-y-2 py-6">
+        <p className="px-6 text-center text-sm text-slate-500 dark:text-zinc-400">
+          {PARENT_NO_REPORT_CARDS_AVAILABLE}
         </p>
+        <ParentReportCardsDebugPanel debug={loadDebug} />
       </div>
     );
   }
@@ -51,6 +85,9 @@ export function ParentReportCardsTabClient({ rows }: { rows: Row[] }) {
 
   return (
     <div className="space-y-4 px-4 py-4">
+      {process.env.NODE_ENV !== "production" ? (
+        <ParentReportCardsDebugPanel debug={loadDebug} />
+      ) : null}
       <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
         <label
           htmlFor={`${idBase}-rc`}

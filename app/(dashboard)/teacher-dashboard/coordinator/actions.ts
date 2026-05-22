@@ -268,7 +268,12 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
   const adminPassword = String(formData.get("admin_password") ?? "");
 
   if (!classId) return { ok: false, error: "Missing class reference." };
-  const term: "Term 1" | "Term 2" = termRaw === "Term 2" ? "Term 2" : "Term 1";
+  const term: "Term 1" | "Term 2" | "Term 3" =
+    termRaw === "Term 3"
+      ? "Term 3"
+      : termRaw === "Term 2"
+        ? "Term 2"
+        : "Term 1";
   if (!/^\d{4}$/.test(academicYear)) {
     return { ok: false, error: "Invalid academic year." };
   }
@@ -383,7 +388,12 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
     const elig = await checkParentReportEligibility(
       card.student_id,
       card.class_id,
-      admin
+      admin,
+      {
+        academicYear,
+        term,
+        sendMonth: new Date().getMonth() + 1,
+      }
     );
     await logReportCardFeeAudit(admin, {
       schoolId,

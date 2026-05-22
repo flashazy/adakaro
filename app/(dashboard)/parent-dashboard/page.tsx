@@ -683,6 +683,7 @@ export default async function ParentDashboard() {
                         />
                         <ParentReportCardsTabContent
                           rows={childTab?.reportCards ?? []}
+                          loadDebug={childTab?.reportCardsDebug ?? null}
                         />
                         <ParentStudentFeesTabContent
                           studentId={student.id}

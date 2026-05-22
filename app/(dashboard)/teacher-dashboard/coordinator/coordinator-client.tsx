@@ -16,9 +16,18 @@ import { ReportCardPreview } from "../report-cards/components/ReportCardPreview"
 import type { ReportCardStatus } from "../report-cards/report-card-types";
 import {
   type CoordinatorClassOverview,
+  type CoordinatorParentAccessSummary,
   type CoordinatorReportCardItem,
   type CoordinatorOverview,
 } from "./types";
+import {
+  ParentAccessBadge,
+  ParentAccessColumnHeader,
+  ParentAccessConfirmationBlock,
+  ParentAccessFilterBar,
+  ParentAccessSummaryBanner,
+  type ParentAccessFilter,
+} from "./coordinator-parent-access-ui";
 import {
   generateReportCardsForClassAction,
   loadCoordinatorSendEligibilityAction,
@@ -378,6 +387,7 @@ export function CoordinatorDashboardClient({
 
 function CoordinatorReportCardsRosterTable({
   classRoster,
+  parentAccess,
   className,
   academicYear,
   onOpenGenerate,
@@ -387,6 +397,7 @@ function CoordinatorReportCardsRosterTable({
   submitReviewAction,
 }: {
   classRoster: CoordinatorClassOverview["classRoster"];
+  parentAccess: CoordinatorParentAccessSummary;
   className: string;
   academicYear: string;
   onOpenGenerate: () => void;
@@ -396,6 +407,8 @@ function CoordinatorReportCardsRosterTable({
   submitReviewAction: (formData: FormData) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [parentAccessFilter, setParentAccessFilter] =
+    useState<ParentAccessFilter>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] =
     useState<CoordinatorReportCardsRowOption>(5);
@@ -411,18 +424,22 @@ function CoordinatorReportCardsRosterTable({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return classRoster;
-    return classRoster.filter((row) =>
-      row.fullName.toLowerCase().includes(q)
-    );
-  }, [classRoster, query]);
+    let rows = classRoster;
+    if (parentAccessFilter === "can_open") {
+      rows = rows.filter((row) => row.parentCanOpen);
+    } else if (parentAccessFilter === "cannot_open") {
+      rows = rows.filter((row) => !row.parentCanOpen);
+    }
+    if (!q) return rows;
+    return rows.filter((row) => row.fullName.toLowerCase().includes(q));
+  }, [classRoster, query, parentAccessFilter]);
 
   const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / rowsPerPage));
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [query]);
+  }, [query, parentAccessFilter]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -450,6 +467,11 @@ function CoordinatorReportCardsRosterTable({
 
   return (
     <div className="space-y-3">
+      <ParentAccessSummaryBanner summary={parentAccess} />
+      <ParentAccessFilterBar
+        value={parentAccessFilter}
+        onChange={setParentAccessFilter}
+      />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative min-w-0 flex-1 sm:max-w-xl">
           <input
@@ -530,7 +552,7 @@ function CoordinatorReportCardsRosterTable({
       {totalFiltered > 0 ? (
         <>
           <div className="overflow-x-auto rounded-b-2xl border border-slate-200 dark:border-zinc-700">
-            <table className="w-full min-w-[36rem] border-collapse text-left text-sm sm:min-w-[40rem]">
+            <table className="w-full min-w-[42rem] border-collapse text-left text-sm sm:min-w-[48rem]">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 dark:border-zinc-600 dark:bg-zinc-800/80">
                   <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
@@ -539,6 +561,7 @@ function CoordinatorReportCardsRosterTable({
                   <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
                     Status
                   </th>
+                  <ParentAccessColumnHeader />
                   <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
                     Actions
                   </th>
@@ -561,6 +584,9 @@ function CoordinatorReportCardsRosterTable({
                       ) : (
                         <CoordinatorReportCardStatusBadge status="none" />
                       )}
+                    </td>
+                    <td className="px-4 py-3.5 align-middle">
+                      <ParentAccessBadge canOpen={row.parentCanOpen} />
                     </td>
                     <td className="px-4 py-3 align-middle">
                       <div className="flex flex-wrap items-center gap-2">
@@ -905,6 +931,7 @@ function CoordinatorClassCard({
               <div className="rounded-b-2xl border border-t-0 border-slate-200 bg-white px-3 pb-4 pt-3 dark:border-zinc-700 dark:bg-zinc-900/40 sm:px-4">
                 <CoordinatorReportCardsRosterTable
                   classRoster={klass.classRoster}
+                  parentAccess={klass.parentAccess}
                   className={klass.className}
                   academicYear={academicYear}
                   onOpenGenerate={() => setShowGenerateModal(true)}
@@ -924,6 +951,7 @@ function CoordinatorClassCard({
           classId={klass.classId}
           className={klass.className}
           studentCount={klass.studentCount}
+          parentAccess={klass.parentAccess}
           schoolLevel={klass.schoolLevel}
           term={term}
           academicYear={academicYear}
@@ -936,6 +964,7 @@ function CoordinatorClassCard({
           classId={klass.classId}
           term={term}
           academicYear={academicYear}
+          parentAccess={klass.parentAccess}
           onClose={() => setShowSendToParentsModal(false)}
         />
       ) : null}
@@ -1056,11 +1085,13 @@ function SendToParentsModal({
   classId,
   term,
   academicYear,
+  parentAccess,
   onClose,
 }: {
   classId: string;
   term: "Term 1" | "Term 2";
   academicYear: string;
+  parentAccess: CoordinatorParentAccessSummary;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -1120,7 +1151,8 @@ function SendToParentsModal({
     }
   }, [state]);
 
-  const blocked = preview?.students.filter((s) => !s.eligible) ?? [];
+  const pendingCannotOpen =
+    preview?.students.filter((s) => !s.eligible).length ?? 0;
 
   return (
     <div
@@ -1140,47 +1172,27 @@ function SendToParentsModal({
         </div>
         <form action={formAction}>
           <div className="space-y-4 px-5 py-4">
+            <ParentAccessConfirmationBlock
+              summary={parentAccess}
+              intro="Report cards will be published for parent review. Coordinator actions are not blocked."
+            />
             {loadingPreview ? (
               <p className="flex items-center gap-2 text-sm text-slate-600">
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Checking fee eligibility…
+                Checking pending cards…
               </p>
             ) : previewError ? (
               <p className="text-sm text-red-600">{previewError}</p>
             ) : preview ? (
               <>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800/50">
-                  <p className="font-medium text-slate-900 dark:text-white">
-                    Eligible: {preview.eligibleCount} students
+                {preview.totalPending > 0 ? (
+                  <p className="text-sm text-slate-600 dark:text-zinc-400">
+                    {preview.totalPending} report card
+                    {preview.totalPending === 1 ? "" : "s"} ready to send.
+                    {pendingCannotOpen > 0
+                      ? ` ${pendingCannotOpen} will not be visible to parents until the school fee requirement is met.`
+                      : null}
                   </p>
-                  <p className="mt-1 text-slate-600 dark:text-zinc-400">
-                    Blocked: {preview.blockedCount} students
-                    {preview.ruleEnabled
-                      ? " (fee rule active)"
-                      : " (no fee rule)"}
-                  </p>
-                </div>
-                {blocked.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Blocked students
-                    </p>
-                    <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto text-sm">
-                      {blocked.map((s) => (
-                        <li
-                          key={s.studentId}
-                          className="rounded-md border border-amber-100 bg-amber-50/80 px-3 py-2 dark:border-amber-900/40 dark:bg-amber-950/30"
-                        >
-                          <span className="font-medium text-slate-900 dark:text-white">
-                            {s.studentName}
-                          </span>
-                          <p className="mt-0.5 text-slate-600 dark:text-zinc-400">
-                            {s.reason}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
                 ) : null}
                 {preview.ruleEnabled &&
                 preview.blockedCount > 0 &&
@@ -1247,7 +1259,7 @@ function SendToParentsModal({
               label={
                 preview && preview.eligibleCount === 0 && !adminOverride
                   ? "No eligible students"
-                  : "Send eligible only"
+                  : "Continue"
               }
             />
           </div>
@@ -1291,6 +1303,7 @@ function GenerateReportCardsModal({
   classId,
   className,
   studentCount,
+  parentAccess,
   schoolLevel,
   term,
   academicYear,
@@ -1299,12 +1312,14 @@ function GenerateReportCardsModal({
   classId: string;
   className: string;
   studentCount: number;
+  parentAccess: CoordinatorParentAccessSummary;
   schoolLevel: SchoolLevel;
   term: "Term 1" | "Term 2";
   academicYear: string;
   onClose: () => void;
 }) {
   const router = useRouter();
+  const [confirmed, setConfirmed] = useState(false);
   const [state, formAction] = useActionState<
     CoordinatorGenerateState | null,
     FormData
@@ -1366,9 +1381,10 @@ function GenerateReportCardsModal({
                 </p>
               ) : null}
             </div>
-          ) : (
+          ) : !confirmed ? (
             <>
-              <p>
+              <ParentAccessConfirmationBlock summary={parentAccess} />
+              <p className="text-slate-600 dark:text-zinc-400">
                 This will create or update report cards for all {studentsLabel}{" "}
                 in{" "}
                 <span className="font-medium text-slate-900 dark:text-white">
@@ -1376,8 +1392,25 @@ function GenerateReportCardsModal({
                 </span>{" "}
                 using the gradebook for{" "}
                 <span className="font-medium">{term}</span>, {academicYear},
-                and the report settings (dates, message, items) for this class.
-                Continue?
+                and the report settings for this class.
+              </p>
+              <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
+                <SchoolLevelBadge level={schoolLevel} />
+                <span>
+                  {schoolLevel === "secondary"
+                    ? "Ranking uses total marks of the best 7 subjects per student."
+                    : "Ranking uses each student's average across all subjects."}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>
+                Generate report cards for all {studentsLabel} in{" "}
+                <span className="font-medium text-slate-900 dark:text-white">
+                  {className}
+                </span>
+                ?
               </p>
               <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
                 <SchoolLevelBadge level={schoolLevel} />
@@ -1399,6 +1432,23 @@ function GenerateReportCardsModal({
             >
               Close
             </button>
+          ) : !confirmed ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmed(true)}
+                className="rounded-lg bg-school-primary px-4 py-1.5 text-sm font-semibold text-white hover:brightness-105"
+              >
+                Continue
+              </button>
+            </div>
           ) : (
             <form action={formAction} className="flex items-center justify-end">
               <input type="hidden" name="class_id" value={classId} />

@@ -2,51 +2,40 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  currentCalendarMonth,
+  type ReportCardFeeScheduleType,
+} from "./schedule-types";
+import {
+  resolveReportCardFeeRule,
+  type ReportCardEligibilityContext,
+} from "./rule-resolution";
+import { loadReportCardFeeRulesForClass } from "./rule-resolution-server";
 import type {
   ParentReportEligibilityResult,
   ReportCardFeeRuleRow,
   ReportCardFeeRuleType,
 } from "./types";
 
+export type { ReportCardEligibilityContext };
+
 type FeeDb = SupabaseClient;
 
 const DEFAULT_PARENT_MESSAGE =
   "Your child's report card will become available after completing required school fee payment.";
 
+/** @deprecated Use loadReportCardFeeRulesForClass — returns first simple rule for backward compat. */
 export async function loadReportCardFeeRuleForClass(
   db: FeeDb,
   classId: string
 ): Promise<ReportCardFeeRuleRow | null> {
-  const { data: classRow } = await db
-    .from("classes")
-    .select("id, parent_class_id, school_id")
-    .eq("id", classId)
-    .maybeSingle();
-
-  if (!classRow) return null;
-
-  const typed = classRow as {
-    id: string;
-    parent_class_id: string | null;
-    school_id: string;
-  };
-
-  const classIds = [typed.id];
-  if (typed.parent_class_id) classIds.push(typed.parent_class_id);
-
-  const { data: rules } = await db
-    .from("report_card_fee_rules")
-    .select("*")
-    .in("class_id", classIds)
-    .order("updated_at", { ascending: false });
-
-  const list = (rules ?? []) as ReportCardFeeRuleRow[];
-  const direct = list.find((r) => r.class_id === typed.id);
-  if (direct) return direct;
-  if (typed.parent_class_id) {
-    return list.find((r) => r.class_id === typed.parent_class_id) ?? null;
-  }
-  return null;
+  const loaded = await loadReportCardFeeRulesForClass(db, classId);
+  if (!loaded) return null;
+  return (
+    loaded.directRules.find((r) => r.schedule_type === "simple") ??
+    loaded.directRules[0] ??
+    null
+  );
 }
 
 /** Sum of active class-level fee structure amounts (not per-student overrides). */
@@ -88,10 +77,19 @@ export async function getStudentFeeTotals(
   return { totalRequired, totalPaid };
 }
 
+function formatPercent(n: number): string {
+  return `${Math.round(n * 10) / 10}%`;
+}
+
+function formatMoney(n: number): string {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
 function buildEligibleResult(
   paidAmount: number,
   totalRequired: number,
-  rule: ReportCardFeeRuleRow | null
+  scheduleType: ReportCardFeeScheduleType | null,
+  appliedRuleLabel: string
 ): ParentReportEligibilityResult {
   const paidPercent =
     totalRequired > 0 ? (paidAmount / totalRequired) * 100 : 100;
@@ -102,81 +100,30 @@ function buildEligibleResult(
     requiredAmount: null,
     paidPercent: Math.round(paidPercent * 100) / 100,
     requiredPercent: null,
-    ruleType: rule?.rule_type ?? null,
+    ruleType: null,
     remainingAmount: null,
-    parentMessage: rule?.message_to_parent?.trim() || null,
+    parentMessage: null,
+    scheduleType,
+    appliedRuleLabel,
   };
 }
 
-function formatPercent(n: number): string {
-  return `${Math.round(n * 10) / 10}%`;
-}
-
-function formatMoney(n: number): string {
-  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
-}
-
-/**
- * Whether a student may receive parent-facing report card access.
- * Does not affect teacher/coordinator generation or internal views.
- */
-export async function checkParentReportEligibility(
-  studentId: string,
-  classId: string,
-  db?: FeeDb
-): Promise<ParentReportEligibilityResult> {
-  const client = db ?? createAdminClient();
-
-  const { data: student } = await client
-    .from("students")
-    .select("id, class_id, school_id")
-    .eq("id", studentId)
-    .maybeSingle();
-
-  if (!student) {
-    return {
-      eligible: false,
-      reason: "Student not found.",
-      paidAmount: 0,
-      requiredAmount: null,
-      paidPercent: 0,
-      requiredPercent: null,
-      ruleType: null,
-      remainingAmount: null,
-      parentMessage: null,
-    };
-  }
-
-  const typedStudent = student as {
-    id: string;
-    class_id: string | null;
-    school_id: string;
-  };
-
-  const rule = await loadReportCardFeeRuleForClass(
-    client,
-    classId || typedStudent.class_id || ""
-  );
-
-  const { totalRequired, totalPaid } = await getStudentFeeTotals(
-    client,
-    studentId
-  );
-
-  if (!rule || !rule.is_enabled) {
-    return buildEligibleResult(totalPaid, totalRequired, rule);
-  }
-
+function evaluateRule(
+  rule: ReportCardFeeRuleRow,
+  scheduleType: ReportCardFeeScheduleType,
+  appliedRuleLabel: string,
+  totalPaid: number,
+  totalRequired: number,
+  classRequired: number,
+  db: FeeDb,
+  schoolId: string,
+  classId: string
+): ParentReportEligibilityResult {
   const parentMessage =
     rule.message_to_parent?.trim() || DEFAULT_PARENT_MESSAGE;
 
   if (rule.rule_type === "percentage") {
     const requiredPct = Number(rule.required_percentage ?? 0);
-    const classRequired = await getClassAssignedFeeTotal(
-      client,
-      typedStudent.school_id,
-      rule.class_id
-    );
     const denominator = classRequired > 0 ? classRequired : totalRequired;
     const paidPercent =
       denominator > 0 ? (totalPaid / denominator) * 100 : 100;
@@ -188,7 +135,8 @@ export async function checkParentReportEligibility(
         ? "Fee payment meets the required percentage."
         : `Paid ${formatPercent(paidPercent)} — required ${formatPercent(requiredPct)}.`,
       paidAmount: totalPaid,
-      requiredAmount: denominator > 0 ? (denominator * requiredPct) / 100 : null,
+      requiredAmount:
+        denominator > 0 ? (denominator * requiredPct) / 100 : null,
       paidPercent: Math.round(paidPercent * 100) / 100,
       requiredPercent: requiredPct,
       ruleType: "percentage" as ReportCardFeeRuleType,
@@ -197,6 +145,8 @@ export async function checkParentReportEligibility(
           ? Math.max(0, (denominator * requiredPct) / 100 - totalPaid)
           : null,
       parentMessage,
+      scheduleType,
+      appliedRuleLabel,
     };
   }
 
@@ -218,5 +168,95 @@ export async function checkParentReportEligibility(
     ruleType: "fixed_amount" as ReportCardFeeRuleType,
     remainingAmount: remaining,
     parentMessage,
+    scheduleType,
+    appliedRuleLabel,
   };
+}
+
+/**
+ * Whether a student may receive parent-facing report card access.
+ * Does not affect teacher/coordinator generation or internal views.
+ */
+export async function checkParentReportEligibility(
+  studentId: string,
+  classId: string,
+  db?: FeeDb,
+  context?: ReportCardEligibilityContext
+): Promise<ParentReportEligibilityResult> {
+  const client = db ?? createAdminClient();
+
+  const { data: student } = await client
+    .from("students")
+    .select("id, class_id, school_id")
+    .eq("id", studentId)
+    .maybeSingle();
+
+  if (!student) {
+    return {
+      eligible: false,
+      reason: "Student not found.",
+      paidAmount: 0,
+      requiredAmount: null,
+      paidPercent: 0,
+      requiredPercent: null,
+      ruleType: null,
+      remainingAmount: null,
+      parentMessage: null,
+      scheduleType: null,
+      appliedRuleLabel: "",
+    };
+  }
+
+  const typedStudent = student as {
+    id: string;
+    class_id: string | null;
+    school_id: string;
+  };
+
+  const effectiveClassId = classId || typedStudent.class_id || "";
+  const loaded = await loadReportCardFeeRulesForClass(client, effectiveClassId);
+
+  const eligibilityContext: ReportCardEligibilityContext = {
+    academicYear: context?.academicYear ?? null,
+    term: context?.term ?? null,
+    sendMonth: context?.sendMonth ?? currentCalendarMonth(),
+  };
+
+  const { totalRequired, totalPaid } = await getStudentFeeTotals(
+    client,
+    studentId
+  );
+
+  if (!loaded) {
+    return buildEligibleResult(totalPaid, totalRequired, null, "");
+  }
+
+  const resolved = resolveReportCardFeeRule(
+    loaded.directRules,
+    loaded.allRulesIncludingParent,
+    effectiveClassId,
+    eligibilityContext
+  );
+
+  if (!resolved) {
+    return buildEligibleResult(totalPaid, totalRequired, null, "");
+  }
+
+  const classRequired = await getClassAssignedFeeTotal(
+    client,
+    typedStudent.school_id,
+    resolved.rule.class_id
+  );
+
+  return evaluateRule(
+    resolved.rule,
+    resolved.scheduleType,
+    resolved.appliedRuleLabel,
+    totalPaid,
+    totalRequired,
+    classRequired,
+    client,
+    typedStudent.school_id,
+    resolved.rule.class_id
+  );
 }

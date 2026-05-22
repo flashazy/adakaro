@@ -17,6 +17,7 @@ import { SchoolPrimaryCssVars } from "@/components/school-branding/school-primar
 import { DashboardFeedbackProvider } from "@/components/dashboard/dashboard-feedback-provider";
 import { invalidateExpiredTeacherTempPasswordIfNeeded } from "@/lib/teacher-temp-password-expiry";
 import { getDashboardBlockState } from "@/lib/dashboard/dashboard-block";
+import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
 import { BlockedDashboard } from "@/components/dashboard/blocked-dashboard";
 import { SyncProvider } from "@/lib/offline/sync-provider";
 
@@ -119,14 +120,18 @@ export default async function DashboardGroupLayout({
 
     const teacherSchoolId = await getSchoolIdForUser(supabase, user.id);
     let showDutyBookNav = false;
+    let showPaymentsNav = false;
     if (teacherSchoolId) {
-      const [{ data: isHeadTeacher }, dutyCtx] = await Promise.all([
-        supabase.rpc("is_school_head_teacher", {
-          p_school_id: teacherSchoolId,
-        } as never),
-        getTeacherDutyAssignment(supabase, teacherSchoolId, user.id),
-      ]);
+      const [{ data: isHeadTeacher }, dutyCtx, canAccessPayments] =
+        await Promise.all([
+          supabase.rpc("is_school_head_teacher", {
+            p_school_id: teacherSchoolId,
+          } as never),
+          getTeacherDutyAssignment(supabase, teacherSchoolId, user.id),
+          canUserRecordStudentPayment(supabase, user.id, teacherSchoolId),
+        ]);
       showDutyBookNav = Boolean(isHeadTeacher || dutyCtx.isOnDuty);
+      showPaymentsNav = canAccessPayments;
     }
 
     return (
@@ -151,6 +156,7 @@ export default async function DashboardGroupLayout({
             showClassTeacherNav={classTeacherClasses.length > 0}
             showDashboardRoleToggle={dualSchoolDashboard}
             showDutyBookNav={showDutyBookNav}
+            showPaymentsNav={showPaymentsNav}
           />
         </div>
         <div className="min-h-screen max-w-full min-w-0 overflow-x-hidden bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:overflow-visible print:bg-white">

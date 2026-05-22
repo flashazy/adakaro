@@ -48,6 +48,20 @@ export interface CoordinatorReportCardItem {
   preview: ReportCardPreviewData;
 }
 
+/** Parent portal visibility for one roster student (display only). */
+export interface CoordinatorParentAccessSummary {
+  canOpenCount: number;
+  cannotOpenCount: number;
+}
+
+export interface CoordinatorClassRosterRow {
+  studentId: string;
+  fullName: string;
+  item: CoordinatorReportCardItem | null;
+  /** Whether the parent account can open report cards (fee rules). */
+  parentCanOpen: boolean;
+}
+
 export interface CoordinatorClassOverview {
   classId: string;
   className: string;
@@ -62,15 +76,13 @@ export interface CoordinatorClassOverview {
   studentCount: number;
   subjects: CoordinatorSubjectOverview[];
   reportCards: CoordinatorReportCardItem[];
+  /** Aggregated parent visibility for the active class roster. */
+  parentAccess: CoordinatorParentAccessSummary;
   /**
    * Active students in the class (cluster) with the report card for this
    * term/year when it exists.
    */
-  classRoster: {
-    studentId: string;
-    fullName: string;
-    item: CoordinatorReportCardItem | null;
-  }[];
+  classRoster: CoordinatorClassRosterRow[];
 }
 
 export interface CoordinatorOverview {

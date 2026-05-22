@@ -608,26 +608,51 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    // Finance department teachers may open payment receipts (read-only).
+    // Finance department teachers: receipts (read-only) and report card access rules.
     let isTeacherFinanceReceiptRoute = false;
-    if (
-      role === "teacher" &&
-      /^\/dashboard\/receipts\/[^/]+(?:\/|$)/.test(pathname)
-    ) {
-      const { data: financeDeptRow, error: financeDeptErr } = await supabase
-        .from("teacher_department_roles")
-        .select("id")
-        .eq("user_id", typedUser.id)
-        .in("department", ["finance", "accounts"])
-        .limit(1)
-        .maybeSingle();
-      isTeacherFinanceReceiptRoute =
-        !financeDeptErr && financeDeptRow != null;
+    let isTeacherFinancePaymentsRoute = false;
+    let isTeacherFinanceFeeRulesRoute = false;
+    if (role === "teacher") {
+      const needsFinanceDeptCheck =
+        /^\/dashboard\/receipts\/[^/]+(?:\/|$)/.test(pathname) ||
+        pathname === "/dashboard/payments" ||
+        pathname.startsWith("/dashboard/payments/") ||
+        pathname === "/dashboard/fee-rules" ||
+        pathname.startsWith("/dashboard/fee-rules/");
+
+      if (needsFinanceDeptCheck) {
+        const { data: financeDeptRow, error: financeDeptErr } = await supabase
+          .from("teacher_department_roles")
+          .select("id")
+          .eq("user_id", typedUser.id)
+          .in("department", ["finance", "accounts"])
+          .limit(1)
+          .maybeSingle();
+        const hasFinanceDept = !financeDeptErr && financeDeptRow != null;
+
+        if (/^\/dashboard\/receipts\/[^/]+(?:\/|$)/.test(pathname)) {
+          isTeacherFinanceReceiptRoute = hasFinanceDept;
+        }
+        if (
+          pathname === "/dashboard/payments" ||
+          pathname.startsWith("/dashboard/payments/")
+        ) {
+          isTeacherFinancePaymentsRoute = hasFinanceDept;
+        }
+        if (
+          pathname === "/dashboard/fee-rules" ||
+          pathname.startsWith("/dashboard/fee-rules/")
+        ) {
+          isTeacherFinanceFeeRulesRoute = hasFinanceDept;
+        }
+      }
     }
 
     let isTeacherAllowedAdminRoute =
       isTeacherStudentProfileRoute ||
       isTeacherFinanceReceiptRoute ||
+      isTeacherFinancePaymentsRoute ||
+      isTeacherFinanceFeeRulesRoute ||
       isTeacherDutyBookRoute;
 
     if (
@@ -657,6 +682,8 @@ export async function updateSession(request: NextRequest) {
           role,
           isTeacherStudentProfileRoute,
           isTeacherFinanceReceiptRoute,
+          isTeacherFinancePaymentsRoute,
+          isTeacherFinanceFeeRulesRoute,
           isTeacherDutyBookRoute,
           schoolDashboardMode:
             request.cookies.get("school_dashboard_mode")?.value ?? null,

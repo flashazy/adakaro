@@ -6,7 +6,10 @@ import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.se
 
 type Sb = SupabaseClient<Database>;
 
-/** Finance staff and school admins may manage report card fee rules. */
+/**
+ * Report card fee rules: school admin, finance, or accounts for the school.
+ * Uses the same school-scoped check as recording fee payments.
+ */
 export async function canManageReportCardFeeRules(
   supabase: Sb,
   userId: string,

@@ -2276,9 +2276,13 @@ export interface Database {
           id: string;
           school_id: string;
           class_id: string;
+          schedule_type: "simple" | "term_based" | "monthly_milestones";
           rule_type: "percentage" | "fixed_amount";
           required_percentage: number | null;
           required_amount: number | null;
+          academic_year: string | null;
+          term: number | null;
+          month: number | null;
           is_enabled: boolean;
           allow_admin_override: boolean;
           message_to_parent: string | null;
@@ -2290,9 +2294,13 @@ export interface Database {
           id?: string;
           school_id: string;
           class_id: string;
+          schedule_type?: "simple" | "term_based" | "monthly_milestones";
           rule_type: "percentage" | "fixed_amount";
           required_percentage?: number | null;
           required_amount?: number | null;
+          academic_year?: string | null;
+          term?: number | null;
+          month?: number | null;
           is_enabled?: boolean;
           allow_admin_override?: boolean;
           message_to_parent?: string | null;
@@ -2303,9 +2311,13 @@ export interface Database {
         Update: {
           school_id?: string;
           class_id?: string;
+          schedule_type?: "simple" | "term_based" | "monthly_milestones";
           rule_type?: "percentage" | "fixed_amount";
           required_percentage?: number | null;
           required_amount?: number | null;
+          academic_year?: string | null;
+          term?: number | null;
+          month?: number | null;
           is_enabled?: boolean;
           allow_admin_override?: boolean;
           message_to_parent?: string | null;

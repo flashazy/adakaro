@@ -1,5 +1,6 @@
 import "server-only";
 
+import { resolveClassCluster } from "@/lib/class-cluster";
 import { fetchParentClassIdsWithChildrenForSchools } from "@/lib/teacher-leaf-classes";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -1274,10 +1275,16 @@ export async function loadSubjectPositionsForParentReportCard(params: {
 
   if (!psLink) return {};
 
+  const cluster = await resolveClassCluster(admin, params.classId);
+  const classIdsForCards =
+    cluster.isParent && cluster.childClassIds.length > 0
+      ? cluster.classIds
+      : [params.classId];
+
   const { data: cards } = await admin
     .from("report_cards")
     .select("id, student_id")
-    .eq("class_id", params.classId)
+    .in("class_id", classIdsForCards)
     .eq("term", termNorm)
     .eq("academic_year", yearNorm)
     .eq("status", "approved");
@@ -1421,6 +1428,12 @@ export async function loadParentReportCardCohort(params: {
     .maybeSingle();
   if (!psLink) return null;
 
+  const cluster = await resolveClassCluster(admin, params.classId);
+  const classIdsForCards =
+    cluster.isParent && cluster.childClassIds.length > 0
+      ? cluster.classIds
+      : [params.classId];
+
   const { data: classRow } = await admin
     .from("classes")
     .select("id, school_id")
@@ -1446,7 +1459,7 @@ export async function loadParentReportCardCohort(params: {
   const { data: cards } = await admin
     .from("report_cards")
     .select("id, student_id")
-    .eq("class_id", params.classId)
+    .in("class_id", classIdsForCards)
     .eq("term", termNorm)
     .eq("academic_year", yearNorm)
     .eq("status", "approved");
