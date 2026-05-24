@@ -51,6 +51,7 @@ export async function GET(req: Request) {
       classCount: overview.classes.length,
       reportCardCounts: overview.classes.map((c) => ({
         classId: c.classId,
+        studentCount: c.studentCount,
         reportCards: c.reportCards.length,
         roster: c.classRoster.length,
         subjects: c.subjects.length,

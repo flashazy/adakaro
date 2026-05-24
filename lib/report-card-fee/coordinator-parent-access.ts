@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { checkParentReportEligibility } from "./eligibility";
+import { batchCheckParentReportEligibility } from "./batch-eligibility";
 import { currentCalendarMonth } from "./schedule-types";
 
 export interface CoordinatorClassParentAccess {
@@ -31,27 +31,22 @@ export async function buildCoordinatorClassParentAccess(
     return { canOpenCount: 0, cannotOpenCount: 0, accessByStudentId: {} };
   }
 
-  const results = await Promise.all(
-    students.map(async (s) => {
-      const elig = await checkParentReportEligibility(
-        s.studentId,
-        s.classId,
-        admin,
-        {
-          academicYear: params.academicYear,
-          term: params.term,
-          sendMonth,
-        }
-      );
-      return { studentId: s.studentId, canOpen: elig.eligible };
-    })
+  const eligibilityByStudent = await batchCheckParentReportEligibility(
+    admin,
+    students,
+    {
+      academicYear: params.academicYear,
+      term: params.term,
+      sendMonth,
+    }
   );
 
   const accessByStudentId: Record<string, boolean> = {};
   let canOpenCount = 0;
-  for (const r of results) {
-    accessByStudentId[r.studentId] = r.canOpen;
-    if (r.canOpen) canOpenCount++;
+  for (const s of students) {
+    const canOpen = eligibilityByStudent.get(s.studentId)?.eligible ?? true;
+    accessByStudentId[s.studentId] = canOpen;
+    if (canOpen) canOpenCount++;
   }
 
   return {

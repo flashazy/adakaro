@@ -42,6 +42,7 @@ export type ReportCardFeeAuditAction =
   | "rule_changed"
   | "rule_disabled"
   | "admin_override_used"
+  | "admin_password_failed"
   | "report_blocked";
 
 export type SendEligibilityStudentRow = {
@@ -57,6 +58,8 @@ export type SendEligibilityStudentRow = {
   requiredPercent: number | null;
   ruleType: ReportCardFeeRuleType | null;
   appliedRuleLabel: string;
+  /** Outstanding fee amount when blocked (for admin override UI). */
+  remainingAmount: number | null;
 };
 
 export type ClassSendEligibilityPreview = {
@@ -68,6 +71,8 @@ export type ClassSendEligibilityPreview = {
   blockedCount: number;
   totalPending: number;
   students: SendEligibilityStudentRow[];
+  /** True when counts are estimated from page data (fee check still running). */
+  isPartial?: boolean;
 };
 
 /** Finance UI: grouped rules for one class. */

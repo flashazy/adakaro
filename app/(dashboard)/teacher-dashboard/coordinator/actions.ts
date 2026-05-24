@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -15,10 +15,15 @@ import { resolveClassCluster } from "@/lib/class-cluster";
 import { persistAcademicPerformanceReport } from "@/lib/academic-performance-report";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { buildClassSendEligibilityPreview } from "@/lib/report-card-fee/send-preview";
+import {
+  getCachedClassSendEligibilityPreview,
+  sendEligibilityCacheTag,
+} from "@/lib/report-card-fee/send-preview-cache";
 import { checkParentReportEligibility } from "@/lib/report-card-fee/eligibility";
 import { logReportCardFeeAudit } from "@/lib/report-card-fee/audit";
-import { verifySchoolAdminPassword } from "@/lib/report-card-fee/verify-admin-password";
+import { verifySchoolAdminPasswordForOverride } from "@/lib/report-card-fee/verify-admin-password";
 import type { ClassSendEligibilityPreview } from "@/lib/report-card-fee/types";
+import { coordinatorGenerationWarningsForClass } from "./coordinator-gradebook-precalc";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -213,18 +218,134 @@ export async function submitCoordinatorReportCardForReviewAction(
 // ---------------------------------------------------------------------------
 
 export type CoordinatorSendToParentsState =
-  | { ok: true; sentCount: number; skippedCount?: number }
+  | {
+      ok: true;
+      sentCount: number;
+      skippedCount?: number;
+      /** No pending cards; all report cards for this term were already approved. */
+      alreadyShared?: boolean;
+    }
+  | {
+      ok: false;
+      error: string;
+      invalidAdminPassword?: boolean;
+      attemptsRemaining?: number;
+      rateLimited?: boolean;
+    };
+
+export type CoordinatorGenerationWarningsState =
+  | {
+      ok: true;
+      studentsMissingAllScores: number;
+      subjectsWithNoExamSetup: string[];
+      studentCount: number;
+    }
   | { ok: false; error: string };
 
+/** Pre-generation warnings (missing scores, subjects without exams). */
+export async function previewCoordinatorGenerationWarningsAction(
+  classId: string,
+  term: string,
+  academicYear: string
+): Promise<CoordinatorGenerationWarningsState> {
+  const termNorm: "Term 1" | "Term 2" = term.trim() === "Term 2" ? "Term 2" : "Term 1";
+  if (!/^\d{4}$/.test(academicYear.trim())) {
+    return { ok: false, error: "Invalid academic year." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const admin = createAdminClient() as AdminDb;
+  const result = await coordinatorGenerationWarningsForClass(admin, {
+    userId: user.id,
+    classId,
+    term: termNorm,
+    academicYear: academicYear.trim(),
+  });
+
+  if (!result.ok) return { ok: false, error: result.error };
+
+  return {
+    ok: true,
+    studentsMissingAllScores: result.warnings.studentsMissingAllScores,
+    subjectsWithNoExamSetup: result.warnings.subjectsWithNoExamSetup,
+    studentCount: result.warnings.studentCount,
+  };
+}
+
 export type CoordinatorSendEligibilityState =
-  | { ok: true; preview: ClassSendEligibilityPreview }
+  | { ok: true; preview: ClassSendEligibilityPreview; fromCache?: boolean }
   | { ok: false; error: string };
+
+export type CoordinatorVerifyAdminPasswordState =
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      invalidAdminPassword?: boolean;
+      attemptsRemaining?: number;
+      rateLimited?: boolean;
+    };
+
+/** Check school admin password before enabling override send buttons. */
+export async function verifyCoordinatorAdminPasswordAction(
+  classId: string,
+  password: string
+): Promise<CoordinatorVerifyAdminPasswordState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const admin = createAdminClient() as AdminDb;
+  const { data: coordRow } = await admin
+    .from("teacher_coordinators")
+    .select("id")
+    .eq("teacher_id", user.id)
+    .eq("class_id", classId)
+    .maybeSingle();
+  if (!coordRow) {
+    return { ok: false, error: "You are not the coordinator for this class." };
+  }
+
+  const { data: classRow } = await admin
+    .from("classes")
+    .select("school_id")
+    .eq("id", classId)
+    .maybeSingle();
+  const schoolId = (classRow as { school_id?: string } | null)?.school_id;
+  if (!schoolId) return { ok: false, error: "Class not found." };
+
+  const result = await verifySchoolAdminPasswordForOverride(admin, {
+    schoolId,
+    performedBy: user.id,
+    password,
+    classId,
+    sendIntent: "verify_only",
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error,
+      invalidAdminPassword: result.invalidPassword,
+      attemptsRemaining: result.attemptsRemaining,
+      rateLimited: result.rateLimited,
+    };
+  }
+  return { ok: true };
+}
 
 /** Preview which pending report cards can be sent to parents (fee rules). */
 export async function loadCoordinatorSendEligibilityAction(
   classId: string,
   term: string,
-  academicYear: string
+  academicYear: string,
+  options?: { forceRefresh?: boolean }
 ): Promise<CoordinatorSendEligibilityState> {
   const supabase = await createClient();
   const {
@@ -243,12 +364,25 @@ export async function loadCoordinatorSendEligibilityAction(
     return { ok: false, error: "You are not the coordinator for this class." };
   }
 
-  const preview = await buildClassSendEligibilityPreview(admin, {
+  const year = academicYear.trim();
+  const termNorm = term.trim();
+
+  if (options?.forceRefresh) {
+    updateTag(sendEligibilityCacheTag(classId, termNorm, year));
+    const preview = await buildClassSendEligibilityPreview(admin, {
+      classId,
+      term: termNorm,
+      academicYear: year,
+    });
+    return { ok: true, preview, fromCache: false };
+  }
+
+  const preview = await getCachedClassSendEligibilityPreview(
     classId,
-    term,
-    academicYear,
-  });
-  return { ok: true, preview };
+    termNorm,
+    year
+  );
+  return { ok: true, preview, fromCache: true };
 }
 
 /**
@@ -263,9 +397,17 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
   const classId = String(formData.get("class_id") ?? "").trim();
   const termRaw = String(formData.get("term") ?? "").trim();
   const academicYear = String(formData.get("academic_year") ?? "").trim();
-  const sendMode = String(formData.get("send_mode") ?? "eligible_only");
-  const adminOverride = formData.get("admin_override") === "true";
-  const adminPassword = String(formData.get("admin_password") ?? "");
+  const sendIntent = String(formData.get("send_intent") ?? "eligible_only");
+  const adminPassword = String(formData.get("admin_password") ?? "").trim();
+  const exemptionReason = String(formData.get("exemption_reason") ?? "").trim();
+  const overrideStudentIds = [
+    ...new Set(
+      formData
+        .getAll("override_student_ids")
+        .map((v) => String(v).trim())
+        .filter(Boolean)
+    ),
+  ];
 
   if (!classId) return { ok: false, error: "Missing class reference." };
   const term: "Term 1" | "Term 2" | "Term 3" =
@@ -324,10 +466,26 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
   }[];
 
   if (pending.length === 0) {
+    const { count: approvedCount } = await admin
+      .from("report_cards")
+      .select("id", { count: "exact", head: true })
+      .in("class_id", classIds)
+      .eq("term", term)
+      .eq("academic_year", academicYear)
+      .eq("status", "approved");
+
+    if ((approvedCount ?? 0) > 0) {
+      updateTag(sendEligibilityCacheTag(classId, term, academicYear));
+      revalidatePath("/teacher-dashboard/coordinator");
+      revalidatePath("/teacher-dashboard/report-cards");
+      revalidatePath("/parent-dashboard");
+      return { ok: true, sentCount: 0, alreadyShared: true };
+    }
+
     return {
       ok: false,
       error:
-        "No report cards are ready to send. Submit them for head teacher review first.",
+        "No report cards are ready to send. Generate report cards first, then try again.",
     };
   }
 
@@ -337,49 +495,133 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
     academicYear,
   });
 
+  const eligibleReportCardIds = new Set(
+    preview.students.filter((s) => s.eligible).map((s) => s.reportCardId)
+  );
+  const blockedStudentIds = new Set(
+    preview.students.filter((s) => !s.eligible).map((s) => s.studentId)
+  );
+  const reportCardIdByStudentId = new Map(
+    preview.students.map((s) => [s.studentId, s.reportCardId] as const)
+  );
+
+  const overrideIntent =
+    sendIntent === "override_all" || sendIntent === "override_selected";
+
+  if (overrideIntent) {
+    if (!preview.allowAdminOverride) {
+      return {
+        ok: false,
+        error: "Admin override is not allowed for this class.",
+      };
+    }
+    const passwordResult = await verifySchoolAdminPasswordForOverride(admin, {
+      schoolId,
+      performedBy: user.id,
+      password: adminPassword,
+      classId,
+      term,
+      academicYear,
+      sendIntent,
+    });
+    if (!passwordResult.ok) {
+      return {
+        ok: false,
+        error: passwordResult.error,
+        invalidAdminPassword: passwordResult.invalidPassword,
+        attemptsRemaining: passwordResult.attemptsRemaining,
+        rateLimited: passwordResult.rateLimited,
+      };
+    }
+  }
+
   let idsToApprove: string[] = pending.map((c) => c.id);
   let skippedCount = 0;
 
-  if (preview.ruleEnabled) {
-    const eligibleIds = new Set(
-      preview.students.filter((s) => s.eligible).map((s) => s.reportCardId)
-    );
+  if (sendIntent === "override_all") {
+    await logReportCardFeeAudit(admin, {
+      schoolId,
+      classId,
+      performedBy: user.id,
+      action: "admin_override_used",
+      details: {
+        term,
+        academic_year: academicYear,
+        mode: "all",
+        sent_all: true,
+        pending_count: pending.length,
+        exemption_reason: exemptionReason || null,
+      },
+    });
+    idsToApprove = pending.map((c) => c.id);
+    skippedCount = 0;
+  } else if (sendIntent === "override_selected") {
+    if (overrideStudentIds.length === 0) {
+      return {
+        ok: false,
+        error: "Select at least one blocked student to override.",
+      };
+    }
 
-    if (sendMode === "all_with_override" && adminOverride) {
-      if (!preview.allowAdminOverride) {
-        return {
-          ok: false,
-          error: "Admin override is not allowed for this class.",
-        };
-      }
-      const passwordOk = await verifySchoolAdminPassword(
-        admin,
-        schoolId,
-        adminPassword
-      );
-      if (!passwordOk) {
-        return { ok: false, error: "Admin password is incorrect." };
-      }
+    const invalidIds = overrideStudentIds.filter(
+      (id) => !blockedStudentIds.has(id)
+    );
+    if (invalidIds.length > 0) {
+      return {
+        ok: false,
+        error:
+          "One or more selected students are not blocked or have no pending report card.",
+      };
+    }
+
+    const overrideReportCardIds = overrideStudentIds
+      .map((id) => reportCardIdByStudentId.get(id))
+      .filter((id): id is string => Boolean(id));
+
+    const approveSet = new Set([
+      ...eligibleReportCardIds,
+      ...overrideReportCardIds,
+    ]);
+    idsToApprove = pending
+      .filter((c) => approveSet.has(c.id))
+      .map((c) => c.id);
+    skippedCount = pending.length - idsToApprove.length;
+
+    await logReportCardFeeAudit(admin, {
+      schoolId,
+      classId,
+      performedBy: user.id,
+      action: "admin_override_used",
+      details: {
+        term,
+        academic_year: academicYear,
+        mode: "selected",
+        student_ids: overrideStudentIds,
+        override_count: overrideStudentIds.length,
+        exemption_reason: exemptionReason || null,
+      },
+    });
+
+    for (const studentId of overrideStudentIds) {
       await logReportCardFeeAudit(admin, {
         schoolId,
         classId,
+        studentId,
         performedBy: user.id,
         action: "admin_override_used",
         details: {
           term,
           academic_year: academicYear,
-          sent_all: true,
-          pending_count: pending.length,
+          mode: "selected",
+          exemption_reason: exemptionReason || null,
         },
       });
-      idsToApprove = pending.map((c) => c.id);
-      skippedCount = 0;
-    } else {
-      idsToApprove = pending
-        .filter((c) => eligibleIds.has(c.id))
-        .map((c) => c.id);
-      skippedCount = pending.length - idsToApprove.length;
     }
+  } else {
+    idsToApprove = pending
+      .filter((c) => eligibleReportCardIds.has(c.id))
+      .map((c) => c.id);
+    skippedCount = pending.length - idsToApprove.length;
   }
 
   const approvedSet = new Set(idsToApprove);
@@ -429,6 +671,7 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
 
   const sentCount = (updatedRows ?? []).length;
 
+  updateTag(sendEligibilityCacheTag(classId, term, academicYear));
   revalidatePath("/teacher-dashboard/coordinator");
   revalidatePath("/teacher-dashboard/report-cards");
   revalidatePath("/parent-dashboard");
@@ -715,13 +958,7 @@ export async function generateReportCardsForClassAction(
       subjectsWithNoExamSetup.push(subj.name);
     }
   }
-  if (subjectsWithNoExamSetup.length === subjectList.length) {
-    return {
-      ok: false,
-      error:
-        "No exam scores are set up in the gradebook for any subject for this term. Add the correct exam assignments, then try again.",
-    };
-  }
+  // Missing exams on all subjects: warn in UI but do not block generation.
 
   // 7. Pull all relevant teacher_scores in a single query
   const allAssignmentIds: string[] = [];

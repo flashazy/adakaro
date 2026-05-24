@@ -1441,12 +1441,6 @@ export async function loadCoordinatorOverview(params: {
         ? cluster.classIds
         : [classId];
 
-    const { count: studentCount } = await admin
-      .from("students")
-      .select("id", { count: "exact", head: true })
-      .in("class_id", clusterIds)
-      .eq("status", "active");
-
     const subjects = await resolveSubjectsForClass(admin, clusterIds);
 
     const mottoTrim = (school?.motto ?? "").trim();
@@ -1501,6 +1495,9 @@ export async function loadCoordinatorOverview(params: {
       };
     });
 
+    // Same roster as parent-access summary — single source of truth for headcount.
+    const studentCount = rosterStudents.length;
+
     classes.push({
       classId,
       className: c.name,
@@ -1510,7 +1507,7 @@ export async function loadCoordinatorOverview(params: {
       schoolLogoUrl: school?.logo_url ?? null,
       schoolLevel,
       academicYear,
-      studentCount: studentCount ?? 0,
+      studentCount,
       subjects,
       reportCards,
       parentAccess: {

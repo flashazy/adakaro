@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { useRouter } from "next/navigation";
-import { Check, Eye, Loader2, Printer, Send, X } from "lucide-react";
+import { Check, Eye, Loader2, Printer, RefreshCw, Send, X } from "lucide-react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
 import {
@@ -16,10 +16,20 @@ import { ReportCardPreview } from "../report-cards/components/ReportCardPreview"
 import type { ReportCardStatus } from "../report-cards/report-card-types";
 import {
   type CoordinatorClassOverview,
+  type CoordinatorClassRosterRow,
   type CoordinatorParentAccessSummary,
   type CoordinatorReportCardItem,
   type CoordinatorOverview,
 } from "./types";
+import { buildPartialSendEligibilityPreview } from "@/lib/report-card-fee/send-preview-partial";
+import type { ClassSendEligibilityPreview, SendEligibilityStudentRow } from "@/lib/report-card-fee/types";
+import {
+  clearClientSendEligibilityCache,
+  getClientSendEligibilityCache,
+  isClientSendEligibilityStale,
+  sendEligibilityClientCacheKey,
+  setClientSendEligibilityCache,
+} from "./send-eligibility-client-cache";
 import {
   ParentAccessBadge,
   ParentAccessColumnHeader,
@@ -31,14 +41,16 @@ import {
 import {
   generateReportCardsForClassAction,
   loadCoordinatorSendEligibilityAction,
+  previewCoordinatorGenerationWarningsAction,
   sendCoordinatorClassReportCardsToParentsAction,
+  verifyCoordinatorAdminPasswordAction,
   submitCoordinatorReportCardForReviewAction,
   type CoordinatorGenerateState,
+  type CoordinatorGenerationWarningsState,
   type CoordinatorSendEligibilityState,
   type CoordinatorSendToParentsState,
   type CoordinatorSubmitReviewState,
 } from "./actions";
-import type { ClassSendEligibilityPreview } from "@/lib/report-card-fee/types";
 import { CoordinatorMySignatureCard } from "./coordinator-my-signature-card";
 import {
   SECONDARY_BEST_SUBJECT_COUNT,
@@ -124,6 +136,12 @@ function schoolLevelStatLine(level: SchoolLevel): string {
   return "Primary (avg %)";
 }
 
+/** Active students in class (roster is the same query as parent-access summary). */
+function classActiveStudentCount(klass: CoordinatorClassOverview): number {
+  if (klass.classRoster.length > 0) return klass.classRoster.length;
+  return klass.studentCount;
+}
+
 function StatsCardRow({
   klass,
   term,
@@ -134,6 +152,7 @@ function StatsCardRow({
   academicYear: string;
 }) {
   const termShort = term === "Term 2" ? "Term 2" : "Term 1";
+  const activeStudents = classActiveStudentCount(klass);
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
       <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/80">
@@ -142,7 +161,7 @@ function StatsCardRow({
         </span>
         <div>
           <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
-            {klass.studentCount}
+            {activeStudents}
           </p>
           <p className="text-sm font-medium text-slate-500 dark:text-zinc-400">
             Active Students
@@ -741,9 +760,10 @@ function CoordinatorClassCard({
 }) {
   const router = useRouter();
   const feedback = useOptionalDashboardFeedback();
+  const activeStudents = classActiveStudentCount(klass);
   const hasAnyCards = klass.reportCards.length > 0;
   const allHaveCards =
-    klass.studentCount > 0 && klass.reportCards.length >= klass.studentCount;
+    activeStudents > 0 && klass.reportCards.length >= activeStudents;
   const reportSettingsHref = `/teacher-dashboard/coordinator/report-settings?classId=${encodeURIComponent(
     klass.classId
   )}&term=${encodeURIComponent(term)}&year=${encodeURIComponent(academicYear)}`;
@@ -792,18 +812,11 @@ function CoordinatorClassCard({
 
   const showSuccessStrip = allHaveCards && !successBannerClosed;
 
-  const { canSendToParents, showAlreadySent } = useMemo(() => {
-    const pending = klass.reportCards.filter(
-      (c) => c.status === "pending_review"
-    ).length;
-    const hasApproved = klass.reportCards.some(
-      (c) => c.status === "approved"
-    );
-    return {
-      canSendToParents: hasAnyCards && pending > 0,
-      showAlreadySent: hasAnyCards && pending === 0 && hasApproved,
-    };
-  }, [hasAnyCards, klass.reportCards]);
+  const pendingSendCount = useMemo(
+    () =>
+      klass.reportCards.filter((c) => c.status === "pending_review").length,
+    [klass.reportCards]
+  );
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/50">
@@ -837,35 +850,19 @@ function CoordinatorClassCard({
             Generate Report Cards
           </button>
           {hasAnyCards ? (
-            canSendToParents ? (
-              <button
-                type="button"
-                onClick={() => setShowSendToParentsModal(true)}
-                className="inline-flex min-h-[44px] min-w-[10rem] items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-green-700 focus-visible:outline focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
-              >
-                <span aria-hidden>📧</span>
-                Send to parents
-              </button>
-            ) : showAlreadySent ? (
-              <span
-                className="inline-flex min-h-[44px] min-w-[10rem] cursor-default select-none items-center justify-center gap-2 rounded-xl border-2 border-green-200 bg-green-50 px-5 py-2.5 text-sm font-semibold text-green-800 dark:border-green-900/50 dark:bg-green-950/50 dark:text-green-100"
-                role="status"
-                aria-live="polite"
-              >
-                <span aria-hidden>📧</span>
-                Already sent
-              </span>
-            ) : (
-              <button
-                type="button"
-                disabled
-                title="Submit all report cards for head teacher review first."
-                className="inline-flex min-h-[44px] min-w-[10rem] cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-5 py-2.5 text-sm font-semibold text-slate-500 opacity-80 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-500"
-              >
-                <span aria-hidden>📧</span>
-                Send to parents
-              </button>
-            )
+            <button
+              type="button"
+              onClick={() => setShowSendToParentsModal(true)}
+              className="inline-flex min-h-[44px] min-w-[10rem] items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-green-700 focus-visible:outline focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
+            >
+              <span aria-hidden>📧</span>
+              Send to parents
+              {pendingSendCount > 0 ? (
+                <span className="rounded-full bg-green-500/90 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
+                  {pendingSendCount}
+                </span>
+              ) : null}
+            </button>
           ) : null}
         </div>
 
@@ -881,7 +878,7 @@ function CoordinatorClassCard({
               <Check className="h-4 w-4" strokeWidth={2.5} />
             </span>
             <p className="min-w-0 flex-1 text-sm font-medium">
-              Report cards generated for all {klass.studentCount} students
+              Report cards generated for all {activeStudents} students
             </p>
             <button
               type="button"
@@ -900,7 +897,7 @@ function CoordinatorClassCard({
             role="status"
           >
             Report cards on file: {klass.reportCards.length} of{" "}
-            {klass.studentCount} students
+            {activeStudents} students
           </p>
         ) : null}
 
@@ -950,7 +947,7 @@ function CoordinatorClassCard({
         <GenerateReportCardsModal
           classId={klass.classId}
           className={klass.className}
-          studentCount={klass.studentCount}
+          studentCount={activeStudents}
           parentAccess={klass.parentAccess}
           schoolLevel={klass.schoolLevel}
           term={term}
@@ -962,9 +959,13 @@ function CoordinatorClassCard({
       {showSendToParentsModal ? (
         <SendToParentsModal
           classId={klass.classId}
+          className={klass.className}
           term={term}
           academicYear={academicYear}
           parentAccess={klass.parentAccess}
+          classRoster={klass.classRoster}
+          reportCards={klass.reportCards}
+          pendingSendCount={pendingSendCount}
           onClose={() => setShowSendToParentsModal(false)}
         />
       ) : null}
@@ -1043,18 +1044,32 @@ function ParentStyleReportCardModal({
   );
 }
 
+function formatOutstandingBalance(student: SendEligibilityStudentRow): string {
+  const amount =
+    student.remainingAmount ??
+    (student.requiredAmount != null
+      ? Math.max(0, student.requiredAmount - student.paidAmount)
+      : null);
+  if (amount == null) return "—";
+  return `TSh ${amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+}
+
 function SendToParentsFormFooter({
   onClose,
-  disabled,
-  label = "Send to parents",
+  eligibleOnlyDisabled,
+  showOverride,
+  selectedOverrideCount,
+  overrideReady,
 }: {
   onClose: () => void;
-  disabled?: boolean;
-  label?: string;
+  eligibleOnlyDisabled?: boolean;
+  showOverride: boolean;
+  selectedOverrideCount: number;
+  overrideReady: boolean;
 }) {
   const { pending } = useFormStatus();
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
       <button
         type="button"
         onClick={onClose}
@@ -1065,8 +1080,10 @@ function SendToParentsFormFooter({
       </button>
       <button
         type="submit"
-        disabled={pending || disabled}
-        className="inline-flex min-w-[7.5rem] items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-wait disabled:opacity-60"
+        name="send_intent"
+        value="eligible_only"
+        disabled={pending || eligibleOnlyDisabled}
+        className="inline-flex min-w-[10rem] items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? (
           <>
@@ -1074,59 +1091,460 @@ function SendToParentsFormFooter({
             Sending...
           </>
         ) : (
-          label
+          "Send to eligible only"
         )}
       </button>
+      {showOverride && selectedOverrideCount > 0 ? (
+        <button
+          type="submit"
+          name="send_intent"
+          value="override_selected"
+          disabled={pending || !overrideReady}
+          className="inline-flex min-w-[10rem] items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Send to selected ({selectedOverrideCount})
+        </button>
+      ) : null}
+      {showOverride ? (
+        <button
+          type="submit"
+          name="send_intent"
+          value="override_all"
+          disabled={pending || !overrideReady}
+          className="inline-flex min-w-[10rem] items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-1.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          Send all with override
+        </button>
+      ) : null}
     </div>
+  );
+}
+
+const SEND_ELIGIBILITY_LOAD_TIMEOUT_MS = 5000;
+
+function SendEligibilityDetailsSkeleton() {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-label="Loading send preview">
+      <div className="h-4 w-4/5 animate-pulse rounded bg-slate-200 dark:bg-zinc-700" />
+      <div className="h-4 w-3/5 animate-pulse rounded bg-slate-200 dark:bg-zinc-700" />
+      <div className="h-10 w-full animate-pulse rounded-lg bg-slate-100 dark:bg-zinc-800" />
+    </div>
+  );
+}
+
+function SendEligibilityPreviewBody({
+  preview,
+  className,
+  selectedOverrideIds,
+  onToggleStudent,
+  onToggleSelectAll,
+  adminPassword,
+  onAdminPasswordChange,
+  passwordVerified,
+  verifyingPassword,
+  passwordError,
+  attemptsRemaining,
+  onVerifyPassword,
+  exemptionReason,
+  onExemptionReasonChange,
+}: {
+  preview: ClassSendEligibilityPreview;
+  className: string;
+  selectedOverrideIds: Set<string>;
+  onToggleStudent: (studentId: string, checked: boolean) => void;
+  onToggleSelectAll: (checked: boolean) => void;
+  adminPassword: string;
+  onAdminPasswordChange: (value: string) => void;
+  passwordVerified: boolean;
+  verifyingPassword: boolean;
+  passwordError: string | null;
+  attemptsRemaining: number | null;
+  onVerifyPassword: () => void;
+  exemptionReason: string;
+  onExemptionReasonChange: (value: string) => void;
+}) {
+  const pendingCannotOpen = preview.blockedCount;
+  const blockedStudents = preview.students.filter((s) => !s.eligible);
+  const showOverridePanel =
+    preview.ruleEnabled &&
+    preview.allowAdminOverride &&
+    !preview.isPartial &&
+    blockedStudents.length > 0;
+  const allBlockedSelected =
+    blockedStudents.length > 0 &&
+    blockedStudents.every((s) => selectedOverrideIds.has(s.studentId));
+
+  return (
+    <>
+      {preview.isPartial ? (
+        <p className="text-xs text-amber-800 dark:text-amber-200/90">
+          Showing estimated counts from your class roster. Fee details are still
+          loading…
+        </p>
+      ) : null}
+      {preview.totalPending > 0 ? (
+        <p className="text-sm text-slate-600 dark:text-zinc-400">
+          {preview.totalPending} report card
+          {preview.totalPending === 1 ? "" : "s"} ready to send.
+          {pendingCannotOpen > 0
+            ? ` ${pendingCannotOpen} will not be visible to parents until the school fee requirement is met.`
+            : null}
+        </p>
+      ) : null}
+      {preview.totalPending === 0 ? (
+        <p className="text-sm text-slate-600 dark:text-zinc-400">
+          All report cards for this term are already approved for parents. You
+          can open this dialog again anytime.
+        </p>
+      ) : null}
+      {preview.totalPending > 0 &&
+      preview.eligibleCount === 0 &&
+      !preview.allowAdminOverride ? (
+        <p
+          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+          role="alert"
+        >
+          No students meet the fee requirement for parent access. Ask your school
+          admin to enable override or adjust fee rules.
+        </p>
+      ) : null}
+      {showOverridePanel ? (
+        <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-zinc-700">
+          <p className="text-sm font-medium text-slate-900 dark:text-white">
+            Select students to override (admin only)
+          </p>
+          <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border border-slate-100 bg-slate-50/80 p-2 dark:border-zinc-800 dark:bg-zinc-900/50">
+            {blockedStudents.map((student) => (
+              <label
+                key={student.studentId}
+                className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-white dark:hover:bg-zinc-800"
+              >
+                <input
+                  type="checkbox"
+                  name="override_student_ids"
+                  value={student.studentId}
+                  checked={selectedOverrideIds.has(student.studentId)}
+                  onChange={(e) =>
+                    onToggleStudent(student.studentId, e.target.checked)
+                  }
+                  className="mt-0.5 shrink-0"
+                />
+                <span className="min-w-0 flex-1 text-slate-800 dark:text-zinc-200">
+                  <span className="font-medium">{student.studentName}</span>
+                  <span className="text-slate-500 dark:text-zinc-400">
+                    {" "}
+                    · {className} · Balance:{" "}
+                    {formatOutstandingBalance(student)}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
+            <input
+              type="checkbox"
+              checked={allBlockedSelected}
+              onChange={(e) => onToggleSelectAll(e.target.checked)}
+            />
+            Select all blocked
+          </label>
+          <div className="space-y-1.5">
+            <label className="block text-sm">
+              <span className="text-slate-600 dark:text-zinc-400">
+                School admin password
+              </span>
+              <input
+                type="password"
+                name="admin_password"
+                value={adminPassword}
+                onChange={(e) => onAdminPasswordChange(e.target.value)}
+                autoComplete="current-password"
+                className={`mt-1 w-full rounded-lg border px-3 py-2 dark:bg-zinc-900 ${
+                  passwordError
+                    ? "border-red-400 dark:border-red-700"
+                    : passwordVerified
+                      ? "border-emerald-400 dark:border-emerald-700"
+                      : "border-slate-300 dark:border-zinc-600"
+                }`}
+              />
+            </label>
+            {passwordError ? (
+              <p className="text-xs text-red-600 dark:text-red-400" role="alert">
+                {passwordError}
+                {attemptsRemaining != null && attemptsRemaining > 0
+                  ? ` (${attemptsRemaining} attempt${attemptsRemaining === 1 ? "" : "s"} left)`
+                  : null}
+              </p>
+            ) : passwordVerified ? (
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                Password verified. You can send with override.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-zinc-400">
+                Enter a school admin password and verify to unlock override
+                options.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={onVerifyPassword}
+              disabled={
+                verifyingPassword ||
+                adminPassword.trim().length === 0 ||
+                attemptsRemaining === 0
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              {verifyingPassword ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  Verifying…
+                </>
+              ) : (
+                "Verify password"
+              )}
+            </button>
+          </div>
+          <label className="block text-sm">
+            <span className="text-slate-600 dark:text-zinc-400">
+              Exemption reason{" "}
+              <span className="font-normal text-slate-400">(optional)</span>
+            </span>
+            <textarea
+              name="exemption_reason"
+              value={exemptionReason}
+              onChange={(e) => onExemptionReasonChange(e.target.value)}
+              rows={2}
+              maxLength={500}
+              placeholder="e.g. Partial scholarship, payment plan agreed with finance"
+              className="mt-1 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+            />
+          </label>
+        </div>
+      ) : null}
+    </>
   );
 }
 
 function SendToParentsModal({
   classId,
+  className,
   term,
   academicYear,
   parentAccess,
+  classRoster,
+  reportCards,
+  pendingSendCount,
   onClose,
 }: {
   classId: string;
+  className: string;
   term: "Term 1" | "Term 2";
   academicYear: string;
   parentAccess: CoordinatorParentAccessSummary;
+  classRoster: CoordinatorClassRosterRow[];
+  reportCards: CoordinatorReportCardItem[];
+  pendingSendCount: number;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const cacheKey = sendEligibilityClientCacheKey(classId, term, academicYear);
+
+  const pendingStudentIds = useMemo(
+    () =>
+      reportCards
+        .filter((c) => c.status === "pending_review")
+        .map((c) => c.studentId),
+    [reportCards]
+  );
+
+  const parentCanOpenByStudentId = useMemo(
+    () =>
+      Object.fromEntries(
+        classRoster.map((r) => [r.studentId, r.parentCanOpen] as const)
+      ),
+    [classRoster]
+  );
+
+  const rosterPartialPreview = useMemo(
+    () =>
+      buildPartialSendEligibilityPreview({
+        pendingStudentIds,
+        parentCanOpenByStudentId,
+        ruleLikelyEnabled: parentAccess.cannotOpenCount > 0,
+      }),
+    [pendingStudentIds, parentCanOpenByStudentId, parentAccess.cannotOpenCount]
+  );
+
   const [preview, setPreview] = useState<ClassSendEligibilityPreview | null>(
     null
   );
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(true);
-  const [adminOverride, setAdminOverride] = useState(false);
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  const [dataStale, setDataStale] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchGeneration, setFetchGeneration] = useState(0);
+  const [selectedOverrideIds, setSelectedOverrideIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [adminPassword, setAdminPassword] = useState("");
+  const [passwordVerified, setPasswordVerified] = useState(false);
+  const [verifyingPassword, setVerifyingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(
+    null
+  );
+  const [exemptionReason, setExemptionReason] = useState("");
   const [state, formAction] = useActionState<
     CoordinatorSendToParentsState | null,
     FormData
   >(sendCoordinatorClassReportCardsToParentsAction, null);
 
+  const blockedStudents = useMemo(
+    () => preview?.students.filter((s) => !s.eligible) ?? [],
+    [preview]
+  );
+
+  useEffect(() => {
+    setSelectedOverrideIds(new Set());
+    setAdminPassword("");
+    setPasswordVerified(false);
+    setPasswordError(null);
+    setAttemptsRemaining(null);
+    setExemptionReason("");
+  }, [preview?.students.length, preview?.isPartial, classId, term, academicYear]);
+
+  function handleAdminPasswordChange(value: string) {
+    setAdminPassword(value);
+    setPasswordVerified(false);
+    setPasswordError(null);
+  }
+
+  async function handleVerifyPassword() {
+    const pwd = adminPassword.trim();
+    if (!pwd) return;
+    setVerifyingPassword(true);
+    setPasswordError(null);
+    const res = await verifyCoordinatorAdminPasswordAction(classId, pwd);
+    setVerifyingPassword(false);
+    if (res.ok) {
+      setPasswordVerified(true);
+      setPasswordError(null);
+      setAttemptsRemaining(null);
+    } else {
+      setPasswordVerified(false);
+      setPasswordError(res.error);
+      setAttemptsRemaining(res.attemptsRemaining ?? null);
+      if (res.invalidAdminPassword) {
+        setAdminPassword("");
+      }
+    }
+  }
+
+  function toggleOverrideStudent(studentId: string, checked: boolean) {
+    setSelectedOverrideIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(studentId);
+      else next.delete(studentId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllBlocked(checked: boolean) {
+    if (checked) {
+      setSelectedOverrideIds(new Set(blockedStudents.map((s) => s.studentId)));
+    } else {
+      setSelectedOverrideIds(new Set());
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
-    setLoadingPreview(true);
-    loadCoordinatorSendEligibilityAction(classId, term, academicYear).then(
-      (res: CoordinatorSendEligibilityState) => {
-        if (cancelled) return;
-        setLoadingPreview(false);
-        if (res.ok) {
-          setPreview(res.preview);
-          setPreviewError(null);
-        } else {
-          setPreviewError(res.error);
-        }
+    let fetchDone = false;
+
+    const cached = getClientSendEligibilityCache(cacheKey);
+    const cacheFresh =
+      cached != null && !isClientSendEligibilityStale(cached);
+
+    if (cacheFresh && fetchGeneration === 0) {
+      setPreview(cached.preview);
+      setPreviewError(null);
+      setLoadingPreview(false);
+      setLoadTimedOut(false);
+      setDataStale(false);
+      return;
+    }
+
+    if (cached && fetchGeneration === 0) {
+      setPreview(cached.preview);
+      setPreviewError(null);
+      setLoadingPreview(false);
+      setDataStale(true);
+    } else {
+      const instant = {
+        ...rosterPartialPreview,
+        totalPending: pendingSendCount || rosterPartialPreview.totalPending,
+      };
+      setPreview(instant);
+      setLoadingPreview(true);
+      setLoadTimedOut(false);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled || fetchDone) return;
+      setLoadTimedOut(true);
+      setLoadingPreview(false);
+      setPreview((prev) => {
+        if (prev && !prev.isPartial) return prev;
+        return {
+          ...rosterPartialPreview,
+          totalPending: pendingSendCount || rosterPartialPreview.totalPending,
+          isPartial: true,
+        };
+      });
+    }, SEND_ELIGIBILITY_LOAD_TIMEOUT_MS);
+
+    const forceRefresh = fetchGeneration > 0;
+    loadCoordinatorSendEligibilityAction(classId, term, academicYear, {
+      forceRefresh,
+    }).then((res: CoordinatorSendEligibilityState) => {
+      if (cancelled) return;
+      fetchDone = true;
+      window.clearTimeout(timeoutId);
+      setLoadingPreview(false);
+      setRefreshing(false);
+      setLoadTimedOut(false);
+      if (res.ok) {
+        setPreview(res.preview);
+        setPreviewError(null);
+        setDataStale(false);
+        setClientSendEligibilityCache(cacheKey, res.preview);
+      } else {
+        setPreviewError(res.error);
       }
-    );
+    });
+
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
     };
-  }, [classId, term, academicYear]);
+  }, [
+    cacheKey,
+    classId,
+    term,
+    academicYear,
+    fetchGeneration,
+    pendingSendCount,
+    rosterPartialPreview,
+  ]);
+
+  function handleRefresh() {
+    clearClientSendEligibilityCache(cacheKey);
+    setRefreshing(true);
+    setPreviewError(null);
+    setFetchGeneration((g) => g + 1);
+  }
 
   useEffect(() => {
     if (state?.ok) {
@@ -1137,22 +1555,59 @@ function SendToParentsModal({
   useEffect(() => {
     if (state == null) return;
     if (state.ok) {
-      const skipped =
-        state.skippedCount && state.skippedCount > 0
-          ? ` (${state.skippedCount} skipped — fee requirement not met)`
-          : "";
-      toast.success(
-        `Report cards sent to parents for ${state.sentCount} students${skipped}`,
-        { id: "coordinator-send-to-parents", duration: 5000 }
-      );
-      closeRef.current();
+      if (state.alreadyShared) {
+        toast.success(
+          "Report cards are already shared with parents. You can resend after generating new cards.",
+          { id: "coordinator-send-to-parents", duration: 5000 }
+        );
+      } else {
+        const skipped =
+          state.skippedCount && state.skippedCount > 0
+            ? ` (${state.skippedCount} skipped — fee requirement not met)`
+            : "";
+        toast.success(
+          `Report cards sent to parents for ${state.sentCount} student${state.sentCount === 1 ? "" : "s"}${skipped}`,
+          { id: "coordinator-send-to-parents", duration: 5000 }
+        );
+      }
+      setAdminPassword("");
+      setPasswordVerified(false);
+      setPasswordError(null);
+      setExemptionReason("");
+      setSelectedOverrideIds(new Set());
+      clearClientSendEligibilityCache(cacheKey);
     } else {
-      showAdminErrorToast(state.error);
+      if (state.invalidAdminPassword) {
+        setPasswordVerified(false);
+        setAdminPassword("");
+        setPasswordError(state.error);
+        setAttemptsRemaining(state.attemptsRemaining ?? null);
+        toast.error(state.error, {
+          id: "coordinator-send-admin-password",
+          duration: 5000,
+        });
+      } else {
+        showAdminErrorToast(state.error);
+      }
     }
-  }, [state]);
+  }, [state, cacheKey]);
 
-  const pendingCannotOpen =
-    preview?.students.filter((s) => !s.eligible).length ?? 0;
+  const showSkeleton = loadingPreview && !preview;
+  const showOverridePanel = Boolean(
+    preview?.ruleEnabled &&
+      preview.allowAdminOverride &&
+      !preview.isPartial &&
+      blockedStudents.length > 0
+  );
+  const selectedOverrideCount = selectedOverrideIds.size;
+  const overrideReady =
+    passwordVerified && (attemptsRemaining === null || attemptsRemaining > 0);
+  const eligibleOnlyDisabled =
+    Boolean(previewError) ||
+    refreshing ||
+    (preview != null &&
+      !preview.isPartial &&
+      preview.eligibleCount === 0);
 
   return (
     <div
@@ -1161,14 +1616,34 @@ function SendToParentsModal({
       aria-labelledby="coordinator-send-parents-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-xl dark:bg-zinc-900">
-        <div className="border-b border-slate-100 px-5 py-4 dark:border-zinc-800">
-          <h3
-            id="coordinator-send-parents-title"
-            className="text-base font-semibold text-slate-900 dark:text-white"
+      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white shadow-xl dark:bg-zinc-900">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-zinc-800">
+          <div className="min-w-0">
+            <h3
+              id="coordinator-send-parents-title"
+              className="text-base font-semibold text-slate-900 dark:text-white"
+            >
+              Send to parents
+            </h3>
+            {dataStale && !loadingPreview ? (
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                Preview may be out of date
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing || loadingPreview}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            title="Refresh fee eligibility"
           >
-            Send to parents
-          </h3>
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+              aria-hidden
+            />
+            Refresh
+          </button>
         </div>
         <form action={formAction}>
           <div className="space-y-4 px-5 py-4">
@@ -1176,73 +1651,43 @@ function SendToParentsModal({
               summary={parentAccess}
               intro="Report cards will be published for parent review. Coordinator actions are not blocked."
             />
-            {loadingPreview ? (
-              <p className="flex items-center gap-2 text-sm text-slate-600">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Checking pending cards…
-              </p>
-            ) : previewError ? (
+            {previewError ? (
               <p className="text-sm text-red-600">{previewError}</p>
+            ) : null}
+            {showSkeleton ? (
+              <SendEligibilityDetailsSkeleton />
             ) : preview ? (
-              <>
-                {preview.totalPending > 0 ? (
-                  <p className="text-sm text-slate-600 dark:text-zinc-400">
-                    {preview.totalPending} report card
-                    {preview.totalPending === 1 ? "" : "s"} ready to send.
-                    {pendingCannotOpen > 0
-                      ? ` ${pendingCannotOpen} will not be visible to parents until the school fee requirement is met.`
-                      : null}
+              <div className="space-y-3">
+                <SendEligibilityPreviewBody
+                  preview={preview}
+                  className={className}
+                  selectedOverrideIds={selectedOverrideIds}
+                  onToggleStudent={toggleOverrideStudent}
+                  onToggleSelectAll={toggleSelectAllBlocked}
+                  adminPassword={adminPassword}
+                  onAdminPasswordChange={handleAdminPasswordChange}
+                  passwordVerified={passwordVerified}
+                  verifyingPassword={verifyingPassword}
+                  passwordError={passwordError}
+                  attemptsRemaining={attemptsRemaining}
+                  onVerifyPassword={() => void handleVerifyPassword()}
+                  exemptionReason={exemptionReason}
+                  onExemptionReasonChange={setExemptionReason}
+                />
+                {loadingPreview ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    Verifying fee rules…
+                  </div>
+                ) : null}
+                {loadTimedOut && preview.isPartial ? (
+                  <p className="text-xs text-amber-800 dark:text-amber-200/90">
+                    Fee check is taking longer than usual. Counts above are from
+                    your roster — tap Refresh or try sending (the server
+                    re-checks on submit).
                   </p>
                 ) : null}
-                {preview.ruleEnabled &&
-                preview.blockedCount > 0 &&
-                preview.allowAdminOverride ? (
-                  <div className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-zinc-700">
-                    <label className="flex items-center gap-2 text-sm font-medium">
-                      <input
-                        type="checkbox"
-                        checked={adminOverride}
-                        onChange={(e) => setAdminOverride(e.target.checked)}
-                      />
-                      Admin override (send all, including blocked)
-                    </label>
-                    {adminOverride ? (
-                      <>
-                        <input
-                          type="hidden"
-                          name="send_mode"
-                          value="all_with_override"
-                        />
-                        <input
-                          type="hidden"
-                          name="admin_override"
-                          value="true"
-                        />
-                        <label className="block text-sm">
-                          <span className="text-slate-600 dark:text-zinc-400">
-                            School admin password
-                          </span>
-                          <input
-                            type="password"
-                            name="admin_password"
-                            autoComplete="current-password"
-                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
-                            required
-                          />
-                        </label>
-                      </>
-                    ) : (
-                      <input
-                        type="hidden"
-                        name="send_mode"
-                        value="eligible_only"
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <input type="hidden" name="send_mode" value="eligible_only" />
-                )}
-              </>
+              </div>
             ) : (
               <p className="text-sm text-slate-600">
                 Send report cards to parents? This action cannot be undone.
@@ -1255,12 +1700,10 @@ function SendToParentsModal({
           <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3 dark:border-zinc-800">
             <SendToParentsFormFooter
               onClose={onClose}
-              disabled={loadingPreview || Boolean(previewError)}
-              label={
-                preview && preview.eligibleCount === 0 && !adminOverride
-                  ? "No eligible students"
-                  : "Continue"
-              }
+              eligibleOnlyDisabled={eligibleOnlyDisabled}
+              showOverride={showOverridePanel}
+              selectedOverrideCount={selectedOverrideCount}
+              overrideReady={overrideReady}
             />
           </div>
         </form>
@@ -1269,7 +1712,13 @@ function SendToParentsModal({
   );
 }
 
-function GenerateReportFormFooter({ onClose }: { onClose: () => void }) {
+function GenerateReportFormFooter({
+  onClose,
+  generateLabel = "Generate",
+}: {
+  onClose: () => void;
+  generateLabel?: string;
+}) {
   const { pending } = useFormStatus();
   return (
     <div className="flex items-center gap-2">
@@ -1292,12 +1741,18 @@ function GenerateReportFormFooter({ onClose }: { onClose: () => void }) {
             Generating...
           </>
         ) : (
-          "Generate"
+          generateLabel
         )}
       </button>
     </div>
   );
 }
+
+type GenerateModalPhase =
+  | "intro"
+  | "loading_warnings"
+  | "score_warn"
+  | "generate";
 
 function GenerateReportCardsModal({
   classId,
@@ -1319,7 +1774,12 @@ function GenerateReportCardsModal({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [confirmed, setConfirmed] = useState(false);
+  const [phase, setPhase] = useState<GenerateModalPhase>("intro");
+  const [genWarnings, setGenWarnings] = useState<{
+    studentsMissingAllScores: number;
+    subjectsWithNoExamSetup: string[];
+  } | null>(null);
+  const [warningsError, setWarningsError] = useState<string | null>(null);
   const [state, formAction] = useActionState<
     CoordinatorGenerateState | null,
     FormData
@@ -1343,6 +1803,48 @@ function GenerateReportCardsModal({
   const studentsLabel = `${studentCount} student${
     studentCount === 1 ? "" : "s"
   }`;
+
+  const sawScoreWarning =
+    (genWarnings?.studentsMissingAllScores ?? 0) > 0 ||
+    phase === "score_warn";
+
+  async function handleIntroContinue() {
+    setWarningsError(null);
+    setPhase("loading_warnings");
+    const res = await previewCoordinatorGenerationWarningsAction(
+      classId,
+      term,
+      academicYear
+    );
+    if (!res.ok) {
+      setWarningsError(res.error);
+      setPhase("intro");
+      showAdminErrorToast(res.error);
+      return;
+    }
+    setGenWarnings({
+      studentsMissingAllScores: res.studentsMissingAllScores,
+      subjectsWithNoExamSetup: res.subjectsWithNoExamSetup,
+    });
+    if (res.studentsMissingAllScores > 0) {
+      setPhase("score_warn");
+    } else {
+      setPhase("generate");
+    }
+  }
+
+  function SubjectsNoExamNotice({ subjects }: { subjects: string[] }) {
+    if (subjects.length === 0) return null;
+    return (
+      <p
+        className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+        role="status"
+      >
+        No exam scores are set up in the gradebook for: {subjects.join(", ")}.
+        You can still generate; add scores later and run generate again.
+      </p>
+    );
+  }
 
   return (
     <div
@@ -1381,7 +1883,7 @@ function GenerateReportCardsModal({
                 </p>
               ) : null}
             </div>
-          ) : !confirmed ? (
+          ) : phase === "intro" ? (
             <>
               <ParentAccessConfirmationBlock summary={parentAccess} />
               <p className="text-slate-600 dark:text-zinc-400">
@@ -1402,6 +1904,32 @@ function GenerateReportCardsModal({
                     : "Ranking uses each student's average across all subjects."}
                 </span>
               </div>
+              {warningsError ? (
+                <p className="text-sm text-red-600">{warningsError}</p>
+              ) : null}
+            </>
+          ) : phase === "loading_warnings" ? (
+            <p className="flex items-center gap-2 text-slate-600 dark:text-zinc-400">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Checking gradebook scores…
+            </p>
+          ) : phase === "score_warn" && genWarnings ? (
+            <>
+              <p
+                className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100"
+                role="alert"
+              >
+                {genWarnings.studentsMissingAllScores} of {studentCount} student
+                {genWarnings.studentsMissingAllScores === 1 ? "" : "s"} have no
+                scores in the gradebook for this term. Report cards may be
+                incomplete.
+              </p>
+              <SubjectsNoExamNotice
+                subjects={genWarnings.subjectsWithNoExamSetup}
+              />
+              <p className="text-slate-600 dark:text-zinc-400">
+                You can generate anyway and fill in scores later.
+              </p>
             </>
           ) : (
             <>
@@ -1412,6 +1940,11 @@ function GenerateReportCardsModal({
                 </span>
                 ?
               </p>
+              {genWarnings ? (
+                <SubjectsNoExamNotice
+                  subjects={genWarnings.subjectsWithNoExamSetup}
+                />
+              ) : null}
               <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
                 <SchoolLevelBadge level={schoolLevel} />
                 <span>
@@ -1432,7 +1965,7 @@ function GenerateReportCardsModal({
             >
               Close
             </button>
-          ) : !confirmed ? (
+          ) : phase === "intro" ? (
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1443,10 +1976,35 @@ function GenerateReportCardsModal({
               </button>
               <button
                 type="button"
-                onClick={() => setConfirmed(true)}
+                onClick={() => void handleIntroContinue()}
                 className="rounded-lg bg-school-primary px-4 py-1.5 text-sm font-semibold text-white hover:brightness-105"
               >
                 Continue
+              </button>
+            </div>
+          ) : phase === "loading_warnings" ? (
+            <button
+              type="button"
+              disabled
+              className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-400"
+            >
+              Cancel
+            </button>
+          ) : phase === "score_warn" ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setPhase("generate")}
+                className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-700"
+              >
+                Generate Anyway
               </button>
             </div>
           ) : (
@@ -1458,7 +2016,10 @@ function GenerateReportCardsModal({
                 name="academic_year"
                 value={academicYear}
               />
-              <GenerateReportFormFooter onClose={onClose} />
+              <GenerateReportFormFooter
+                onClose={onClose}
+                generateLabel={sawScoreWarning ? "Generate Anyway" : "Generate"}
+              />
             </form>
           )}
         </div>
