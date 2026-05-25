@@ -9,6 +9,13 @@ import {
 } from "@/components/dashboard/dashboard-feedback-provider";
 import { createClient } from "@/lib/supabase/client";
 import { isPaidPlanId } from "@/lib/plans";
+import {
+  adminQuickActionCardClass,
+  adminQuickActionDescClass,
+  adminQuickActionIconWrapClass,
+  adminQuickActionTitleClass,
+} from "@/components/dashboard/admin-quick-action-styles";
+import { cn } from "@/lib/utils";
 
 const plansIcon = (
   <svg
@@ -110,16 +117,29 @@ export function RequestUpgradeQuickAction({
           setSuccess(false);
           setOpen(true);
         }}
-        className="group flex w-full touch-manipulation items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
+        className={cn(
+          adminQuickActionCardClass,
+          "group flex w-full touch-manipulation items-start gap-3 p-4 text-left transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
+        )}
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary transition-colors group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)] group-disabled:opacity-50 dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)]">
+        <div
+          className={cn(
+            adminQuickActionIconWrapClass,
+            "transition-colors group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)] group-disabled:opacity-50 dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)]"
+          )}
+        >
           {plansIcon}
         </div>
-        <div>
-          <p className="text-sm font-semibold text-slate-900 group-hover:text-school-primary dark:text-white dark:group-hover:text-school-primary">
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              adminQuickActionTitleClass,
+              "group-hover:text-school-primary dark:group-hover:text-school-primary"
+            )}
+          >
             {onPaid ? "You are on the paid plan" : "Upgrade to Paid"}
           </p>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+          <p className={adminQuickActionDescClass}>
             {onPaid
               ? "Unlimited students and admins are unlocked."
               : "Free tier is capped at 20 students. Request an upgrade to go unlimited."}

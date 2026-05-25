@@ -2490,6 +2490,14 @@ export interface Database {
         Args: { p_school_id: string };
         Returns: boolean;
       };
+      list_capture_card_users_for_school_admin: {
+        Args: { p_school_id: string };
+        Returns: Json;
+      };
+      list_active_enrollment_desk_tokens_for_school: {
+        Args: { p_school_id: string };
+        Returns: Json;
+      };
       user_has_school_admin_membership: {
         Args: Record<string, never>;
         Returns: boolean;

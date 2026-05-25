@@ -1,10 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { BackButton } from "@/components/dashboard/back-button";
 import { CaptureCardUsersClient, type CaptureCardUserRow } from "./capture-card-users-client";
 
 export const dynamic = "force-dynamic";
+
+const CAPTURE_CARD_USER_SELECT =
+  "id, username, is_active, expires_at, requires_approval, created_at, is_quick_qr_user, quick_qr_label, quick_qr_note";
 
 export default async function CaptureCardUsersPage() {
   const supabase = await createClient();
@@ -13,11 +17,7 @@ export default async function CaptureCardUsersPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: schoolIdRpc, error: schoolIdRpcError } =
-    await supabase.rpc("get_my_school_id");
-  if (schoolIdRpcError) {
-    console.error("[capture-card-users] page get_my_school_id:", schoolIdRpcError);
-  }
+  const { data: schoolIdRpc } = await supabase.rpc("get_my_school_id");
   let schoolId =
     schoolIdRpc != null && String(schoolIdRpc).length > 0
       ? (schoolIdRpc as string)
@@ -25,54 +25,46 @@ export default async function CaptureCardUsersPage() {
   if (!schoolId) {
     schoolId = await getSchoolIdForUser(supabase, user.id);
   }
-  if (!schoolId) {
-    console.error("[capture-card-users] page no school_id", {
-      userId: user.id,
-      schoolIdRpc,
-    });
-    redirect("/dashboard");
-  }
+  if (!schoolId) redirect("/dashboard");
 
   const { data: isAdmin } = await supabase.rpc("is_school_admin", {
     p_school_id: schoolId,
   } as never);
   if (!isAdmin) redirect("/dashboard");
 
-  const { data: rows, error } = await supabase
-    .from("capture_card_users")
-    .select(
-      "id, username, is_active, expires_at, requires_approval, created_at, is_quick_qr_user, quick_qr_label, quick_qr_note"
-    )
-    .eq("school_id", schoolId)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("[capture-card-users]", error);
-  }
-
-  const { data: tokenRows, error: tokenErr } = await supabase
-    .from("enrollment_desk_access_tokens")
-    .select("capture_card_user_id, expires_at")
-    .eq("school_id", schoolId)
-    .is("revoked_at", null)
-    .is("used_at", null)
-    .gt("expires_at", new Date().toISOString());
-
-  if (tokenErr) {
-    console.error("[capture-card-users] active qr tokens:", tokenErr);
-  }
-
+  let users: CaptureCardUserRow[] = [];
   const activeQrByUserId: Record<string, { expires_at: string }> = {};
-  for (const t of tokenRows ?? []) {
-    const row = t as { capture_card_user_id: string; expires_at: string };
-    if (!activeQrByUserId[row.capture_card_user_id]) {
-      activeQrByUserId[row.capture_card_user_id] = {
-        expires_at: row.expires_at,
-      };
-    }
-  }
 
-  const users = (rows ?? []) as CaptureCardUserRow[];
+  try {
+    const admin = createAdminClient();
+
+    const { data: rows } = await admin
+      .from("capture_card_users")
+      .select(CAPTURE_CARD_USER_SELECT)
+      .eq("school_id", schoolId)
+      .order("created_at", { ascending: false });
+
+    users = (rows ?? []) as CaptureCardUserRow[];
+
+    const { data: tokenRows } = await admin
+      .from("enrollment_desk_access_tokens")
+      .select("capture_card_user_id, expires_at")
+      .eq("school_id", schoolId)
+      .is("revoked_at", null)
+      .is("used_at", null)
+      .gt("expires_at", new Date().toISOString());
+
+    for (const t of tokenRows ?? []) {
+      const row = t as { capture_card_user_id: string; expires_at: string };
+      if (!activeQrByUserId[row.capture_card_user_id]) {
+        activeQrByUserId[row.capture_card_user_id] = {
+          expires_at: row.expires_at,
+        };
+      }
+    }
+  } catch {
+    // Admin client unavailable — render empty list; mutations may still work via actions.
+  }
 
   return (
     <>
