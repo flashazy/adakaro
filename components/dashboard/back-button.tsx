@@ -12,6 +12,11 @@ interface BackButtonProps {
   className?: string;
   /** Label while navigating (default: Loading...) */
   loadingLabel?: string;
+  /**
+   * When true, uses `router.back()` if browser history exists;
+   * otherwise navigates to `href` (fallback).
+   */
+  preferHistoryBack?: boolean;
 }
 
 /**
@@ -23,6 +28,7 @@ export function BackButton({
   children,
   className,
   loadingLabel = "Loading...",
+  preferHistoryBack = false,
 }: BackButtonProps) {
   const router = useRouter();
   const feedback = useOptionalDashboardFeedback();
@@ -31,6 +37,14 @@ export function BackButton({
   function handleClick() {
     feedback?.startNavigation();
     startTransition(() => {
+      if (
+        preferHistoryBack &&
+        typeof window !== "undefined" &&
+        window.history.length > 1
+      ) {
+        router.back();
+        return;
+      }
       router.push(href);
     });
   }

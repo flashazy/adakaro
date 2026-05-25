@@ -5,6 +5,12 @@ import { Search } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { UpgradeModal } from "@/components/upgrade-modal";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import {
+  getBalanceAmountClassName,
+  getBalanceUrgency,
+  getStudentBalanceStatus,
+  type StudentBalanceStatus,
+} from "@/lib/finance/finance-dashboard-summaries";
 
 const REPORTS_ROW_OPTIONS = [5, 10, 15, 20, 25, 50] as const;
 type ReportsRowOption = (typeof REPORTS_ROW_OPTIONS)[number];
@@ -85,6 +91,28 @@ interface Props {
   currencyCode: string;
   /** Basic+ plans: server CSV export. */
   canAdvancedReports: boolean;
+  /** Finance hub: stronger headers, sticky thead, button polish. */
+  financeTablePolish?: boolean;
+}
+
+const INTERACTIVE_POLISH =
+  "transition-all duration-200 hover:shadow-md hover:scale-[1.01]";
+
+function getReportTableHeaderStyles(financePolish?: boolean) {
+  if (financePolish) {
+    return {
+      theadClass:
+        "sticky top-0 z-10 border-b border-slate-200 bg-slate-100/95 shadow-sm dark:border-zinc-800 dark:bg-zinc-800/95 lg:sticky",
+      thClass:
+        "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-zinc-300",
+    };
+  }
+  return {
+    theadClass:
+      "border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50",
+    thClass:
+      "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400",
+  };
 }
 
 type ReportTab =
@@ -95,9 +123,9 @@ type ReportTab =
 
 const TABS: { id: ReportTab; label: string }[] = [
   { id: "student-fees", label: "Student Fees" },
-  { id: "class-summary", label: "Class Summary" },
-  { id: "outstanding", label: "Outstanding" },
-  { id: "monthly-income", label: "Monthly Income" },
+  { id: "class-summary", label: "Class Totals" },
+  { id: "outstanding", label: "Balances" },
+  { id: "monthly-income", label: "Income Trend" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -112,6 +140,7 @@ export function ReportsClient({
   schoolName,
   currencyCode,
   canAdvancedReports,
+  financeTablePolish = false,
 }: Props) {
   const money = (n: number) => formatCurrency(n, currencyCode);
   const [activeTab, setActiveTab] = useState<ReportTab>("student-fees");
@@ -162,6 +191,16 @@ export function ReportsClient({
       a.studentName.localeCompare(b.studentName)
     );
   }, [balances, classMap, studentClassMap]);
+
+  const studentRosterStats = useMemo(() => {
+    let studentsCleared = 0;
+    let studentsWithBalance = 0;
+    for (const row of studentFeeRows) {
+      if (row.balance <= 0) studentsCleared += 1;
+      else studentsWithBalance += 1;
+    }
+    return { studentsCleared, studentsWithBalance };
+  }, [studentFeeRows]);
 
   const classSummaryRows = useMemo(() => {
     const map = new Map<
@@ -293,6 +332,13 @@ export function ReportsClient({
 
   return (
     <div>
+      {studentFeeRows.length > 0 ? (
+        <FinanceStudentRosterSummary
+          studentsCleared={studentRosterStats.studentsCleared}
+          studentsWithBalance={studentRosterStats.studentsWithBalance}
+        />
+      ) : null}
+
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 print:hidden">
         {TABS.map((tab) => (
@@ -357,8 +403,12 @@ export function ReportsClient({
           <ExportCsvButton
             canAdvancedReports={canAdvancedReports}
             onClick={() => void handleExportCsv()}
+            interactivePolish={financeTablePolish}
           />
-          <PrintPdfButton onClick={handlePrint} />
+          <PrintPdfButton
+            onClick={handlePrint}
+            interactivePolish={financeTablePolish}
+          />
         </div>
       ) : null}
 
@@ -381,16 +431,22 @@ export function ReportsClient({
             canAdvancedReports={canAdvancedReports}
             onExportCsv={() => void handleExportCsv()}
             onPrint={handlePrint}
+            financeTablePolish={financeTablePolish}
           />
         )}
         {activeTab === "class-summary" && (
-          <ClassSummaryTab rows={classSummaryRows} formatMoney={money} />
+          <ClassSummaryTab
+            rows={classSummaryRows}
+            formatMoney={money}
+            financeTablePolish={financeTablePolish}
+          />
         )}
         {activeTab === "outstanding" && (
           <OutstandingTab
             rows={outstandingRows}
             classes={classes}
             formatMoney={money}
+            financeTablePolish={financeTablePolish}
           />
         )}
         {activeTab === "monthly-income" && (
@@ -399,6 +455,7 @@ export function ReportsClient({
             dateFrom={dateFrom}
             dateTo={dateTo}
             formatMoney={money}
+            financeTablePolish={financeTablePolish}
           />
         )}
       </div>
@@ -437,15 +494,19 @@ function feeRowMatchesStatus(
 function ExportCsvButton({
   canAdvancedReports,
   onClick,
+  interactivePolish = false,
 }: {
   canAdvancedReports: boolean;
   onClick: () => void;
+  interactivePolish?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
+      className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
+        interactivePolish ? INTERACTIVE_POLISH : ""
+      } ${
         canAdvancedReports
           ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
           : "border-dashed border-slate-300 bg-white text-slate-500 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
@@ -470,12 +531,20 @@ function ExportCsvButton({
   );
 }
 
-function PrintPdfButton({ onClick }: { onClick: () => void }) {
+function PrintPdfButton({
+  onClick,
+  interactivePolish = false,
+}: {
+  onClick: () => void;
+  interactivePolish?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+      className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 ${
+        interactivePolish ? INTERACTIVE_POLISH : ""
+      }`}
     >
       <svg
         className="h-4 w-4"
@@ -495,11 +564,115 @@ function PrintPdfButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function EmptyState({ message }: { message: string }) {
+function EmptyState({
+  message,
+  hint,
+}: {
+  message: string;
+  hint?: string;
+}) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
-      <p className="text-sm text-slate-500 dark:text-zinc-400">{message}</p>
+    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center dark:border-zinc-700 dark:bg-zinc-900 sm:p-12">
+      <p className="text-sm font-medium text-slate-700 dark:text-zinc-300">
+        {message}
+      </p>
+      {hint ? (
+        <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">{hint}</p>
+      ) : null}
     </div>
+  );
+}
+
+const BALANCE_STATUS_STYLES: Record<
+  StudentBalanceStatus,
+  { label: string; className: string }
+> = {
+  cleared: {
+    label: "Cleared",
+    className:
+      "bg-emerald-50 text-emerald-800 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-500/30",
+  },
+  partial: {
+    label: "Part paid",
+    className:
+      "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-500/30",
+  },
+  unpaid: {
+    label: "Needs payment",
+    className:
+      "bg-slate-100 text-slate-700 ring-slate-500/20 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-600/30",
+  },
+};
+
+function BalanceAmount({
+  totalFee,
+  balance,
+  formatMoney,
+  className = "",
+}: {
+  totalFee: number;
+  balance: number;
+  formatMoney: (n: number) => string;
+  className?: string;
+}) {
+  const urgency = getBalanceUrgency(totalFee, balance);
+  return (
+    <span className={`${getBalanceAmountClassName(urgency)} ${className}`}>
+      {formatMoney(balance)}
+    </span>
+  );
+}
+
+function FinanceStudentRosterSummary({
+  studentsCleared,
+  studentsWithBalance,
+}: {
+  studentsCleared: number;
+  studentsWithBalance: number;
+}) {
+  return (
+    <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 print:hidden">
+      <div className="rounded-xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900 sm:px-5">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+          Students Cleared
+        </p>
+        <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+          {studentsCleared}
+        </p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+          Fully paid students
+        </p>
+      </div>
+      <div className="rounded-xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900 sm:px-5">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+          Students With Balance
+        </p>
+        <p className="mt-1.5 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+          {studentsWithBalance}
+        </p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+          Need follow-up
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function StudentBalanceStatusBadge({
+  totalPaid,
+  balance,
+}: {
+  totalPaid: number;
+  balance: number;
+}) {
+  const status = getStudentBalanceStatus(totalPaid, balance);
+  const style = BALANCE_STATUS_STYLES[status];
+  return (
+    <span
+      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${style.className}`}
+    >
+      {style.label}
+    </span>
   );
 }
 
@@ -511,8 +684,6 @@ function TableWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-const thClass =
-  "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400";
 const tdClass =
   "px-4 py-3 text-sm text-slate-900 dark:text-white whitespace-nowrap";
 const tdMutedClass =
@@ -529,6 +700,7 @@ function StudentFeesTab({
   canAdvancedReports,
   onExportCsv,
   onPrint,
+  financeTablePolish = false,
 }: {
   rows: StudentFeeRow[];
   classes: ClassRow[];
@@ -536,7 +708,9 @@ function StudentFeesTab({
   canAdvancedReports: boolean;
   onExportCsv: () => void;
   onPrint: () => void;
+  financeTablePolish?: boolean;
 }) {
+  const { theadClass, thClass } = getReportTableHeaderStyles(financeTablePolish);
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<FeeStatusFilter>("all");
@@ -602,7 +776,12 @@ function StudentFeesTab({
   );
 
   if (rows.length === 0) {
-    return <EmptyState message="No student fee data available." />;
+    return (
+      <EmptyState
+        message="No student fee data yet."
+        hint="Create a fee structure to start tracking balances."
+      />
+    );
   }
 
   return (
@@ -665,8 +844,12 @@ function StudentFeesTab({
               <ExportCsvButton
                 canAdvancedReports={canAdvancedReports}
                 onClick={onExportCsv}
+                interactivePolish={financeTablePolish}
               />
-              <PrintPdfButton onClick={onPrint} />
+              <PrintPdfButton
+                onClick={onPrint}
+                interactivePolish={financeTablePolish}
+              />
             </div>
           </div>
         </div>
@@ -706,7 +889,7 @@ function StudentFeesTab({
                 String(n)
               );
             }}
-            aria-label="Rows per page"
+              aria-label="Rows per page"
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
           >
             {REPORTS_ROW_OPTIONS.map((n) => (
@@ -720,15 +903,17 @@ function StudentFeesTab({
 
       {totalFiltered === 0 ? null : (
         <>
+          <div className="hidden lg:block">
           <TableWrapper>
             <table className="w-full min-w-[600px]">
-              <thead className="border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <thead className={theadClass}>
                 <tr>
                   <th className={thClass}>Student</th>
                   <th className={thClass}>Class</th>
                   <th className={`${thClass} text-right`}>Total Fees</th>
                   <th className={`${thClass} text-right`}>Paid</th>
                   <th className={`${thClass} text-right`}>Balance</th>
+                  <th className={thClass}>Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/50">
@@ -745,10 +930,18 @@ function StudentFeesTab({
                     <td className={`${tdClass} text-right`}>
                       {formatMoney(r.totalPaid)}
                     </td>
-                    <td
-                      className={`${tdClass} text-right ${r.balance > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : ""}`}
-                    >
-                      {formatMoney(r.balance)}
+                    <td className={`${tdClass} text-right`}>
+                      <BalanceAmount
+                        totalFee={r.totalFee}
+                        balance={r.balance}
+                        formatMoney={formatMoney}
+                      />
+                    </td>
+                    <td className={`${tdClass} hidden lg:table-cell`}>
+                      <StudentBalanceStatusBadge
+                        totalPaid={r.totalPaid}
+                        balance={r.balance}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -765,15 +958,74 @@ function StudentFeesTab({
                   <td className={`${tfootTdClass} text-right`}>
                     {formatMoney(filteredTotals.totalPaid)}
                   </td>
-                  <td
-                    className={`${tfootTdClass} text-right text-amber-600 dark:text-amber-400`}
-                  >
-                    {formatMoney(filteredTotals.balance)}
+                  <td className={`${tfootTdClass} text-right`}>
+                    <BalanceAmount
+                      totalFee={filteredTotals.totalFee}
+                      balance={filteredTotals.balance}
+                      formatMoney={formatMoney}
+                    />
                   </td>
+                  <td className={`${tfootTdClass} hidden lg:table-cell`} />
                 </tr>
               </tfoot>
             </table>
           </TableWrapper>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="space-y-3 lg:hidden print:hidden">
+            {pagedRows.map((r) => (
+              <div
+                key={`card-${r.studentId}`}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900 dark:text-white">
+                      {r.studentName}
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-zinc-400">
+                      {r.className}
+                    </p>
+                  </div>
+                  <StudentBalanceStatusBadge
+                    totalPaid={r.totalPaid}
+                    balance={r.balance}
+                  />
+                </div>
+                <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-zinc-400">
+                      Fees
+                    </dt>
+                    <dd className="font-medium text-slate-900 dark:text-white">
+                      {formatMoney(r.totalFee)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-zinc-400">
+                      Paid
+                    </dt>
+                    <dd className="font-medium text-slate-900 dark:text-white">
+                      {formatMoney(r.totalPaid)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500 dark:text-zinc-400">
+                      Balance
+                    </dt>
+                    <dd>
+                      <BalanceAmount
+                        totalFee={r.totalFee}
+                        balance={r.balance}
+                        formatMoney={formatMoney}
+                      />
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ))}
+          </div>
 
           {totalPages > 1 ? (
             <nav
@@ -843,10 +1095,13 @@ type ClassSummaryRow = {
 function ClassSummaryTab({
   rows,
   formatMoney,
+  financeTablePolish = false,
 }: {
   rows: ClassSummaryRow[];
   formatMoney: (n: number) => string;
+  financeTablePolish?: boolean;
 }) {
+  const { theadClass, thClass } = getReportTableHeaderStyles(financeTablePolish);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState<ReportsRowOption>(5);
@@ -902,7 +1157,12 @@ function ClassSummaryTab({
       : Math.min(startIndex + rowsPerPage, totalFiltered);
 
   if (rows.length === 0) {
-    return <EmptyState message="No class data available." />;
+    return (
+      <EmptyState
+        message="No class fee totals yet."
+        hint="Create a fee structure to start tracking balances."
+      />
+    );
   }
 
   return (
@@ -976,7 +1236,7 @@ function ClassSummaryTab({
         <>
           <TableWrapper>
             <table className="w-full min-w-[600px]">
-              <thead className="border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <thead className={theadClass}>
                 <tr>
                   <th className={thClass}>Class</th>
                   <th className={`${thClass} text-right`}>Students</th>
@@ -1003,10 +1263,12 @@ function ClassSummaryTab({
                     >
                       {formatMoney(r.totalPaid)}
                     </td>
-                    <td
-                      className={`${tdClass} text-right ${r.outstanding > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : ""}`}
-                    >
-                      {formatMoney(r.outstanding)}
+                    <td className={`${tdClass} text-right`}>
+                      <BalanceAmount
+                        totalFee={r.totalFee}
+                        balance={r.outstanding}
+                        formatMoney={formatMoney}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -1025,10 +1287,12 @@ function ClassSummaryTab({
                   >
                     {formatMoney(filteredTotals.totalPaid)}
                   </td>
-                  <td
-                    className={`${tfootTdClass} text-right text-amber-600 dark:text-amber-400`}
-                  >
-                    {formatMoney(filteredTotals.outstanding)}
+                  <td className={`${tfootTdClass} text-right`}>
+                    <BalanceAmount
+                      totalFee={filteredTotals.totalFee}
+                      balance={filteredTotals.outstanding}
+                      formatMoney={formatMoney}
+                    />
                   </td>
                 </tr>
               </tfoot>
@@ -1095,11 +1359,14 @@ function OutstandingTab({
   rows,
   classes,
   formatMoney,
+  financeTablePolish = false,
 }: {
   rows: StudentFeeRow[];
   classes: ClassRow[];
   formatMoney: (n: number) => string;
+  financeTablePolish?: boolean;
 }) {
+  const { theadClass, thClass } = getReportTableHeaderStyles(financeTablePolish);
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -1278,7 +1545,7 @@ function OutstandingTab({
         <>
           <TableWrapper>
             <table className="w-full min-w-[600px]">
-              <thead className="border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <thead className={theadClass}>
                 <tr>
                   <th className={thClass}>Student</th>
                   <th className={thClass}>Class</th>
@@ -1301,10 +1568,12 @@ function OutstandingTab({
                     <td className={`${tdClass} text-right`}>
                       {formatMoney(r.totalPaid)}
                     </td>
-                    <td
-                      className={`${tdClass} text-right font-semibold text-amber-600 dark:text-amber-400`}
-                    >
-                      {formatMoney(r.balance)}
+                    <td className={`${tdClass} text-right`}>
+                      <BalanceAmount
+                        totalFee={r.totalFee}
+                        balance={r.balance}
+                        formatMoney={formatMoney}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -1321,10 +1590,12 @@ function OutstandingTab({
                   <td className={`${tfootTdClass} text-right`}>
                     {formatMoney(filteredTotals.totalPaid)}
                   </td>
-                  <td
-                    className={`${tfootTdClass} text-right text-amber-600 dark:text-amber-400`}
-                  >
-                    {formatMoney(filteredTotals.balance)}
+                  <td className={`${tfootTdClass} text-right`}>
+                    <BalanceAmount
+                      totalFee={filteredTotals.totalFee}
+                      balance={filteredTotals.balance}
+                      formatMoney={formatMoney}
+                    />
                   </td>
                 </tr>
               </tfoot>
@@ -1398,12 +1669,15 @@ function MonthlyIncomeTab({
   dateFrom,
   dateTo,
   formatMoney,
+  financeTablePolish = false,
 }: {
   rows: { month: string; total: number; count: number }[];
   dateFrom: string;
   dateTo: string;
   formatMoney: (n: number) => string;
+  financeTablePolish?: boolean;
 }) {
+  const { theadClass, thClass } = getReportTableHeaderStyles(financeTablePolish);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState<ReportsRowOption>(5);
@@ -1461,7 +1735,10 @@ function MonthlyIncomeTab({
 
   if (rows.length === 0) {
     return (
-      <EmptyState message="No payments found for the selected period." />
+      <EmptyState
+        message="No payments recorded yet."
+        hint="Start by recording your first payment."
+      />
     );
   }
 
@@ -1546,7 +1823,7 @@ function MonthlyIncomeTab({
         <>
           <TableWrapper>
             <table className="w-full min-w-[400px]">
-              <thead className="border-b border-slate-200 bg-slate-50 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <thead className={theadClass}>
                 <tr>
                   <th className={thClass}>Month</th>
                   <th className={`${thClass} text-right`}>Transactions</th>

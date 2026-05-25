@@ -12,10 +12,20 @@ import {
 import { QueryErrorBanner } from "../query-error-banner";
 import { PaymentClient } from "./payment-client";
 import { FinanceToolsLink } from "./finance-tools-link";
+import { FinanceFeeManagement } from "./finance-fee-management";
+import { FinanceHubSection } from "./finance-hub-section";
 import { BackButton } from "@/components/dashboard/back-button";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
 import { ReportsClient } from "../reports/reports-client";
+import { FinanceCommandCenter } from "./finance-command-center";
+import { FinanceReportsSummaryStrip } from "./finance-reports-summary-strip";
+import { FinanceSectionLabel } from "./finance-section-label";
+import {
+  buildFinanceInsight,
+  buildFinanceSummaryFromBalanceLines,
+  type FinanceBalanceLine,
+} from "@/lib/finance/finance-dashboard-summaries";
 
 export const metadata = {
   title: "Finance",
@@ -68,8 +78,15 @@ export default async function PaymentsPage() {
   const studentIds = typedStudents.map((s) => s.id);
   const studentIdFilter = studentIds.length > 0 ? studentIds : [""];
 
-  const [balancesRes, paymentsRes, reportBalancesRes, reportPaymentsRes, classesRes] =
-    await Promise.all([
+  const [
+    balancesRes,
+    paymentsRes,
+    reportBalancesRes,
+    reportPaymentsRes,
+    classesRes,
+    feeTypesRes,
+    feeStructuresRes,
+  ] = await Promise.all([
       studentIds.length > 0
         ? supabase
             .from("student_fee_balances")
@@ -110,6 +127,23 @@ export default async function PaymentsPage() {
             .eq("school_id", schoolId)
             .order("name")
         : Promise.resolve({ data: [], error: null }),
+      showFinanceTools
+        ? supabase
+            .from("fee_types")
+            .select("name, updated_at")
+            .eq("school_id", schoolId)
+            .order("name")
+        : Promise.resolve({ data: [], error: null }),
+      showFinanceTools
+        ? supabase
+            .from("fee_structures")
+            .select("id, class_id, class:classes(name)")
+            .eq("school_id", schoolId)
+            .eq("is_active", true)
+            .not("class_id", "is", null)
+            .is("student_id", null)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
   let canAdvancedReports = false;
@@ -144,6 +178,75 @@ export default async function PaymentsPage() {
     balance: number;
     due_date: string | null;
   }[];
+  const reportBalanceLines = (reportBalancesRes.data ?? []) as FinanceBalanceLine[];
+  const reportClasses = (classesRes.data ?? []) as { id: string; name: string }[];
+
+  let financeSummary = buildFinanceSummaryFromBalanceLines([]);
+  let financeInsight = buildFinanceInsight([], {}, {});
+  if (showFinanceTools) {
+    const classRecord: Record<string, string> = {};
+    for (const c of reportClasses) classRecord[c.id] = c.name;
+    const studentClassRecord: Record<string, string> = {};
+    for (const s of typedStudents) {
+      if (s.class_id) studentClassRecord[s.id] = s.class_id;
+    }
+    financeSummary = buildFinanceSummaryFromBalanceLines(reportBalanceLines);
+    financeInsight = buildFinanceInsight(
+      reportBalanceLines,
+      classRecord,
+      studentClassRecord
+    );
+  }
+
+  const feeTypeRows = (feeTypesRes.data ?? []) as {
+    name: string;
+    updated_at: string;
+  }[];
+  const feeStructureRows = (feeStructuresRes.data ?? []) as {
+    id: string;
+    class_id: string | null;
+    class: { name: string } | null;
+  }[];
+  const feeTypesCount = showFinanceTools ? feeTypeRows.length : undefined;
+  const feeStructuresCount = showFinanceTools
+    ? feeStructureRows.length
+    : undefined;
+
+  let feeTypesLastUpdated: string | undefined;
+  if (showFinanceTools) {
+    if (feeTypeRows.length === 0) {
+      feeTypesLastUpdated = "Not configured yet";
+    } else {
+      let latestMs = 0;
+      for (const row of feeTypeRows) {
+        const ms = new Date(row.updated_at).getTime();
+        if (!Number.isNaN(ms) && ms > latestMs) latestMs = ms;
+      }
+      if (latestMs > 0) {
+        feeTypesLastUpdated = `Last updated ${new Intl.DateTimeFormat("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }).format(new Date(latestMs))}`;
+      }
+    }
+  }
+
+  const configuredClassesCount = showFinanceTools
+    ? new Set(
+        feeStructureRows
+          .map((r) => r.class_id)
+          .filter((id): id is string => Boolean(id))
+      ).size
+    : undefined;
+
+  const reportPaymentsForTrend = (
+    (reportPaymentsRes.data ?? []) as { payment_date: string; amount: number }[]
+  ).map((p) => ({
+    payment_date: p.payment_date,
+    amount: Number(p.amount) || 0,
+  }));
+
   const typedPayments = (paymentsRes.data ?? []) as {
     id: string;
     student_id: string;
@@ -158,9 +261,9 @@ export default async function PaymentsPage() {
 
   return (
     <>
-      <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <header className="border-b border-slate-200/80 bg-gradient-to-b from-slate-50 to-white dark:border-zinc-800 dark:from-zinc-900/95 dark:to-zinc-900">
         <div
-          className={`mx-auto flex items-center justify-between py-4 ${showFinanceTools ? "max-w-6xl px-1 sm:px-0" : "max-w-3xl"}`}
+          className={`mx-auto flex items-center justify-between px-4 py-4 sm:px-0 ${showFinanceTools ? "max-w-6xl" : "max-w-3xl"}`}
         >
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -168,7 +271,7 @@ export default async function PaymentsPage() {
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
               {showFinanceTools
-                ? "Manage school payments, balances, report access rules, and financial reports."
+                ? "Manage school fees, payments, balances, and financial reporting."
                 : "Select a student, view balances, and record a payment."}
             </p>
           </div>
@@ -182,13 +285,8 @@ export default async function PaymentsPage() {
       </header>
 
       <main
-        className={`mx-auto space-y-6 py-10 ${showFinanceTools ? "max-w-6xl px-1 sm:px-0" : "max-w-3xl"}`}
+        className={`mx-auto space-y-8 py-8 sm:space-y-10 sm:py-10 ${showFinanceTools ? "max-w-6xl px-4 sm:px-0" : "max-w-3xl px-4 sm:px-0"}`}
       >
-        {showFinanceTools ? (
-          <section aria-label="Report card access rules">
-            <FinanceToolsLink />
-          </section>
-        ) : null}
         {fetchError ? (
           <QueryErrorBanner
             title="Could not load payment data"
@@ -207,28 +305,64 @@ export default async function PaymentsPage() {
             </p>
           </QueryErrorBanner>
         ) : null}
-        <PaymentClient
-          students={typedStudents}
-          balances={typedBalances}
-          payments={typedPayments}
-          currencyCode={currencyCode}
-        />
 
         {showFinanceTools ? (
-          <section
-            aria-label="Financial Reports"
-            className="border-t border-slate-200 pt-10 dark:border-zinc-800"
-          >
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Financial Reports
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-                Student fees, class totals, outstanding balances, and monthly
-                income — same data as Reports, with export and print.
-              </p>
+          <>
+            <FinanceCommandCenter
+              summary={financeSummary}
+              insight={financeInsight}
+              currencyCode={currencyCode}
+              paymentsForTrend={reportPaymentsForTrend}
+            />
+
+            <div className="space-y-5">
+              <FinanceSectionLabel>Operations</FinanceSectionLabel>
+              <FinanceFeeManagement
+                feeTypesCount={feeTypesCount}
+                feeStructuresCount={feeStructuresCount}
+                feeTypesLastUpdated={feeTypesLastUpdated}
+                configuredClassesCount={configuredClassesCount}
+              />
+
+              <FinanceHubSection
+              id="finance-record-payment"
+              title="Record Payment"
+              description="Find a student to record payments and review balances."
+            >
+              <PaymentClient
+                students={typedStudents}
+                balances={typedBalances}
+                payments={typedPayments}
+                currencyCode={currencyCode}
+              />
+            </FinanceHubSection>
             </div>
-            <ReportsClient
+
+            <div className="space-y-5">
+              <FinanceSectionLabel>Access control</FinanceSectionLabel>
+              <FinanceHubSection
+              id="finance-report-access"
+              title="Report Card Access Rules"
+              description="Control when parents can open report cards based on fee payment."
+            >
+              <FinanceToolsLink />
+            </FinanceHubSection>
+            </div>
+
+            <div className="space-y-5">
+              <FinanceSectionLabel>Reporting</FinanceSectionLabel>
+              <FinanceHubSection
+              id="finance-reports"
+              title="Financial Reports"
+              description="Student fees, class totals, balances, and income trend — export and print."
+              className="border-t border-slate-200 pt-8 dark:border-zinc-800 sm:pt-10"
+            >
+              <FinanceReportsSummaryStrip
+                summary={financeSummary}
+                insight={financeInsight}
+                currencyCode={currencyCode}
+              />
+              <ReportsClient
               balances={(reportBalancesRes.data ?? []) as {
                 student_id: string;
                 student_name: string;
@@ -251,7 +385,7 @@ export default async function PaymentsPage() {
                   admission_number: string | null;
                 } | null;
               }[]}
-              classes={(classesRes.data ?? []) as { id: string; name: string }[]}
+              classes={reportClasses}
               studentClasses={typedStudents.map((s) => ({
                 id: s.id,
                 class_id: s.class_id ?? "",
@@ -259,11 +393,33 @@ export default async function PaymentsPage() {
               schoolName={schoolName}
               currencyCode={currencyCode}
               canAdvancedReports={canAdvancedReports}
+              financeTablePolish
             />
-          </section>
-        ) : null}
+            </FinanceHubSection>
+            </div>
+          </>
+        ) : (
+          <PaymentClient
+            students={typedStudents}
+            balances={typedBalances}
+            payments={typedPayments}
+            currencyCode={currencyCode}
+          />
+        )}
       </main>
-      <SmartFloatingScrollButton sectionIds={[]} />
+      <SmartFloatingScrollButton
+        sectionIds={
+          showFinanceTools
+            ? [
+                "finance-command-center",
+                "finance-fee-management",
+                "finance-record-payment",
+                "finance-report-access",
+                "finance-reports",
+              ]
+            : []
+        }
+      />
     </>
   );
 }

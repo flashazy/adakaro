@@ -22,6 +22,10 @@ import {
   type StudentListRowOption,
 } from "@/lib/student-list-pagination";
 import {
+  getBalanceAmountClassName,
+  getBalanceUrgency,
+} from "@/lib/finance/finance-dashboard-summaries";
+import {
   blockInvalidKeyDownAmount,
   HINT_ONLY_NUMBERS,
   hasInvalidAmountInput,
@@ -321,15 +325,20 @@ export function PaymentClient({
     <div className="space-y-8">
       {/* ─── Student selector ─── */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-          Select a student
-        </h2>
+        <label
+          htmlFor="finance-record-payment-search"
+          className="text-sm text-slate-600 dark:text-zinc-400"
+        >
+          Search by student name, admission number, or class
+        </label>
         <input
-          type="text"
+          id="finance-record-payment-search"
+          type="search"
           value={studentSearch}
           onChange={(e) => setStudentSearch(e.target.value)}
-          placeholder="Search by name, admission # or class…"
-          className="mt-3 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+          placeholder="Type a name, admission number, or class…"
+          aria-label="Search by student name, admission number, or class"
+          className="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
         />
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-zinc-700">
           <p className="min-w-0 text-sm text-slate-600 dark:text-zinc-400">
@@ -495,7 +504,9 @@ export function PaymentClient({
                       {b.due_date ? ` · Due: ${b.due_date}` : ""}
                     </p>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-amber-600 dark:text-amber-400">
+                  <span
+                    className={`shrink-0 text-sm ${getBalanceAmountClassName(getBalanceUrgency(b.total_fee, b.balance))}`}
+                  >
                     {money(Number(b.balance))}
                   </span>
                 </button>
@@ -519,7 +530,17 @@ export function PaymentClient({
             Record payment — {selectedBalance.fee_name}
           </h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-            Balance: {money(Number(selectedBalance.balance))}
+            Balance:{" "}
+            <span
+              className={getBalanceAmountClassName(
+                getBalanceUrgency(
+                  selectedBalance.total_fee,
+                  selectedBalance.balance
+                )
+              )}
+            >
+              {money(Number(selectedBalance.balance))}
+            </span>
           </p>
 
           <input type="hidden" name="student_id" value={selectedStudentId} />
@@ -742,9 +763,14 @@ export function PaymentClient({
               </table>
             </div>
           ) : (
-            <p className="px-6 py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
-              No payment records available.
-            </p>
+            <div className="px-6 py-8 text-center">
+              <p className="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                No payments recorded yet.
+              </p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                Start by recording your first payment.
+              </p>
+            </div>
           )}
         </div>
       )}

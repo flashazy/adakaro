@@ -14,10 +14,11 @@ const TRUST_CHIPS = [
 export function FeeRulesPageHeader({
   classes,
   rulesError,
-  backHref = "/dashboard",
+  backHref = "/dashboard/payments",
 }: {
   classes: FeeRulesClassRow[];
   rulesError: string | null;
+  /** Fallback when browser history cannot go back (e.g. direct URL). */
   backHref?: string;
 }) {
   const financeStatus = deriveFinanceRulesStatus(classes);
@@ -26,6 +27,7 @@ export function FeeRulesPageHeader({
     <div className="space-y-3">
       <BackButton
         href={backHref}
+        preferHistoryBack
         className={cn(
           "inline-flex min-h-[44px] items-center text-xs font-medium text-slate-500 transition-colors",
           "hover:text-slate-700 focus-visible:outline focus-visible:ring-2 focus-visible:ring-school-primary/40 focus-visible:ring-offset-2",

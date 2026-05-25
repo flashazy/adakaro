@@ -48,12 +48,14 @@ export default async function ReportCardFeeRulesPage() {
   const canManageFeeRules = schoolId
     ? await canManageReportCardFeeRules(supabase, user.id, schoolId)
     : false;
+  /** Finance hub — Report Rules is reached from Finance for admins and finance teachers. */
+  const financeHubHref = "/dashboard/payments";
   const homeHref =
-    profileRole === "teacher" && canManageFeeRules
-      ? "/dashboard/payments"
-      : profileRole === "teacher"
-        ? "/teacher-dashboard"
-        : "/dashboard";
+    profileRole === "teacher"
+      ? canManageFeeRules
+        ? financeHubHref
+        : "/teacher-dashboard"
+      : financeHubHref;
 
   if (!schoolId) redirect(homeHref);
 
