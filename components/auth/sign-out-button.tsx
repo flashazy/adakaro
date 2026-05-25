@@ -1,46 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import { signOut } from "@/app/(auth)/actions";
+
+/** Route handler clears cookies on the redirect response (works on Vercel production). */
+const SIGN_OUT_URL = "/api/auth/sign-out";
 
 type SignOutButtonProps = {
   className: string;
   formClassName?: string;
 };
 
-function redirectToLogin(): void {
-  window.location.assign("/login");
-}
-
 export function SignOutButton({ className, formClassName }: SignOutButtonProps) {
-  const [isPending, startTransition] = useTransition();
-  const [inlineMessage, setInlineMessage] = useState<string | null>(null);
+  const [isPending, setIsPending] = useState(false);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setInlineMessage(null);
-
-    startTransition(async () => {
-      try {
-        const result = await signOut({}, new FormData());
-        if (result.warnings?.length) {
-          const summary = result.warnings.join(" ");
-          console.warn("[SignOutButton] completed with warnings", result.warnings);
-          toast.warning(summary);
-          setInlineMessage(summary);
-        }
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Sign-out request failed.";
-        console.error("[SignOutButton] signOut threw", err);
-        toast.warning(`${message} Redirecting to login…`);
-        setInlineMessage(message);
-      } finally {
-        redirectToLogin();
-      }
-    });
+    setIsPending(true);
+    window.location.assign(SIGN_OUT_URL);
   }
 
   return (
@@ -49,14 +26,6 @@ export function SignOutButton({ className, formClassName }: SignOutButtonProps) 
       className={formClassName ?? ""}
       noValidate
     >
-      {inlineMessage ? (
-        <p
-          className="mb-2 text-sm text-amber-700 dark:text-amber-300"
-          role="status"
-        >
-          {inlineMessage}
-        </p>
-      ) : null}
       <button
         type="submit"
         disabled={isPending}

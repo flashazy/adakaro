@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import Image from "next/image";
 import { useEffect, useState } from "react";
@@ -10,7 +11,13 @@ import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRo
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { TeacherAcademicNavDropdown } from "@/components/layout/TeacherAcademicNavDropdown";
 import { useChatInboxUnreadCount } from "@/components/layout/teacher-chat-unread-count";
-import { SyncIndicator } from "@/components/offline/sync-indicator";
+
+/** Dexie/sync-queue must not load during SSR (breaks teacher dashboard on webpack). */
+const SyncIndicator = dynamic(
+  () =>
+    import("@/components/offline/sync-indicator").then((m) => m.SyncIndicator),
+  { ssr: false }
+);
 
 function schoolInitials(name: string): string {
   const t = name.trim();

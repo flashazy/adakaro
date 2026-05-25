@@ -8,7 +8,6 @@ import {
   useOnlineStatus,
   usePendingSyncCount,
 } from "@/lib/offline/use-sync";
-import { drainQueue } from "@/lib/offline/sync-queue";
 
 interface SyncIndicatorProps {
   /** Where the badge links to (defaults to /teacher-dashboard/sync-status). */
@@ -80,7 +79,9 @@ export function SyncIndicator({
           // Single click also kicks off a manual drain so the user can
           // visually confirm something happens.
           startTransition(() => {
-            void drainQueue({ force: true });
+            void import("@/lib/offline/sync-queue").then(({ drainQueue }) =>
+              drainQueue({ force: true })
+            );
           });
         }}
       >
