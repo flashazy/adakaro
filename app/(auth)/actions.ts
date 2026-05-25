@@ -11,8 +11,7 @@ import {
   clearCaptureCardSessionCookie,
   setCaptureCardSessionCookie,
 } from "@/lib/capture-card/session";
-
-const SCHOOL_DASHBOARD_MODE_COOKIE = "school_dashboard_mode";
+import { performSignOut } from "@/lib/auth/perform-sign-out";
 import type { UserRole } from "@/types/supabase";
 import bcrypt from "bcryptjs";
 import type { User } from "@supabase/supabase-js";
@@ -58,7 +57,7 @@ async function profileExistsByEmail(
   return (cc?.length ?? 0) > 0;
 }
 
-export type SignOutState = { error?: string; ok?: true };
+export type SignOutState = { ok: true; warnings?: string[] };
 
 /** Internal path only; prevents open redirects. */
 function safeInternalPath(raw: string | null | undefined): string | null {
@@ -69,43 +68,30 @@ function safeInternalPath(raw: string | null | undefined): string | null {
 }
 
 export async function signOut(
-  _prevState: SignOutState,
+  _prevState: SignOutState | Record<string, never>,
   _formData: FormData
 ): Promise<SignOutState> {
   void _prevState;
   void _formData;
 
   try {
-    await clearCaptureCardSessionCookie();
-  } catch {
-    /* non-fatal */
+    const result = await performSignOut();
+    return {
+      ok: true,
+      warnings: result.warnings.length > 0 ? result.warnings : undefined,
+    };
+  } catch (err) {
+    console.error("[signOut] action unexpected error", {
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    return {
+      ok: true,
+      warnings: [
+        "Unexpected sign-out error; local cookies were cleared where possible.",
+      ],
+    };
   }
-
-  try {
-    const jar = await cookies();
-    jar.set(SCHOOL_DASHBOARD_MODE_COOKIE, "", { path: "/", maxAge: 0 });
-  } catch {
-    /* non-fatal */
-  }
-
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signOut();
-  if (error) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: localErr } = await (supabase.auth.signOut as any)({
-        scope: "local",
-      });
-      if (!localErr) {
-        return { ok: true };
-      }
-    } catch {
-      /* fall through */
-    }
-    return { error: error.message };
-  }
-
-  return { ok: true };
 }
 
 export async function login(

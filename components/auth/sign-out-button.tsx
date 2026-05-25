@@ -1,44 +1,60 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { signOut, type SignOutState } from "@/app/(auth)/actions";
-
-const initialSignOut: SignOutState = {};
+import { signOut } from "@/app/(auth)/actions";
 
 type SignOutButtonProps = {
   className: string;
   formClassName?: string;
 };
 
-export function SignOutButton({ className, formClassName }: SignOutButtonProps) {
-  const router = useRouter();
-  const navigatedRef = useRef(false);
-  const [state, formAction, isPending] = useActionState(signOut, initialSignOut);
+function redirectToLogin(): void {
+  window.location.assign("/login");
+}
 
-  useEffect(() => {
-    if (state.error) {
-      navigatedRef.current = false;
-      toast.error(state.error);
-      return;
-    }
-    if (state.ok && !navigatedRef.current) {
-      navigatedRef.current = true;
-      router.push("/login");
-      router.refresh();
-    }
-  }, [state, router]);
+export function SignOutButton({ className, formClassName }: SignOutButtonProps) {
+  const [isPending, startTransition] = useTransition();
+  const [inlineMessage, setInlineMessage] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setInlineMessage(null);
+
+    startTransition(async () => {
+      try {
+        const result = await signOut({}, new FormData());
+        if (result.warnings?.length) {
+          const summary = result.warnings.join(" ");
+          console.warn("[SignOutButton] completed with warnings", result.warnings);
+          toast.warning(summary);
+          setInlineMessage(summary);
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Sign-out request failed.";
+        console.error("[SignOutButton] signOut threw", err);
+        toast.warning(`${message} Redirecting to login…`);
+        setInlineMessage(message);
+      } finally {
+        redirectToLogin();
+      }
+    });
+  }
 
   return (
-    <form action={formAction} className={formClassName ?? ""}>
-      {state.error ? (
+    <form
+      onSubmit={handleSubmit}
+      className={formClassName ?? ""}
+      noValidate
+    >
+      {inlineMessage ? (
         <p
-          className="mb-2 text-sm text-red-600 dark:text-red-400"
-          role="alert"
+          className="mb-2 text-sm text-amber-700 dark:text-amber-300"
+          role="status"
         >
-          {state.error}
+          {inlineMessage}
         </p>
       ) : null}
       <button
