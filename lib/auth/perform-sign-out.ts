@@ -11,10 +11,7 @@ export type SignOutResult = {
   warnings: string[];
 };
 
-function logSignOut(
-  step: string,
-  detail?: Record<string, unknown> | Error | string
-): void {
+function logSignOut(step: string, detail?: unknown): void {
   if (detail instanceof Error) {
     console.error(`[signOut] ${step}`, {
       message: detail.message,
