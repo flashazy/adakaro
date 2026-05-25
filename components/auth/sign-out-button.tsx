@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { signOut, type SignOutState } from "@/app/(auth)/actions";
 
 const initialSignOut: SignOutState = {};
@@ -12,10 +14,23 @@ type SignOutButtonProps = {
 };
 
 export function SignOutButton({ className, formClassName }: SignOutButtonProps) {
-  const [state, formAction, isPending] = useActionState(
-    signOut,
-    initialSignOut
-  );
+  const router = useRouter();
+  const navigatedRef = useRef(false);
+  const [state, formAction, isPending] = useActionState(signOut, initialSignOut);
+
+  useEffect(() => {
+    if (state.error) {
+      navigatedRef.current = false;
+      toast.error(state.error);
+      return;
+    }
+    if (state.ok && !navigatedRef.current) {
+      navigatedRef.current = true;
+      router.push("/login");
+      router.refresh();
+    }
+  }, [state, router]);
+
   return (
     <form action={formAction} className={formClassName ?? ""}>
       {state.error ? (

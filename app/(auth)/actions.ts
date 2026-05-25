@@ -11,6 +11,8 @@ import {
   clearCaptureCardSessionCookie,
   setCaptureCardSessionCookie,
 } from "@/lib/capture-card/session";
+
+const SCHOOL_DASHBOARD_MODE_COOKIE = "school_dashboard_mode";
 import type { UserRole } from "@/types/supabase";
 import bcrypt from "bcryptjs";
 import type { User } from "@supabase/supabase-js";
@@ -56,7 +58,7 @@ async function profileExistsByEmail(
   return (cc?.length ?? 0) > 0;
 }
 
-export type SignOutState = { error?: string };
+export type SignOutState = { error?: string; ok?: true };
 
 /** Internal path only; prevents open redirects. */
 function safeInternalPath(raw: string | null | undefined): string | null {
@@ -72,12 +74,38 @@ export async function signOut(
 ): Promise<SignOutState> {
   void _prevState;
   void _formData;
+
+  try {
+    await clearCaptureCardSessionCookie();
+  } catch {
+    /* non-fatal */
+  }
+
+  try {
+    const jar = await cookies();
+    jar.set(SCHOOL_DASHBOARD_MODE_COOKIE, "", { path: "/", maxAge: 0 });
+  } catch {
+    /* non-fatal */
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.auth.signOut();
   if (error) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: localErr } = await (supabase.auth.signOut as any)({
+        scope: "local",
+      });
+      if (!localErr) {
+        return { ok: true };
+      }
+    } catch {
+      /* fall through */
+    }
     return { error: error.message };
   }
-  redirect("/login");
+
+  return { ok: true };
 }
 
 export async function login(
