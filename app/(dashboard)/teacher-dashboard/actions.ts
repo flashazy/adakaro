@@ -9,6 +9,11 @@ import {
   sortStudentsByGenderThenName,
 } from "@/lib/student-list-order";
 import {
+  assignmentMatchesGradebookTerm,
+  majorExamEnrollmentTerm,
+  resolveAssignmentEnrollmentTerm,
+} from "@/lib/gradebook-term";
+import {
   duplicateMajorExamMessage,
   inferMajorExamTypeFromTitle,
   parseGradebookExamType,
@@ -18,6 +23,7 @@ import { parseSubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
 import {
   getCurrentAcademicYearAndTerm,
   getStudentsForSubject,
+  getStudentsForGradebookMatrix,
 } from "@/lib/student-subject-enrollment-queries";
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { resolveSchoolDisplayTimezone } from "@/lib/school-timezone";
@@ -54,26 +60,195 @@ function normalizeText(value: unknown): string | null {
 
 /**
  * Which `class_id` values to load gradebook assignments for in the Marks UI.
- * Parent / standalone: only that class (parent holds cross-stream exams).
- * Child stream: that stream plus its parent so exams created on the parent
- * still appear when the teacher switches to their own class.
+ * Parent with streams: whole cluster (parent + every stream).
+ * Child stream: that stream plus parent (exams may live on either).
  */
 export async function gradebookAssignmentClassIdsForSelection(
   admin: Db,
   classId: string
 ): Promise<string[]> {
-  const { data: row } = await admin
-    .from("classes")
-    .select("id, parent_class_id")
-    .eq("id", classId)
-    .maybeSingle();
-
-  const self = row as { id: string; parent_class_id: string | null } | null;
-  if (!self) return [classId];
-  if (self.parent_class_id) {
-    return [classId, self.parent_class_id];
+  const cluster = await resolveClassCluster(admin, classId);
+  if (cluster.isParent && cluster.childClassIds.length > 0) {
+    return cluster.classIds;
+  }
+  if (cluster.childClassIds.length > 0) {
+    return cluster.classIds;
   }
   return [classId];
+}
+
+function normalizeGradebookSubjectKey(raw: string | null | undefined): string {
+  return (raw ?? "").trim().toLowerCase();
+}
+
+function gradebookRowMatchesSubject(
+  rowSubject: string | null | undefined,
+  selectedSubject: string
+): boolean {
+  return (
+    normalizeGradebookSubjectKey(rowSubject) ===
+    normalizeGradebookSubjectKey(selectedSubject)
+  );
+}
+
+function extractAcademicYearDigits(
+  raw: string | null | undefined
+): string | null {
+  const m = (raw ?? "").trim().match(/\d{4}/);
+  return m ? m[0] : null;
+}
+
+/** True when assignment year is unset or matches the teacher's selected year. */
+function gradebookRowMatchesAcademicYear(
+  rowYear: string | null | undefined,
+  selectedYear: string | undefined
+): boolean {
+  const yr = (rowYear ?? "").trim();
+  const sel = (selectedYear ?? "").trim();
+  if (!sel) return true;
+  if (!yr) return true;
+  if (yr === sel) return true;
+  const rowDigits = extractAcademicYearDigits(yr);
+  const selDigits = extractAcademicYearDigits(sel);
+  if (rowDigits && selDigits) return rowDigits === selDigits;
+  return false;
+}
+
+const GRADEBOOK_MATRIX_DEBUG =
+  process.env.NODE_ENV === "development" ||
+  process.env.DEBUG_GRADEBOOK_MATRIX === "1";
+
+function logGradebookMatrixDebug(
+  message: string,
+  payload: Record<string, unknown>
+): void {
+  if (!GRADEBOOK_MATRIX_DEBUG) return;
+  console.log(`[gradebook-matrix] ${message}`, JSON.stringify(payload, null, 2));
+}
+
+type GradebookAssignmentListRow = {
+  id: string;
+  title: string;
+  max_score: number;
+  weight: number;
+  due_date: string | null;
+  subject: string;
+  exam_type: string | null;
+  academic_year: string;
+  term: string | null;
+  created_at: string;
+};
+
+/**
+ * Loads gradebook assignments for a class/subject (all teachers on the class).
+ * Major exams are deduped per class; custom assignments are kept per row.
+ */
+async function fetchGradebookAssignmentsForClassSubject(
+  admin: Db,
+  args: {
+    classIds: string[];
+    subject: string;
+    gradebookTerm?: SubjectEnrollmentTerm;
+    academicYear?: string;
+  }
+): Promise<GradebookAssignmentListRow[]> {
+  const rawData = await fetchAllRows<GradebookAssignmentListRow>({
+    label: "teacher-dashboard:gradebook assignments for class subject",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("teacher_gradebook_assignments")
+        .select(
+          "id, title, max_score, weight, due_date, subject, exam_type, academic_year, term, created_at"
+        )
+        .in("class_id", args.classIds)
+        .range(from, to),
+  });
+
+  const byId = new Map<string, GradebookAssignmentListRow>();
+  const rejected: {
+    id: string;
+    title: string;
+    reason: string;
+    row: GradebookAssignmentListRow;
+  }[] = [];
+
+  for (const row of rawData ?? []) {
+    if (!gradebookRowMatchesSubject(row.subject, args.subject)) {
+      rejected.push({
+        id: row.id,
+        title: row.title,
+        reason: `subject mismatch (row="${row.subject}", wanted="${args.subject}")`,
+        row,
+      });
+      continue;
+    }
+    if (
+      !gradebookRowMatchesAcademicYear(row.academic_year, args.academicYear)
+    ) {
+      rejected.push({
+        id: row.id,
+        title: row.title,
+        reason: `academic_year mismatch (row="${row.academic_year}", wanted="${args.academicYear ?? ""}")`,
+        row,
+      });
+      continue;
+    }
+    if (args.gradebookTerm) {
+      const resolved = resolveAssignmentEnrollmentTerm({
+        term: row.term,
+        exam_type: row.exam_type,
+        title: row.title,
+      });
+      if (
+        !assignmentMatchesGradebookTerm(
+          {
+            term: row.term,
+            exam_type: row.exam_type,
+            title: row.title,
+          },
+          args.gradebookTerm
+        )
+      ) {
+        rejected.push({
+          id: row.id,
+          title: row.title,
+          reason: `term mismatch (stored="${row.term ?? ""}", exam_type="${row.exam_type ?? ""}", resolved="${resolved ?? ""}", wanted="${args.gradebookTerm}")`,
+          row,
+        });
+        continue;
+      }
+    }
+    if (!byId.has(row.id)) byId.set(row.id, row);
+  }
+
+  const included = [...byId.values()].sort((a, b) =>
+    a.created_at.localeCompare(b.created_at)
+  );
+
+  logGradebookMatrixDebug("fetchGradebookAssignmentsForClassSubject", {
+    classIds: args.classIds,
+    subject: args.subject,
+    gradebookTerm: args.gradebookTerm ?? null,
+    academicYear: args.academicYear ?? null,
+    rawRowCount: rawData?.length ?? 0,
+    includedCount: included.length,
+    included: included.map((r) => ({
+      id: r.id,
+      title: r.title,
+      term: r.term,
+      exam_type: r.exam_type,
+      academic_year: r.academic_year,
+      resolvedTerm: resolveAssignmentEnrollmentTerm({
+        term: r.term,
+        exam_type: r.exam_type,
+        title: r.title,
+      }),
+    })),
+    rejectedSample: rejected.slice(0, 12),
+    rejectedCount: rejected.length,
+  });
+
+  return included;
 }
 
 async function assertTeacherForClass(
@@ -937,8 +1112,11 @@ export async function createGradebookAssignmentAction(input: {
     parseGradebookExamType(input.examType) ??
     inferMajorExamTypeFromTitle(titleTrim);
 
-  const termVal =
+  let termVal: SubjectEnrollmentTerm | null =
     input.term === "Term 1" || input.term === "Term 2" ? input.term : null;
+  if (!termVal && examType) {
+    termVal = majorExamEnrollmentTerm(examType);
+  }
 
   const { data: created, error } = await (admin as Db)
     .from("teacher_gradebook_assignments")
@@ -992,7 +1170,7 @@ export async function deleteGradebookAssignmentAction(assignmentId: string) {
     return { ok: false, error: fetchErr.message };
   }
   const row = g as { id: string; teacher_id: string; class_id: string } | null;
-  if (!row || row.teacher_id !== user.id) {
+  if (!row) {
     return { ok: false, error: "Assignment not found." };
   }
 
@@ -1011,8 +1189,7 @@ export async function deleteGradebookAssignmentAction(assignmentId: string) {
   const { error: assignDelErr } = await (admin as Db)
     .from("teacher_gradebook_assignments")
     .delete()
-    .eq("id", assignmentId)
-    .eq("teacher_id", user.id);
+    .eq("id", assignmentId);
 
   if (assignDelErr) {
     return { ok: false, error: assignDelErr.message };
@@ -1026,7 +1203,8 @@ export async function deleteGradebookAssignmentAction(assignmentId: string) {
 export async function loadGradebookAssignmentsForClass(
   classId: string,
   subject: string,
-  gradebookTerm?: SubjectEnrollmentTerm
+  gradebookTerm?: SubjectEnrollmentTerm,
+  academicYear?: string
 ) {
   const supabase = await createClient();
   const {
@@ -1044,70 +1222,11 @@ export async function loadGradebookAssignmentsForClass(
   const classIdsForAssignments =
     await gradebookAssignmentClassIdsForSelection(admin, classId);
 
-  const rawData = await fetchAllRows<{
-    id: string;
-    title: string;
-    max_score: number;
-    weight: number;
-    due_date: string | null;
-    subject: string;
-    exam_type: string | null;
-    academic_year: string;
-    term: string | null;
-    created_at: string;
-  }>({
-    label: "teacher-dashboard:loadGradebookAssignmentsForClass assignments",
-    fetchPage: async (from, to) =>
-      await (admin as Db)
-        .from("teacher_gradebook_assignments")
-        .select(
-          "id, title, max_score, weight, due_date, subject, exam_type, academic_year, term, created_at"
-        )
-        .eq("teacher_id", user.id)
-        .in("class_id", classIdsForAssignments)
-        .eq("subject", subject)
-        .range(from, to),
-  });
-
-  const deduped = new Map<
-    string,
-    {
-      id: string;
-      title: string;
-      max_score: number;
-      weight: number;
-      due_date: string | null;
-      subject: string;
-      exam_type: string | null;
-      academic_year: string;
-      term: string | null;
-      created_at: string;
-    }
-  >();
-  for (const row of rawData ?? []) {
-    const r = row as {
-      id: string;
-      title: string;
-      max_score: number;
-      weight: number;
-      due_date: string | null;
-      subject: string;
-      exam_type: string | null;
-      academic_year: string;
-      term: string | null;
-      created_at: string;
-    };
-    if (!deduped.has(r.id)) deduped.set(r.id, r);
-  }
-  const merged = [...deduped.values()].sort((a, b) =>
-    a.created_at.localeCompare(b.created_at)
-  );
-
-  const data = merged.filter((row: { term: string | null }) => {
-    if (!gradebookTerm) return true;
-    const t = row.term;
-    if (t == null || String(t).trim() === "") return true;
-    return t === gradebookTerm;
+  const data = await fetchGradebookAssignmentsForClassSubject(admin, {
+    classIds: classIdsForAssignments,
+    subject,
+    gradebookTerm,
+    academicYear: academicYear?.trim() || undefined,
   });
 
   return {
@@ -1141,7 +1260,8 @@ export async function loadGradebookClassMatrix(
   subject: string,
   gradebookTerm: SubjectEnrollmentTerm,
   subjectId: string | null,
-  enrollmentYear?: number
+  enrollmentYear?: number,
+  academicYear?: string
 ) {
   const supabase = await createClient();
   const {
@@ -1158,49 +1278,26 @@ export async function loadGradebookClassMatrix(
   const classIdsForMatrix =
     await gradebookAssignmentClassIdsForSelection(admin, classId);
 
-  const assignmentRowsRaw = await fetchAllRows<
+  logGradebookMatrixDebug("loadGradebookClassMatrix:start", {
+    classId,
+    classIdsForMatrix,
+    subject,
+    gradebookTerm,
+    subjectId,
+    enrollmentYear: enrollmentYear ?? null,
+    academicYear: academicYear?.trim() || null,
+    userId: user.id,
+  });
+
+  const assignmentRows = await fetchGradebookAssignmentsForClassSubject(
+    admin,
     {
-      id: string;
-      title: string;
-      max_score: number;
-      weight: number;
-      due_date: string | null;
-      subject: string;
-      created_at?: string;
-      exam_type: string | null;
-      academic_year: string;
-      term: string | null;
+      classIds: classIdsForMatrix,
+      subject,
+      gradebookTerm,
+      academicYear: academicYear?.trim() || undefined,
     }
-  >({
-    label: "teacher-dashboard:loadGradebookClassMatrix assignments",
-    fetchPage: async (from, to) =>
-      await (admin as Db)
-        .from("teacher_gradebook_assignments")
-        .select(
-          "id, title, max_score, weight, due_date, subject, created_at, exam_type, academic_year, term"
-        )
-        .eq("teacher_id", user.id)
-        .in("class_id", classIdsForMatrix)
-        .eq("subject", subject)
-        .range(from, to),
-  });
-
-  const dedupAssignments = new Map<string, (typeof assignmentRowsRaw)[number]>();
-  for (const row of assignmentRowsRaw ?? []) {
-    const r = row as { id: string };
-    if (!dedupAssignments.has(r.id)) dedupAssignments.set(r.id, row);
-  }
-  const mergedRows = [...dedupAssignments.values()].sort((a, b) => {
-    const ca = String((a as { created_at?: string }).created_at ?? "");
-    const cb = String((b as { created_at?: string }).created_at ?? "");
-    return ca.localeCompare(cb);
-  });
-
-  const assignmentRows = mergedRows.filter((row: { term: string | null }) => {
-    const t = row.term;
-    if (t == null || String(t).trim() === "") return true;
-    return t === gradebookTerm;
-  });
+  );
 
   const assignments = assignmentRows as {
     id: string;
@@ -1219,12 +1316,20 @@ export async function loadGradebookClassMatrix(
     enrollmentYear ??
     enrollmentYearFromString(assignments[0]?.academic_year);
 
-  const roster = await getStudentsForSubject(admin, {
+  const roster = await getStudentsForGradebookMatrix(admin, {
     classId,
     subjectId,
     academicYear: yearForEnrollment,
     term: gradebookTerm,
-    enrollmentDateOnOrBefore: null,
+  });
+
+  logGradebookMatrixDebug("loadGradebookClassMatrix:roster", {
+    classId,
+    subjectId,
+    gradebookTerm,
+    yearForEnrollment,
+    studentCount: roster.length,
+    assignmentCount: assignmentRows.length,
   });
 
   const rawStudents = roster as {
@@ -1396,14 +1501,17 @@ export async function saveScoresAction(input: {
   const admin = createAdminClient();
   const { data: g } = await (admin as Db)
     .from("teacher_gradebook_assignments")
-    .select("id, teacher_id")
+    .select("id, teacher_id, class_id")
     .eq("id", input.assignmentId)
     .single();
 
-  const gr = g as { id: string; teacher_id: string } | null;
-  if (!gr || gr.teacher_id !== user.id) {
+  const gr = g as { id: string; teacher_id: string; class_id: string } | null;
+  if (!gr) {
     return { ok: false, error: "Assignment not found." };
   }
+
+  const gate = await assertTeacherForClass(user.id, gr.class_id);
+  if (!gate.ok) return { ok: false, error: gate.error };
 
   for (const s of input.scores) {
     const { error } = await (admin as Db).from("teacher_scores").upsert(
@@ -1526,8 +1634,13 @@ export async function loadGradebookMatrix(
     term: string | null;
   } | null;
 
-  if (!ga || ga.teacher_id !== user.id) {
+  if (!ga) {
     return { ok: false as const, error: "Assignment not found." };
+  }
+
+  const assignGate = await assertTeacherForClass(user.id, ga.class_id);
+  if (!assignGate.ok) {
+    return { ok: false as const, error: assignGate.error };
   }
 
   const clusterRoster = await resolveClassCluster(admin, rosterTrim);
@@ -1646,13 +1759,18 @@ export async function loadScoresForAssignment(assignmentId: string) {
   const admin = createAdminClient();
   const { data: g } = await (admin as Db)
     .from("teacher_gradebook_assignments")
-    .select("id, teacher_id")
+    .select("id, teacher_id, class_id")
     .eq("id", assignmentId)
     .single();
 
-  const ga = g as { id: string; teacher_id: string } | null;
-  if (!ga || ga.teacher_id !== user.id) {
+  const ga = g as { id: string; teacher_id: string; class_id: string } | null;
+  if (!ga) {
     return { ok: false as const, error: "Assignment not found." };
+  }
+
+  const scoreGate = await assertTeacherForClass(user.id, ga.class_id);
+  if (!scoreGate.ok) {
+    return { ok: false as const, error: scoreGate.error };
   }
 
   const scoreRows = await fetchAllRows<{
@@ -1720,8 +1838,13 @@ export async function loadGradeReportContext(assignmentId: string) {
     teacher_id: string;
   } | null;
 
-  if (!ga || ga.teacher_id !== user.id) {
+  if (!ga) {
     return { ok: false as const, error: "Assignment not found." };
+  }
+
+  const reportGate = await assertTeacherForClass(user.id, ga.class_id);
+  if (!reportGate.ok) {
+    return { ok: false as const, error: reportGate.error };
   }
 
   const { data: cls } = await admin

@@ -39,6 +39,7 @@ import {
 } from "@/lib/attendance-counts";
 import { isMissingColumnSchemaError } from "../report-cards/report-card-schema-compat";
 import {
+  batchGetStudentEnrolledSubjectLabels,
   getStudentEnrolledSubjects,
   reportAcademicYearToEnrollmentYear,
 } from "@/lib/student-subject-enrollment-queries";
@@ -51,6 +52,7 @@ import { REPORT_TERM_OPTIONS } from "../report-cards/constants";
 import type {
   CoordinatorClassOverview,
   CoordinatorOverview,
+  CoordinatorReportCardCounts,
   CoordinatorReportCardItem,
   CoordinatorSubjectOverview,
   MajorExamStatus,
@@ -996,23 +998,16 @@ async function loadClassReportCards(
   const academicYearInt = reportAcademicYearToEnrollmentYear(
     params.academicYear
   );
-  const subjectsByStudent = new Map<string, string[]>();
-  await Promise.all(
-    cardRows.map(async (c) => {
-      const studentClassId = c.students?.class_id ?? c.class_id;
-      const enrolled = await getStudentEnrolledSubjects(admin, {
-        studentId: c.student_id,
-        classId: studentClassId,
-        academicYear: academicYearInt,
-        term: enrollmentTerm,
-        teacherSubjectLabels: allSubjectsV0,
-      });
-      subjectsByStudent.set(
-        c.student_id,
-        enrolled.length > 0 ? enrolled : allSubjectsV0
-      );
-    })
-  );
+  const enrollmentEntries = cardRows.map((c) => ({
+    studentId: c.student_id,
+    classId: c.students?.class_id ?? c.class_id,
+  }));
+  const subjectsByStudent = await batchGetStudentEnrolledSubjectLabels(admin, {
+    entries: enrollmentEntries,
+    academicYear: academicYearInt,
+    term: enrollmentTerm,
+    teacherSubjectLabels: allSubjectsV0,
+  });
 
   const studentsForRank: StudentReportRow[] = cardRows.map((c) => ({
     studentId: c.student_id,
@@ -1334,6 +1329,42 @@ export async function loadCoordinatorReportCardsForClass(
   return loadClassReportCards(admin, params);
 }
 
+function buildCoordinatorReportCardCounts(
+  reportCards: CoordinatorReportCardItem[],
+  rosterSize: number
+): CoordinatorReportCardCounts {
+  let pendingReview = 0;
+  let approved = 0;
+  let draft = 0;
+  let changesRequested = 0;
+  for (const c of reportCards) {
+    switch (c.status) {
+      case "pending_review":
+        pendingReview += 1;
+        break;
+      case "approved":
+        approved += 1;
+        break;
+      case "draft":
+        draft += 1;
+        break;
+      case "changes_requested":
+        changesRequested += 1;
+        break;
+      default:
+        break;
+    }
+  }
+  return {
+    generated: reportCards.length,
+    rosterSize,
+    pendingReview,
+    approved,
+    draft,
+    changesRequested,
+  };
+}
+
 export async function loadCoordinatorOverview(params: {
   userId: string;
   term: "Term 1" | "Term 2";
@@ -1423,101 +1454,108 @@ export async function loadCoordinatorOverview(params: {
 
   const academicYear = params.academicYear.trim() || defaultCoordinatorAcademicYear();
 
-  const classes: CoordinatorClassOverview[] = [];
+  const classOverviews = await Promise.all(
+    classIds.map(async (classId) => {
+      const c = classById.get(classId);
+      if (!c) return null;
+      const school = schoolById.get(c.school_id);
+      const schoolLevel = normalizeSchoolLevel(school?.school_level);
 
-  for (const classId of classIds) {
-    const c = classById.get(classId);
-    if (!c) continue;
-    const school = schoolById.get(c.school_id);
-    const schoolLevel = normalizeSchoolLevel(school?.school_level);
+      const cluster = await resolveClassCluster(admin, classId);
+      const clusterIds =
+        cluster.isParent && cluster.childClassIds.length > 0
+          ? cluster.classIds
+          : [classId];
 
-    // When the coordinator is assigned to a parent class, expand queries to
-    // the whole cluster (parent + every child stream). Coordinators promoted
-    // on a single stream only see that stream — they must be promoted on the
-    // parent class to get the aggregated view.
-    const cluster = await resolveClassCluster(admin, classId);
-    const clusterIds =
-      cluster.isParent && cluster.childClassIds.length > 0
-        ? cluster.classIds
-        : [classId];
+      const [subjects, rosterResult] = await Promise.all([
+        resolveSubjectsForClass(admin, clusterIds),
+        admin
+          .from("students")
+          .select("id, full_name, class_id")
+          .in("class_id", clusterIds)
+          .eq("status", "active")
+          .order("full_name", { ascending: true }),
+      ]);
 
-    const subjects = await resolveSubjectsForClass(admin, clusterIds);
+      const rosterStudents = (rosterResult.data ?? []) as {
+        id: string;
+        full_name: string | null;
+        class_id: string;
+      }[];
 
-    const mottoTrim = (school?.motto ?? "").trim();
-    const reportCards = await loadClassReportCards(admin, {
-      classId,
-      classIds: clusterIds,
-      className: c.name,
-      schoolName: school?.name ?? "School",
-      schoolMotto: mottoTrim ? mottoTrim : null,
-      schoolLogoUrl: school?.logo_url ?? null,
-      schoolStampUrl: school?.school_stamp_url?.trim() || null,
-      headTeacherSignatureUrl:
-        school?.head_teacher_signature_url?.trim() || null,
-      schoolLevel,
-      academicYear,
-      term: params.term,
-      classSubjectNames: subjects.map((s) => s.name),
-    });
+      const mottoTrim = (school?.motto ?? "").trim();
 
-    const { data: rosterRows } = await admin
-      .from("students")
-      .select("id, full_name, class_id")
-      .in("class_id", clusterIds)
-      .eq("status", "active")
-      .order("full_name", { ascending: true });
+      const [reportCards, parentAccessResult] = await Promise.all([
+        loadClassReportCards(admin, {
+          classId,
+          classIds: clusterIds,
+          className: c.name,
+          schoolName: school?.name ?? "School",
+          schoolMotto: mottoTrim ? mottoTrim : null,
+          schoolLogoUrl: school?.logo_url ?? null,
+          schoolStampUrl: school?.school_stamp_url?.trim() || null,
+          headTeacherSignatureUrl:
+            school?.head_teacher_signature_url?.trim() || null,
+          schoolLevel,
+          academicYear,
+          term: params.term,
+          classSubjectNames: subjects.map((s) => s.name),
+        }),
+        buildCoordinatorClassParentAccess(admin, {
+          students: rosterStudents.map((s) => ({
+            studentId: s.id,
+            classId: s.class_id,
+          })),
+          term: params.term,
+          academicYear,
+        }),
+      ]);
 
-    const rosterStudents = (rosterRows ?? []) as {
-      id: string;
-      full_name: string | null;
-      class_id: string;
-    }[];
+      const itemByStudent = new Map(
+        reportCards.map((r) => [r.studentId, r] as const)
+      );
+      const classRoster = rosterStudents.map((s) => {
+        const fullName = (s.full_name ?? "").trim() || "Student";
+        return {
+          studentId: s.id,
+          fullName,
+          item: itemByStudent.get(s.id) ?? null,
+          parentCanOpen: parentAccessResult.accessByStudentId[s.id] ?? true,
+        };
+      });
 
-    const parentAccessResult = await buildCoordinatorClassParentAccess(admin, {
-      students: rosterStudents.map((s) => ({
-        studentId: s.id,
-        classId: s.class_id,
-      })),
-      term: params.term,
-      academicYear,
-    });
+      const studentCount = rosterStudents.length;
+      const reportCardCounts = buildCoordinatorReportCardCounts(
+        reportCards,
+        studentCount
+      );
 
-    const itemByStudent = new Map(
-      reportCards.map((r) => [r.studentId, r] as const)
-    );
-    const classRoster = rosterStudents.map((s) => {
-      const fullName = (s.full_name ?? "").trim() || "Student";
-      return {
-        studentId: s.id,
-        fullName,
-        item: itemByStudent.get(s.id) ?? null,
-        parentCanOpen: parentAccessResult.accessByStudentId[s.id] ?? true,
+      const overview: CoordinatorClassOverview = {
+        classId,
+        className: c.name,
+        schoolId: c.school_id,
+        schoolName: school?.name ?? "School",
+        schoolMotto: mottoTrim ? mottoTrim : null,
+        schoolLogoUrl: school?.logo_url ?? null,
+        schoolLevel,
+        academicYear,
+        studentCount,
+        subjects,
+        reportCards,
+        reportCardCounts,
+        parentAccess: {
+          canOpenCount: parentAccessResult.canOpenCount,
+          cannotOpenCount: parentAccessResult.cannotOpenCount,
+        },
+        classRoster,
       };
-    });
+      return overview;
+    })
+  );
 
-    // Same roster as parent-access summary — single source of truth for headcount.
-    const studentCount = rosterStudents.length;
-
-    classes.push({
-      classId,
-      className: c.name,
-      schoolId: c.school_id,
-      schoolName: school?.name ?? "School",
-      schoolMotto: mottoTrim ? mottoTrim : null,
-      schoolLogoUrl: school?.logo_url ?? null,
-      schoolLevel,
-      academicYear,
-      studentCount,
-      subjects,
-      reportCards,
-      parentAccess: {
-        canOpenCount: parentAccessResult.canOpenCount,
-        cannotOpenCount: parentAccessResult.cannotOpenCount,
-      },
-      classRoster,
-    });
-  }
-
+  const classes = classOverviews.filter(
+    (row): row is CoordinatorClassOverview => row !== null
+  );
   classes.sort((a, b) => a.className.localeCompare(b.className));
 
   return {

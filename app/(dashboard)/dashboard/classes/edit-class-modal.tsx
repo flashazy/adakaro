@@ -10,6 +10,7 @@ interface EditClassModalProps {
   cls: Class | null;
   parentOptions: { id: string; name: string }[];
   teacherOptions: SchoolTeacherOption[];
+  classMinAverageGrade: number | null;
   onClose: () => void;
 }
 
@@ -17,12 +18,15 @@ export function EditClassModal({
   cls,
   parentOptions,
   teacherOptions,
+  classMinAverageGrade,
   onClose,
 }: EditClassModalProps) {
   const open = cls != null;
   const [description, setDescription] = useState("");
   const [parentClassId, setParentClassId] = useState("");
   const [classTeacherId, setClassTeacherId] = useState("");
+  const [usePromotionRules, setUsePromotionRules] = useState(false);
+  const [minAverageGrade, setMinAverageGrade] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -32,9 +36,13 @@ export function EditClassModal({
     setDescription(cls.description ?? "");
     setParentClassId(cls.parent_class_id ?? "");
     setClassTeacherId(cls.class_teacher_id ?? "");
+    setUsePromotionRules(cls.use_promotion_rules ?? false);
+    setMinAverageGrade(
+      classMinAverageGrade != null ? String(classMinAverageGrade) : ""
+    );
     setTeacherSearch("");
     setError(null);
-  }, [cls]);
+  }, [cls, classMinAverageGrade]);
 
   useEffect(() => {
     if (!open) return;
@@ -76,6 +84,10 @@ export function EditClassModal({
     fd.set("description", description);
     fd.set("parent_class_id", parentClassId);
     fd.set("class_teacher_id", classTeacherId);
+    if (usePromotionRules) {
+      fd.set("use_promotion_rules", "true");
+      fd.set("min_average_grade", minAverageGrade);
+    }
     startTransition(async () => {
       const result: ClassActionState = await updateClass(cls.id, fd);
       if (result.error) {
@@ -113,7 +125,8 @@ export function EditClassModal({
               Edit class
             </h2>
             <p className="mt-1 truncate text-sm text-slate-500 dark:text-zinc-400">
-              Update description, parent class, and class teacher.
+              Update description, parent class, class teacher, and promotion
+              rules.
             </p>
           </div>
           <button
@@ -258,6 +271,47 @@ export function EditClassModal({
                   ))
                 )}
               </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-zinc-700">
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={usePromotionRules}
+                  onChange={(e) => setUsePromotionRules(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-school-primary focus:ring-school-primary"
+                />
+                <span className="text-sm text-slate-800 dark:text-zinc-200">
+                  Use custom promotion rule
+                </span>
+              </label>
+              <p className="mt-1 pl-6 text-xs text-slate-500 dark:text-zinc-400">
+                When enabled, year-end promotion uses this class minimum instead
+                of the school default.
+              </p>
+              {usePromotionRules ? (
+                <div className="mt-3 pl-6">
+                  <label
+                    htmlFor="edit-class-min-grade"
+                    className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400"
+                  >
+                    Minimum average grade required (%)
+                  </label>
+                  <input
+                    id="edit-class-min-grade"
+                    name="min_average_grade"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    required
+                    value={minAverageGrade}
+                    onChange={(e) => setMinAverageGrade(e.target.value)}
+                    placeholder="e.g. 50"
+                    className="mt-1 block w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
 

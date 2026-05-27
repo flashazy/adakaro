@@ -21,6 +21,7 @@ import {
   type CoordinatorReportCardItem,
   type CoordinatorOverview,
 } from "./types";
+import { AsyncLoadingShell } from "@/components/dashboard/async-loading-shell";
 import { buildPartialSendEligibilityPreview } from "@/lib/report-card-fee/send-preview-partial";
 import type { ClassSendEligibilityPreview, SendEligibilityStudentRow } from "@/lib/report-card-fee/types";
 import {
@@ -284,6 +285,18 @@ export function CoordinatorDashboardClient({
     return () => ac.abort();
   }, [term, academicYear]);
 
+  /** Warm server send-eligibility cache so opening Send to parents is instant. */
+  useEffect(() => {
+    if (!overview) return;
+    for (const klass of overview.classes) {
+      void loadCoordinatorSendEligibilityAction(
+        klass.classId,
+        term,
+        academicYear
+      );
+    }
+  }, [overview, term, academicYear]);
+
   const changePeriod = (next: { term?: string; year?: string }) => {
     const sp = new URLSearchParams();
     sp.set("term", next.term ?? term);
@@ -294,12 +307,11 @@ export function CoordinatorDashboardClient({
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-        <div className="flex items-center justify-center gap-3 text-slate-600 dark:text-zinc-300">
-          <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-          <span className="text-sm font-medium">Loading coordinator data...</span>
-        </div>
-      </div>
+      <AsyncLoadingShell
+        message="Loading coordinator dashboard…"
+        slowMessage="Still loading… Large classes with many report cards can take a moment."
+        skeletonRows={6}
+      />
     );
   }
 
@@ -761,9 +773,11 @@ function CoordinatorClassCard({
   const router = useRouter();
   const feedback = useOptionalDashboardFeedback();
   const activeStudents = classActiveStudentCount(klass);
-  const hasAnyCards = klass.reportCards.length > 0;
+  const { reportCardCounts } = klass;
+  const hasAnyCards = reportCardCounts.generated > 0;
   const allHaveCards =
-    activeStudents > 0 && klass.reportCards.length >= activeStudents;
+    reportCardCounts.rosterSize > 0 &&
+    reportCardCounts.generated >= reportCardCounts.rosterSize;
   const reportSettingsHref = `/teacher-dashboard/coordinator/report-settings?classId=${encodeURIComponent(
     klass.classId
   )}&term=${encodeURIComponent(term)}&year=${encodeURIComponent(academicYear)}`;
@@ -808,15 +822,11 @@ function CoordinatorClassCard({
     setSuccessBannerClosed(false);
     const t = window.setTimeout(() => setSuccessBannerClosed(true), 5000);
     return () => window.clearTimeout(t);
-  }, [allHaveCards, klass.classId, klass.reportCards.length]);
+  }, [allHaveCards, klass.classId, reportCardCounts.generated]);
 
   const showSuccessStrip = allHaveCards && !successBannerClosed;
 
-  const pendingSendCount = useMemo(
-    () =>
-      klass.reportCards.filter((c) => c.status === "pending_review").length,
-    [klass.reportCards]
-  );
+  const pendingSendCount = reportCardCounts.pendingReview;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/50">
@@ -896,8 +906,8 @@ function CoordinatorClassCard({
             className="mt-6 text-center text-sm text-slate-600 dark:text-zinc-400"
             role="status"
           >
-            Report cards on file: {klass.reportCards.length} of{" "}
-            {activeStudents} students
+            Report cards on file: {reportCardCounts.generated} of{" "}
+            {reportCardCounts.rosterSize} students
           </p>
         ) : null}
 

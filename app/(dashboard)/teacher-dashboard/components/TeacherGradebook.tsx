@@ -39,6 +39,7 @@ import {
   duplicateMajorExamMessage,
   resolvedMajorExamKindForDuplicateCheck,
 } from "@/lib/gradebook-major-exams";
+import { presetTitlesForTerm } from "@/lib/gradebook-term";
 import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
 import { getMaxScore, gradingScaleDescription } from "@/lib/tanzania-grades";
 import type { SchoolLevel } from "@/lib/school-level";
@@ -48,17 +49,16 @@ import {
   useGradeDisplayFormat,
   type GradeDisplayFormat,
 } from "@/lib/grade-display-format";
+import {
+  MarksMatrixLoadError,
+  MarksMatrixLoadingStatus,
+  MarksMatrixTableSkeleton,
+  useMarksMatrixSlowTier,
+  type MarksMatrixLoadPhase,
+} from "./MarksMatrixLoading";
 
 const WEIGHT_FIELD_TOOLTIP =
   "Weight determines how much this assignment counts toward the final grade. Example: Final exam = 50%, Quiz = 10%. Default is 100%.";
-
-/** Convenience only — same string is stored as the assignment title. */
-const ASSIGNMENT_TITLE_PRESETS = [
-  "April Midterm Examination",
-  "June Terminal Examination",
-  "September Midterm Examination",
-  "December Annual Examination",
-] as const;
 
 export type GradebookClassOption = {
   assignmentId: string;
@@ -301,7 +301,12 @@ export function TeacherGradebook({
     Record<string, Record<string, { score: string; remarks: string }>>
   >({});
   const [classMatrixLoading, setClassMatrixLoading] = useState(false);
+  const [classMatrixLoadPhase, setClassMatrixLoadPhase] =
+    useState<MarksMatrixLoadPhase>("idle");
+  const [classMatrixError, setClassMatrixError] = useState<string | null>(null);
   const [classMatrixSaving, setClassMatrixSaving] = useState(false);
+  const matrixFetchGenerationRef = useRef(0);
+  const matrixSlowTier = useMarksMatrixSlowTier(classMatrixLoading);
   const [matrixPageSize, setMatrixPageSize] = useState(5);
   const [matrixPageIndex, setMatrixPageIndex] = useState(0);
   /** Mobile (<768px) marks-matrix focus assignment.
@@ -464,7 +469,8 @@ export function TeacherGradebook({
     const res = await loadGradebookAssignmentsForClass(
       classId,
       subject,
-      gradebookTerm
+      gradebookTerm,
+      academicYearForSelection || undefined
     );
     if (!res.ok) {
       setError(res.error);
@@ -472,7 +478,7 @@ export function TeacherGradebook({
       return;
     }
     setAssignments(res.assignments as GbAssignment[]);
-  }, [classId, subject, gradebookTerm]);
+  }, [classId, subject, gradebookTerm, academicYearForSelection]);
 
   useEffect(() => {
     void fetchAssignments();
@@ -482,29 +488,108 @@ export function TeacherGradebook({
     if (!classId || !subject) {
       setClassMatrixData(null);
       setClassDraft({});
+      setClassMatrixError(null);
+      setClassMatrixLoadPhase("idle");
+      setClassMatrixLoading(false);
       return;
     }
+
+    const generation = ++matrixFetchGenerationRef.current;
     setClassMatrixLoading(true);
+    setClassMatrixError(null);
+    setClassMatrixLoadPhase("loading");
     setClassMatrixData(null);
-    const res = await loadGradebookClassMatrix(
-      classId,
-      subject,
-      gradebookTerm,
-      subjectIdForSelection,
-      enrollmentYearForMatrix
-    );
-    setClassMatrixLoading(false);
-    if (!res.ok) {
+    setClassDraft({});
+
+    try {
+      const assignRes = await loadGradebookAssignmentsForClass(
+        classId,
+        subject,
+        gradebookTerm,
+        academicYearForSelection || undefined
+      );
+      if (generation !== matrixFetchGenerationRef.current) return;
+
+      if (!assignRes.ok) {
+        setClassMatrixError(assignRes.error);
+        setClassMatrixLoadPhase("error");
+        setClassMatrixData(null);
+        return;
+      }
+
+      const partialAssignments = assignRes.assignments as GbAssignment[];
+      setClassMatrixData({
+        assignments: partialAssignments,
+        students: [],
+        scoreMatrix: {},
+      });
+      setClassMatrixLoadPhase("scores");
+
+      const res = await loadGradebookClassMatrix(
+        classId,
+        subject,
+        gradebookTerm,
+        subjectIdForSelection,
+        enrollmentYearForMatrix,
+        academicYearForSelection || undefined
+      );
+      if (generation !== matrixFetchGenerationRef.current) return;
+
+      if (!res.ok) {
+        setClassMatrixError(res.error);
+        setClassMatrixLoadPhase("error");
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[gradebook-matrix] load failed", res);
+        }
+        return;
+      }
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("[gradebook-matrix] loaded", {
+          term: gradebookTerm,
+          subject,
+          classId,
+          academicYear: academicYearForSelection,
+          assignments: res.assignments.map((a) => ({
+            id: a.id,
+            title: a.title,
+            term: a.term,
+            exam_type: a.exam_type,
+            academic_year: a.academic_year,
+          })),
+          studentCount: res.students.length,
+        });
+      }
+
+      setClassMatrixData({
+        assignments: res.assignments as GbAssignment[],
+        students: res.students,
+        scoreMatrix: res.scoreMatrix as Record<
+          string,
+          Record<string, ScoreRow>
+        >,
+      });
+      setClassMatrixLoadPhase("ready");
+    } catch (e) {
+      if (generation !== matrixFetchGenerationRef.current) return;
+      setClassMatrixError(
+        e instanceof Error ? e.message : "Something went wrong."
+      );
+      setClassMatrixLoadPhase("error");
       setClassMatrixData(null);
-      setClassDraft({});
-      return;
+    } finally {
+      if (generation === matrixFetchGenerationRef.current) {
+        setClassMatrixLoading(false);
+      }
     }
-    setClassMatrixData({
-      assignments: res.assignments as GbAssignment[],
-      students: res.students,
-      scoreMatrix: res.scoreMatrix as Record<string, Record<string, ScoreRow>>,
-    });
-  }, [classId, subject, gradebookTerm, subjectIdForSelection, enrollmentYearForMatrix]);
+  }, [
+    classId,
+    subject,
+    gradebookTerm,
+    subjectIdForSelection,
+    enrollmentYearForMatrix,
+    academicYearForSelection,
+  ]);
 
   useEffect(() => {
     void fetchClassMatrix();
@@ -650,6 +735,11 @@ export function TeacherGradebook({
       /* ignore */
     }
   }, []);
+
+  const titlePresetsForTerm = useMemo(
+    () => presetTitlesForTerm(gradebookTerm),
+    [gradebookTerm]
+  );
 
   const classSelectOptions = useMemo(() => {
     const map = new Map<string, GradebookClassOption>();
@@ -1406,6 +1496,10 @@ export function TeacherGradebook({
                 setClassId(e.target.value);
                 setAssignmentId("");
                 setAssignmentCreateError(null);
+                setClassMatrixData(null);
+                setClassMatrixError(null);
+                setClassMatrixLoadPhase("loading");
+                setClassMatrixLoading(true);
               }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
@@ -1426,6 +1520,10 @@ export function TeacherGradebook({
                 setSubject(e.target.value);
                 setAssignmentId("");
                 setAssignmentCreateError(null);
+                setClassMatrixData(null);
+                setClassMatrixError(null);
+                setClassMatrixLoadPhase("loading");
+                setClassMatrixLoading(true);
               }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
@@ -1446,6 +1544,13 @@ export function TeacherGradebook({
                 setGradebookTerm(e.target.value as SubjectEnrollmentTerm);
                 setAssignmentId("");
                 setAssignmentCreateError(null);
+                setTitle("");
+                setTitlePresetValue("");
+                setAssignments([]);
+                setClassMatrixData(null);
+                setClassMatrixError(null);
+                setClassMatrixLoadPhase("loading");
+                setClassMatrixLoading(true);
               }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
             >
@@ -1480,11 +1585,12 @@ export function TeacherGradebook({
               <span>Marks matrix (all assignments)</span>
             </button>
           </h2>
-          {classMatrixLoading && (
-            <span className="text-xs text-slate-500 dark:text-zinc-400">
-              Loading…
+          {classMatrixLoading ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-zinc-300">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-school-primary" aria-hidden />
+              Loading
             </span>
-          )}
+          ) : null}
         </div>
         <div
           id="marks-matrix-section-panel"
@@ -1493,10 +1599,59 @@ export function TeacherGradebook({
           hidden={!marksMatrixSectionExpanded}
         >
         <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-          Click any cell to enter or edit a score. Cells show percentage and
-          letter grade. Save when finished.
+          Showing <strong className="font-medium text-slate-700 dark:text-zinc-300">{gradebookTerm}</strong> assignments only
+          (April/June for Term 1; September/December for Term 2). Click any cell
+          to enter or edit a score. Save when finished.
         </p>
-        {classMatrixData &&
+
+        {classMatrixLoading ? (
+          <div className="mt-4 space-y-4">
+            <MarksMatrixLoadingStatus
+              phase={
+                classMatrixLoadPhase === "scores" ||
+                (classMatrixData?.assignments.length ?? 0) > 0
+                  ? "scores"
+                  : "assignments"
+              }
+              slowTier={matrixSlowTier}
+            />
+            <MarksMatrixTableSkeleton
+              columnTitles={classMatrixData?.assignments.map(
+                (a) => a.title?.trim() || "Assignment"
+              )}
+              rowCount={8}
+            />
+          </div>
+        ) : null}
+
+        {classMatrixError && !classMatrixLoading ? (
+          <MarksMatrixLoadError
+            message={classMatrixError}
+            onRetry={() => void fetchClassMatrix()}
+          />
+        ) : null}
+
+        {!classMatrixLoading &&
+          !classMatrixError &&
+          classMatrixData &&
+          classMatrixData.assignments.length > 0 &&
+          classMatrixData.students.length === 0 && (
+            <p
+              className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+              role="status"
+            >
+              {classMatrixData.assignments.length} Term {gradebookTerm === "Term 2" ? "2" : "1"}{" "}
+              assignment
+              {classMatrixData.assignments.length === 1 ? "" : "s"} found, but no
+              students are enrolled for this subject in {gradebookTerm}. Showing
+              the class roster using Term 1 enrolment when available — ask your
+              admin to add {gradebookTerm} subject enrolments if the list stays
+              empty.
+            </p>
+          )}
+        {!classMatrixLoading &&
+          !classMatrixError &&
+          classMatrixData &&
           classMatrixData.assignments.length > 0 &&
           classMatrixData.students.length > 0 && (
             <form onSubmit={handleSaveClassMatrix} className="mt-4 space-y-3">
@@ -1837,7 +1992,10 @@ export function TeacherGradebook({
               </div>
             </form>
           )}
-        {classMatrixData && classMatrixData.assignments.length === 0 && (
+        {!classMatrixLoading &&
+          !classMatrixError &&
+          classMatrixData &&
+          classMatrixData.assignments.length === 0 && (
           <p className="mt-3 text-sm text-slate-500 dark:text-zinc-400">
             No assignments yet for this class and subject. Create one below.
           </p>
@@ -1896,8 +2054,10 @@ export function TeacherGradebook({
                 className="w-full shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white sm:max-w-xs"
                 aria-label="Preset exam title (optional)"
               >
-                <option value="">Preset exam (optional)…</option>
-                {ASSIGNMENT_TITLE_PRESETS.map((p) => (
+                <option value="">
+                  Preset exam ({gradebookTerm})…
+                </option>
+                {titlePresetsForTerm.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -2030,8 +2190,8 @@ export function TeacherGradebook({
             Enter scores
           </h2>
           <p className="text-sm text-slate-500 dark:text-zinc-400">
-            Choose an assignment. Marks use the A–F grading scale based on
-            percentage of max score. Add remarks as needed.
+            Choose an assignment for <strong className="font-medium text-slate-700 dark:text-zinc-300">{gradebookTerm}</strong>.
+            Marks use the A–F grading scale based on percentage of max score.
           </p>
         </div>
         <div>

@@ -224,6 +224,14 @@ export async function updateClass(
     formData.get("class_teacher_id") ?? ""
   ).trim();
   const classTeacherId = classTeacherRaw.length > 0 ? classTeacherRaw : null;
+  const usePromotionRules =
+    String(formData.get("use_promotion_rules") ?? "") === "on" ||
+    String(formData.get("use_promotion_rules") ?? "") === "true";
+  const minGradeRaw = String(
+    formData.get("min_average_grade") ?? ""
+  ).trim();
+  const minGradeParsed =
+    minGradeRaw.length > 0 ? Number(minGradeRaw) : null;
 
   if (!name) {
     return { error: "Class name is required." };
@@ -231,6 +239,20 @@ export async function updateClass(
 
   if (parentClassId === classId) {
     return { error: "A class cannot be its own parent." };
+  }
+
+  if (usePromotionRules) {
+    if (
+      minGradeParsed == null ||
+      !Number.isFinite(minGradeParsed) ||
+      minGradeParsed < 0 ||
+      minGradeParsed > 100
+    ) {
+      return {
+        error:
+          "Enter a minimum average grade between 0 and 100 when using a custom promotion rule.",
+      };
+    }
   }
 
   try {
@@ -259,6 +281,7 @@ export async function updateClass(
         description,
         parent_class_id: parentClassId,
         class_teacher_id: classTeacherId,
+        use_promotion_rules: usePromotionRules,
       } as never)
       .eq("id", classId)
       .eq("school_id", schoolId);
@@ -270,7 +293,40 @@ export async function updateClass(
       return { error: error.message };
     }
 
+    const { data: existingRule } = await supabase
+      .from("promotion_rules")
+      .select("id")
+      .eq("school_id", schoolId)
+      .eq("class_id", classId)
+      .maybeSingle();
+
+    if (usePromotionRules && minGradeParsed != null) {
+      const min = Math.round(minGradeParsed * 100) / 100;
+      if (existingRule) {
+        const { error: ruleErr } = await supabase
+          .from("promotion_rules")
+          .update({ min_average_grade: min } as never)
+          .eq("id", (existingRule as { id: string }).id);
+        if (ruleErr) return { error: ruleErr.message };
+      } else {
+        const { error: ruleErr } = await supabase.from("promotion_rules").insert({
+          school_id: schoolId,
+          class_id: classId,
+          min_average_grade: min,
+        } as never);
+        if (ruleErr) return { error: ruleErr.message };
+      }
+    } else if (existingRule) {
+      const { error: ruleErr } = await supabase
+        .from("promotion_rules")
+        .delete()
+        .eq("id", (existingRule as { id: string }).id);
+      if (ruleErr) return { error: ruleErr.message };
+    }
+
     revalidatePath("/dashboard/classes");
+    revalidatePath("/dashboard/school-settings");
+    revalidatePath("/dashboard/promotions");
 
     void logAdminActionFromServerAction(
       userId,

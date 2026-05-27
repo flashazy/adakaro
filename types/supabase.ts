@@ -894,6 +894,26 @@ export interface Database {
           },
         ];
       };
+      class_progression_tracks: {
+        Row: {
+          id: string;
+          school_id: string;
+          track_name: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          track_name: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          track_name?: string;
+          updated_at?: string;
+        };
+      };
       classes: {
         Row: {
           id: string;
@@ -902,6 +922,9 @@ export interface Database {
           description: string | null;
           parent_class_id: string | null;
           class_teacher_id: string | null;
+          track_id: string | null;
+          progression_order: number | null;
+          use_promotion_rules: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -912,6 +935,9 @@ export interface Database {
           description?: string | null;
           parent_class_id?: string | null;
           class_teacher_id?: string | null;
+          track_id?: string | null;
+          progression_order?: number | null;
+          use_promotion_rules?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -920,7 +946,67 @@ export interface Database {
           description?: string | null;
           parent_class_id?: string | null;
           class_teacher_id?: string | null;
+          track_id?: string | null;
+          progression_order?: number | null;
+          use_promotion_rules?: boolean;
           updated_at?: string;
+        };
+      };
+      promotion_rules: {
+        Row: {
+          id: string;
+          school_id: string;
+          class_id: string | null;
+          min_average_grade: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          class_id?: string | null;
+          min_average_grade: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          class_id?: string | null;
+          min_average_grade?: number;
+          updated_at?: string;
+        };
+      };
+      student_promotions: {
+        Row: {
+          id: string;
+          school_id: string;
+          student_id: string;
+          from_class_id: string;
+          to_class_id: string | null;
+          decision: "promote" | "repeat" | "graduate";
+          academic_year: number;
+          promoted_by: string;
+          promoted_at: string;
+          reason: string | null;
+          admin_override: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          student_id: string;
+          from_class_id: string;
+          to_class_id?: string | null;
+          decision: "promote" | "repeat" | "graduate";
+          academic_year: number;
+          promoted_by: string;
+          promoted_at?: string;
+          reason?: string | null;
+          admin_override?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          reason?: string | null;
+          admin_override?: boolean;
         };
       };
       class_report_settings: {

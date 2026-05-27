@@ -135,6 +135,12 @@ export function AdminQuickActions({
           icon={icons.classes}
         />
         <AdminQuickActionCard
+          href="/dashboard/promotions"
+          title="Year-end promotions"
+          description="Move students to the next class or graduate."
+          icon={icons.students}
+        />
+        <AdminQuickActionCard
           href="/dashboard/subjects"
           title="Manage Subjects"
           description="Add, edit, or remove subjects"

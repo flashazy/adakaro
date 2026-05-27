@@ -1157,3 +1157,80 @@ export async function changeAccountEmailAction(
       "Check your inbox to confirm the new email address (link may expire).",
   };
 }
+
+function parseMinAverageGrade(raw: string): number | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return Math.round(n * 100) / 100;
+}
+
+export async function updateSchoolPromotionRules(
+  _prev: SchoolSettingsState,
+  formData: FormData
+): Promise<SchoolSettingsState> {
+  const raw = String(formData.get("default_min_average_grade") ?? "");
+  const parsed = parseMinAverageGrade(raw);
+  if (raw.trim() && parsed == null) {
+    return {
+      error: "Enter a minimum grade between 0 and 100, or leave the field empty.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "You must be logged in." };
+  }
+
+  const schoolId = await getSchoolIdForUser(supabase, user.id);
+  if (!schoolId) {
+    return { error: "No school found for your account." };
+  }
+
+  const { data: isAdmin, error: adminErr } = await supabase.rpc(
+    "is_school_admin",
+    { p_school_id: schoolId } as never
+  );
+  if (adminErr || !isAdmin) {
+    return { error: "You must be a school admin to change promotion rules." };
+  }
+
+  const { data: existing } = await supabase
+    .from("promotion_rules")
+    .select("id")
+    .eq("school_id", schoolId)
+    .is("class_id", null)
+    .maybeSingle();
+
+  if (parsed == null) {
+    if (existing) {
+      const { error } = await supabase
+        .from("promotion_rules")
+        .delete()
+        .eq("id", (existing as { id: string }).id);
+      if (error) return { error: error.message };
+    }
+  } else if (existing) {
+    const { error } = await supabase
+      .from("promotion_rules")
+      .update({ min_average_grade: parsed } as never)
+      .eq("id", (existing as { id: string }).id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase.from("promotion_rules").insert({
+      school_id: schoolId,
+      class_id: null,
+      min_average_grade: parsed,
+    } as never);
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath("/dashboard/school-settings");
+  revalidatePath("/dashboard/promotions");
+  revalidatePath("/dashboard/classes");
+  return { success: true };
+}

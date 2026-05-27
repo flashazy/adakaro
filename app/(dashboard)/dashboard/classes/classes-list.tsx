@@ -24,6 +24,7 @@ interface ClassesListProps {
   parentOptions: { id: string; name: string }[];
   teacherOptions: SchoolTeacherOption[];
   classTeacherNameById: Map<string, string>;
+  minGradeByClassId: Map<string, number>;
 }
 
 export function ClassesList({
@@ -31,6 +32,7 @@ export function ClassesList({
   parentOptions,
   teacherOptions,
   classTeacherNameById,
+  minGradeByClassId,
 }: ClassesListProps) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -89,6 +91,11 @@ export function ClassesList({
             : []
         }
         teacherOptions={teacherOptions}
+        classMinAverageGrade={
+          editingClass
+            ? (minGradeByClassId.get(editingClass.id) ?? null)
+            : null
+        }
         onClose={() => setEditingClass(null)}
       />
       <div className="relative">

@@ -44,10 +44,26 @@ export default async function ClassesPage() {
     description: string | null;
     parent_class_id: string | null;
     class_teacher_id: string | null;
+    track_id: string | null;
+    progression_order: number | null;
+    use_promotion_rules: boolean;
     school_id: string;
     created_at: string;
     updated_at: string;
   }[];
+
+  const { data: classPromoRules } = await supabase
+    .from("promotion_rules")
+    .select("class_id, min_average_grade")
+    .eq("school_id", schoolId)
+    .not("class_id", "is", null);
+
+  const minGradeByClassId = new Map(
+    ((classPromoRules ?? []) as {
+      class_id: string;
+      min_average_grade: number;
+    }[]).map((r) => [r.class_id, Number(r.min_average_grade)] as const)
+  );
 
   const teacherOptions = await fetchSchoolTeachersForSelect(schoolId);
   const classTeacherNameById = new Map(
@@ -159,6 +175,7 @@ export default async function ClassesPage() {
             parentOptions={parentOptions}
             teacherOptions={teacherOptions}
             classTeacherNameById={classTeacherNameById}
+            minGradeByClassId={minGradeByClassId}
           />
         ) : !fetchError ? (
           <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">

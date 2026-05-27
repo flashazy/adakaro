@@ -215,6 +215,72 @@ export async function getStudentsForSubject(
 }
 
 /**
+ * Roster for the marks matrix. Uses Term {n} enrolment first; many schools
+ * only record Term 1 rows for the full year, so Term 2 falls back to Term 1,
+ * then to the full active class list.
+ */
+export async function getStudentsForGradebookMatrix(
+  client: EnrollmentDb,
+  params: {
+    classId: string;
+    subjectId: string | null;
+    academicYear: number;
+    term: SubjectEnrollmentTerm;
+  }
+): Promise<{ id: string; full_name: string; gender: string | null }[]> {
+  const { classId, subjectId, academicYear, term } = params;
+
+  let roster = await getStudentsForSubject(client, {
+    classId,
+    subjectId,
+    academicYear,
+    term,
+    enrollmentDateOnOrBefore: null,
+  });
+
+  if (roster.length > 0) return roster;
+
+  if (term === "Term 2") {
+    roster = await getStudentsForSubject(client, {
+      classId,
+      subjectId,
+      academicYear,
+      term: "Term 1",
+      enrollmentDateOnOrBefore: null,
+    });
+    if (roster.length > 0) {
+      console.log(
+        "[gradebook-matrix] Term 2 matrix: using Term 1 subject enrolment roster",
+        JSON.stringify({
+          classId,
+          subjectId,
+          academicYear,
+          studentCount: roster.length,
+        })
+      );
+      return roster;
+    }
+  }
+
+  roster = await getStudentsForSubject(client, {
+    classId,
+    subjectId: null,
+    academicYear,
+    term,
+    enrollmentDateOnOrBefore: null,
+  });
+
+  if (roster.length > 0) {
+    console.log(
+      "[gradebook-matrix] using full class roster (no subject enrolment for term)",
+      JSON.stringify({ classId, subjectId, academicYear, term, studentCount: roster.length })
+    );
+  }
+
+  return roster;
+}
+
+/**
  * Subject labels (teacher’s class list) visible for this student’s report card,
  * restricted to enrolled subjects when the student has enrolment rows for the
  * class/period. Otherwise returns `teacherSubjectLabels` unchanged.
@@ -267,4 +333,85 @@ export async function getStudentEnrolledSubjects(
   }
   out.sort((a, b) => a.localeCompare(b));
   return out.length > 0 ? out : labels;
+}
+
+/**
+ * Batch variant of {@link getStudentEnrolledSubjects} for many students in one query.
+ */
+export async function batchGetStudentEnrolledSubjectLabels(
+  client: EnrollmentDb,
+  params: {
+    entries: { studentId: string; classId: string }[];
+    academicYear: number;
+    term: SubjectEnrollmentTerm;
+    teacherSubjectLabels: string[];
+  }
+): Promise<Map<string, string[]>> {
+  const labels = [
+    ...new Set(params.teacherSubjectLabels.map((s) => s.trim()).filter(Boolean)),
+  ];
+  const out = new Map<string, string[]>();
+  if (params.entries.length === 0) return out;
+  if (labels.length === 0) {
+    for (const { studentId } of params.entries) out.set(studentId, []);
+    return out;
+  }
+
+  const lowerToCanonical = new Map(
+    labels.map((s) => [s.toLowerCase(), s] as const)
+  );
+  const studentIds = [...new Set(params.entries.map((e) => e.studentId))];
+  const classIds = [...new Set(params.entries.map((e) => e.classId))];
+  const classIdByStudent = new Map(
+    params.entries.map((e) => [e.studentId, e.classId] as const)
+  );
+
+  const { data: enrollRows, error } = await client
+    .from("student_subject_enrollment")
+    .select("student_id, class_id, subjects(name)")
+    .in("student_id", studentIds)
+    .in("class_id", classIds)
+    .eq("academic_year", params.academicYear)
+    .eq("term", params.term);
+
+  if (error) {
+    for (const { studentId } of params.entries) out.set(studentId, labels);
+    return out;
+  }
+
+  const namesByStudentClass = new Map<string, Set<string>>();
+  for (const r of (enrollRows ?? []) as {
+    student_id: string;
+    class_id: string;
+    subjects: { name: string } | null;
+  }[]) {
+    const key = `${r.student_id}:${r.class_id}`;
+    const n = r.subjects?.name?.trim();
+    if (!n) continue;
+    const set = namesByStudentClass.get(key) ?? new Set();
+    set.add(n);
+    namesByStudentClass.set(key, set);
+  }
+
+  for (const { studentId } of params.entries) {
+    const classId = classIdByStudent.get(studentId);
+    if (!classId) {
+      out.set(studentId, labels);
+      continue;
+    }
+    const enrolledNames = namesByStudentClass.get(`${studentId}:${classId}`);
+    if (!enrolledNames || enrolledNames.size === 0) {
+      out.set(studentId, labels);
+      continue;
+    }
+    const filtered: string[] = [];
+    for (const n of enrolledNames) {
+      const canon = lowerToCanonical.get(n.toLowerCase());
+      if (canon) filtered.push(canon);
+    }
+    filtered.sort((a, b) => a.localeCompare(b));
+    out.set(studentId, filtered.length > 0 ? filtered : labels);
+  }
+
+  return out;
 }

@@ -4,8 +4,8 @@ import { checkIsTeacher } from "@/lib/teacher-auth";
 import {
   defaultCoordinatorAcademicYear,
   defaultCoordinatorTerm,
-  loadCoordinatorOverview,
 } from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
+import { getCachedCoordinatorOverview } from "@/lib/coordinator/coordinator-overview-cache";
 
 function parseTermParam(raw: unknown): "Term 1" | "Term 2" {
   const v = Array.isArray(raw) ? raw[0] : raw;
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
     const term = parseTermParam(url.searchParams.get("term"));
     const academicYear = parseYearParam(url.searchParams.get("year"));
 
-    const overview = await loadCoordinatorOverview({
+    const overview = await getCachedCoordinatorOverview({
       userId: user.id,
       term,
       academicYear,
@@ -51,10 +51,7 @@ export async function GET(req: Request) {
       classCount: overview.classes.length,
       reportCardCounts: overview.classes.map((c) => ({
         classId: c.classId,
-        studentCount: c.studentCount,
-        reportCards: c.reportCards.length,
-        roster: c.classRoster.length,
-        subjects: c.subjects.length,
+        ...c.reportCardCounts,
       })),
     });
 
@@ -78,6 +75,7 @@ export async function GET(req: Request) {
           examStatus: s.examStatus,
         })),
         parentAccess: k.parentAccess,
+        reportCardCounts: k.reportCardCounts,
         reportCards: k.reportCards.map((r) => ({
           reportCardId: r.reportCardId,
           studentId: r.studentId,

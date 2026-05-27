@@ -23,21 +23,34 @@ export function parseGradebookExamType(
  * Infer major exam from free-form title (legacy rows with exam_type NULL).
  * Matches preset-style names like "June Terminal Examination".
  */
+function titleHasMidterm(t: string): boolean {
+  return /mid[\s-]*term/.test(t) || t.includes("midterm");
+}
+
+function titleHasTerminalOrAnnual(t: string): boolean {
+  return (
+    t.includes("terminal") ||
+    t.includes("annual") ||
+    t.includes("end of year") ||
+    t.includes("end-of-year")
+  );
+}
+
 export function inferMajorExamTypeFromTitle(
   raw: string | null | undefined
 ): GradebookMajorExamTypeValue | null {
   const t = (raw ?? "").toLowerCase();
   if (!t) return null;
-  if (t.includes("september") && t.includes("midterm")) {
+  if (t.includes("september") && titleHasMidterm(t)) {
     return "September_Midterm";
   }
-  if (t.includes("december") && t.includes("annual")) {
+  if (t.includes("december") && titleHasTerminalOrAnnual(t)) {
     return "December_Annual";
   }
-  if (t.includes("june") && t.includes("terminal")) {
+  if (t.includes("june") && titleHasTerminalOrAnnual(t)) {
     return "June_Terminal";
   }
-  if (t.includes("april") && t.includes("midterm")) {
+  if (t.includes("april") && titleHasMidterm(t)) {
     return "April_Midterm";
   }
   return null;

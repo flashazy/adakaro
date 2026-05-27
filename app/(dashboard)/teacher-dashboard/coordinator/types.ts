@@ -54,6 +54,16 @@ export interface CoordinatorParentAccessSummary {
   cannotOpenCount: number;
 }
 
+/** Pre-computed on page load so filters do not re-aggregate report cards. */
+export interface CoordinatorReportCardCounts {
+  generated: number;
+  rosterSize: number;
+  pendingReview: number;
+  approved: number;
+  draft: number;
+  changesRequested: number;
+}
+
 export interface CoordinatorClassRosterRow {
   studentId: string;
   fullName: string;
@@ -76,6 +86,7 @@ export interface CoordinatorClassOverview {
   studentCount: number;
   subjects: CoordinatorSubjectOverview[];
   reportCards: CoordinatorReportCardItem[];
+  reportCardCounts: CoordinatorReportCardCounts;
   /** Aggregated parent visibility for the active class roster. */
   parentAccess: CoordinatorParentAccessSummary;
   /**

@@ -20,6 +20,7 @@ import { SchoolInformationForm } from "./school-information-form";
 import { SchoolAcademicSettingsForm } from "./school-academic-settings-form";
 import { SchoolBrandingForm } from "./school-branding-form";
 import { SchoolAdminAccountForm } from "./school-admin-account-form";
+import { SchoolPromotionRulesForm } from "./school-promotion-rules-form";
 import { SchoolSettingsCollapsibleSection } from "./school-settings-collapsible-section";
 import type { TermStructureValue } from "./school-settings-shared";
 
@@ -138,6 +139,56 @@ export default async function SchoolSettingsPage() {
   const headTeacherCandidates = isSchoolAdmin
     ? await listHeadTeacherCandidates(schoolId)
     : [];
+
+  let defaultMinGrade: number | null = null;
+  const classPromotionOverrides: {
+    classId: string;
+    className: string;
+    minAverageGrade: number;
+  }[] = [];
+
+  if (isSchoolAdmin) {
+    const { data: promoRules } = await supabase
+      .from("promotion_rules")
+      .select("class_id, min_average_grade")
+      .eq("school_id", schoolId);
+
+    const { data: classesWithCustom } = await supabase
+      .from("classes")
+      .select("id, name, use_promotion_rules")
+      .eq("school_id", schoolId)
+      .eq("use_promotion_rules", true);
+
+    const ruleByClassId = new Map(
+      ((promoRules ?? []) as { class_id: string | null; min_average_grade: number }[])
+        .filter((r) => r.class_id != null)
+        .map((r) => [r.class_id as string, Number(r.min_average_grade)] as const)
+    );
+
+    const schoolDefault = (promoRules ?? []).find(
+      (r) => (r as { class_id: string | null }).class_id == null
+    ) as { min_average_grade: number } | undefined;
+    if (schoolDefault) {
+      defaultMinGrade = Number(schoolDefault.min_average_grade);
+    }
+
+    for (const c of (classesWithCustom ?? []) as {
+      id: string;
+      name: string;
+    }[]) {
+      const min = ruleByClassId.get(c.id);
+      if (min != null) {
+        classPromotionOverrides.push({
+          classId: c.id,
+          className: c.name,
+          minAverageGrade: min,
+        });
+      }
+    }
+    classPromotionOverrides.sort((a, b) =>
+      a.className.localeCompare(b.className)
+    );
+  }
   const headTeacherSignatureVersion =
     fetched?.updated_at != null
       ? logoVersionFromRow(fetched.updated_at)
@@ -183,6 +234,20 @@ export default async function SchoolSettingsPage() {
             }}
           />
         </SchoolSettingsCollapsibleSection>
+
+        {isSchoolAdmin ? (
+          <SchoolSettingsCollapsibleSection
+            sectionId="promotion-rules"
+            title="Promotion rules"
+            description="Minimum average exam grade (%) for year-end promotion. Based on teacher gradebook exam scores only — no attendance."
+          >
+            <SchoolPromotionRulesForm
+              canEdit={isSchoolAdmin}
+              defaultMinGrade={defaultMinGrade}
+              classOverrides={classPromotionOverrides}
+            />
+          </SchoolSettingsCollapsibleSection>
+        ) : null}
 
         <SchoolSettingsCollapsibleSection
           sectionId="academic-settings"

@@ -19,6 +19,7 @@ import {
   getCachedClassSendEligibilityPreview,
   sendEligibilityCacheTag,
 } from "@/lib/report-card-fee/send-preview-cache";
+import { invalidateCoordinatorOverviewCache } from "@/lib/coordinator/coordinator-overview-cache";
 import { checkParentReportEligibility } from "@/lib/report-card-fee/eligibility";
 import { logReportCardFeeAudit } from "@/lib/report-card-fee/audit";
 import { verifySchoolAdminPasswordForOverride } from "@/lib/report-card-fee/verify-admin-password";
@@ -672,6 +673,7 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
   const sentCount = (updatedRows ?? []).length;
 
   updateTag(sendEligibilityCacheTag(classId, term, academicYear));
+  invalidateCoordinatorOverviewCache(user.id, term, academicYear);
   revalidatePath("/teacher-dashboard/coordinator");
   revalidatePath("/teacher-dashboard/report-cards");
   revalidatePath("/parent-dashboard");
@@ -1323,6 +1325,7 @@ export async function generateReportCardsForClassAction(
     generatedByUserId: user.id,
   });
 
+  invalidateCoordinatorOverviewCache(user.id, term, academicYear);
   revalidatePath("/teacher-dashboard/coordinator");
   revalidatePath("/teacher-dashboard/report-cards");
   revalidatePath("/teacher-dashboard/academic-reports");
