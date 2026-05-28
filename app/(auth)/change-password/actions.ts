@@ -121,7 +121,9 @@ export async function changeForcedPasswordAction(
 
   const { error: profErr } = await admin
     .from("profiles")
-    .update(profilePatch)
+    // Supabase v2 sometimes narrows update payload to `never` with our generated types.
+    // Keep `profilePatch` strongly typed, and cast only at the callsite.
+    .update(profilePatch as ProfileUpdate as never)
     .eq("id", user.id);
 
   if (profErr) {
