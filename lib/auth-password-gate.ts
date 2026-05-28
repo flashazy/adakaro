@@ -32,16 +32,15 @@ export function isSchoolAdminProfileRole(
 
 /**
  * Teacher must set a new password before using the app.
- * Uses `password_changed !== true` so null/undefined still require a change.
  */
 export function teacherMustChangePassword(
   row: ProfilePasswordGateRow | null | undefined
 ): boolean {
   if (!row || !isTeacherProfileRole(row.role)) return false;
   if (isSchoolAdminProfileRole(row.role)) return false;
-  if (row.must_change_password === true) return true;
-  if (row.password_forced_reset === true) return true;
-  return row.password_changed !== true;
+  // Only force teachers who were created with a temporary password and have not
+  // completed their first password change.
+  return row.must_change_password === true && row.password_changed === false;
 }
 
 /** Parents with enrollment temp passwords (`must_change_password` only). */

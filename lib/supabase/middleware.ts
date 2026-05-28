@@ -423,9 +423,7 @@ export async function updateSession(request: NextRequest) {
         isTeacherRoute &&
         isTeacherProfileRole(profilePwRow?.role) &&
         !isSchoolAdminProfileRole(profilePwRow?.role) &&
-        (profilePwRow?.must_change_password === true ||
-          profilePwRow?.password_forced_reset === true ||
-          profilePwRow?.password_changed !== true)
+        teacherMustChangePassword(profilePwRow)
       ) {
         const url = request.nextUrl.clone();
         url.pathname = "/change-password";
