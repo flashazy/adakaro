@@ -292,6 +292,7 @@ export default async function TeacherDashboardPage() {
 
   const assignmentIds = gradebookRows.map((r) => r.id);
   const scoresByAssignment = new Map<string, Map<string, unknown>>();
+  const enteredScoreAssignments = new Set<string>();
   if (assignmentIds.length > 0) {
     const scoreRows = await fetchAllRows<{
       assignment_id: string;
@@ -312,6 +313,7 @@ export default async function TeacherDashboardPage() {
         student_id: string;
         score: unknown;
       };
+      if (scoreIsEntered(sr.score)) enteredScoreAssignments.add(sr.assignment_id);
       let m = scoresByAssignment.get(sr.assignment_id);
       if (!m) {
         m = new Map();
@@ -321,16 +323,57 @@ export default async function TeacherDashboardPage() {
     }
   }
 
-  let pendingGrades = 0;
+  const periodForAssignment = (row: {
+    academic_year: string | null;
+    term: string | null;
+  }): { year: number; term: "Term 1" | "Term 2" | "Term 3" } => {
+    const termParsed =
+      parseSubjectEnrollmentTerm(row.term) ?? defaultPeriod.term;
+    const yearInt = enrollmentYearFromAssignmentString(row.academic_year);
+    return { year: yearInt, term: termParsed };
+  };
+
+  const termIndex = (t: "Term 1" | "Term 2" | "Term 3"): number =>
+    t === "Term 3" ? 3 : t === "Term 2" ? 2 : 1;
+
+  // Latest term/year where the teacher has recorded any mark in the gradebook.
+  // If none, fall back to current school period.
+  let activeYear = defaultPeriod.academicYear;
+  let activeTerm = defaultPeriod.term;
   for (const row of gradebookRows) {
+    if (!enteredScoreAssignments.has(row.id)) continue;
+    const p = periodForAssignment(row);
+    const activeScore = activeYear * 10 + termIndex(activeTerm);
+    const score = p.year * 10 + termIndex(p.term);
+    if (score > activeScore) {
+      activeYear = p.year;
+      activeTerm = p.term;
+    }
+  }
+
+  const activeGradebookRows = gradebookRows.filter((row) => {
+    const p = periodForAssignment(row);
+    return p.year === activeYear && p.term === activeTerm;
+  });
+
+  let pendingGrades = 0;
+  const pendingSubjects = new Set<string>();
+  for (const row of activeGradebookRows) {
     const rosterIds = await rosterStudentIdsForGradebookAssignment(row);
     const scores = scoresByAssignment.get(row.id) ?? new Map();
+    let anyMissingForAssignment = false;
     for (const sid of rosterIds) {
       if (!scoreIsEntered(scores.get(sid))) {
         pendingGrades += 1;
+        anyMissingForAssignment = true;
       }
     }
+    if (anyMissingForAssignment) pendingSubjects.add(row.subject);
   }
+
+  const activeAnyScoreEntered = activeGradebookRows.some((r) =>
+    enteredScoreAssignments.has(r.id)
+  );
 
   const options = await getTeacherTeachingClasses(user.id);
   const assignedClassIds = [...new Set(options.map((o) => o.classId))];
@@ -367,8 +410,7 @@ export default async function TeacherDashboardPage() {
     }[];
 
   const rows = options;
-  const { academicYear: enrollmentYear, term: enrollmentTerm } =
-    getCurrentAcademicYearAndTerm();
+  const { academicYear: enrollmentYear, term: enrollmentTerm } = defaultPeriod;
 
   const enrollmentKey = (classId: string, subjectId: string) =>
     `${classId}\0${subjectId}`;
@@ -444,10 +486,17 @@ export default async function TeacherDashboardPage() {
       ? "Open a class below to view your class list."
       : "Records saved for today";
 
+  const termLabel = `${activeTerm}, ${activeYear}`;
   const gradesSubtext =
-    pendingGrades === 0
-      ? "No marks recorded yet."
-      : "Student score slots still empty";
+    activeGradebookRows.length === 0
+      ? `No assignments yet for ${termLabel}.`
+      : !activeAnyScoreEntered
+        ? "No marks recorded yet."
+        : pendingGrades === 0
+          ? `All marks entered for ${termLabel}.`
+          : pendingSubjects.size === 1
+            ? `1 subject still needs marks for ${termLabel}.`
+            : `${pendingSubjects.size} subjects still need marks for ${termLabel}.`;
 
   const lessonsSubtext =
     upcomingLessons === 0
@@ -459,7 +508,7 @@ export default async function TeacherDashboardPage() {
     insightMessage =
       "You have not opened your class list today — view a class below.";
   } else if (pendingGrades > 0) {
-    insightMessage = `You have ${pendingGrades} pending mark slot${pendingGrades === 1 ? "" : "s"} to enter across your classes.`;
+    insightMessage = `You have ${pendingGrades} pending mark slot${pendingGrades === 1 ? "" : "s"} to enter for ${termLabel} across your classes.`;
   } else {
     insightMessage =
       "You're up to date on class lists and marks for now. Check upcoming lessons in Today Overview.";

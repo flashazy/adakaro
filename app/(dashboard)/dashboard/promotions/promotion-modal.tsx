@@ -16,6 +16,7 @@ import {
   loadClassStudentsForPromotionAction,
 } from "./actions";
 import type { PromotionClassRow, PromotionDecision } from "@/lib/promotions/types";
+import Link from "next/link";
 
 const DECISION_LABELS: Record<PromotionDecision, string> = {
   promote: "Promote",
@@ -68,6 +69,7 @@ export function PromotionModal({
   const [minAverageGrade, setMinAverageGrade] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -83,6 +85,7 @@ export function PromotionModal({
     setLoading(true);
     setLoadError(null);
     setSubmitError(null);
+    setShowIncompleteWarning(false);
     const result = await loadClassStudentsForPromotionAction(
       classRow.id,
       academicYear
@@ -96,6 +99,7 @@ export function PromotionModal({
     setNextClassName(result.nextClassName);
     setRulesMode(result.rulesMode);
     setMinAverageGrade(result.minAverageGrade);
+    setShowIncompleteWarning(result.reportCardsIncompleteWarning === true);
     setStudents(
       result.students.map((s) => ({
         id: s.id,
@@ -368,6 +372,16 @@ export function PromotionModal({
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
                 {loadError}
               </p>
+              {loadError.toLowerCase().includes("no report cards found") ? (
+                <div className="mt-3">
+                  <Link
+                    href="/teacher-dashboard/report-cards"
+                    className="inline-flex items-center justify-center rounded-lg bg-school-primary px-3 py-2 text-sm font-medium text-white hover:brightness-105"
+                  >
+                    Go to Report Cards
+                  </Link>
+                </div>
+              ) : null}
             </div>
           ) : students.length === 0 ? (
             <div className="px-4 py-6 sm:px-6">
@@ -378,6 +392,12 @@ export function PromotionModal({
           ) : (
             <>
               <div className="sticky top-0 z-10 shrink-0 space-y-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900 sm:px-6">
+                {showIncompleteWarning ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                    Some students have incomplete report cards. You can still review
+                    the class, but promotion decisions may be affected.
+                  </div>
+                ) : null}
                 <div className="relative">
                   <Search
                     className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -533,7 +553,7 @@ export function PromotionModal({
                             const avgLabel =
                               s.term2AveragePercent != null
                                 ? `${s.term2AveragePercent}%`
-                                : "—";
+                                : "No report avg";
                             const reportLabel =
                               s.term2ReportCardStatus === "approved"
                                 ? "Generated"
@@ -541,6 +561,18 @@ export function PromotionModal({
                                     "pending_approval"
                                   ? "Pending approval"
                                   : "Not generated";
+                            const meetsMinimum =
+                              minAverageGrade != null &&
+                              s.term2AveragePercent != null &&
+                              s.term2AveragePercent >= minAverageGrade;
+                            const avgTone =
+                              s.term2AveragePercent == null
+                                ? "text-slate-500 dark:text-zinc-400"
+                                : minAverageGrade == null
+                                  ? "text-slate-800 dark:text-zinc-200"
+                                  : meetsMinimum
+                                    ? "text-emerald-700 dark:text-emerald-300"
+                                    : "text-amber-800 dark:text-amber-200";
                             return (
                               <tr
                                 key={s.id}
@@ -585,8 +617,20 @@ export function PromotionModal({
                                 <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 dark:text-zinc-400">
                                   {s.admission_number?.trim() || "—"}
                                 </td>
-                                <td className="whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums text-slate-800 dark:text-zinc-200">
+                                <td
+                                  className={`whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums ${avgTone}`}
+                                >
                                   {avgLabel}
+                                  {s.term2AveragePercent == null ? (
+                                    <span className="ml-2 text-xs font-normal text-slate-500 dark:text-zinc-400">
+                                      {s.term2ReportCardStatus === "approved"
+                                        ? "Generate again"
+                                        : s.term2ReportCardStatus ===
+                                            "pending_approval"
+                                          ? "Approve report card"
+                                          : "Generate/approve Term 2 report card"}
+                                    </span>
+                                  ) : null}
                                 </td>
                                 <td className="px-3 py-2.5">
                                   <select
@@ -611,7 +655,13 @@ export function PromotionModal({
                                       <option
                                         key={d}
                                         value={d}
-                                        disabled={d === "promote" && !s.hasTerm2ReportCard}
+                                        disabled={
+                                          d === "promote" &&
+                                          (!s.canPromote ||
+                                            s.term2AveragePercent == null ||
+                                            (minAverageGrade != null &&
+                                              s.term2AveragePercent < minAverageGrade))
+                                        }
                                       >
                                         {DECISION_LABELS_LONG[d]}
                                       </option>

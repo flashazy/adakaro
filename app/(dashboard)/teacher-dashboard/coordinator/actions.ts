@@ -1190,6 +1190,8 @@ export async function generateReportCardsForClassAction(
 
     let allSubjectsEmpty = true;
     const commentRows: Record<string, unknown>[] = [];
+    let completedSubjectsCount = 0;
+    let totalScore = 0;
     const perSubject =
       computedByStudent.get(stud.id) ??
       new Map<
@@ -1210,6 +1212,10 @@ export async function generateReportCardsForClassAction(
       const avg = computed.avg;
 
       if (exam1Pct != null || exam2Pct != null) allSubjectsEmpty = false;
+      if (avg != null) {
+        completedSubjectsCount += 1;
+        totalScore += avg;
+      }
 
       const letter =
         avg != null ? letterGradeFromPercent(avg, coordinatorSchoolLevel) : null;
@@ -1247,6 +1253,14 @@ export async function generateReportCardsForClassAction(
     }
 
     if (allSubjectsEmpty) studentsMissingAllScores += 1;
+
+    const subjectsCount = subjectList.length;
+    const isComplete =
+      subjectsCount > 0 && completedSubjectsCount >= subjectsCount;
+    const averageScore =
+      subjectsCount > 0
+        ? Math.round((totalScore / subjectsCount) * 10) / 10
+        : null;
 
     if (commentRows.length > 0) {
       if (existingCardId) {
@@ -1297,6 +1311,20 @@ export async function generateReportCardsForClassAction(
     } else if (!existingCardId) {
       generated += 1;
     }
+
+    // Persist report-card summary values used by promotions & dashboards.
+    // Uses the same computed per-subject averages we just generated.
+    await admin
+      .from("report_cards")
+      .update({
+        total_score: subjectsCount > 0 ? Math.round(totalScore * 10) / 10 : null,
+        average_score: averageScore,
+        subjects_count: subjectsCount || null,
+        completed_subjects_count: completedSubjectsCount || null,
+        is_complete: isComplete,
+        summary_calculated_at: new Date().toISOString(),
+      })
+      .eq("id", reportCardId);
   }
 
   // `skipped` in the return value counts existing cards that had their rows

@@ -66,6 +66,58 @@ function mapReportCardCommentRow(row: TeacherReportCardCommentSelectRow): Report
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
 
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+async function updateReportCardSummary(
+  admin: AdminDb,
+  reportCardId: string
+): Promise<void> {
+  const { data: rows } = await admin
+    .from("teacher_report_card_comments")
+    .select("subject, calculated_score, score_percent")
+    .eq("report_card_id", reportCardId);
+
+  const list = (rows ?? []) as {
+    subject: string;
+    calculated_score?: number | string | null;
+    score_percent?: number | string | null;
+  }[];
+
+  const subjects = new Set<string>();
+  let completed = 0;
+  let total = 0;
+
+  for (const r of list) {
+    const subj = (r.subject ?? "").trim();
+    if (subj) subjects.add(subj);
+
+    const raw = r.calculated_score ?? r.score_percent ?? null;
+    if (raw == null || String(raw).trim() === "") continue;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) continue;
+    completed += 1;
+    total += n;
+  }
+
+  const subjectsCount = subjects.size;
+  const isComplete = subjectsCount > 0 && completed >= subjectsCount;
+  const average = subjectsCount > 0 ? round1(total / subjectsCount) : null;
+
+  await admin
+    .from("report_cards")
+    .update({
+      total_score: subjectsCount > 0 ? round1(total) : null,
+      average_score: average,
+      subjects_count: subjectsCount || null,
+      completed_subjects_count: completed || null,
+      is_complete: isComplete,
+      summary_calculated_at: new Date().toISOString(),
+    })
+    .eq("id", reportCardId);
+}
+
 /**
  * If the card was submitted for review, any further teacher save means the
  * report changed — put it back to draft so the list/preview match "still editing"
@@ -352,6 +404,7 @@ export async function upsertReportCardComment(input: {
       rc.id,
       user.id
     );
+    await updateReportCardSummary(admin, rc.id);
     return {
       ok: true,
       reportCardId: rc.id,
@@ -413,6 +466,7 @@ export async function upsertReportCardComment(input: {
     rc.id,
     user.id
   );
+  await updateReportCardSummary(admin, rc.id);
   return {
     ok: true,
     reportCardId: rc.id,

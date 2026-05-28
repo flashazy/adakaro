@@ -15,7 +15,6 @@ import {
 import type { Database } from "@/types/supabase";
 import { resolveNextClassId } from "@/lib/promotions/resolve-next-class";
 import { resolvePromotionRuleForClass } from "@/lib/promotions/resolve-promotion-rule";
-import { computeTerm2ReportCardAveragesForStudents } from "@/lib/promotions/compute-term2-report-card-averages";
 import {
   getCachedTerm2PromotionStats,
   invalidatePromotionStatsCache,
@@ -473,23 +472,128 @@ export async function loadClassStudentsForPromotionAction(
 
     const rulesMode = promotionRule != null ? "auto" : "manual";
 
-    const { statsByStudentId } = await getCachedTerm2PromotionStats(dataClient, {
-      classId,
-      academicYear,
-      studentIds,
-    });
+    const yearStr = String(academicYear);
+    const term = "Term 2";
+
+    const { data: reportCards } = await (dataClient as any)
+      .from("report_cards")
+      .select("id, student_id, status, average_score, is_complete")
+      .eq("school_id", schoolId)
+      .eq("academic_year", yearStr)
+      .eq("term", term)
+      .in("class_id", studentClassIds)
+      .in("student_id", studentIds);
+
+    const rcList = (reportCards ?? []) as {
+      id: string;
+      student_id: string;
+      status: "draft" | "pending_review" | "approved" | "changes_requested";
+      average_score: number | string | null;
+      is_complete: boolean | null;
+    }[];
+
+    if (studentIds.length > 0 && rcList.length === 0) {
+      return {
+        error: `No report cards found for ${term}, ${academicYear}. Generate report cards first before promoting this class.`,
+      };
+    }
+
+    // Backfill missing summary values for older report cards that were created
+    // before `report_cards.average_score` existed (or before it was populated).
+    const missingAvgCardIds = rcList
+      .filter((r) => r.average_score == null)
+      .map((r) => r.id);
+
+    if (missingAvgCardIds.length > 0) {
+      const { data: commentRows } = await (dataClient as any)
+        .from("teacher_report_card_comments")
+        .select("report_card_id, subject, calculated_score, score_percent")
+        .in("report_card_id", missingAvgCardIds);
+
+      const rows = (commentRows ?? []) as {
+        report_card_id: string;
+        subject: string;
+        calculated_score?: number | string | null;
+        score_percent?: number | string | null;
+      }[];
+
+      const byCard = new Map<
+        string,
+        { subjects: Set<string>; total: number; completed: number }
+      >();
+
+      for (const r of rows) {
+        const cardId = (r.report_card_id ?? "").trim();
+        if (!cardId) continue;
+        const subj = (r.subject ?? "").trim();
+        const agg =
+          byCard.get(cardId) ??
+          { subjects: new Set<string>(), total: 0, completed: 0 };
+        if (subj) agg.subjects.add(subj);
+        const raw = r.calculated_score ?? r.score_percent ?? null;
+        if (raw != null && String(raw).trim() !== "") {
+          const n = Number(raw);
+          if (Number.isFinite(n)) {
+            agg.total += n;
+            agg.completed += 1;
+          }
+        }
+        byCard.set(cardId, agg);
+      }
+
+      const updates = [...byCard.entries()].map(([id, agg]) => {
+        const subjectsCount = agg.subjects.size;
+        const avg =
+          subjectsCount > 0
+            ? Math.round((agg.total / subjectsCount) * 10) / 10
+            : null;
+        const isComplete = subjectsCount > 0 && agg.completed >= subjectsCount;
+        return {
+          id,
+          total_score: subjectsCount > 0 ? Math.round(agg.total * 10) / 10 : null,
+          average_score: avg,
+          subjects_count: subjectsCount || null,
+          completed_subjects_count: agg.completed || null,
+          is_complete: isComplete,
+          summary_calculated_at: new Date().toISOString(),
+        };
+      });
+
+      if (updates.length > 0) {
+        await (dataClient as any).from("report_cards").upsert(updates);
+      }
+
+      // Refresh local list with backfilled values so the modal shows averages immediately.
+      for (const rc of rcList) {
+        const u = updates.find((x) => x.id === rc.id);
+        if (u) {
+          (rc as any).average_score = u.average_score;
+          (rc as any).is_complete = u.is_complete;
+        }
+      }
+    }
+
+    const rcByStudent = new Map(rcList.map((r) => [r.student_id, r] as const));
+    const hasIncomplete = rcList.some((r) => r.is_complete === false);
 
     return {
       students: students.map((s) => {
-        const stats = statsByStudentId.get(s.id);
-        const term2AveragePercent = stats?.term2AveragePercent ?? null;
-        const hasTerm2ReportCard = stats?.hasTerm2ReportCard ?? false;
+        const rc = rcByStudent.get(s.id) ?? null;
+        const hasTerm2ReportCard = rc != null;
+        const term2AveragePercent =
+          rc?.average_score != null && Number.isFinite(Number(rc.average_score))
+            ? Math.round(Number(rc.average_score) * 10) / 10
+            : null;
         const term2ReportCardStatus =
-          stats?.term2ReportCardStatus ?? "not_generated";
-        const canPromote = stats?.canPromote ?? false;
+          rc?.status === "approved"
+            ? "approved"
+            : rc != null
+              ? "pending_approval"
+              : "not_generated";
+        const canPromote = rc?.status === "approved";
 
         const suggestedDecision =
-          promotionRule && term2AveragePercent != null
+          promotionRule && canPromote && term2AveragePercent != null
             ? suggestPromotionDecision(term2AveragePercent, promotionRule)
             : null;
 
@@ -509,6 +613,7 @@ export async function loadClassStudentsForPromotionAction(
       rulesMode,
       minAverageGrade: promotionRule?.minAverageGrade ?? null,
       ruleSource: promotionRule?.source ?? null,
+      reportCardsIncompleteWarning: hasIncomplete,
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Something went wrong." };

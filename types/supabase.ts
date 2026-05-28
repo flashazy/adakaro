@@ -2302,6 +2302,12 @@ export interface Database {
           teacher_id: string;
           term: string;
           academic_year: string;
+          total_score: number | null;
+          average_score: number | null;
+          subjects_count: number | null;
+          completed_subjects_count: number | null;
+          is_complete: boolean;
+          summary_calculated_at: string | null;
           status:
             | "draft"
             | "pending_review"
@@ -2323,6 +2329,12 @@ export interface Database {
           teacher_id: string;
           term?: string;
           academic_year?: string;
+          total_score?: number | null;
+          average_score?: number | null;
+          subjects_count?: number | null;
+          completed_subjects_count?: number | null;
+          is_complete?: boolean;
+          summary_calculated_at?: string | null;
           status?:
             | "draft"
             | "pending_review"
@@ -2343,6 +2355,12 @@ export interface Database {
           teacher_id?: string;
           term?: string;
           academic_year?: string;
+          total_score?: number | null;
+          average_score?: number | null;
+          subjects_count?: number | null;
+          completed_subjects_count?: number | null;
+          is_complete?: boolean;
+          summary_calculated_at?: string | null;
           status?:
             | "draft"
             | "pending_review"

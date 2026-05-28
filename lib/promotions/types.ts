@@ -62,6 +62,8 @@ export interface LoadClassPromotionStudentsResult {
   rulesMode: "manual" | "auto";
   minAverageGrade: number | null;
   ruleSource: "school_default" | "class_override" | null;
+  /** True when at least one report card exists but isn't complete. */
+  reportCardsIncompleteWarning?: boolean;
 }
 
 export interface ApplyPromotionEntry {
