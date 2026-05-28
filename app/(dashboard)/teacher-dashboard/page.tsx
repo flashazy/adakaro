@@ -339,7 +339,7 @@ export default async function TeacherDashboardPage() {
   // Latest term/year where the teacher has recorded any mark in the gradebook.
   // If none, fall back to current school period.
   let activeYear = defaultPeriod.academicYear;
-  let activeTerm = defaultPeriod.term;
+  let activeTerm: "Term 1" | "Term 2" | "Term 3" = defaultPeriod.term;
   for (const row of gradebookRows) {
     if (!enteredScoreAssignments.has(row.id)) continue;
     const p = periodForAssignment(row);
