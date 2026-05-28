@@ -15,6 +15,7 @@ import {
 import type { Database } from "@/types/supabase";
 import { resolveNextClassId } from "@/lib/promotions/resolve-next-class";
 import { resolvePromotionRuleForClass } from "@/lib/promotions/resolve-promotion-rule";
+import { computeTerm2ReportCardAveragesForStudents } from "@/lib/promotions/compute-term2-report-card-averages";
 import {
   getCachedTerm2PromotionStats,
   invalidatePromotionStatsCache,
