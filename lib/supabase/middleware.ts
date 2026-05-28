@@ -1,6 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import {
+  isParentProfileRole,
+  isSchoolAdminProfileRole,
+  isTeacherProfileRole,
+  parentMustChangePassword,
+  teacherMustChangePassword,
+} from "@/lib/auth-password-gate";
+import { profilePasswordGateFromUserMetadata } from "@/lib/auth-password-gate";
+import {
+  fetchProfilePasswordGateRow,
+  type ProfilePasswordGateFetchRow,
+} from "@/lib/fetch-profile-password-gate-row";
 import { TEACHER_TEMP_EXPIRED_ERROR } from "@/lib/teacher-temp-password-constants";
 import type { Database } from "@/types/supabase";
 
@@ -262,15 +274,8 @@ export async function updateSession(request: NextRequest) {
             ? "capture_card_user"
             : "parent";
 
-    if (
-      isAuthPage ||
-      isProtectedRoute ||
-      isSchoolSuspendedPage ||
-      isPaymentPage ||
-      isCaptureCardRoute ||
-      isPasswordSetupPage
-    ) {
-      // SECURITY DEFINER — reliable even if profiles SELECT is flaky for this user.
+    // Always resolve role from DB for signed-in users (not only dashboard paths).
+    {
       const { data: rpcSuper, error: rpcSuperErr } = await supabase.rpc(
         "is_super_admin",
         {} as never
@@ -308,9 +313,6 @@ export async function updateSession(request: NextRequest) {
         }
       }
 
-      // If profiles SELECT missed the row (RLS timing) but JWT metadata defaulted to
-      // parent, we would send teachers parent-dashboard ↔ teacher-dashboard in a loop.
-      // is_teacher() is SECURITY DEFINER (see migration 00048).
       if (
         role !== "super_admin" &&
         role !== "teacher" &&
@@ -387,83 +389,73 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    if (role === "teacher" || role === "admin") {
-      const { data: profPw } = await supabase
-        .from("profiles")
-        .select(
-          "role, password_changed, password_forced_reset, teacher_temp_password_expires_at"
-        )
-        .eq("id", typedUser.id)
-        .maybeSingle();
-      const pw = profPw as {
-        role?: string;
-        password_changed?: boolean;
-        password_forced_reset?: boolean;
-        teacher_temp_password_expires_at?: string | null;
-      } | null;
+    let profilePwRow: ProfilePasswordGateFetchRow | null = null;
 
-      const dbRole = (pw?.role ?? "").toLowerCase().trim();
-      /** `role` can be "teacher" when a school admin is also in `is_teacher()`; trust `profiles.role` for password rules. */
-      const isSchoolAdminInProfile = dbRole === "admin";
-      const isTeacherInProfile =
-        dbRole === "teacher" || (dbRole === "" && role === "teacher");
-
-      if (isSchoolAdminInProfile) {
-        // Never apply teacher temp-password or forced /change-password flows to school admins.
-      } else if (isTeacherInProfile) {
-        if (
-          pw?.password_forced_reset === true &&
-          pw.teacher_temp_password_expires_at &&
-          new Date(pw.teacher_temp_password_expires_at).getTime() <= Date.now()
-        ) {
-          await supabase.auth.signOut();
-          const url = request.nextUrl.clone();
-          url.pathname = "/login";
-          url.searchParams.set("error", TEACHER_TEMP_EXPIRED_ERROR);
-          return NextResponse.redirect(url);
-        }
-
-        const mustChange =
-          pw?.password_changed === false || pw?.password_forced_reset === true;
-        if (mustChange) {
-          const isChangePasswordPage = pathname.startsWith("/change-password");
-          const isAuthApi = pathname.startsWith("/api/auth");
-          if (!isChangePasswordPage && !isAuthApi) {
-            if (pathname.startsWith("/api/")) {
-              return NextResponse.json(
-                {
-                  error: "You must change your password before continuing.",
-                },
-                { status: 403 }
-              );
-            }
-            const url = request.nextUrl.clone();
-            url.pathname = "/change-password";
-            url.searchParams.set(
-              "next",
-              `${pathname}${request.nextUrl.search || ""}`
-            );
-            return NextResponse.redirect(url);
-          }
+    if (
+      role === "teacher" ||
+      role === "parent" ||
+      role === "admin"
+    ) {
+      profilePwRow = await fetchProfilePasswordGateRow(typedUser.id);
+      if (!profilePwRow) {
+        const fromMeta = profilePasswordGateFromUserMetadata(
+          typedUser.user_metadata
+        );
+        if (fromMeta) {
+          profilePwRow = fromMeta as ProfilePasswordGateFetchRow;
         }
       }
-    }
 
-    if (role === "parent") {
-      const { data: prRec } = await supabase
-        .from("profiles")
-        .select(
-          "recovery_reset_required, password_forced_reset, must_change_password"
-        )
-        .eq("id", typedUser.id)
-        .maybeSingle();
-      const r = prRec as {
-        recovery_reset_required?: boolean;
-        password_forced_reset?: boolean;
-        must_change_password?: boolean;
-      } | null;
+      if (debug || isTeacherRoute) {
+        console.info("[middleware][password-flags]", {
+          pathname,
+          userId: typedUser.id,
+          middlewareRole: role,
+          profileRole: profilePwRow?.role ?? null,
+          must_change_password: profilePwRow?.must_change_password ?? null,
+          password_forced_reset: profilePwRow?.password_forced_reset ?? null,
+          password_changed: profilePwRow?.password_changed ?? null,
+          profileRowLoaded: profilePwRow != null,
+        });
+      }
 
-      if (r?.must_change_password === true) {
+      if (
+        isTeacherRoute &&
+        isTeacherProfileRole(profilePwRow?.role) &&
+        !isSchoolAdminProfileRole(profilePwRow?.role) &&
+        (profilePwRow?.must_change_password === true ||
+          profilePwRow?.password_forced_reset === true ||
+          profilePwRow?.password_changed !== true)
+      ) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/change-password";
+        url.searchParams.set(
+          "next",
+          `${pathname}${request.nextUrl.search || ""}`
+        );
+        return NextResponse.redirect(url);
+      }
+
+      if (
+        isTeacherProfileRole(profilePwRow?.role) &&
+        !isSchoolAdminProfileRole(profilePwRow?.role) &&
+        profilePwRow?.password_forced_reset === true &&
+        profilePwRow.teacher_temp_password_expires_at &&
+        new Date(profilePwRow.teacher_temp_password_expires_at).getTime() <=
+          Date.now()
+      ) {
+        await supabase.auth.signOut();
+        const url = request.nextUrl.clone();
+        url.pathname = "/login";
+        url.searchParams.set("error", TEACHER_TEMP_EXPIRED_ERROR);
+        return NextResponse.redirect(url);
+      }
+
+      const mustChangePassword =
+        teacherMustChangePassword(profilePwRow) ||
+        parentMustChangePassword(profilePwRow);
+
+      if (mustChangePassword) {
         const isChangePasswordPage = pathname.startsWith("/change-password");
         const isAuthApi = pathname.startsWith("/api/auth");
         if (!isChangePasswordPage && !isAuthApi) {
@@ -485,30 +477,51 @@ export async function updateSession(request: NextRequest) {
         }
       }
 
-      const needPasswordReset =
-        r?.recovery_reset_required === true || r?.password_forced_reset === true;
-      if (needPasswordReset) {
-        const isResetPasswordPage = pathname.startsWith("/reset-password");
-        const isAuthApi = pathname.startsWith("/api/auth");
-        if (!isResetPasswordPage && !isAuthApi) {
-          if (pathname.startsWith("/api/")) {
-            return NextResponse.json(
-              {
-                error:
-                  "Set a new password in account recovery before continuing.",
-              },
-              { status: 403 }
-            );
+      if (isParentProfileRole(profilePwRow?.role)) {
+        const needPasswordReset =
+          profilePwRow?.recovery_reset_required === true ||
+          profilePwRow?.password_forced_reset === true;
+        if (needPasswordReset) {
+          const isResetPasswordPage = pathname.startsWith("/reset-password");
+          const isAuthApi = pathname.startsWith("/api/auth");
+          if (!isResetPasswordPage && !isAuthApi) {
+            if (pathname.startsWith("/api/")) {
+              return NextResponse.json(
+                {
+                  error:
+                    "Set a new password in account recovery before continuing.",
+                },
+                { status: 403 }
+              );
+            }
+            const url = request.nextUrl.clone();
+            url.pathname = "/reset-password";
+            return NextResponse.redirect(url);
           }
-          const url = request.nextUrl.clone();
-          url.pathname = "/reset-password";
-          return NextResponse.redirect(url);
         }
       }
     }
 
     // Redirect authenticated users away from auth pages.
     if (isAuthPage) {
+      if (
+        teacherMustChangePassword(profilePwRow) ||
+        parentMustChangePassword(profilePwRow)
+      ) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/change-password";
+        return NextResponse.redirect(url);
+      }
+      if (
+        isParentProfileRole(profilePwRow?.role) &&
+        (profilePwRow?.recovery_reset_required === true ||
+          profilePwRow?.password_forced_reset === true)
+      ) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/reset-password";
+        return NextResponse.redirect(url);
+      }
+
       const url = request.nextUrl.clone();
       if (role === "super_admin") {
         url.pathname = "/super-admin";

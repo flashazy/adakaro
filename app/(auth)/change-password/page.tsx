@@ -1,5 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  parentMustChangePassword,
+  teacherMustChangePassword,
+} from "@/lib/auth-password-gate";
+import {
+  fetchProfilePasswordGateRow,
+  fetchProfilePasswordGateRowForUser,
+} from "@/lib/fetch-profile-password-gate-row";
 import { ChangePasswordForm } from "./change-password-form";
 
 export const metadata = {
@@ -20,46 +28,29 @@ export default async function ChangePasswordPage({
     redirect("/login");
   }
 
-  const { data: profileRow } = await supabase
-    .from("profiles")
-    .select("role, password_changed, password_forced_reset, must_change_password")
-    .eq("id", user.id)
-    .maybeSingle();
+  const pr = await fetchProfilePasswordGateRowForUser(
+    user.id,
+    user.user_metadata
+  );
 
-  const pr = profileRow as {
-    role: string;
-    password_changed: boolean | null;
-    password_forced_reset: boolean;
-    must_change_password?: boolean;
-  } | null;
+  if (!pr) {
+    redirect("/login");
+  }
 
-  if (pr?.role === "super_admin") {
+  if (pr.role === "super_admin") {
     redirect("/super-admin");
   }
-  if (pr?.role === "admin") {
+  if (pr.role === "admin") {
     redirect("/dashboard");
   }
 
-  const mustChangeTeacher =
-    pr?.role === "teacher" &&
-    (pr.password_changed === false || pr.password_forced_reset === true);
-  const mustChangeParent =
-    pr?.role === "parent" && pr.must_change_password === true;
-
-  if (!mustChangeTeacher && !mustChangeParent) {
-    if (pr?.role === "teacher") {
-      redirect("/teacher-dashboard");
-    }
-    if (pr?.role === "parent") {
-      redirect("/parent-dashboard");
-    }
-    redirect("/dashboard");
-  }
+  const mustChangeTeacher = teacherMustChangePassword(pr);
+  const mustChangeParent = parentMustChangePassword(pr);
 
   const sp = await searchParams;
   const nextParam = sp?.next?.trim() ?? "";
   const defaultNext =
-    pr?.role === "parent" ? "/parent-dashboard" : "/teacher-dashboard";
+    pr.role === "parent" ? "/parent-dashboard" : "/teacher-dashboard";
   const nextPath =
     nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam

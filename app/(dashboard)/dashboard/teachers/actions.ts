@@ -319,6 +319,7 @@ export async function addTeacherAction(
           full_name: fullName,
           role: "teacher",
           password_changed: false,
+          must_change_password: true,
         },
       });
 
@@ -336,6 +337,7 @@ export async function addTeacherAction(
         full_name: fullName,
         role: "teacher",
         password_changed: false,
+        must_change_password: true,
       } satisfies ProfileUpdate)
       .eq("id", createdUserId);
 
@@ -525,6 +527,7 @@ export async function bulkAddTeachersAction(input: {
             full_name: entry.display,
             role: "teacher",
             password_changed: false,
+            must_change_password: true,
           },
         });
 
@@ -543,6 +546,7 @@ export async function bulkAddTeachersAction(input: {
           full_name: entry.display,
           role: "teacher",
           password_changed: false,
+          must_change_password: true,
         } satisfies ProfileUpdate)
         .eq("id", createdUserId);
 

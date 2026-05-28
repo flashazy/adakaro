@@ -1689,13 +1689,33 @@ export async function loadGradebookMatrix(
 
   const enrollYear = enrollmentYearFromString(ga.academic_year ?? undefined);
 
-  const studentsList = await getStudentsForSubject(admin, {
+  let studentsList = await getStudentsForSubject(admin, {
     classId: rosterTrim,
     subjectId: subjectIdForEnrollment,
     academicYear: enrollYear,
     term: termParsed,
     enrollmentDateOnOrBefore: null,
   });
+
+  if (studentsList.length === 0 && termParsed === "Term 2") {
+    studentsList = await getStudentsForSubject(admin, {
+      classId: rosterTrim,
+      subjectId: subjectIdForEnrollment,
+      academicYear: enrollYear,
+      term: "Term 1",
+      enrollmentDateOnOrBefore: null,
+    });
+  }
+
+  if (studentsList.length === 0) {
+    studentsList = await getStudentsForSubject(admin, {
+      classId: rosterTrim,
+      subjectId: null,
+      academicYear: enrollYear,
+      term: termParsed,
+      enrollmentDateOnOrBefore: null,
+    });
+  }
 
   const scoreRows = await fetchAllRows<{
     student_id: string;

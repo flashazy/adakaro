@@ -1,24 +1,38 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { touchProfileLastSignInAt } from "@/lib/profiles/touch-last-sign-in";
+import {
+  isParentProfileRole,
+  isTeacherProfileRole,
+  parentMustChangePassword,
+  teacherMustChangePassword,
+} from "@/lib/auth-password-gate";
+import { fetchProfilePasswordGateRowForUser } from "@/lib/fetch-profile-password-gate-row";
 import type { Database } from "@/types/supabase";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase v2 update payload narrows to `never` without generated Relationships
-type Db = any;
+const PASSWORD_CHANGED_SUCCESS_MESSAGE =
+  "Password changed successfully! Redirecting to your dashboard...";
 
 export type ChangePasswordState =
-  | { ok: true }
+  | { ok: true; message: string; redirectTo: string }
   | { ok: false; error: string };
+
+function dashboardPathForRole(role: string | null | undefined): string {
+  const r = (role ?? "").toLowerCase();
+  if (r === "parent") return "/parent-dashboard";
+  if (r === "super_admin") return "/super-admin";
+  if (r === "admin" || r === "finance" || r === "accounts") return "/dashboard";
+  return "/teacher-dashboard";
+}
 
 export async function changeForcedPasswordAction(
   _prev: ChangePasswordState | null,
   formData: FormData
 ): Promise<ChangePasswordState> {
-  const password = String(formData.get("password") ?? "");
-  const confirm = String(formData.get("confirm_password") ?? "");
-  const nextRaw = String(formData.get("next") ?? "").trim();
+  const password = String(formData.get("password") ?? "").trim();
+  const confirm = String(formData.get("confirm_password") ?? "").trim();
 
   if (password.length < 8) {
     return { ok: false, error: "Password must be at least 8 characters." };
@@ -35,28 +49,24 @@ export async function changeForcedPasswordAction(
     return { ok: false, error: "You are not signed in." };
   }
 
-  const { data: profileRow } = await supabase
-    .from("profiles")
-    .select("role, password_changed, password_forced_reset, must_change_password")
-    .eq("id", user.id)
-    .maybeSingle();
+  const pr = await fetchProfilePasswordGateRowForUser(
+    user.id,
+    user.user_metadata
+  );
 
-  const pr = profileRow as {
-    role: string;
-    password_changed: boolean | null;
-    password_forced_reset: boolean;
-    must_change_password?: boolean;
-  } | null;
+  if (!pr) {
+    return { ok: false, error: "Could not load your profile. Try signing in again." };
+  }
 
-  if (pr?.role === "super_admin") {
+  if (pr.role === "super_admin") {
     redirect("/super-admin");
   }
-  if (pr?.role === "admin") {
+  if (pr.role === "admin") {
     redirect("/dashboard");
   }
 
-  const isTeacher = pr?.role === "teacher";
-  const isParent = pr?.role === "parent";
+  const isTeacher = isTeacherProfileRole(pr.role);
+  const isParent = isParentProfileRole(pr.role);
 
   if (!isTeacher && !isParent) {
     return {
@@ -65,35 +75,51 @@ export async function changeForcedPasswordAction(
     };
   }
 
-  const mustTeacher =
-    isTeacher &&
-    (pr.password_changed === false || pr.password_forced_reset === true);
-  const mustParent = isParent && pr.must_change_password === true;
+  const mustChange =
+    teacherMustChangePassword(pr) || parentMustChangePassword(pr);
 
-  if (!mustTeacher && !mustParent) {
+  if (!mustChange) {
     if (isParent) redirect("/parent-dashboard");
     redirect("/teacher-dashboard");
   }
 
-  const { error: authErr } = await supabase.auth.updateUser({ password });
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch {
+    return {
+      ok: false,
+      error:
+        process.env.NODE_ENV === "development"
+          ? "Server misconfiguration: SUPABASE_SERVICE_ROLE_KEY is required."
+          : "Password change is temporarily unavailable. Please try again later.",
+    };
+  }
+
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const { error: authErr } = await supabase.auth.updateUser({
+    password,
+    data: {
+      ...meta,
+      password_changed: true,
+      must_change_password: false,
+      password_forced_reset: false,
+    },
+  });
   if (authErr) {
     return { ok: false, error: authErr.message };
   }
 
   type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
-  const profilePatch: ProfileUpdate = isParent
-    ? {
-        password_changed: true,
-        must_change_password: false,
-        password_forced_reset: false,
-      }
-    : {
-        password_changed: true,
-        password_forced_reset: false,
-        teacher_temp_password_expires_at: null,
-      };
+  const profilePatch: ProfileUpdate = {
+    password_changed: true,
+    password_forced_reset: false,
+    must_change_password: false,
+    last_sign_in_at: new Date().toISOString(),
+    ...(isTeacher ? { teacher_temp_password_expires_at: null } : {}),
+  };
 
-  const { error: profErr } = await (supabase as Db)
+  const { error: profErr } = await admin
     .from("profiles")
     .update(profilePatch)
     .eq("id", user.id);
@@ -107,10 +133,9 @@ export async function changeForcedPasswordAction(
     };
   }
 
-  await touchProfileLastSignInAt(supabase, user.id);
-
-  if (nextRaw.startsWith("/") && !nextRaw.startsWith("//")) {
-    redirect(nextRaw);
-  }
-  redirect(isParent ? "/parent-dashboard" : "/teacher-dashboard");
+  return {
+    ok: true,
+    message: PASSWORD_CHANGED_SUCCESS_MESSAGE,
+    redirectTo: dashboardPathForRole(pr.role),
+  };
 }

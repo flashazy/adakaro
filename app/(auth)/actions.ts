@@ -4,6 +4,11 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  parentMustChangePassword,
+  teacherMustChangePassword,
+} from "@/lib/auth-password-gate";
+import { fetchProfilePasswordGateRowForUser } from "@/lib/fetch-profile-password-gate-row";
 import { resolveLoginEmailForSignIn } from "@/lib/resolve-teacher-login-email";
 import { blockLoginIfTeacherTempPasswordExpired } from "@/lib/teacher-temp-password-expiry";
 import { touchProfileLastSignInAt } from "@/lib/profiles/touch-last-sign-in";
@@ -195,14 +200,6 @@ export async function login(
       };
     }
 
-    const { data: sessionProf } = await supabase
-      .from("profiles")
-      .select(
-        "role, password_changed, password_forced_reset, recovery_reset_required, must_change_password"
-      )
-      .eq("id", user.id)
-      .maybeSingle();
-
     type LoginProfileRow = {
       role: UserRole;
       password_changed?: boolean;
@@ -211,29 +208,32 @@ export async function login(
       must_change_password?: boolean;
     } | null;
 
-    let profileRowTyped = sessionProf as LoginProfileRow;
+    const profileRowTyped = (await fetchProfilePasswordGateRowForUser(
+      user.id,
+      user.user_metadata
+    )) as LoginProfileRow;
 
-    try {
-      const adm = createAdminClient();
-      const { data: adminProf } = await adm
-        .from("profiles")
-        .select(
-          "role, password_changed, password_forced_reset, recovery_reset_required, must_change_password"
-        )
-        .eq("id", user.id)
-        .maybeSingle();
-      if (adminProf) {
-        profileRowTyped = adminProf as LoginProfileRow;
-      }
-    } catch {
-      /* service role unavailable — keep session read */
-    }
+    console.info(`${trace} profile after fetch`, {
+      userId: user.id,
+      fullProfile: profileRowTyped,
+      fromMetadataOnly: profileRowTyped != null && profileRowTyped.role != null,
+    });
 
     const profileRole = profileRowTyped?.role;
-    const passwordChanged = profileRowTyped?.password_changed;
-    const passwordForcedReset = profileRowTyped?.password_forced_reset;
     const recoveryResetRequired = profileRowTyped?.recovery_reset_required;
-    const mustChangePassword = profileRowTyped?.must_change_password === true;
+    const passwordForcedReset = profileRowTyped?.password_forced_reset === true;
+    const mustChangePassword =
+      teacherMustChangePassword(profileRowTyped) ||
+      parentMustChangePassword(profileRowTyped);
+
+    console.info(`${trace} password gate check`, {
+      userId: user.id,
+      teacherMustChange: teacherMustChangePassword(profileRowTyped),
+      parentMustChange: parentMustChangePassword(profileRowTyped),
+      mustChangePassword,
+      password_changed: profileRowTyped?.password_changed,
+      must_change_password: profileRowTyped?.must_change_password,
+    });
 
     const role: UserRole =
       profileRole === "admin" ||
@@ -263,7 +263,16 @@ export async function login(
 
     const next = safeInternalPath(formData.get("next") as string | null);
 
+    console.info(`${trace} post-login routing`, {
+      role,
+      profileRole,
+      isSuper,
+      next,
+      mustChangePassword,
+    });
+
     if (role === "capture_card_user" || profileRole === "capture_card_user") {
+      console.info(`${trace} redirect to /capture-card (capture_card_user)`);
       const { data: ccu } = await supabase
         .from("capture_card_users")
         .select("school_id")
@@ -288,37 +297,37 @@ export async function login(
 
     // Platform super admins always land in super admin unless `next` is explicitly that area.
     if (isSuper) {
+      console.info(`${trace} redirect to /super-admin (isSuper)`);
       if (next?.startsWith("/super-admin")) {
         redirect(next);
       }
       redirect("/super-admin");
     }
 
-    if (
-      role === "teacher" &&
-      (passwordChanged === false || passwordForcedReset === true)
-    ) {
+    if (mustChangePassword) {
+      console.info(`${trace} redirect to /change-password (must_change_password)`);
       const q =
         next && next.startsWith("/") && !next.startsWith("//")
           ? `?next=${encodeURIComponent(next)}`
           : "";
       redirect(`/change-password${q}`);
+    } else {
+      console.info(`${trace} skip /change-password redirect`, {
+        reason: "password gate is false",
+        mustChangePassword,
+      });
     }
-    if (role === "parent" && mustChangePassword) {
-      const q =
-        next && next.startsWith("/") && !next.startsWith("//")
-          ? `?next=${encodeURIComponent(next)}`
-          : "";
-      redirect(`/change-password${q}`);
-    }
+
     if (
       role === "parent" &&
       (recoveryResetRequired === true || passwordForcedReset === true)
     ) {
+      console.info(`${trace} redirect to /reset-password`);
       redirect("/reset-password");
     }
 
     if (next) {
+      console.info(`${trace} redirect via next param`, { next });
       redirect(next);
     }
 
@@ -327,11 +336,21 @@ export async function login(
       profileRole === "finance" ||
       profileRole === "accounts"
     ) {
+      console.info(`${trace} redirect to /dashboard`, { role, profileRole });
       redirect("/dashboard");
     }
     if (role === "teacher") {
+      console.info(`${trace} redirect to /teacher-dashboard`, {
+        role,
+        profileRole,
+        mustChangePassword,
+      });
       redirect("/teacher-dashboard");
     }
+    console.info(`${trace} redirect to /parent-dashboard (fallback)`, {
+      role,
+      profileRole,
+    });
     redirect("/parent-dashboard");
   }
 
