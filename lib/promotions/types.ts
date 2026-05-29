@@ -32,26 +32,25 @@ export interface PromotionStudentWithGrades {
   class_id: string;
   /** Overall average (%) calculated from Term 2 report cards. */
   term2AveragePercent: number | null;
+  /** True when the report card summary indicates no subjects are assigned. */
+  noSubjectsAssigned?: boolean;
+  /** True when subjects exist but no scores have been entered yet. */
+  noScoresEntered?: boolean;
   /**
    * Whether a Term 2 report card row exists for this student (regardless
    * of approval status).
    */
   hasTerm2ReportCard: boolean;
   /**
-   * Term 2 report card status bucket for the promotion modal.
+   * Term 2 report card status for parent-view context (does not gate promotion).
    * - not_generated: no report_cards row exists
-   * - pending_approval: generated but not yet approved
-   * - approved: status = 'approved'
+   * - pending_approval: generated but not approved for parent view
+   * - approved: approved for parent view
    */
   term2ReportCardStatus: "not_generated" | "pending_approval" | "approved";
   /**
-   * Whether "Promote" is allowed for this student.
-   * Only allowed when the Term 2 report card exists and is approved.
-   */
-  canPromote: boolean;
-  /**
    * Suggested decision based on Term 2 average vs school minimum grade.
-   * Only computed when `canPromote` is true and min grade exists.
+   * Only computed when a promotion rule exists and average is available.
    */
   suggestedDecision: PromotionDecision | null;
 }

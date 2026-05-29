@@ -1,28 +1,21 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { resolveClassCluster } from "@/lib/class-cluster";
-import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import {
   buildPromotionGradeDebugReport,
   logPromotionGradeDebugReport,
   type PromotionGradeDebugReport,
 } from "@/lib/promotions/promotion-grade-debug";
-import type { Database } from "@/types/supabase";
 import { resolveNextClassId } from "@/lib/promotions/resolve-next-class";
 import { resolvePromotionRuleForClass } from "@/lib/promotions/resolve-promotion-rule";
 import { computeTerm2ReportCardAveragesForStudents } from "@/lib/promotions/compute-term2-report-card-averages";
-import {
-  getCachedTerm2PromotionStats,
-  invalidatePromotionStatsCache,
-} from "@/lib/promotions/promotion-stats-cache";
+import { invalidatePromotionStatsCache } from "@/lib/promotions/promotion-stats-cache";
 import {
   suggestPromotionDecision,
 } from "@/lib/promotions/suggest-promotion-decision";
+import { requirePromotionsAccess } from "@/lib/promotions/promotions-access.server";
 import type {
   ApplyPromotionEntry,
   ApplyPromotionResult,
@@ -34,52 +27,15 @@ export type PromotionsActionState = {
   success?: string;
 };
 
-async function requireSchoolAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated.");
-
-  const { data: schoolIdRpc } = await supabase.rpc("get_my_school_id");
-  let schoolId =
-    schoolIdRpc != null && String(schoolIdRpc).length > 0
-      ? (schoolIdRpc as string)
-      : null;
-  if (!schoolId) {
-    schoolId = await getSchoolIdForUser(supabase, user.id);
-  }
-  if (!schoolId) throw new Error("No school found.");
-
-  const { data: isAdmin } = await supabase.rpc("is_school_admin", {
-    p_school_id: schoolId,
-  } as never);
-  if (!isAdmin) throw new Error("Only school administrators can manage promotions.");
-
-  return { supabase, schoolId, userId: user.id };
-}
-
-/** Prefer service role for gradebook/scores reads (avoids RLS gaps). */
-function promotionDataClient(
-  sessionClient: SupabaseClient<Database>
-): SupabaseClient<Database> {
-  try {
-    return createAdminClient();
-  } catch {
-    return sessionClient;
-  }
-}
-
 export async function debugPromotionGradesAction(
   classId: string,
   academicYear: number,
   studentNameContains?: string
 ): Promise<{ report: PromotionGradeDebugReport } | { error: string }> {
   try {
-    const { supabase, schoolId } = await requireSchoolAdmin();
-    const dataClient = promotionDataClient(supabase);
+    const { db, schoolId } = await requirePromotionsAccess();
 
-    const report = await buildPromotionGradeDebugReport(dataClient, {
+    const report = await buildPromotionGradeDebugReport(db, {
       schoolId,
       classId,
       academicYear,
@@ -102,8 +58,8 @@ export async function createProgressionTrackAction(
   if (!name) return { error: "Track name is required." };
 
   try {
-    const { supabase, schoolId } = await requireSchoolAdmin();
-    const { error } = await supabase.from("class_progression_tracks").insert({
+    const { db, schoolId } = await requirePromotionsAccess();
+    const { error } = await db.from("class_progression_tracks").insert({
       school_id: schoolId,
       track_name: name,
     } as never);
@@ -125,9 +81,9 @@ export async function createProgressionTrackAction(
 export async function createDefaultProgressionTracksAction(): Promise<PromotionsActionState> {
   const defaults = ["Primary", "Secondary", "A-Level"];
   try {
-    const { supabase, schoolId } = await requireSchoolAdmin();
+    const { db, schoolId } = await requirePromotionsAccess();
     for (const track_name of defaults) {
-      const { error } = await supabase.from("class_progression_tracks").insert({
+      const { error } = await db.from("class_progression_tracks").insert({
         school_id: schoolId,
         track_name,
       } as never);
@@ -148,9 +104,9 @@ export async function updateClassProgressionAction(
   progressionOrder: number | null
 ): Promise<PromotionsActionState> {
   try {
-    const { supabase, schoolId } = await requireSchoolAdmin();
+    const { db, schoolId } = await requirePromotionsAccess();
 
-    const { data: cls, error: clsErr } = await supabase
+    const { data: cls, error: clsErr } = await db
       .from("classes")
       .select("id, school_id")
       .eq("id", classId)
@@ -160,7 +116,7 @@ export async function updateClassProgressionAction(
     if (clsErr || !cls) return { error: "Class not found." };
 
     if (trackId) {
-      const { data: track } = await supabase
+      const { data: track } = await db
         .from("class_progression_tracks")
         .select("id")
         .eq("id", trackId)
@@ -174,7 +130,7 @@ export async function updateClassProgressionAction(
         ? Math.max(0, Math.floor(progressionOrder))
         : null;
 
-    const { error } = await supabase
+    const { error } = await db
       .from("classes")
       .update({
         track_id: trackId,
@@ -203,9 +159,9 @@ export async function applyClassPromotionsAction(
   }
 
   try {
-    const { supabase, schoolId, userId } = await requireSchoolAdmin();
+    const { db, schoolId, userId } = await requirePromotionsAccess();
 
-    const { data: fromClass, error: fromErr } = await supabase
+    const { data: fromClass, error: fromErr } = await db
       .from("classes")
       .select(
         "id, name, school_id, track_id, progression_order, use_promotion_rules"
@@ -218,7 +174,7 @@ export async function applyClassPromotionsAction(
       return { error: "Class not found." };
     }
 
-    const { data: allClasses, error: classesErr } = await supabase
+    const { data: allClasses, error: classesErr } = await db
       .from("classes")
       .select("id, name, track_id, progression_order")
       .eq("school_id", schoolId);
@@ -235,7 +191,7 @@ export async function applyClassPromotionsAction(
     const { nextClassId } = resolveNextClassId(fromClassId, classRows);
 
     const promotionRule = await resolvePromotionRuleForClass(
-      supabase,
+      db,
       schoolId,
       fromClassId,
       {
@@ -246,7 +202,7 @@ export async function applyClassPromotionsAction(
     );
 
     const studentIds = entries.map((e) => e.studentId);
-    const { data: students, error: stErr } = await supabase
+    const { data: students, error: stErr } = await db
       .from("students")
       .select("id, class_id, status, approval_status")
       .eq("school_id", schoolId)
@@ -254,9 +210,8 @@ export async function applyClassPromotionsAction(
 
     if (stErr) return { error: stErr.message };
 
-    const dataClient = promotionDataClient(supabase);
     const { statsByStudentId } = await computeTerm2ReportCardAveragesForStudents(
-      dataClient,
+      db,
       {
         classId: fromClassId,
         academicYear,
@@ -290,13 +245,7 @@ export async function applyClassPromotionsAction(
       }
 
       const stats = statsByStudentId.get(entry.studentId);
-      const canPromote = stats?.canPromote ?? false;
-      let effectiveDecision: typeof entry.decision = entry.decision;
-      // Even if the admin selects "promote", do not apply class changes
-      // until the Term 2 report card is approved.
-      if (entry.decision === "promote" && !canPromote) {
-        effectiveDecision = "repeat";
-      }
+      const effectiveDecision: typeof entry.decision = entry.decision;
 
       let toClassId: string | null = fromClassId;
       let newStatus: string | null = null;
@@ -329,7 +278,7 @@ export async function applyClassPromotionsAction(
       }
 
       if (Object.keys(updatePayload).length > 0) {
-        const { error: upErr } = await supabase
+        const { error: upErr } = await db
           .from("students")
           .update(updatePayload as never)
           .eq("id", entry.studentId)
@@ -352,7 +301,7 @@ export async function applyClassPromotionsAction(
         }
       }
 
-      const { error: logErr } = await supabase.from("student_promotions").insert({
+      const { error: logErr } = await db.from("student_promotions").insert({
         school_id: schoolId,
         student_id: entry.studentId,
         from_class_id: fromClassId,
@@ -403,12 +352,11 @@ export async function loadClassStudentsForPromotionAction(
   classId: string,
   academicYear: number
 ): Promise<LoadClassPromotionStudentsResult | { error: string }> {
+  noStore();
   try {
-    const { supabase, schoolId } = await requireSchoolAdmin();
+    const { db, schoolId } = await requirePromotionsAccess();
 
-    const dataClient = promotionDataClient(supabase);
-
-    const { data: classRow } = await supabase
+    const { data: classRow } = await db
       .from("classes")
       .select("id, name, use_promotion_rules")
       .eq("id", classId)
@@ -417,13 +365,13 @@ export async function loadClassStudentsForPromotionAction(
 
     if (!classRow) return { error: "Class not found." };
 
-    const cluster = await resolveClassCluster(dataClient, classId);
+    const cluster = await resolveClassCluster(db, classId);
     const studentClassIds =
       cluster.isParent && cluster.childClassIds.length > 0
         ? cluster.classIds
         : [classId];
 
-    const { data: allClasses } = await supabase
+    const { data: allClasses } = await db
       .from("classes")
       .select("id, name, track_id, progression_order")
       .eq("school_id", schoolId);
@@ -440,7 +388,7 @@ export async function loadClassStudentsForPromotionAction(
       ? classRows.find((c) => c.id === nextClassId)?.name ?? null
       : null;
 
-    const { data: rows, error } = await supabase
+    const { data: rows, error } = await db
       .from("students")
       .select("id, full_name, admission_number, class_id")
       .eq("school_id", schoolId)
@@ -459,7 +407,7 @@ export async function loadClassStudentsForPromotionAction(
     }[];
 
     const promotionRule = await resolvePromotionRuleForClass(
-      supabase,
+      db,
       schoolId,
       classId,
       {
@@ -476,13 +424,14 @@ export async function loadClassStudentsForPromotionAction(
     const yearStr = String(academicYear);
     const term = "Term 2";
 
-    const { data: reportCards } = await (dataClient as any)
+    const { data: reportCards } = await (db as any)
       .from("report_cards")
-      .select("id, student_id, status, average_score, is_complete")
+      .select(
+        "id, student_id, status, average_score, is_complete, subjects_count, completed_subjects_count"
+      )
       .eq("school_id", schoolId)
       .eq("academic_year", yearStr)
       .eq("term", term)
-      .in("class_id", studentClassIds)
       .in("student_id", studentIds);
 
     const rcList = (reportCards ?? []) as {
@@ -491,6 +440,8 @@ export async function loadClassStudentsForPromotionAction(
       status: "draft" | "pending_review" | "approved" | "changes_requested";
       average_score: number | string | null;
       is_complete: boolean | null;
+      subjects_count?: number | string | null;
+      completed_subjects_count?: number | string | null;
     }[];
 
     if (studentIds.length > 0 && rcList.length === 0) {
@@ -499,102 +450,70 @@ export async function loadClassStudentsForPromotionAction(
       };
     }
 
-    // Backfill missing summary values for older report cards that were created
-    // before `report_cards.average_score` existed (or before it was populated).
-    const missingAvgCardIds = rcList
-      .filter((r) => r.average_score == null)
-      .map((r) => r.id);
+    const className =
+      (classRow as { name?: string }).name ?? "(unknown class)";
 
-    if (missingAvgCardIds.length > 0) {
-      const { data: commentRows } = await (dataClient as any)
-        .from("teacher_report_card_comments")
-        .select("report_card_id, subject, calculated_score, score_percent")
-        .in("report_card_id", missingAvgCardIds);
-
-      const rows = (commentRows ?? []) as {
-        report_card_id: string;
-        subject: string;
-        calculated_score?: number | string | null;
-        score_percent?: number | string | null;
-      }[];
-
-      const byCard = new Map<
-        string,
-        { subjects: Set<string>; total: number; completed: number }
-      >();
-
-      for (const r of rows) {
-        const cardId = (r.report_card_id ?? "").trim();
-        if (!cardId) continue;
-        const subj = (r.subject ?? "").trim();
-        const agg =
-          byCard.get(cardId) ??
-          { subjects: new Set<string>(), total: 0, completed: 0 };
-        if (subj) agg.subjects.add(subj);
-        const raw = r.calculated_score ?? r.score_percent ?? null;
-        if (raw != null && String(raw).trim() !== "") {
-          const n = Number(raw);
-          if (Number.isFinite(n)) {
-            agg.total += n;
-            agg.completed += 1;
-          }
-        }
-        byCard.set(cardId, agg);
+    function explainMissingAverage(rc: (typeof rcList)[number] | null): string {
+      if (!rc) return "no_report_card_row_for_student";
+      if (rc.average_score == null) return "average_score_is_null";
+      const n = Number(rc.average_score);
+      if (!Number.isFinite(n)) {
+        return `average_score_not_finite (raw=${JSON.stringify(rc.average_score)}, typeof=${typeof rc.average_score})`;
       }
-
-      const updates = [...byCard.entries()].map(([id, agg]) => {
-        const subjectsCount = agg.subjects.size;
-        const avg =
-          subjectsCount > 0
-            ? Math.round((agg.total / subjectsCount) * 10) / 10
-            : null;
-        const isComplete = subjectsCount > 0 && agg.completed >= subjectsCount;
-        return {
-          id,
-          total_score: subjectsCount > 0 ? Math.round(agg.total * 10) / 10 : null,
-          average_score: avg,
-          subjects_count: subjectsCount || null,
-          completed_subjects_count: agg.completed || null,
-          is_complete: isComplete,
-          summary_calculated_at: new Date().toISOString(),
-        };
-      });
-
-      if (updates.length > 0) {
-        await (dataClient as any).from("report_cards").upsert(updates);
-      }
-
-      // Refresh local list with backfilled values so the modal shows averages immediately.
-      for (const rc of rcList) {
-        const u = updates.find((x) => x.id === rc.id);
-        if (u) {
-          (rc as any).average_score = u.average_score;
-          (rc as any).is_complete = u.is_complete;
-        }
-      }
+      return "would_display";
     }
+
+    console.log("[promotion-debug] Term 2 report cards query", {
+      className,
+      classId,
+      academicYear,
+      yearStr,
+      term,
+      schoolId,
+      activeStudentCount: studentIds.length,
+      reportCardsFound: rcList.length,
+      reportCardsWithAverageScore: rcList.filter((r) => r.average_score != null)
+        .length,
+      reportCardsWithNullAverageScore: rcList.filter(
+        (r) => r.average_score == null
+      ).length,
+      averageScoreValues: rcList.map((r) => ({
+        student_id: r.student_id,
+        average_score: r.average_score,
+        typeof: typeof r.average_score,
+        subjects_count: r.subjects_count ?? null,
+        status: r.status,
+      })),
+    });
 
     const rcByStudent = new Map(rcList.map((r) => [r.student_id, r] as const));
     const hasIncomplete = rcList.some((r) => r.is_complete === false);
 
-    return {
-      students: students.map((s) => {
+    const mappedStudents = students.map((s) => {
         const rc = rcByStudent.get(s.id) ?? null;
         const hasTerm2ReportCard = rc != null;
-        const term2AveragePercent =
-          rc?.average_score != null && Number.isFinite(Number(rc.average_score))
-            ? Math.round(Number(rc.average_score) * 10) / 10
-            : null;
+
+        const readReportCardNumber = (value: unknown): number | null => {
+          if (value == null || String(value).trim() === "") return null;
+          const n = Number(value);
+          return Number.isFinite(n) ? n : null;
+        };
+
+        const subjectsCount = readReportCardNumber(rc?.subjects_count);
+        const completedCount = readReportCardNumber(rc?.completed_subjects_count);
+        const averageScore = readReportCardNumber(rc?.average_score);
+
+        const noSubjectsAssigned = hasTerm2ReportCard && subjectsCount === 0;
+        const noScoresEntered = hasTerm2ReportCard && averageScore == null;
+        const term2AveragePercent = averageScore;
         const term2ReportCardStatus =
           rc?.status === "approved"
             ? "approved"
             : rc != null
               ? "pending_approval"
               : "not_generated";
-        const canPromote = rc?.status === "approved";
-
         const suggestedDecision =
-          promotionRule && canPromote && term2AveragePercent != null
+          promotionRule && term2AveragePercent != null
             ? suggestPromotionDecision(term2AveragePercent, promotionRule)
             : null;
 
@@ -604,12 +523,55 @@ export async function loadClassStudentsForPromotionAction(
           admission_number: s.admission_number,
           class_id: s.class_id,
           term2AveragePercent,
+          noSubjectsAssigned,
+          noScoresEntered,
           hasTerm2ReportCard,
           term2ReportCardStatus,
-          canPromote,
           suggestedDecision,
         };
+      });
+
+    const displayBlockedReasons = mappedStudents.reduce(
+      (acc, s) => {
+        const rc = rcByStudent.get(s.id) ?? null;
+        const reason =
+          s.term2AveragePercent != null
+            ? "displayed"
+            : explainMissingAverage(rc);
+        acc[reason] = (acc[reason] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+
+    console.log("[promotion-debug] why average_score is not displayed", {
+      className,
+      term,
+      academicYear,
+      studentsWithNoReportAvg: mappedStudents.filter(
+        (s) => s.term2AveragePercent == null
+      ).length,
+      studentsWithDisplayedAvg: mappedStudents.filter(
+        (s) => s.term2AveragePercent != null
+      ).length,
+      displayBlockedReasons,
+      perStudentSample: mappedStudents.slice(0, 15).map((s) => {
+        const rc = rcByStudent.get(s.id) ?? null;
+        return {
+          name: s.full_name,
+          hasTerm2ReportCard: s.hasTerm2ReportCard,
+          average_score: rc?.average_score ?? null,
+          term2AveragePercent: s.term2AveragePercent,
+          whyNotDisplayed:
+            s.term2AveragePercent == null
+              ? explainMissingAverage(rc)
+              : null,
+        };
       }),
+    });
+
+    return {
+      students: mappedStudents,
       nextClassName: nextName,
       rulesMode,
       minAverageGrade: promotionRule?.minAverageGrade ?? null,

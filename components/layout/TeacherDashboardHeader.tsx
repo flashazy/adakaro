@@ -9,7 +9,7 @@ import { Building2 } from "lucide-react";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRoleToggle";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { TeacherAcademicNavDropdown } from "@/components/layout/TeacherAcademicNavDropdown";
+import { TeacherAcademicNavLink } from "@/components/layout/TeacherAcademicNavLink";
 import { useChatInboxUnreadCount } from "@/components/layout/teacher-chat-unread-count";
 
 /** Dexie/sync-queue must not load during SSR (breaks teacher dashboard on webpack). */
@@ -54,7 +54,7 @@ interface TeacherDashboardHeaderProps {
   avatarUrl?: string | null;
   /**
    * True when the teacher has at least one department role (e.g. Discipline).
-   * Passed through for layout parity; the Academic dropdown uses
+   * Passed through for layout parity; the Academic hub link uses
    * `hasAcademicDepartmentRole` only.
    */
   hasDepartmentRole?: boolean;
@@ -265,9 +265,7 @@ export function TeacherDashboardHeader({
                 {label}
               </NavLinkWithLoading>
             ))}
-            {hasAcademicDepartmentRole ? (
-              <TeacherAcademicNavDropdown />
-            ) : null}
+            {hasAcademicDepartmentRole ? <TeacherAcademicNavLink /> : null}
             <NavLinkWithLoading
               href="/teacher-dashboard#my-documents"
               onClick={onMyDocumentsNavClick}
@@ -401,9 +399,7 @@ export function TeacherDashboardHeader({
               {label}
             </NavLinkWithLoading>
           ))}
-          {hasAcademicDepartmentRole ? (
-            <TeacherAcademicNavDropdown />
-          ) : null}
+          {hasAcademicDepartmentRole ? <TeacherAcademicNavLink /> : null}
           <NavLinkWithLoading
             href="/teacher-dashboard#my-documents"
             onClick={onMyDocumentsNavClick}

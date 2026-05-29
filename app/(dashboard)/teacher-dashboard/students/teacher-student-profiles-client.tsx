@@ -9,6 +9,8 @@ import {
   type StudentListRowOption,
 } from "@/lib/student-list-pagination";
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
+import { academicCardBaseClass } from "@/components/academic/academic-ui-styles";
+import { cn } from "@/lib/utils";
 
 export interface TeacherProfileStudentRow {
   id: string;
@@ -30,11 +32,20 @@ function genderLabel(g: string | null | undefined): string {
   return "—";
 }
 
+const viewProfileButtonClass =
+  "inline-flex items-center justify-center rounded-lg border border-[rgb(var(--school-primary-rgb)/0.28)] bg-white px-3 py-1.5 text-xs font-semibold text-school-primary shadow-sm transition-all duration-200 hover:-translate-y-px hover:border-[rgb(var(--school-primary-rgb)/0.4)] hover:bg-[rgb(var(--school-primary-rgb)/0.08)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--school-primary-rgb)/0.35)] focus-visible:ring-offset-2 dark:border-[rgb(var(--school-primary-rgb)/0.35)] dark:bg-zinc-900 dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:focus-visible:ring-offset-zinc-900";
+
+const viewProfileButtonMobileClass =
+  "inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-[rgb(var(--school-primary-rgb)/0.28)] bg-white px-4 py-2 text-sm font-semibold text-school-primary shadow-sm transition-all duration-200 hover:-translate-y-px hover:border-[rgb(var(--school-primary-rgb)/0.4)] hover:bg-[rgb(var(--school-primary-rgb)/0.08)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--school-primary-rgb)/0.35)] focus-visible:ring-offset-2 dark:border-[rgb(var(--school-primary-rgb)/0.35)] dark:bg-zinc-900 dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:focus-visible:ring-offset-zinc-900";
+
 export function TeacherStudentProfilesClient({
   students,
+  presentationVariant = "default",
 }: {
   students: TeacherProfileStudentRow[];
+  presentationVariant?: "default" | "academic";
 }) {
+  const isAcademic = presentationVariant === "academic";
   const [query, setQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState<StudentListRowOption>(5);
@@ -93,7 +104,16 @@ export function TeacherStudentProfilesClient({
   );
 
   return (
-    <div>
+    <div
+      className={
+        isAcademic
+          ? cn(
+              academicCardBaseClass,
+              "p-4 shadow-md ring-1 ring-slate-100/90 dark:ring-zinc-800/80"
+            )
+          : undefined
+      }
+    >
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative min-w-0 flex-1 sm:max-w-xl">
           <input
@@ -175,7 +195,11 @@ export function TeacherStudentProfilesClient({
             {pageSlice.map((s) => (
               <div
                 key={s.id}
-                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 ${
+                  isAcademic
+                    ? "transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md dark:hover:border-zinc-600"
+                    : ""
+                }`}
               >
                 <p className="text-base font-semibold text-slate-900 dark:text-white">
                   {s.full_name}
@@ -197,7 +221,11 @@ export function TeacherStudentProfilesClient({
                 <div className="mt-4">
                   <NavLinkWithLoading
                     href={`/dashboard/students/${s.id}/profile`}
-                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] px-4 py-2 text-sm font-semibold text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
+                    className={
+                      isAcademic
+                        ? viewProfileButtonMobileClass
+                        : "inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-[rgb(var(--school-primary-rgb)/0.25)] px-4 py-2 text-sm font-semibold text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
+                    }
                   >
                     View Profile
                   </NavLinkWithLoading>
@@ -207,31 +235,88 @@ export function TeacherStudentProfilesClient({
           </div>
 
           {/* Desktop: table (≥md) */}
-          <div className="mt-3 hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block dark:border-zinc-800 dark:bg-zinc-900">
+          <div
+            className={
+              isAcademic
+                ? "mt-3 hidden overflow-hidden rounded-lg border border-slate-200/90 bg-white md:block dark:border-zinc-700 dark:bg-zinc-900/50"
+                : "mt-3 hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block dark:border-zinc-800 dark:bg-zinc-900"
+            }
+          >
             <div className="max-h-[min(70vh,720px)] overflow-x-auto overflow-y-auto">
               <table className="w-full table-fixed border-collapse">
-                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 [&_th]:bg-white dark:[&_th]:bg-zinc-900">
+                <thead
+                  className={
+                    isAcademic
+                      ? "sticky top-0 z-10 border-b border-slate-200 bg-slate-100/95 dark:border-zinc-700 dark:bg-zinc-800/95 [&_th]:bg-slate-100/95 dark:[&_th]:bg-zinc-800/95"
+                      : "sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 dark:border-zinc-800 dark:bg-zinc-900/95 [&_th]:bg-slate-50/95 dark:[&_th]:bg-zinc-900/95"
+                  }
+                >
                   <tr>
-                    <th className="w-[120px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                    <th
+                      className={`w-[120px] px-4 py-3 text-left ${
+                        isAcademic ? "" : "text-gray-500 dark:text-zinc-400"
+                      } ${
+                        isAcademic
+                          ? "text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600 dark:text-zinc-300"
+                          : "text-sm font-medium"
+                      }`}
+                    >
                       ADM #
                     </th>
-                    <th className="min-w-[200px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                    <th
+                      className={`min-w-[200px] px-4 py-3 text-left ${
+                        isAcademic ? "" : "text-gray-500 dark:text-zinc-400"
+                      } ${
+                        isAcademic
+                          ? "text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600 dark:text-zinc-300"
+                          : "text-sm font-medium"
+                      }`}
+                    >
                       Student Name
                     </th>
-                    <th className="w-[140px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                    <th
+                      className={`w-[140px] px-4 py-3 text-left ${
+                        isAcademic ? "" : "text-gray-500 dark:text-zinc-400"
+                      } ${
+                        isAcademic
+                          ? "text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600 dark:text-zinc-300"
+                          : "text-sm font-medium"
+                      }`}
+                    >
                       Class
                     </th>
-                    <th className="w-[80px] px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-zinc-400">
+                    <th
+                      className={`w-[80px] px-4 py-3 text-left ${
+                        isAcademic ? "" : "text-gray-500 dark:text-zinc-400"
+                      } ${
+                        isAcademic
+                          ? "text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600 dark:text-zinc-300"
+                          : "text-sm font-medium"
+                      }`}
+                    >
                       Gender
                     </th>
-                    <th className="sticky right-0 z-30 w-[140px] min-w-[140px] border-l border-slate-200 bg-white px-2 py-3 text-left text-sm font-medium text-gray-500 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
+                    <th
+                      className={`sticky right-0 z-30 w-[140px] min-w-[140px] border-l border-slate-200 px-2 py-3 text-left text-gray-500 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)] ${
+                        isAcademic
+                          ? "bg-slate-100/95 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600 dark:bg-zinc-800/95 dark:text-zinc-300"
+                          : "bg-white text-sm font-medium dark:bg-zinc-900 dark:text-zinc-400"
+                      }`}
+                    >
                       Actions
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-zinc-800">
                   {pageSlice.map((s) => (
-                    <tr key={s.id}>
+                    <tr
+                      key={s.id}
+                      className={
+                        isAcademic
+                          ? "cursor-default transition-colors duration-200 hover:bg-violet-50/40 dark:hover:bg-violet-950/20"
+                          : undefined
+                      }
+                    >
                       <td className="px-4 py-3 text-sm text-slate-900 dark:text-white">
                         {s.admission_number?.trim() || "—"}
                       </td>
@@ -247,7 +332,11 @@ export function TeacherStudentProfilesClient({
                       <td className="sticky right-0 z-20 border-l border-slate-200 bg-white px-2 py-3 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.35)]">
                         <NavLinkWithLoading
                           href={`/dashboard/students/${s.id}/profile`}
-                          className="inline-flex rounded-md border border-[rgb(var(--school-primary-rgb)/0.25)] px-3 py-1.5 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
+                          className={
+                            isAcademic
+                              ? viewProfileButtonClass
+                              : "inline-flex rounded-md border border-[rgb(var(--school-primary-rgb)/0.25)] px-3 py-1.5 text-xs font-medium text-school-primary hover:bg-[rgb(var(--school-primary-rgb)/0.10)] dark:border-[rgb(var(--school-primary-rgb)/0.32)] dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.18)]"
+                          }
                         >
                           View Profile
                         </NavLinkWithLoading>

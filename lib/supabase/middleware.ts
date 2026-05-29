@@ -619,6 +619,34 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
+    // Academic department teachers and school admins (dual-role) may open promotions.
+    let isTeacherPromotionsRoute = false;
+    if (
+      role === "teacher" &&
+      (pathname === "/dashboard/promotions" ||
+        pathname.startsWith("/dashboard/promotions/"))
+    ) {
+      const { data: schoolId } = await supabase.rpc("get_my_school_id", {} as never);
+      if (schoolId) {
+        const [{ data: isAdmin }, { data: academicDeptRow, error: academicDeptErr }] =
+          await Promise.all([
+            supabase.rpc("is_school_admin", {
+              p_school_id: schoolId,
+            } as never),
+            supabase
+              .from("teacher_department_roles")
+              .select("id")
+              .eq("user_id", typedUser.id)
+              .eq("school_id", schoolId)
+              .eq("department", "academic")
+              .limit(1)
+              .maybeSingle(),
+          ]);
+        isTeacherPromotionsRoute =
+          isAdmin === true || (!academicDeptErr && academicDeptRow != null);
+      }
+    }
+
     // Finance department teachers: receipts (read-only) and report card access rules.
     let isTeacherFinanceReceiptRoute = false;
     let isTeacherFinancePaymentsRoute = false;
@@ -664,7 +692,8 @@ export async function updateSession(request: NextRequest) {
       isTeacherFinanceReceiptRoute ||
       isTeacherFinancePaymentsRoute ||
       isTeacherFinanceFeeRulesRoute ||
-      isTeacherDutyBookRoute;
+      isTeacherDutyBookRoute ||
+      isTeacherPromotionsRoute;
 
     if (
       !isTeacherAllowedAdminRoute &&
@@ -696,6 +725,7 @@ export async function updateSession(request: NextRequest) {
           isTeacherFinancePaymentsRoute,
           isTeacherFinanceFeeRulesRoute,
           isTeacherDutyBookRoute,
+          isTeacherPromotionsRoute,
           schoolDashboardMode:
             request.cookies.get("school_dashboard_mode")?.value ?? null,
         });

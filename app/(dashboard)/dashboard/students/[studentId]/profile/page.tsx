@@ -423,7 +423,7 @@ export default async function StudentProfilePage({
 
   const backToStudentsHref =
     myProfileRole === "teacher" && !adminOk
-      ? "/teacher-dashboard/students"
+      ? "/teacher-dashboard/academic/student-profiles"
       : "/dashboard/students";
 
   return (

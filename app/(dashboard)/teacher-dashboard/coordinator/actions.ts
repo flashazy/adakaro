@@ -20,6 +20,7 @@ import {
   sendEligibilityCacheTag,
 } from "@/lib/report-card-fee/send-preview-cache";
 import { invalidateCoordinatorOverviewCache } from "@/lib/coordinator/coordinator-overview-cache";
+import { invalidatePromotionStatsCache } from "@/lib/promotions/promotion-stats-cache";
 import { checkParentReportEligibility } from "@/lib/report-card-fee/eligibility";
 import { logReportCardFeeAudit } from "@/lib/report-card-fee/audit";
 import { verifySchoolAdminPasswordForOverride } from "@/lib/report-card-fee/verify-admin-password";
@@ -1254,14 +1255,6 @@ export async function generateReportCardsForClassAction(
 
     if (allSubjectsEmpty) studentsMissingAllScores += 1;
 
-    const subjectsCount = subjectList.length;
-    const isComplete =
-      subjectsCount > 0 && completedSubjectsCount >= subjectsCount;
-    const averageScore =
-      subjectsCount > 0
-        ? Math.round((totalScore / subjectsCount) * 10) / 10
-        : null;
-
     if (commentRows.length > 0) {
       if (existingCardId) {
         // Refresh path — upsert scores from `teacher_scores` + recompute ranks,
@@ -1312,19 +1305,15 @@ export async function generateReportCardsForClassAction(
       generated += 1;
     }
 
-    // Persist report-card summary values used by promotions & dashboards.
-    // Uses the same computed per-subject averages we just generated.
-    await admin
-      .from("report_cards")
-      .update({
-        total_score: subjectsCount > 0 ? Math.round(totalScore * 10) / 10 : null,
-        average_score: averageScore,
-        subjects_count: subjectsCount || null,
-        completed_subjects_count: completedSubjectsCount || null,
-        is_complete: isComplete,
-        summary_calculated_at: new Date().toISOString(),
-      })
-      .eq("id", reportCardId);
+    const summaryErr = await persistReportCardSummary(admin, reportCardId, {
+      noGradebookScores: allSubjectsEmpty,
+      classSubjectsCount: subjectList.length,
+    });
+    if (summaryErr) {
+      errors.push(
+        `${stud.full_name || "Student"}: could not save report card summary (${summaryErr})`
+      );
+    }
   }
 
   // `skipped` in the return value counts existing cards that had their rows
@@ -1354,9 +1343,11 @@ export async function generateReportCardsForClassAction(
   });
 
   invalidateCoordinatorOverviewCache(user.id, term, academicYear);
+  invalidatePromotionStatsCache(classId, Number(academicYear));
   revalidatePath("/teacher-dashboard/coordinator");
   revalidatePath("/teacher-dashboard/report-cards");
   revalidatePath("/teacher-dashboard/academic-reports");
+  revalidatePath("/dashboard/promotions");
 
   let message = `Report cards generated for ${studentRows.length} students.`;
   if (errors.length > 0) {
@@ -1375,6 +1366,91 @@ export async function generateReportCardsForClassAction(
     studentsMissingAllScores,
     subjectsWithNoExamSetup,
   };
+}
+
+function roundReportCardSummary(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/**
+ * Recomputes and persists `report_cards` summary columns from saved comment rows.
+ * Called after coordinator generation refreshes subject scores.
+ */
+async function persistReportCardSummary(
+  admin: AdminDb,
+  reportCardId: string,
+  options?: {
+    /** Matches generate-modal "no scores in gradebook" (allSubjectsEmpty). */
+    noGradebookScores?: boolean;
+    classSubjectsCount?: number;
+  }
+): Promise<string | null> {
+  if (options?.noGradebookScores === true) {
+    const classSubjectsCount = options.classSubjectsCount ?? 0;
+    const { error: updErr } = await admin
+      .from("report_cards")
+      .update({
+        total_score: null,
+        average_score: null,
+        subjects_count: classSubjectsCount > 0 ? classSubjectsCount : null,
+        completed_subjects_count: 0,
+        is_complete: false,
+        summary_calculated_at: new Date().toISOString(),
+      })
+      .eq("id", reportCardId);
+
+    if (updErr) return updErr.message;
+    return null;
+  }
+
+  const { data: rows, error: readErr } = await admin
+    .from("teacher_report_card_comments")
+    .select("subject, calculated_score, score_percent")
+    .eq("report_card_id", reportCardId);
+
+  if (readErr) return readErr.message;
+
+  const list = (rows ?? []) as {
+    subject: string;
+    calculated_score?: number | string | null;
+    score_percent?: number | string | null;
+  }[];
+
+  const subjects = new Set<string>();
+  let completed = 0;
+  let total = 0;
+
+  for (const r of list) {
+    const subj = (r.subject ?? "").trim();
+    if (subj) subjects.add(subj);
+
+    const raw = r.calculated_score ?? r.score_percent ?? null;
+    if (raw == null || String(raw).trim() === "") continue;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) continue;
+    completed += 1;
+    total += n;
+  }
+
+  const subjectsCount = subjects.size;
+  const isComplete = subjectsCount > 0 && completed >= subjectsCount;
+  const average =
+    subjectsCount > 0 ? roundReportCardSummary(total / subjectsCount) : null;
+
+  const { error: updErr } = await admin
+    .from("report_cards")
+    .update({
+      total_score: subjectsCount > 0 ? roundReportCardSummary(total) : null,
+      average_score: average,
+      subjects_count: subjectsCount > 0 ? subjectsCount : null,
+      completed_subjects_count: completed > 0 ? completed : null,
+      is_complete: isComplete,
+      summary_calculated_at: new Date().toISOString(),
+    })
+    .eq("id", reportCardId);
+
+  if (updErr) return updErr.message;
+  return null;
 }
 
 /**
