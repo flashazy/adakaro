@@ -514,9 +514,9 @@ export async function loadClassStudentsForPromotionAction(
               ? "pending_approval"
               : "not_generated";
         const suggestedDecision =
-          promotionRule && term2AveragePercent != null
-            ? suggestPromotionDecision(term2AveragePercent, promotionRule)
-            : null;
+          term2AveragePercent == null
+            ? null
+            : suggestPromotionDecision(term2AveragePercent, promotionRule);
 
         return {
           id: s.id,

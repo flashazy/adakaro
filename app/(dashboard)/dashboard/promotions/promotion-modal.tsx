@@ -333,7 +333,9 @@ export function PromotionModal({
       term2ReportCardStatus: s.term2ReportCardStatus,
       hasTerm2ReportCard: s.hasTerm2ReportCard,
       suggestedDecision: s.suggestedDecision,
-      decision: s.suggestedDecision ?? "repeat",
+      decision:
+        s.suggestedDecision ??
+        (s.term2AveragePercent != null ? "promote" : "repeat"),
     }));
     setStudents(mapped);
     setSearchQuery("");

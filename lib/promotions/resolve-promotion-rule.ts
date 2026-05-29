@@ -4,10 +4,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
 export interface ResolvedPromotionRule {
-  /** Minimum average exam grade (%) required to promote. */
-  minAverageGrade: number;
+  /** Minimum average exam grade (%) required to promote; null = no threshold. */
+  minAverageGrade: number | null;
   /** School default vs class-specific row. */
   source: "school_default" | "class_override";
+}
+
+function readMinAverageGrade(
+  raw: number | string | null | undefined
+): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "string" && raw.trim() === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+  return n;
 }
 
 export interface ClassPromotionRuleInput {
@@ -41,14 +51,14 @@ export async function resolvePromotionRuleForClass(
   if (classFlags.use_promotion_rules) {
     if (!classRule) return null;
     return {
-      minAverageGrade: Number(classRule.min_average_grade),
+      minAverageGrade: readMinAverageGrade(classRule.min_average_grade),
       source: "class_override",
     };
   }
 
   if (!schoolDefault) return null;
   return {
-    minAverageGrade: Number(schoolDefault.min_average_grade),
+    minAverageGrade: readMinAverageGrade(schoolDefault.min_average_grade),
     source: "school_default",
   };
 }

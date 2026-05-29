@@ -121,7 +121,10 @@ export async function loadAcademicPromotionDisplayOverview(
         if (average == null) {
           awaitingResults += 1;
           classReview += 1;
-        } else if (average >= promotionRule.minAverageGrade) {
+        } else if (
+          promotionRule.minAverageGrade == null ||
+          average >= promotionRule.minAverageGrade
+        ) {
           readyForPromotion += 1;
           classReady += 1;
         } else {
