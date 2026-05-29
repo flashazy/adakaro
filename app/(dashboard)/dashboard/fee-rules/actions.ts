@@ -38,8 +38,6 @@ export type FeeRulePreviewParams = {
   month?: number;
 };
 
-export type { EligibilityInsightStudentRow };
-
 export type FeeRulePreviewState =
   | {
       ok: true;

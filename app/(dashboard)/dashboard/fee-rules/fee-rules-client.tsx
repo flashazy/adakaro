@@ -16,9 +16,9 @@ import {
   previewClassFeeEligibilityAction,
   saveReportCardFeeRuleAction,
   type FeeRuleActionState,
-  type EligibilityInsightStudentRow,
   type FeeRulePreviewState,
 } from "./actions";
+import type { EligibilityInsightStudentRow } from "@/lib/report-card-fee/eligibility-insight";
 import { formatCurrency, type SchoolCurrencyCode } from "@/lib/currency";
 import type { ReportCardFeeRuleType } from "@/lib/report-card-fee/types";
 import type { ClassFeeRulesConfig } from "@/lib/report-card-fee/types";
