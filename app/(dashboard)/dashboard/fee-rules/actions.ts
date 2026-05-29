@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient, normalizeServiceRoleKey } from "@/lib/supabase/admin";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import {
   canManageReportCardFeeRules,
@@ -296,19 +296,46 @@ export async function previewClassFeeEligibilityAction(
   classId: string,
   params?: FeeRulePreviewParams
 ): Promise<FeeRulePreviewState> {
+  const logPreview = (step: string, detail?: Record<string, unknown>) => {
+    console.error("[fee-rules/preview]", step, detail ?? {});
+  };
+
   try {
+    logPreview("start", {
+      classId: classId?.trim() || classId,
+      params: params ?? null,
+      hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
+      hasServiceRoleKey: Boolean(
+        normalizeServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
+      ),
+      vercel: process.env.VERCEL ?? null,
+      nodeEnv: process.env.NODE_ENV ?? null,
+    });
+
     const gate = await requireFinanceAccess();
-    if (!gate.ok) return { ok: false, error: PREVIEW_LOAD_ERROR };
+    if (!gate.ok) {
+      logPreview("finance_access_denied", { reason: gate.error });
+      return { ok: false, error: PREVIEW_LOAD_ERROR };
+    }
 
     const trimmedClassId = classId?.trim();
     if (!trimmedClassId) {
+      logPreview("invalid_class_id", { classId });
       return { ok: false, error: PREVIEW_LOAD_ERROR };
     }
 
     let admin: ReturnType<typeof createAdminClient>;
     try {
       admin = createAdminClient();
-    } catch {
+    } catch (adminErr) {
+      logPreview("createAdminClient_failed", {
+        message:
+          adminErr instanceof Error ? adminErr.message : String(adminErr),
+        hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()),
+        hasServiceRoleKey: Boolean(
+          normalizeServiceRoleKey(process.env.SUPABASE_SERVICE_ROLE_KEY)
+        ),
+      });
       return { ok: false, error: PREVIEW_LOAD_ERROR };
     }
 
@@ -331,6 +358,10 @@ export async function previewClassFeeEligibilityAction(
     ]);
 
     if (!classRow) {
+      logPreview("class_not_found", {
+        classId: trimmedClassId,
+        schoolId: gate.schoolId,
+      });
       return { ok: false, error: PREVIEW_LOAD_ERROR };
     }
 
@@ -432,9 +463,11 @@ export async function previewClassFeeEligibilityAction(
       estimatedRemainingCollection: insight.estimatedRemainingCollection,
     };
   } catch (err) {
-    if (process.env.NODE_ENV === "development") {
-      console.error("[previewClassFeeEligibilityAction]", err);
-    }
+    logPreview("unexpected_error", {
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      name: err instanceof Error ? err.name : undefined,
+    });
     return { ok: false, error: PREVIEW_LOAD_ERROR };
   }
 }
