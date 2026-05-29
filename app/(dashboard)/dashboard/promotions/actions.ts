@@ -20,6 +20,7 @@ import type {
   ApplyPromotionEntry,
   ApplyPromotionResult,
   LoadClassPromotionStudentsResult,
+  PromotionStudentWithGrades,
 } from "@/lib/promotions/types";
 
 export type PromotionsActionState = {
@@ -506,7 +507,7 @@ export async function loadClassStudentsForPromotionAction(
         const noSubjectsAssigned = hasTerm2ReportCard && subjectsCount === 0;
         const noScoresEntered = hasTerm2ReportCard && averageScore == null;
         const term2AveragePercent = averageScore;
-        const term2ReportCardStatus =
+        const term2ReportCardStatus: PromotionStudentWithGrades["term2ReportCardStatus"] =
           rc?.status === "approved"
             ? "approved"
             : rc != null
