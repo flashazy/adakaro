@@ -166,8 +166,24 @@ export async function checkStudentLimit(
   if (limit == null) {
     return { allowed: true, current, limit: null };
   }
+
+  const allowed = current < limit;
+  if (!allowed) {
+    console.warn(
+      "[plan-limits/checkStudentLimit] APP_BYPASS_GUARD: free plan at or over student cap — insert must be blocked",
+      {
+        schoolId,
+        planFromDatabase: row?.plan ?? null,
+        resolvedPlan,
+        current,
+        limit,
+        note: "Database trigger students_enforce_free_tier_limit also enforces this limit.",
+      }
+    );
+  }
+
   return {
-    allowed: current < limit,
+    allowed,
     current,
     limit,
   };
