@@ -18,11 +18,18 @@ export const STREAMING_PERFORMANCE_MEASURE_LABELS: Record<
   total_marks: "Total Marks",
 };
 
+export interface StreamingStreamClass {
+  id: string;
+  name: string;
+  /** Parsed from class description when configured (e.g. "Capacity: 20"). */
+  capacity: number | null;
+}
+
 export interface StreamingParentClassOption {
   id: string;
   name: string;
   schoolId: string;
-  streamClasses: { id: string; name: string }[];
+  streamClasses: StreamingStreamClass[];
 }
 
 export interface StreamingExamOption {
@@ -57,7 +64,10 @@ export interface StreamingStudentRow {
   fullName: string;
   admissionNumber: string | null;
   currentClassId: string;
+  /** @deprecated Use parentClassName + currentStreamName */
   currentClassName: string;
+  parentClassName: string;
+  currentStreamName: string;
   performance: StudentStreamingPerformance;
   recommendedClassId: string | null;
   recommendedClassName: string | null;
@@ -75,7 +85,30 @@ export interface StreamingOverviewStats {
 export interface StreamingPlacementPreview {
   targetClassId: string;
   targetClassName: string;
+  /** Students with this stream as placement target. */
   studentCount: number;
+  currentOccupancy: number;
+  incomingCount: number;
+  leavingCount: number;
+  /** Projected headcount after placements. */
+  finalTotal: number;
+  capacity: number | null;
+  isOverCapacity: boolean;
+}
+
+export type StreamingPlacementStatus =
+  | "placed"
+  | "needs_transfer"
+  | "unassigned"
+  | "manual_override"
+  | "no_result";
+
+export interface StreamingSummaryCounts {
+  reviewed: number;
+  alreadyCorrect: number;
+  needTransfer: number;
+  manualOverrides: number;
+  withoutResults: number;
 }
 
 export interface StreamingHistoryRow {

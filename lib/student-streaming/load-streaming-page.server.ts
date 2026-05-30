@@ -15,6 +15,7 @@ import type {
   StreamingExamOption,
   StreamingOverviewStats,
   StreamingRuleEntry,
+  StreamingStreamClass,
   StreamingStudentRow,
 } from "@/lib/student-streaming/types";
 import {
@@ -59,7 +60,7 @@ export async function loadStreamingWorkspaceData(params: {
       rules: StreamingRuleEntry[];
       stats: StreamingOverviewStats;
       students: StreamingStudentRow[];
-      streamClasses: { id: string; name: string }[];
+      streamClasses: StreamingStreamClass[];
       schoolLevel: string | null;
     }
   | { ok: false; error: string }
@@ -107,6 +108,8 @@ export async function loadStreamingWorkspaceData(params: {
   });
 
   const streamNameById = new Map(streamClasses.map((s) => [s.id, s.name]));
+  const streamIdSet = new Set(streamClasses.map((s) => s.id));
+  const parentClassName = parent.name;
 
   const studentRows = await fetchAllRows<{
     id: string;
@@ -207,12 +210,20 @@ export async function loadStreamingWorkspaceData(params: {
       performance,
       rules
     );
+    const currentStreamName =
+      s.class_id === cluster.rootClassId
+        ? "Unassigned"
+        : streamIdSet.has(s.class_id)
+          ? (streamNameById.get(s.class_id) ?? "Unassigned")
+          : (classNameById.get(s.class_id) ?? "Unassigned");
     return {
       id: s.id,
       fullName: s.full_name,
       admissionNumber: s.admission_number,
       currentClassId: s.class_id,
-      currentClassName: classNameById.get(s.class_id) ?? streamNameById.get(s.class_id) ?? "—",
+      currentClassName: currentStreamName,
+      parentClassName,
+      currentStreamName,
       performance,
       recommendedClassId,
       recommendedClassName: recommendedClassId

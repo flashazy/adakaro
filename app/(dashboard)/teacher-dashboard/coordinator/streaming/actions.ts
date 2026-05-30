@@ -15,6 +15,7 @@ import { loadStreamingWorkspaceData } from "@/lib/student-streaming/load-streami
 import { resolveStreamClassesForParent } from "@/lib/student-streaming/resolve-stream-classes.server";
 import {
   assertCoordinatorForParentClass,
+  getCoordinatorSchoolIdsForUser,
   loadStreamingParentClassesForUser,
   requireStreamingUser,
 } from "@/lib/student-streaming/streaming-access.server";
@@ -25,6 +26,7 @@ import type {
   StreamingParentClassOption,
   StreamingPerformanceMeasure,
   StreamingRuleEntry,
+  StreamingStreamClass,
   StreamingStudentRow,
 } from "@/lib/student-streaming/types";
 import type { GradebookMajorExamTypeValue } from "@/lib/gradebook-major-exams";
@@ -72,13 +74,17 @@ function validateRules(
 }
 
 export async function loadStreamingParentClassesAction(): Promise<
-  | { ok: true; classes: StreamingParentClassOption[] }
+  | { ok: true; classes: StreamingParentClassOption[]; isCoordinator: boolean }
   | { ok: false; error: string }
 > {
   const auth = await requireStreamingUser();
   if (!auth.user) return { ok: false, error: auth.error ?? "Unauthorized." };
+  const schoolIds = await getCoordinatorSchoolIdsForUser(auth.user.id);
+  if (schoolIds.length === 0) {
+    return { ok: true, classes: [], isCoordinator: false };
+  }
   const classes = await loadStreamingParentClassesForUser(auth.user.id);
-  return { ok: true, classes };
+  return { ok: true, classes, isCoordinator: true };
 }
 
 export async function loadStreamingWorkspaceAction(input: {
@@ -93,7 +99,7 @@ export async function loadStreamingWorkspaceAction(input: {
       rules: StreamingRuleEntry[];
       stats: StreamingOverviewStats;
       students: StreamingStudentRow[];
-      streamClasses: { id: string; name: string }[];
+      streamClasses: StreamingStreamClass[];
     }
   | { ok: false; error: string }
 > {
@@ -409,7 +415,7 @@ export async function loadStreamingHistoryAction(input: {
   let parentClassIds = parentClasses.map((c) => c.id);
   if (input.parentClassId?.trim()) {
     if (!allowedIds.has(input.parentClassId.trim())) {
-      return { ok: false, error: "You are not a coordinator for this class." };
+      return { ok: false, error: "That class is not eligible for streaming." };
     }
     parentClassIds = [input.parentClassId.trim()];
   }
