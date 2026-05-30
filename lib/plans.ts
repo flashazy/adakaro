@@ -64,6 +64,7 @@ const PAID_PLAN_ALIASES = new Set([
   "plus",
   "standard",
   "starter",
+  "unlimited",
 ]);
 
 export function normalizePlanId(plan: string | null | undefined): PlanId {

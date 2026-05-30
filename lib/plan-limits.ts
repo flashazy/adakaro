@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  FREE_TIER_STUDENT_LIMIT,
   getPlanLimits,
   isPaidPlanId,
   normalizePlanId,
@@ -30,23 +32,53 @@ export async function getSchoolPlanRow(
   supabase: SupabaseClient<Database>,
   schoolId: string
 ): Promise<SchoolPlanRow | null> {
+  const mapRow = (data: {
+    plan: string | null;
+    student_limit: number | null;
+    admin_limit: number | null;
+  }): SchoolPlanRow => ({
+    plan: data.plan ?? "free",
+    student_limit: data.student_limit ?? null,
+    admin_limit: data.admin_limit ?? null,
+  });
+
   const { data, error } = await supabase
     .from("schools")
     .select("plan, student_limit, admin_limit")
     .eq("id", schoolId)
     .maybeSingle();
 
-  if (error || !data) return null;
-  const r = data as {
-    plan: string | null;
-    student_limit: number | null;
-    admin_limit: number | null;
-  };
-  return {
-    plan: r.plan ?? "free",
-    student_limit: r.student_limit ?? null,
-    admin_limit: r.admin_limit ?? null,
-  };
+  if (!error && data) {
+    return mapRow(
+      data as {
+        plan: string | null;
+        student_limit: number | null;
+        admin_limit: number | null;
+      }
+    );
+  }
+
+  try {
+    const admin = createAdminClient();
+    const { data: adminData, error: adminErr } = await admin
+      .from("schools")
+      .select("plan, student_limit, admin_limit")
+      .eq("id", schoolId)
+      .maybeSingle();
+    if (!adminErr && adminData) {
+      return mapRow(
+        adminData as {
+          plan: string | null;
+          student_limit: number | null;
+          admin_limit: number | null;
+        }
+      );
+    }
+  } catch {
+    /* service role unavailable */
+  }
+
+  return null;
 }
 
 /**
@@ -105,9 +137,24 @@ export async function checkStudentLimit(
   schoolId: string
 ): Promise<{ allowed: boolean; current: number; limit: number | null }> {
   const row = await getSchoolPlanRow(supabase, schoolId);
-  const limit = row
-    ? effectiveStudentLimit(row)
-    : getPlanLimits("free").studentLimit;
+  const resolvedPlan = await resolveSchoolPlanIdForFeatures(
+    supabase,
+    schoolId,
+    row?.plan
+  );
+
+  const limit = isPaidPlanId(resolvedPlan)
+    ? null
+    : row?.student_limit ?? FREE_TIER_STUDENT_LIMIT;
+
+  console.log("[plan-limits/checkStudentLimit]", {
+    schoolId,
+    planFromDatabase: row?.plan ?? null,
+    studentLimitColumn: row?.student_limit ?? null,
+    resolvedPlan,
+    isPaid: isPaidPlanId(resolvedPlan),
+    enforcedLimit: limit,
+  });
 
   const { count, error } = await supabase
     .from("students")
