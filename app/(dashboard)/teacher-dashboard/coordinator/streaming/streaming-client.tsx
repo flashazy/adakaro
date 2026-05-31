@@ -32,6 +32,7 @@ import {
   type StreamingPerformanceMeasure,
   type StreamingPlacementPreview,
   type StreamingPlacementStatus,
+  type EnrichedStreamingStudent,
   type StreamingRuleEntry,
   type StreamingStreamClass,
   type StreamingStudentRow,
@@ -43,6 +44,21 @@ import {
   loadStreamingWorkspaceAction,
   saveStreamingRulesAction,
 } from "./actions";
+
+type BulkSelectionBarState = {
+  count: number;
+  canApply: boolean;
+  message: string | null;
+  helperText: string | null;
+  showControls: boolean;
+  eligibleIds: string[];
+};
+
+type BulkApplyEligibility = {
+  withoutResults: EnrichedStreamingStudent[];
+  eligible: EnrichedStreamingStudent[];
+  skippedAlreadyPlaced: EnrichedStreamingStudent[];
+};
 
 const DIVISION_OPTIONS = ["I", "II", "III", "IV", "0", "INC", "ABS"] as const;
 
@@ -484,6 +500,127 @@ function resolveApplyTargetId(
   );
 }
 
+function getBulkDisplayStatus(
+  student: EnrichedStreamingStudent,
+  pendingTargets: Record<string, string>
+): StreamingPlacementStatus {
+  return displayPlacementStatus(student, pendingTargets);
+}
+
+function isBulkAlreadyPlaced(
+  student: EnrichedStreamingStudent,
+  pendingTargets: Record<string, string>
+): boolean {
+  return getBulkDisplayStatus(student, pendingTargets) === "placed";
+}
+
+function isBulkEligibleStudent(
+  student: EnrichedStreamingStudent,
+  pendingTargets: Record<string, string>
+): boolean {
+  const status = getBulkDisplayStatus(student, pendingTargets);
+  if (status === "no_result" || status === "placed") {
+    return false;
+  }
+  return (
+    status === "needs_transfer" ||
+    status === "unassigned" ||
+    status === "manual_override"
+  );
+}
+
+function getBulkApplyEligibility(params: {
+  selectedStudents: EnrichedStreamingStudent[];
+  pendingTargets: Record<string, string>;
+}): BulkApplyEligibility {
+  const { selectedStudents, pendingTargets } = params;
+  const withoutResults = selectedStudents.filter(
+    (s) => getBulkDisplayStatus(s, pendingTargets) === "no_result"
+  );
+  const skippedAlreadyPlaced = selectedStudents.filter((s) =>
+    isBulkAlreadyPlaced(s, pendingTargets)
+  );
+  const eligible = selectedStudents.filter((s) =>
+    isBulkEligibleStudent(s, pendingTargets)
+  );
+
+  return { withoutResults, eligible, skippedAlreadyPlaced };
+}
+
+function formatBulkApplyHelperText(
+  eligibleCount: number,
+  skippedPlacedCount: number
+): string | null {
+  if (eligibleCount === 0 || skippedPlacedCount === 0) {
+    return null;
+  }
+  const placedLabel =
+    eligibleCount === 1 ? "1 student will be placed." : `${eligibleCount} students will be placed.`;
+  const skippedLabel =
+    skippedPlacedCount === 1
+      ? "1 already placed will be skipped."
+      : `${skippedPlacedCount} already placed will be skipped.`;
+  return `${placedLabel} ${skippedLabel}`;
+}
+
+function resolveBulkSelectionBarState(params: {
+  selectedStudents: EnrichedStreamingStudent[];
+  pendingTargets: Record<string, string>;
+  bulkTargetClassId: string;
+  canPlace: boolean;
+}): BulkSelectionBarState {
+  const { selectedStudents, pendingTargets, bulkTargetClassId, canPlace } =
+    params;
+  const count = selectedStudents.length;
+  const { withoutResults, eligible, skippedAlreadyPlaced } =
+    getBulkApplyEligibility({
+      selectedStudents,
+      pendingTargets,
+    });
+
+  if (withoutResults.length > 0) {
+    const message =
+      withoutResults.length === count && count === 1
+        ? "Selected student has no exam result."
+        : "Some selected students have no exam result.";
+    return {
+      count,
+      canApply: false,
+      message,
+      helperText: null,
+      showControls: false,
+      eligibleIds: [],
+    };
+  }
+
+  if (eligible.length === 0) {
+    const message =
+      count === 1
+        ? "Selected student is already placed."
+        : "Selected students are already placed.";
+    return {
+      count,
+      canApply: false,
+      message,
+      helperText: null,
+      showControls: false,
+      eligibleIds: [],
+    };
+  }
+
+  return {
+    count,
+    canApply: canPlace && Boolean(bulkTargetClassId),
+    message: null,
+    helperText: formatBulkApplyHelperText(
+      eligible.length,
+      skippedAlreadyPlaced.length
+    ),
+    showControls: true,
+    eligibleIds: eligible.map((student) => student.id),
+  };
+}
+
 function StreamingKpiCard({
   label,
   value,
@@ -850,6 +987,25 @@ export function StudentStreamingClient({
   const canPlace = streamClasses.length > 0 && Boolean(examType);
   const selectedParent = parentClasses.find((c) => c.id === parentClassId);
 
+  const bulkSelectionBar = useMemo((): BulkSelectionBarState | null => {
+    if (selectedIds.size === 0) return null;
+    const selectedStudents = enrichedStudents.filter((s) =>
+      selectedIds.has(s.id)
+    );
+    return resolveBulkSelectionBarState({
+      selectedStudents,
+      pendingTargets: overrides,
+      bulkTargetClassId,
+      canPlace,
+    });
+  }, [
+    selectedIds,
+    enrichedStudents,
+    overrides,
+    bulkTargetClassId,
+    canPlace,
+  ]);
+
   const applyExampleRules = () => {
     if (streamClasses.length === 0) {
       toast.error("Add stream classes before defining rules.");
@@ -978,50 +1134,52 @@ export function StudentStreamingClient({
   };
 
   const handleBulkApply = () => {
-    const ids = [...selectedIds];
     const pendingTargets = overridesRef.current;
-    if (ids.length === 0) {
+    const selected = enrichedStudents.filter((s) => selectedIds.has(s.id));
+    if (selected.length === 0) {
       toast.error("Select at least one student.");
       return;
     }
-    const pendingPlacementsList = buildPlacementsForPendingSelection(
-      ids,
-      pendingTargets
-    );
-    const idsWithoutPending = ids.filter((id) => {
-      const student = enrichedStudents.find((s) => s.id === id);
-      return student && !hasPendingPlacementChange(student, pendingTargets);
+    const barState = resolveBulkSelectionBarState({
+      selectedStudents: selected,
+      pendingTargets,
+      bulkTargetClassId,
+      canPlace,
     });
-    if (!bulkTargetClassId && idsWithoutPending.length > 0) {
+    if (!barState.canApply || barState.eligibleIds.length === 0) {
+      if (barState.message) toast.message(barState.message);
+      return;
+    }
+    if (!bulkTargetClassId) {
       toast.error("Choose a target stream.");
       return;
     }
-    const selected = enrichedStudents.filter((s) => selectedIds.has(s.id));
-    const skippedNoResult = selected.filter((s) => !s.hasExamResult).length;
-    const bulkPlacementsList = bulkTargetClassId
-      ? buildPlacementsFromSelection(
-          idsWithoutPending,
-          bulkTargetClassId,
-          pendingTargets
-        )
-      : [];
-    const placements = [...pendingPlacementsList];
-    for (const bulkPlacement of bulkPlacementsList) {
-      if (!placements.some((p) => p.studentId === bulkPlacement.studentId)) {
-        placements.push(bulkPlacement);
-      }
+
+    const targetStreamName =
+      streamNameById.get(bulkTargetClassId) ?? "Unknown";
+    const placements = barState.eligibleIds
+      .map((studentId) => {
+        const student = enrichedStudents.find((s) => s.id === studentId);
+        if (!student || student.currentClassId === bulkTargetClassId) {
+          return null;
+        }
+        return {
+          studentId,
+          targetClassId: bulkTargetClassId,
+          targetClassName: targetStreamName,
+        };
+      })
+      .filter(
+        (p): p is { studentId: string; targetClassId: string; targetClassName: string } =>
+          p != null
+      );
+    if (placements.length === 0) {
+      toast.message("No placement changes to apply.");
+      return;
     }
-    const hasAnyPending = ids.some((id) => {
-      const student = enrichedStudents.find((s) => s.id === id);
-      return student && hasPendingPlacementChange(student, pendingTargets);
-    });
     openConfirmForPlacements(placements, "default", {
-      skippedNoResult,
-      bulkTargetStreamName: bulkTargetClassId
-        ? (streamNameById.get(bulkTargetClassId) ?? "Unknown")
-        : undefined,
-      noPendingChanges:
-        placements.length === 0 && !hasAnyPending && idsWithoutPending.length > 0,
+      skippedNoResult: 0,
+      bulkTargetStreamName: targetStreamName,
     });
   };
 
@@ -1036,13 +1194,12 @@ export function StudentStreamingClient({
         (s) =>
           s.hasExamResult &&
           s.ruleRecommendedId &&
-          s.effectivePlacementTargetId &&
-          s.currentClassId !== s.effectivePlacementTargetId
+          s.currentClassId !== s.ruleRecommendedId
       )
       .map((s) => ({
         studentId: s.id,
-        targetClassId: s.effectivePlacementTargetId!,
-        targetClassName: s.placementTargetName ?? "Unknown",
+        targetClassId: s.ruleRecommendedId!,
+        targetClassName: s.ruleRecommendedName ?? "Unknown",
       }));
     openConfirmForPlacements(placements, "recommended", {
       skippedNoResult,
@@ -1195,6 +1352,36 @@ export function StudentStreamingClient({
       setSavingStudentIds(new Set());
     }
   };
+
+  const confirmSharedStreamSummary = useMemo(() => {
+    if (pendingPlacements.length === 0) return null;
+    const targetClassId = pendingPlacements[0]?.targetClassId;
+    const streamName = pendingPlacements[0]?.targetClassName ?? "";
+    if (!targetClassId) return null;
+    const singleStream = pendingPlacements.every(
+      (p) => p.targetClassId === targetClassId
+    );
+    if (!singleStream) return null;
+
+    const currentCount = students.filter(
+      (s) => s.currentClassId === targetClassId
+    ).length;
+    let movingCount = 0;
+    for (const placement of pendingPlacements) {
+      const student = students.find((s) => s.id === placement.studentId);
+      if (student && student.currentClassId !== targetClassId) {
+        movingCount += 1;
+      }
+    }
+
+    return {
+      streamName,
+      count: pendingPlacements.length,
+      currentCount,
+      movingCount,
+      afterCount: currentCount + movingCount,
+    };
+  }, [pendingPlacements, students]);
 
   const confirmPreview = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1845,14 +2032,19 @@ export function StudentStreamingClient({
               <h2 className="text-sm font-medium text-slate-900 dark:text-zinc-50">
                 Students
               </h2>
-              <button
-                type="button"
-                onClick={handleApplyRecommended}
-                disabled={!canPlace || selectedIds.size === 0}
-                className="rounded border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
-              >
-                Apply recommended
-              </button>
+              <div className="flex flex-col items-end gap-0.5">
+                <button
+                  type="button"
+                  onClick={handleApplyRecommended}
+                  disabled={!canPlace || selectedIds.size === 0}
+                  className="rounded border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+                >
+                  Apply recommended
+                </button>
+                <p className="text-[10px] leading-snug text-slate-500 dark:text-zinc-400">
+                  Places each student into their recommended stream.
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-col gap-2 border-b border-slate-200/60 px-4 py-2.5 dark:border-zinc-700/60 sm:flex-row sm:items-center sm:justify-between">
@@ -2200,37 +2392,67 @@ export function StudentStreamingClient({
                 </div>
               </div>
 
-              {selectedIds.size > 0 && (
-                <div className="border-t border-slate-200/80 bg-slate-50/70 px-4 py-3.5 dark:border-zinc-700/80 dark:bg-zinc-800/30">
-                  <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-                    <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
-                      <span className="tabular-nums font-semibold text-slate-800 dark:text-zinc-200">
-                        {selectedIds.size}
-                      </span>{" "}
-                      student{selectedIds.size === 1 ? "" : "s"} selected
-                    </p>
-                    <div className="flex items-center gap-2.5">
-                      <select
-                        value={bulkTargetClassId}
-                        onChange={(e) => setBulkTargetClassId(e.target.value)}
-                        className={`${PLACEMENT_TARGET_SELECT_CLASS} max-w-[10rem]`}
-                        aria-label="Target stream for selected students"
-                      >
-                        {streamClasses.map((sc) => (
-                          <option key={sc.id} value={sc.id}>
-                            {sc.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={handleBulkApply}
-                        disabled={!canPlace}
-                        className={`${ACTION_CELL} border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800`}
-                      >
-                        Apply selected
-                      </button>
+              {bulkSelectionBar && (
+                <div className="border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-1px_0_rgba(15,23,42,0.04)] dark:border-zinc-700 dark:bg-zinc-900/95 dark:shadow-[0_-1px_0_rgba(0,0,0,0.2)]">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 dark:text-zinc-50">
+                        Place selected students into one stream
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-zinc-400">
+                        Use this only when you want all selected students to go
+                        to the same stream.
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                        <span className="tabular-nums font-medium text-slate-700 dark:text-zinc-300">
+                          {bulkSelectionBar.count}
+                        </span>{" "}
+                        {bulkSelectionBar.count === 1
+                          ? "student selected"
+                          : "students selected"}
+                      </p>
                     </div>
+                    {bulkSelectionBar.showControls ? (
+                      <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                        {bulkSelectionBar.helperText && (
+                          <p className="text-xs text-slate-500 dark:text-zinc-400">
+                            {bulkSelectionBar.helperText}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-zinc-400">
+                            <span className="shrink-0">Target stream</span>
+                            <select
+                              value={bulkTargetClassId}
+                              onChange={(e) =>
+                                setBulkTargetClassId(e.target.value)
+                              }
+                              disabled={!bulkSelectionBar.canApply}
+                              className={`${PLACEMENT_TARGET_SELECT_CLASS} max-w-[11rem] disabled:cursor-not-allowed disabled:opacity-50`}
+                              aria-label="Target stream for selected students"
+                            >
+                              {streamClasses.map((sc) => (
+                                <option key={sc.id} value={sc.id}>
+                                  {sc.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleBulkApply}
+                            disabled={!bulkSelectionBar.canApply}
+                            className={`${ACTION_CELL} border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800`}
+                          >
+                            Place selected
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500 dark:text-zinc-400">
+                        {bulkSelectionBar.message}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -2254,8 +2476,10 @@ export function StudentStreamingClient({
               {confirmMeta.individualDetail
                 ? "Confirm placement?"
                 : confirmMode === "recommended"
-                  ? "Apply recommended placements?"
-                  : "Confirm placement"}
+                  ? "Confirm recommended placement"
+                  : confirmMeta.bulkTargetStreamName
+                    ? "Confirm stream placement"
+                    : "Confirm placement"}
             </h3>
             {confirmMeta.individualDetail ? (
               <dl className="mt-4 space-y-2 rounded-xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-800/60">
@@ -2289,9 +2513,9 @@ export function StudentStreamingClient({
                 </div>
               </dl>
             ) : (
-            <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">
+            <div className="mt-2 space-y-3 text-sm text-slate-600 dark:text-zinc-400">
               {confirmMeta.noResultManual ? (
-                <>
+                <p>
                   {confirmMeta.studentName ? (
                     <>
                       <span className="font-medium">{confirmMeta.studentName}</span>{" "}
@@ -2304,20 +2528,64 @@ export function StudentStreamingClient({
                       Continue with manual placement?
                     </>
                   )}
-                </>
+                </p>
               ) : confirmMode === "recommended" ? (
                 <>
-                  This will place{" "}
-                  <span className="font-medium tabular-nums">
-                    {pendingPlacements.length}
-                  </span>{" "}
-                  student
-                  {pendingPlacements.length === 1 ? "" : "s"} into streams based
-                  on the current rules and selected exam results. This does not
-                  change their academic year or promotion status.
+                  <p>
+                    You are about to place the selected students into their
+                    recommended streams based on the streaming rules.
+                  </p>
+                  <p>
+                    This action only changes stream allocation and does not
+                    affect promotion status.
+                  </p>
+                </>
+              ) : confirmMeta.bulkTargetStreamName &&
+                confirmSharedStreamSummary ? (
+                <>
+                  <p>
+                    You are about to move{" "}
+                    <span className="font-medium tabular-nums">
+                      {confirmSharedStreamSummary.count}
+                    </span>{" "}
+                    student
+                    {confirmSharedStreamSummary.count === 1 ? "" : "s"} into{" "}
+                    <span className="font-medium">
+                      {confirmSharedStreamSummary.streamName}
+                    </span>
+                    .
+                  </p>
+                  <dl className="space-y-1.5 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-800/40">
+                    <div className="flex justify-between gap-4">
+                      <dt>
+                        Current students in{" "}
+                        {confirmSharedStreamSummary.streamName}:
+                      </dt>
+                      <dd className="tabular-nums font-medium text-slate-900 dark:text-zinc-50">
+                        {confirmSharedStreamSummary.currentCount}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt>Students being added:</dt>
+                      <dd className="tabular-nums font-medium text-slate-900 dark:text-zinc-50">
+                        {confirmSharedStreamSummary.movingCount}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4 border-t border-slate-200/80 pt-1.5 dark:border-zinc-700">
+                      <dt>Total after placement:</dt>
+                      <dd className="tabular-nums font-medium text-slate-900 dark:text-zinc-50">
+                        {confirmSharedStreamSummary.afterCount}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p>
+                    {confirmSharedStreamSummary.count === 1
+                      ? "This only changes the student's stream. It does not change their class level or promotion status."
+                      : "This only changes the students' stream. It does not change their class level or promotion status."}
+                  </p>
                 </>
               ) : (
-                <>
+                <p>
                   You are about to place{" "}
                   <span className="font-medium tabular-nums">
                     {pendingPlacements.length}
@@ -2325,9 +2593,9 @@ export function StudentStreamingClient({
                   student{pendingPlacements.length === 1 ? "" : "s"} into
                   selected streams. This does not change their academic year or
                   promotion status.
-                </>
+                </p>
               )}
-            </p>
+            </div>
             )}
             {confirmMeta.individualDetail && confirmMeta.noResultManual && (
               <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">
@@ -2349,7 +2617,9 @@ export function StudentStreamingClient({
                 (no matching rule).
               </p>
             )}
-            {confirmPreview.length > 0 && (
+            {confirmPreview.length > 0 &&
+              confirmMode !== "recommended" &&
+              !confirmMeta.bulkTargetStreamName && (
               <ul className="mt-4 space-y-1 text-sm">
                 {confirmPreview.map(([name, count]) => (
                   <li key={name}>
@@ -2360,7 +2630,8 @@ export function StudentStreamingClient({
                 ))}
               </ul>
             )}
-            {confirmCapacityDetails.length > 0 && (
+            {confirmCapacityDetails.length > 0 &&
+              !confirmMeta.bulkTargetStreamName && (
               <ul className="mt-3 space-y-1 text-sm text-slate-600 dark:text-zinc-400">
                 {confirmCapacityDetails.map((row) => (
                   <li key={row.streamName}>
@@ -2419,8 +2690,6 @@ export function StudentStreamingClient({
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Saving…
                   </>
-                ) : confirmMode === "recommended" ? (
-                  "Apply Placements"
                 ) : (
                   "Confirm Placement"
                 )}
