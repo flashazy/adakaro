@@ -21,7 +21,7 @@ export async function loadStreamingHistory(params: {
   let query = admin
     .from("student_streaming_history")
     .select(
-      "id, student_name, admission_number, previous_class_name, new_class_name, performance_measure, performance_value, exam_label, academic_year, coordinator_name, created_at, parent_class_id"
+      "id, student_name, admission_number, previous_class_name, new_class_name, recommended_class_name, is_manual_change, performance_measure, performance_value, exam_label, academic_year, coordinator_name, created_at, parent_class_id"
     )
     .in("parent_class_id", params.parentClassIds)
     .order("created_at", { ascending: false });
@@ -42,6 +42,8 @@ export async function loadStreamingHistory(params: {
     admission_number: string | null;
     previous_class_name: string;
     new_class_name: string;
+    recommended_class_name: string | null;
+    is_manual_change: boolean;
     performance_measure: string;
     performance_value: string;
     exam_label: string;
@@ -86,6 +88,8 @@ export async function loadStreamingHistory(params: {
       admissionNumber: r.admission_number,
       previousClassName: r.previous_class_name,
       newClassName: r.new_class_name,
+      recommendedClassName: r.recommended_class_name,
+      isManualChange: r.is_manual_change,
       performanceMeasure: r.performance_measure as StreamingPerformanceMeasure,
       performanceValue: r.performance_value,
       examLabel: r.exam_label,

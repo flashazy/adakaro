@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { parseGradebookExamType } from "@/lib/gradebook-major-exams";
@@ -9,6 +9,7 @@ import {
   formatPerformanceValue,
   isDivisionRule,
   isNumericRule,
+  recommendStreamClassId,
 } from "@/lib/student-streaming/evaluate-rules";
 import { loadStreamingHistory } from "@/lib/student-streaming/load-streaming-history.server";
 import { loadStreamingWorkspaceData } from "@/lib/student-streaming/load-streaming-page.server";
@@ -103,6 +104,7 @@ export async function loadStreamingWorkspaceAction(input: {
     }
   | { ok: false; error: string }
 > {
+  noStore();
   const auth = await requireStreamingUser();
   if (!auth.user) return { ok: false, error: auth.error ?? "Unauthorized." };
 
@@ -217,15 +219,19 @@ export async function applyStudentStreamingAction(input: {
   performanceMeasure: string;
   placements: StreamingPlacementEntry[];
 }): Promise<
-  | { ok: true; placed: number; message: string }
+  | { ok: true; placed: number; message: string; warning?: string }
   | { ok: false; error: string }
 > {
+  noStore();
   const auth = await requireStreamingUser();
   if (!auth.user) return { ok: false, error: auth.error ?? "Unauthorized." };
 
   if (input.placements.length === 0) {
     return { ok: false, error: "Select at least one student to place." };
   }
+
+  const PLACEMENT_SAVE_FAILED =
+    "Placement was not saved. Please try again.";
 
   const access = await assertCoordinatorForParentClass(
     auth.user.id,
@@ -279,7 +285,7 @@ export async function applyStudentStreamingAction(input: {
   const studentIds = [...new Set(input.placements.map((p) => p.studentId))];
   const { data: studentRows, error: studentErr } = await admin
     .from("students")
-    .select("id, full_name, admission_number, class_id")
+    .select("id, full_name, admission_number, class_id, school_id")
     .in("id", studentIds)
     .in("class_id", cluster.classIds);
 
@@ -290,6 +296,7 @@ export async function applyStudentStreamingAction(input: {
       full_name: string;
       admission_number: string | null;
       class_id: string;
+      school_id: string;
     }[]).map((s) => [s.id, s])
   );
 
@@ -313,6 +320,15 @@ export async function applyStudentStreamingAction(input: {
   const performanceByStudent = new Map(
     workspace.students.map((s) => [s.id, s.performance])
   );
+  const recommendedByStudent = new Map(
+    workspace.students.map((s) => {
+      const recommendedClassId =
+        workspace.rules.length > 0
+          ? recommendStreamClassId(measure, s.performance, workspace.rules)
+          : s.recommendedClassId;
+      return [s.id, recommendedClassId] as const;
+    })
+  );
   const classNameById = new Map<string, string>();
   for (const s of workspace.students) {
     classNameById.set(s.currentClassId, s.currentClassName);
@@ -329,14 +345,20 @@ export async function applyStudentStreamingAction(input: {
 
   const examLabel = streamingExamLabel(examType);
   let placed = 0;
+  let skippedAlreadyPlaced = 0;
+  const historyWarnings: string[] = [];
 
   for (const entry of input.placements) {
     const student = studentsById.get(entry.studentId)!;
-    if (student.class_id === entry.targetClassId) continue;
+    if (student.class_id === entry.targetClassId) {
+      skippedAlreadyPlaced += 1;
+      continue;
+    }
 
+    const previousClassId = student.class_id;
     const previousClassName =
-      classNameById.get(student.class_id) ??
-      streamNameById.get(student.class_id) ??
+      classNameById.get(previousClassId) ??
+      streamNameById.get(previousClassId) ??
       "—";
     const newClassName = streamNameById.get(entry.targetClassId) ?? "—";
     const performance = performanceByStudent.get(entry.studentId);
@@ -344,27 +366,73 @@ export async function applyStudentStreamingAction(input: {
       performance != null
         ? (formatPerformanceValue(measure, performance) ?? "—")
         : "—";
+    const recommendedClassId = recommendedByStudent.get(entry.studentId) ?? null;
+    const recommendedClassName = recommendedClassId
+      ? (streamNameById.get(recommendedClassId) ?? null)
+      : null;
+    const isManualChange =
+      recommendedClassId != null
+        ? entry.targetClassId !== recommendedClassId
+        : (performance?.subjectsScored ?? 0) === 0;
 
-    const { error: updateErr } = await admin
+    const { data: updatedRow, error: updateErr } = await admin
       .from("students")
       .update({ class_id: entry.targetClassId } as never)
       .eq("id", entry.studentId)
-      .eq("school_id", access.schoolId);
+      .eq("school_id", student.school_id)
+      .select("id, class_id")
+      .maybeSingle();
 
-    if (updateErr) return { ok: false, error: updateErr.message };
+    if (updateErr) {
+      return { ok: false, error: PLACEMENT_SAVE_FAILED };
+    }
+
+    if (
+      !updatedRow ||
+      (updatedRow as { class_id: string }).class_id !== entry.targetClassId
+    ) {
+      return { ok: false, error: PLACEMENT_SAVE_FAILED };
+    }
+
+    const { data: verifiedRow, error: verifyErr } = await admin
+      .from("students")
+      .select("id, class_id, school_id")
+      .eq("id", entry.studentId)
+      .maybeSingle();
+
+    if (verifyErr) {
+      return { ok: false, error: PLACEMENT_SAVE_FAILED };
+    }
+
+    const verified = verifiedRow as
+      | { id: string; class_id: string; school_id: string }
+      | null;
+
+    if (
+      !verified ||
+      verified.class_id !== entry.targetClassId ||
+      verified.school_id !== student.school_id
+    ) {
+      return { ok: false, error: PLACEMENT_SAVE_FAILED };
+    }
 
     const { error: historyErr } = await admin
       .from("student_streaming_history")
       .insert({
-        school_id: access.schoolId,
+        school_id: student.school_id,
         parent_class_id: cluster.rootClassId,
         student_id: entry.studentId,
         student_name: student.full_name,
         admission_number: student.admission_number,
-        previous_class_id: student.class_id,
+        previous_class_id: previousClassId,
         previous_class_name: previousClassName,
         new_class_id: entry.targetClassId,
         new_class_name: newClassName,
+        recommended_class_id: recommendedClassId,
+        recommended_class_name: recommendedClassName,
+        placement_target_class_id: entry.targetClassId,
+        placement_target_class_name: newClassName,
+        is_manual_change: isManualChange,
         performance_measure: measure,
         performance_value: performanceValue,
         exam_type: examType,
@@ -374,20 +442,50 @@ export async function applyStudentStreamingAction(input: {
         coordinator_name: coordinatorName,
       } as never);
 
-    if (historyErr) return { ok: false, error: historyErr.message };
+    if (historyErr) {
+      console.error(
+        "[streaming] Placement saved but history insert failed:",
+        historyErr.message,
+        {
+          studentId: entry.studentId,
+          targetClassId: entry.targetClassId,
+        }
+      );
+      historyWarnings.push(student.full_name);
+    }
+
+    student.class_id = entry.targetClassId;
     placed += 1;
+  }
+
+  if (placed === 0) {
+    if (skippedAlreadyPlaced > 0) {
+      return {
+        ok: false,
+        error:
+          "No placements were saved. The selected students are already in their target streams.",
+      };
+    }
+    return {
+      ok: false,
+      error: "No placements were saved. Refresh the page and try again.",
+    };
   }
 
   for (const path of STREAMING_PATHS) revalidatePath(path);
   revalidatePath("/teacher-dashboard/coordinator");
+  revalidatePath("/dashboard/students");
+
+  const warning =
+    historyWarnings.length > 0
+      ? `${placed} student${placed === 1 ? "" : "s"} placed, but history could not be recorded for: ${historyWarnings.join(", ")}.`
+      : undefined;
 
   return {
     ok: true,
     placed,
-    message:
-      placed === 1
-        ? "1 student placed successfully."
-        : `${placed} students placed successfully.`,
+    message: placed === 1 ? "Placement saved" : `${placed} placements saved`,
+    warning,
   };
 }
 

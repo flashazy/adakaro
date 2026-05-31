@@ -196,6 +196,40 @@ export async function loadStreamingWorkspaceData(params: {
     .limit(1)
     .maybeSingle();
 
+  const appliedPlacementByStudentId = new Map<string, string>();
+  const examType = params.examType;
+  if (examType && studentIds.length > 0) {
+    const historyRows = await fetchAllRows<{
+      student_id: string;
+      new_class_id: string;
+      placement_target_class_id: string | null;
+      created_at: string;
+    }>({
+      label: "student-streaming: applied placements",
+      fetchPage: async (from, to) =>
+        await admin
+          .from("student_streaming_history")
+          .select(
+            "student_id, new_class_id, placement_target_class_id, created_at"
+          )
+          .eq("parent_class_id", cluster.rootClassId)
+          .eq("academic_year", params.academicYear)
+          .eq("exam_type", examType)
+          .eq("performance_measure", params.performanceMeasure)
+          .in("student_id", studentIds)
+          .order("created_at", { ascending: false })
+          .range(from, to),
+    });
+
+    for (const row of historyRows) {
+      if (appliedPlacementByStudentId.has(row.student_id)) continue;
+      appliedPlacementByStudentId.set(
+        row.student_id,
+        row.placement_target_class_id ?? row.new_class_id
+      );
+    }
+  }
+
   const students: StreamingStudentRow[] = studentRows.map((s) => {
     const performance =
       performanceByStudent.get(s.id) ?? {
@@ -210,6 +244,11 @@ export async function loadStreamingWorkspaceData(params: {
       performance,
       rules
     );
+    const latestAppliedTarget = appliedPlacementByStudentId.get(s.id) ?? null;
+    const appliedPlacementClassId =
+      latestAppliedTarget && latestAppliedTarget === s.class_id
+        ? latestAppliedTarget
+        : null;
     const currentStreamName =
       s.class_id === cluster.rootClassId
         ? "Unassigned"
@@ -229,6 +268,7 @@ export async function loadStreamingWorkspaceData(params: {
       recommendedClassName: recommendedClassId
         ? (streamNameById.get(recommendedClassId) ?? null)
         : null,
+      appliedPlacementClassId,
       performanceDisplay: formatPerformanceValue(
         params.performanceMeasure,
         performance

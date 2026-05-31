@@ -71,6 +71,8 @@ export interface StreamingStudentRow {
   performance: StudentStreamingPerformance;
   recommendedClassId: string | null;
   recommendedClassName: string | null;
+  /** Latest confirmed placement target for this exam when it matches current class. */
+  appliedPlacementClassId: string | null;
   performanceDisplay: string | null;
 }
 
@@ -90,8 +92,12 @@ export interface StreamingPlacementPreview {
   currentOccupancy: number;
   incomingCount: number;
   leavingCount: number;
+  /** Students already in this stream with matching placement target. */
+  stayingCount: number;
   /** Projected headcount after placements. */
   finalTotal: number;
+  /** After Placement - Current (equals incomingCount - leavingCount). */
+  netChange: number;
   capacity: number | null;
   isOverCapacity: boolean;
 }
@@ -111,12 +117,42 @@ export interface StreamingSummaryCounts {
   withoutResults: number;
 }
 
+export interface EnrichedStreamingStudent extends StreamingStudentRow {
+  hasExamResult: boolean;
+  ruleRecommendedId: string | null;
+  ruleRecommendedName: string | null;
+  placementTargetId: string | null;
+  effectivePlacementTargetId: string | null;
+  placementTargetName: string | null;
+  isManualTarget: boolean;
+  placementStatus: StreamingPlacementStatus;
+  isActionComplete: boolean;
+  /** Current stream differs from placement target. */
+  isMoving: boolean;
+  /** Already in the correct stream for their placement target. */
+  isStaying: boolean;
+}
+
+export interface StreamingPlacementImpact {
+  studentsMoving: number;
+  streamsAffected: number;
+}
+
+export interface StreamingPlacementResults {
+  students: EnrichedStreamingStudent[];
+  streamPreviews: StreamingPlacementPreview[];
+  summary: StreamingSummaryCounts;
+  impact: StreamingPlacementImpact;
+}
+
 export interface StreamingHistoryRow {
   id: string;
   studentName: string;
   admissionNumber: string | null;
   previousClassName: string;
   newClassName: string;
+  recommendedClassName: string | null;
+  isManualChange: boolean;
   performanceMeasure: StreamingPerformanceMeasure;
   performanceValue: string;
   examLabel: string;

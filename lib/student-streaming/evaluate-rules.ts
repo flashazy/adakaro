@@ -1,9 +1,14 @@
 import type {
   DivisionStreamingRule,
+  EnrichedStreamingStudent,
   NumericStreamingRule,
   StreamingPerformanceMeasure,
+  StreamingPlacementPreview,
+  StreamingPlacementResults,
   StreamingPlacementStatus,
   StreamingRuleEntry,
+  StreamingStreamClass,
+  StreamingStudentRow,
   StreamingSummaryCounts,
   StudentStreamingPerformance,
 } from "@/lib/student-streaming/types";
@@ -356,17 +361,126 @@ export function buildPlacementPreviewWithCapacity(
     placementTargetId: string | null;
   }[],
   streamClasses: { id: string; name: string; capacity: number | null }[]
-): {
-  targetClassId: string;
-  targetClassName: string;
-  studentCount: number;
-  currentOccupancy: number;
-  incomingCount: number;
-  leavingCount: number;
-  finalTotal: number;
-  capacity: number | null;
-  isOverCapacity: boolean;
-}[] {
+): StreamingPlacementPreview[] {
+  return computeStreamPreviewsFromPlacementStudents(students, streamClasses);
+}
+
+function buildStreamNameMap(
+  streamClasses: StreamingStreamClass[],
+  students: StreamingStudentRow[]
+): Map<string, string> {
+  const streamNameById = new Map(streamClasses.map((stream) => [stream.id, stream.name]));
+  for (const student of students) {
+    if (!streamNameById.has(student.currentClassId)) {
+      streamNameById.set(student.currentClassId, student.currentClassName);
+    }
+  }
+  return streamNameById;
+}
+
+function enrichStreamingStudents(params: {
+  students: StreamingStudentRow[];
+  rules: StreamingRuleEntry[];
+  overrides: Record<string, string>;
+  streamClasses: StreamingStreamClass[];
+  performanceMeasure: StreamingPerformanceMeasure;
+}): EnrichedStreamingStudent[] {
+  const streamIds = new Set(params.streamClasses.map((stream) => stream.id));
+  const streamNameById = buildStreamNameMap(params.streamClasses, params.students);
+
+  return params.students.map((student) => {
+    const hasExamResult = student.performance.subjectsScored > 0;
+    const ruleRecommendedId =
+      params.rules.length > 0
+        ? recommendStreamClassId(
+            params.performanceMeasure,
+            student.performance,
+            params.rules
+          )
+        : student.recommendedClassId;
+    const hasExplicitOverride = params.overrides[student.id] != null;
+    const placementTargetId = hasExamResult
+      ? (params.overrides[student.id] ?? ruleRecommendedId ?? null)
+      : (params.overrides[student.id] ?? null);
+    const effectivePlacementTargetId = placementTargetId;
+    const ruleRecommendedName = ruleRecommendedId
+      ? (streamNameById.get(ruleRecommendedId) ?? null)
+      : null;
+    const placementTargetName = effectivePlacementTargetId
+      ? (streamNameById.get(effectivePlacementTargetId) ?? null)
+      : null;
+    const isManualTarget =
+      hasExamResult &&
+      ruleRecommendedId != null &&
+      effectivePlacementTargetId != null &&
+      effectivePlacementTargetId !== ruleRecommendedId;
+    const placementStatus = resolvePlacementStatus({
+      hasExamResult,
+      currentStreamName: student.currentStreamName,
+      currentClassId: student.currentClassId,
+      effectivePlacementTargetId,
+      ruleRecommendedId,
+      hasExplicitOverride,
+      streamIds,
+    });
+    const isMoving =
+      effectivePlacementTargetId != null &&
+      student.currentClassId !== effectivePlacementTargetId;
+    const isStaying =
+      effectivePlacementTargetId != null &&
+      student.currentClassId === effectivePlacementTargetId;
+
+    return {
+      ...student,
+      hasExamResult,
+      ruleRecommendedId,
+      ruleRecommendedName,
+      placementTargetId,
+      effectivePlacementTargetId,
+      placementTargetName,
+      isManualTarget,
+      placementStatus,
+      isActionComplete: isStaying,
+      isMoving,
+      isStaying,
+    };
+  });
+}
+
+function resolvePreviewPlacementTarget(
+  student: {
+    currentClassId: string;
+    ruleRecommendedId: string | null;
+    appliedPlacementClassId: string | null;
+  },
+  override: string | undefined,
+  streamIds: Set<string>
+): string | null {
+  if (override != null) {
+    return override;
+  }
+  if (
+    student.appliedPlacementClassId &&
+    student.currentClassId === student.appliedPlacementClassId
+  ) {
+    return student.appliedPlacementClassId;
+  }
+  if (student.ruleRecommendedId) {
+    return student.ruleRecommendedId;
+  }
+  if (streamIds.has(student.currentClassId)) {
+    return student.currentClassId;
+  }
+  return null;
+}
+
+function computeStreamPreviewsFromPlacementStudents(
+  students: {
+    currentClassId: string;
+    placementTargetId: string | null;
+  }[],
+  streamClasses: { id: string; name: string; capacity: number | null }[]
+): StreamingPlacementPreview[] {
   return streamClasses.map((stream) => {
     const currentOccupancy = students.filter(
       (student) => student.currentClassId === stream.id
@@ -374,17 +488,17 @@ export function buildPlacementPreviewWithCapacity(
 
     let incomingCount = 0;
     let leavingCount = 0;
-    let targetCount = 0;
+    let stayingCount = 0;
 
     for (const student of students) {
       const target = student.placementTargetId;
       if (!target) continue;
 
-      if (target === stream.id) {
-        targetCount += 1;
-        if (student.currentClassId !== stream.id) {
-          incomingCount += 1;
-        }
+      if (target === stream.id && student.currentClassId === stream.id) {
+        stayingCount += 1;
+      }
+      if (target === stream.id && student.currentClassId !== stream.id) {
+        incomingCount += 1;
       }
       if (student.currentClassId === stream.id && target !== stream.id) {
         leavingCount += 1;
@@ -392,21 +506,90 @@ export function buildPlacementPreviewWithCapacity(
     }
 
     const finalTotal = currentOccupancy + incomingCount - leavingCount;
+    const netChange = finalTotal - currentOccupancy;
     const capacity = stream.capacity;
-    const isOverCapacity = capacity != null && finalTotal > capacity;
 
     return {
       targetClassId: stream.id,
       targetClassName: stream.name,
-      studentCount: targetCount,
+      studentCount: stayingCount + incomingCount,
       currentOccupancy,
       incomingCount,
       leavingCount,
+      stayingCount,
       finalTotal,
+      netChange,
       capacity,
-      isOverCapacity,
+      isOverCapacity: capacity != null && finalTotal > capacity,
     };
   });
+}
+
+function computeStreamingPlacementImpact(
+  students: Pick<
+    EnrichedStreamingStudent,
+    "currentClassId" | "effectivePlacementTargetId" | "isMoving"
+  >[],
+  streamPreviews: StreamingPlacementPreview[]
+): { studentsMoving: number; streamsAffected: number } {
+  const studentsMoving = students.filter((student) => student.isMoving).length;
+  const streamsAffected = streamPreviews.filter(
+    (row) => row.incomingCount > 0 || row.leavingCount > 0
+  ).length;
+
+  return { studentsMoving, streamsAffected };
+}
+
+/** Single source of truth for streaming placement calculations used across the UI. */
+export function computeStreamingPlacementResults(params: {
+  students: StreamingStudentRow[];
+  rules: StreamingRuleEntry[];
+  overrides: Record<string, string>;
+  streamClasses: StreamingStreamClass[];
+  performanceMeasure: StreamingPerformanceMeasure;
+}): StreamingPlacementResults {
+  const students = enrichStreamingStudents(params);
+  const streamIds = new Set(params.streamClasses.map((stream) => stream.id));
+  const streamPreviews = computeStreamPreviewsFromPlacementStudents(
+    students.map((student) => ({
+      currentClassId: student.currentClassId,
+      placementTargetId: resolvePreviewPlacementTarget(
+        {
+          currentClassId: student.currentClassId,
+          ruleRecommendedId: student.ruleRecommendedId,
+          appliedPlacementClassId: student.appliedPlacementClassId,
+        },
+        params.overrides[student.id],
+        streamIds
+      ),
+    })),
+    params.streamClasses
+  );
+  const summary = computeStreamingSummary(students);
+  const impact = computeStreamingPlacementImpact(students, streamPreviews);
+
+  return {
+    students,
+    streamPreviews,
+    summary,
+    impact,
+  };
+}
+
+/** Whether a student is related to a stream for preview-card filtering. */
+export function studentRelatesToStream(
+  student: {
+    currentClassId: string;
+    effectivePlacementTargetId: string | null;
+    ruleRecommendedId: string | null;
+  },
+  streamId: string
+): boolean {
+  return (
+    student.currentClassId === streamId ||
+    student.effectivePlacementTargetId === streamId ||
+    student.ruleRecommendedId === streamId
+  );
 }
 
 export function formatStreamingPlacementReason(

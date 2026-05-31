@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
-  ArrowRight,
-  ArrowDown,
-  ArrowUp,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -19,12 +17,10 @@ import { AsyncLoadingShell } from "@/components/dashboard/async-loading-shell";
 import {
   assignStudentRanks,
   buildCapacityWarnings,
-  buildPlacementPreviewWithCapacity,
-  computeStreamingSummary,
+  computeStreamingPlacementResults,
   formatRuleSummary,
   formatStreamingPlacementReason,
-  recommendStreamClassId,
-  resolvePlacementStatus,
+  studentRelatesToStream,
 } from "@/lib/student-streaming/evaluate-rules";
 import {
   STREAMING_PERFORMANCE_MEASURE_LABELS,
@@ -34,6 +30,7 @@ import {
   type StreamingOverviewStats,
   type StreamingParentClassOption,
   type StreamingPerformanceMeasure,
+  type StreamingPlacementPreview,
   type StreamingPlacementStatus,
   type StreamingRuleEntry,
   type StreamingStreamClass,
@@ -113,65 +110,45 @@ function buildExampleDivisionRules(
   ];
 }
 
-function buildPlacementSuccessToast(
-  placements: {
-    studentId: string;
-    targetClassName: string;
-  }[],
-  students: StreamingStudentRow[]
-): string {
-  if (placements.length === 1) {
-    const placement = placements[0]!;
-    const student = students.find((s) => s.id === placement.studentId);
-    const name = student?.fullName ?? "Student";
-    return `${name} placed in ${placement.targetClassName}.`;
-  }
-  if (placements.length > 1) {
-    return `${placements.length} students placed successfully.`;
-  }
-  return "Placement applied successfully.";
-}
+type PlacementPreviewRow = StreamingPlacementPreview;
 
-type PlacementPreviewRow = {
-  targetClassId: string;
-  targetClassName: string;
-  currentOccupancy: number;
+function PlacementPreviewChange({
+  incomingCount,
+  leavingCount,
+}: {
   incomingCount: number;
   leavingCount: number;
-  finalTotal: number;
-  isOverCapacity: boolean;
-};
-
-function PlacementPreviewChange({ delta }: { delta: number }) {
+}) {
   const base =
-    "inline-flex h-7 min-w-[2.75rem] items-center justify-center gap-1 rounded-md border px-2.5 text-sm font-semibold tabular-nums leading-none";
-  if (delta > 0) {
+    "inline-flex h-7 min-w-[5.5rem] items-center justify-center rounded-md border px-2.5 text-xs font-semibold tabular-nums leading-none whitespace-nowrap";
+
+  if (incomingCount === 0 && leavingCount === 0) {
     return (
       <span
-        className={`${base} border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200`}
+        className={`${base} border-slate-200 bg-slate-100/80 font-medium text-slate-500 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400`}
       >
-        <ArrowUp className="h-4 w-4 shrink-0" aria-hidden />
-        {delta}
+        No change
       </span>
     );
   }
-  if (delta < 0) {
-    return (
-      <span
-        className={`${base} border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200`}
-      >
-        <ArrowDown className="h-4 w-4 shrink-0" aria-hidden />
-        {Math.abs(delta)}
-      </span>
-    );
-  }
+
   return (
-    <span
-      className={`${base} border-slate-200 bg-slate-100/80 font-medium text-slate-500 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400`}
-    >
-      <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />
-      0
-    </span>
+    <div className="flex flex-wrap gap-1.5">
+      {incomingCount > 0 && (
+        <span
+          className={`${base} border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200`}
+        >
+          +{incomingCount} Joining
+        </span>
+      )}
+      {leavingCount > 0 && (
+        <span
+          className={`${base} border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200`}
+        >
+          -{leavingCount} Leaving
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -184,8 +161,6 @@ function PlacementStreamCard({
   isActive: boolean;
   onSelect: (streamId: string) => void;
 }) {
-  const delta = row.finalTotal - row.currentOccupancy;
-
   return (
     <button
       type="button"
@@ -222,22 +197,12 @@ function PlacementStreamCard({
       </p>
 
       <div className="mt-auto pt-3">
-        <PlacementPreviewChange delta={delta} />
+        <PlacementPreviewChange
+          incomingCount={row.incomingCount}
+          leavingCount={row.leavingCount}
+        />
       </div>
     </button>
-  );
-}
-
-function studentMatchesStreamFilter(
-  student: {
-    currentClassId: string;
-    effectivePlacementTargetId: string | null;
-  },
-  streamId: string
-): boolean {
-  return (
-    student.currentClassId === streamId ||
-    student.effectivePlacementTargetId === streamId
   );
 }
 
@@ -355,7 +320,7 @@ function PlacementStatusBadge({
           "border-amber-300/70 bg-amber-100/80 text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-100",
       },
       manual_override: {
-        label: "Manual Override",
+        label: "Manual Change",
         classes:
           "border-violet-200/80 bg-violet-50/90 text-violet-800 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-200",
       },
@@ -416,17 +381,50 @@ function SummaryKpiCard({
   return <div className={className}>{content}</div>;
 }
 
+function hasPendingPlacementChange(
+  student: { id: string; currentClassId: string },
+  pendingTargets: Record<string, string>
+): boolean {
+  const pendingTarget = pendingTargets[student.id];
+  return pendingTarget != null && pendingTarget !== student.currentClassId;
+}
+
 function rowActionType(
   student: {
-    isActionComplete: boolean;
-    effectivePlacementTargetId: string | null;
-    currentStreamName: string;
+    id: string;
     currentClassId: string;
+    currentStreamName: string;
+    ruleRecommendedId: string | null;
+    effectivePlacementTargetId: string | null;
   },
-  streamIds: Set<string>
-): "already_correct" | "confirm" | "transfer" | "none" {
-  if (student.isActionComplete) return "already_correct";
-  if (!student.effectivePlacementTargetId) return "none";
+  streamIds: Set<string>,
+  savingStudentIds: Set<string>,
+  pendingTargets: Record<string, string>
+): "already_correct" | "confirm" | "transfer" | "none" | "saving" {
+  if (savingStudentIds.has(student.id)) return "saving";
+
+  if (hasPendingPlacementChange(student, pendingTargets)) {
+    if (
+      student.currentStreamName === "Unassigned" ||
+      !streamIds.has(student.currentClassId)
+    ) {
+      return "confirm";
+    }
+    return "transfer";
+  }
+
+  if (
+    student.ruleRecommendedId &&
+    student.currentClassId === student.ruleRecommendedId
+  ) {
+    return "already_correct";
+  }
+
+  const applyTarget =
+    student.ruleRecommendedId ?? student.effectivePlacementTargetId;
+  if (!applyTarget) return "none";
+  if (student.currentClassId === applyTarget) return "already_correct";
+
   if (
     student.currentStreamName === "Unassigned" ||
     !streamIds.has(student.currentClassId)
@@ -434,6 +432,56 @@ function rowActionType(
     return "confirm";
   }
   return "transfer";
+}
+
+function displayPlacementStatus(
+  student: {
+    id: string;
+    currentClassId: string;
+    ruleRecommendedId: string | null;
+    placementStatus: StreamingPlacementStatus;
+  },
+  pendingTargets: Record<string, string>
+): StreamingPlacementStatus {
+  const pendingTarget = pendingTargets[student.id];
+  if (
+    pendingTarget != null &&
+    pendingTarget !== student.currentClassId
+  ) {
+    const isManual =
+      student.ruleRecommendedId != null &&
+      pendingTarget !== student.ruleRecommendedId;
+    return isManual ? "manual_override" : "needs_transfer";
+  }
+  return student.placementStatus;
+}
+
+function getRowPlacementTargetId(
+  student: { id: string; effectivePlacementTargetId: string | null },
+  pendingTargets: Record<string, string>
+): string | null {
+  return pendingTargets[student.id] ?? student.effectivePlacementTargetId ?? null;
+}
+
+function resolveApplyTargetId(
+  student: {
+    id: string;
+    effectivePlacementTargetId: string | null;
+    ruleRecommendedId: string | null;
+  },
+  pendingTargets: Record<string, string>,
+  bulkTargetClassId?: string
+): string | null {
+  const explicitPending = pendingTargets[student.id];
+  if (explicitPending != null) {
+    return explicitPending;
+  }
+  if (bulkTargetClassId) {
+    return bulkTargetClassId;
+  }
+  return (
+    student.effectivePlacementTargetId ?? student.ruleRecommendedId ?? null
+  );
 }
 
 function StreamingKpiCard({
@@ -448,7 +496,7 @@ function StreamingKpiCard({
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/80">
       <span
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-zinc-800"
         aria-hidden
       >
         {icon}
@@ -489,6 +537,7 @@ export function StudentStreamingClient({
 }: {
   initialAcademicYear: string;
 }) {
+  const router = useRouter();
   const [parentClasses, setParentClasses] = useState<
     StreamingParentClassOption[]
   >([]);
@@ -515,6 +564,8 @@ export function StudentStreamingClient({
   const [examOptions, setExamOptions] = useState<StreamingExamOption[]>([]);
   const [rules, setRules] = useState<StreamingRuleEntry[]>([]);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const overridesRef = useRef(overrides);
+  overridesRef.current = overrides;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkTargetClassId, setBulkTargetClassId] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -525,6 +576,7 @@ export function StudentStreamingClient({
     skippedNoResult?: number;
     skippedNoRule?: number;
     bulkTargetStreamName?: string;
+    noPendingChanges?: boolean;
     noResultManual?: boolean;
     studentName?: string;
     individualDetail?: {
@@ -539,6 +591,9 @@ export function StudentStreamingClient({
     { studentId: string; targetClassId: string; targetClassName: string }[]
   >([]);
   const [applying, setApplying] = useState(false);
+  const [savingStudentIds, setSavingStudentIds] = useState<Set<string>>(
+    new Set()
+  );
   const [savingRules, setSavingRules] = useState(false);
   const [previewStreamFilter, setPreviewStreamFilter] = useState<string | null>(
     null
@@ -627,6 +682,41 @@ export function StudentStreamingClient({
     }
   }, [parentClassId, academicYear, examType, performanceMeasure]);
 
+  const reloadStreamingDataFromServer = useCallback(async () => {
+    if (!parentClassId) return false;
+    const result = await loadStreamingWorkspaceAction({
+      parentClassId,
+      academicYear,
+      examType,
+      performanceMeasure,
+    });
+    if (!result.ok) {
+      setError(result.error);
+      return false;
+    }
+    setStats(result.stats);
+    setStudents(result.students);
+    setStreamClasses(result.streamClasses);
+    setExamOptions(result.examOptions);
+    setRules(result.rules);
+    setOverrides({});
+    setSelectedIds(new Set());
+    setPreviewStreamFilter(null);
+    if (!examType && result.examOptions[0]) {
+      setExamType(result.examOptions[0].examType);
+    }
+    if (!bulkTargetClassId && result.streamClasses[0]) {
+      setBulkTargetClassId(result.streamClasses[0].id);
+    }
+    return true;
+  }, [
+    parentClassId,
+    academicYear,
+    examType,
+    performanceMeasure,
+    bulkTargetClassId,
+  ]);
+
   useEffect(() => {
     if (parentClassId) void refreshWorkspace();
   }, [parentClassId, academicYear, examType, performanceMeasure, refreshWorkspace]);
@@ -646,67 +736,22 @@ export function StudentStreamingClient({
     [streamClasses]
   );
 
-  const enrichedStudents = useMemo(() => {
-    return students.map((s) => {
-      const hasExamResult = s.performance.subjectsScored > 0;
-      const ruleRecommendedId =
-        rules.length > 0
-          ? recommendStreamClassId(
-              performanceMeasure,
-              s.performance,
-              rules
-            )
-          : s.recommendedClassId;
-      const hasExplicitOverride = overrides[s.id] != null;
-      const placementTargetId = hasExamResult
-        ? (overrides[s.id] ?? ruleRecommendedId ?? null)
-        : (overrides[s.id] ?? null);
-      const effectivePlacementTargetId = placementTargetId;
-      const ruleRecommendedName = ruleRecommendedId
-        ? (streamNameById.get(ruleRecommendedId) ?? null)
-        : null;
-      const placementTargetName = effectivePlacementTargetId
-        ? (streamNameById.get(effectivePlacementTargetId) ?? null)
-        : null;
-      const isManualTarget =
-        hasExamResult &&
-        ruleRecommendedId != null &&
-        effectivePlacementTargetId != null &&
-        effectivePlacementTargetId !== ruleRecommendedId;
-      const placementStatus = resolvePlacementStatus({
-        hasExamResult,
-        currentStreamName: s.currentStreamName,
-        currentClassId: s.currentClassId,
-        effectivePlacementTargetId,
-        ruleRecommendedId,
-        hasExplicitOverride,
-        streamIds,
-      });
+  const placementResults = useMemo(
+    () =>
+      computeStreamingPlacementResults({
+        students,
+        rules,
+        overrides,
+        streamClasses,
+        performanceMeasure,
+      }),
+    [students, rules, overrides, streamClasses, performanceMeasure]
+  );
 
-      return {
-        ...s,
-        hasExamResult,
-        ruleRecommendedId,
-        ruleRecommendedName,
-        placementTargetId,
-        effectivePlacementTargetId,
-        placementTargetName,
-        isManualTarget,
-        placementStatus,
-        isActionComplete:
-          effectivePlacementTargetId != null &&
-          s.currentClassId === effectivePlacementTargetId,
-      };
-    });
-  }, [
-    students,
-    overrides,
-    streamNameById,
-    rules,
-    performanceMeasure,
-    streamClasses,
-    streamIds,
-  ]);
+  const enrichedStudents = placementResults.students;
+  const streamingSummary = placementResults.summary;
+  const preview = placementResults.streamPreviews;
+  const previewImpact = placementResults.impact;
 
   const rankedStudents = useMemo(() => {
     const withRanks = assignStudentRanks(enrichedStudents, performanceMeasure);
@@ -728,7 +773,7 @@ export function StudentStreamingClient({
   const displayedStudents = useMemo(() => {
     if (!previewStreamFilter) return rankedStudents;
     return rankedStudents.filter((s) =>
-      studentMatchesStreamFilter(s, previewStreamFilter)
+      studentRelatesToStream(s, previewStreamFilter)
     );
   }, [rankedStudents, previewStreamFilter]);
 
@@ -816,35 +861,6 @@ export function StudentStreamingClient({
         : buildExampleNumericRules(streamClasses)
     );
   };
-  const streamingSummary = useMemo(
-    () => computeStreamingSummary(enrichedStudents),
-    [enrichedStudents]
-  );
-
-  const preview = useMemo(
-    () =>
-      buildPlacementPreviewWithCapacity(
-        enrichedStudents.map((s) => ({
-          id: s.id,
-          currentClassId: s.currentClassId,
-          placementTargetId: s.effectivePlacementTargetId,
-        })),
-        streamClasses
-      ),
-    [enrichedStudents, streamClasses]
-  );
-
-  const previewImpact = useMemo(() => {
-    let streamsAffected = 0;
-    let studentsMoving = 0;
-    for (const row of preview) {
-      const delta = row.finalTotal - row.currentOccupancy;
-      if (delta !== 0) streamsAffected += 1;
-      studentsMoving += row.incomingCount;
-    }
-    return { streamsAffected, studentsMoving };
-  }, [preview]);
-
   const capacityWarnings = useMemo(
     () =>
       buildCapacityWarnings(streamClasses, students, pendingPlacements),
@@ -874,13 +890,44 @@ export function StudentStreamingClient({
 
   const buildPlacementsFromSelection = (
     ids: string[],
-    targetClassId: string
+    bulkTargetClassId?: string,
+    pendingTargets: Record<string, string> = overridesRef.current
   ) => {
-    const targetClassName = streamNameById.get(targetClassId) ?? "Unknown";
     return ids
       .map((studentId) => {
-        const student = students.find((s) => s.id === studentId);
-        if (!student || student.currentClassId === targetClassId) return null;
+        const student = enrichedStudents.find((s) => s.id === studentId);
+        if (!student) return null;
+        const targetClassId = resolveApplyTargetId(
+          student,
+          pendingTargets,
+          bulkTargetClassId
+        );
+        if (!targetClassId || student.currentClassId === targetClassId) {
+          return null;
+        }
+        const targetClassName =
+          streamNameById.get(targetClassId) ?? "Unknown";
+        return { studentId, targetClassId, targetClassName };
+      })
+      .filter(
+        (p): p is { studentId: string; targetClassId: string; targetClassName: string } =>
+          p != null
+      );
+  };
+
+  const buildPlacementsForPendingSelection = (
+    ids: string[],
+    pendingTargets: Record<string, string> = overridesRef.current
+  ) => {
+    return ids
+      .map((studentId) => {
+        const student = enrichedStudents.find((s) => s.id === studentId);
+        if (!student || !hasPendingPlacementChange(student, pendingTargets)) {
+          return null;
+        }
+        const targetClassId = pendingTargets[studentId]!;
+        const targetClassName =
+          streamNameById.get(targetClassId) ?? "Unknown";
         return { studentId, targetClassId, targetClassName };
       })
       .filter(
@@ -900,6 +947,7 @@ export function StudentStreamingClient({
       skippedNoResult?: number;
       skippedNoRule?: number;
       bulkTargetStreamName?: string;
+      noPendingChanges?: boolean;
       noResultManual?: boolean;
       studentName?: string;
       individualDetail?: {
@@ -916,8 +964,10 @@ export function StudentStreamingClient({
         toast.message(
           `No eligible placements. ${meta.skippedNoResult ?? 0} without results, ${meta.skippedNoRule ?? 0} without matching rules.`
         );
-      } else {
+      } else if (meta.noPendingChanges) {
         toast.message("No placement changes to apply.");
+      } else {
+        toast.message("Unable to apply the selected placement.");
       }
       return;
     }
@@ -929,25 +979,50 @@ export function StudentStreamingClient({
 
   const handleBulkApply = () => {
     const ids = [...selectedIds];
+    const pendingTargets = overridesRef.current;
     if (ids.length === 0) {
       toast.error("Select at least one student.");
       return;
     }
-    if (!bulkTargetClassId) {
+    const pendingPlacementsList = buildPlacementsForPendingSelection(
+      ids,
+      pendingTargets
+    );
+    const idsWithoutPending = ids.filter((id) => {
+      const student = enrichedStudents.find((s) => s.id === id);
+      return student && !hasPendingPlacementChange(student, pendingTargets);
+    });
+    if (!bulkTargetClassId && idsWithoutPending.length > 0) {
       toast.error("Choose a target stream.");
       return;
     }
     const selected = enrichedStudents.filter((s) => selectedIds.has(s.id));
     const skippedNoResult = selected.filter((s) => !s.hasExamResult).length;
-    openConfirmForPlacements(
-      buildPlacementsFromSelection(ids, bulkTargetClassId),
-      "default",
-      {
-        skippedNoResult,
-        bulkTargetStreamName:
-          streamNameById.get(bulkTargetClassId) ?? "Unknown",
+    const bulkPlacementsList = bulkTargetClassId
+      ? buildPlacementsFromSelection(
+          idsWithoutPending,
+          bulkTargetClassId,
+          pendingTargets
+        )
+      : [];
+    const placements = [...pendingPlacementsList];
+    for (const bulkPlacement of bulkPlacementsList) {
+      if (!placements.some((p) => p.studentId === bulkPlacement.studentId)) {
+        placements.push(bulkPlacement);
       }
-    );
+    }
+    const hasAnyPending = ids.some((id) => {
+      const student = enrichedStudents.find((s) => s.id === id);
+      return student && hasPendingPlacementChange(student, pendingTargets);
+    });
+    openConfirmForPlacements(placements, "default", {
+      skippedNoResult,
+      bulkTargetStreamName: bulkTargetClassId
+        ? (streamNameById.get(bulkTargetClassId) ?? "Unknown")
+        : undefined,
+      noPendingChanges:
+        placements.length === 0 && !hasAnyPending && idsWithoutPending.length > 0,
+    });
   };
 
   const handleApplyRecommended = () => {
@@ -975,8 +1050,28 @@ export function StudentStreamingClient({
     });
   };
 
-  const handleIndividualAssign = (studentId: string, targetClassId: string) => {
+  const handleIndividualAssign = (
+    studentId: string,
+    selectedTargetClassId?: string | null
+  ) => {
+    const pendingTargets = overridesRef.current;
     const student = enrichedStudents.find((s) => s.id === studentId);
+    if (!student) return;
+
+    const hasPending = hasPendingPlacementChange(student, pendingTargets);
+    const targetClassId =
+      pendingTargets[studentId] ??
+      selectedTargetClassId ??
+      student.effectivePlacementTargetId ??
+      student.ruleRecommendedId ??
+      null;
+
+    if (!targetClassId || student.currentClassId === targetClassId) {
+      openConfirmForPlacements([], "default", {
+        noPendingChanges: !hasPending,
+      });
+      return;
+    }
     const targetStreamName =
       streamNameById.get(targetClassId) ?? "Unknown";
     const meta: {
@@ -1031,53 +1126,74 @@ export function StudentStreamingClient({
     }
 
     openConfirmForPlacements(
-      buildPlacementsFromSelection([studentId], targetClassId),
+      [
+        {
+          studentId,
+          targetClassId,
+          targetClassName: targetStreamName,
+        },
+      ],
       "default",
       meta
     );
   };
 
-  const setPlacementTarget = (
-    studentId: string,
-    targetClassId: string,
-    ruleRecommendedId: string | null
-  ) => {
+  const setPlacementTarget = (studentId: string, targetClassId: string) => {
     setOverrides((prev) => {
-      const next = { ...prev };
-      if (targetClassId === ruleRecommendedId) {
+      const student = students.find((s) => s.id === studentId);
+      if (student && targetClassId === student.currentClassId) {
+        const next = { ...prev };
         delete next[studentId];
-      } else {
-        next[studentId] = targetClassId;
+        return next;
       }
-      return next;
+      return {
+        ...prev,
+        [studentId]: targetClassId,
+      };
     });
   };
 
   const confirmApply = async () => {
     if (!parentClassId || !examType) return;
     const placementsSnapshot = [...pendingPlacements];
+    const savingIds = new Set(placementsSnapshot.map((p) => p.studentId));
     setApplying(true);
-    const result = await applyStudentStreamingAction({
-      parentClassId,
-      academicYear,
-      examType,
-      performanceMeasure,
-      placements: placementsSnapshot.map((p) => ({
-        studentId: p.studentId,
-        targetClassId: p.targetClassId,
-      })),
-    });
-    setApplying(false);
-    setConfirmOpen(false);
-    setConfirmMode("default");
-    setConfirmMeta({});
-    setPendingPlacements([]);
-    if (!result.ok) {
-      toast.error(result.error);
-      return;
+    setSavingStudentIds(savingIds);
+    try {
+      const result = await applyStudentStreamingAction({
+        parentClassId,
+        academicYear,
+        examType,
+        performanceMeasure,
+        placements: placementsSnapshot.map((p) => ({
+          studentId: p.studentId,
+          targetClassId: p.targetClassId,
+        })),
+      });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      const reloaded = await reloadStreamingDataFromServer();
+      if (!reloaded) {
+        toast.error(
+          "Placement was saved but the page could not refresh. Please reload."
+        );
+        return;
+      }
+      router.refresh();
+      setConfirmOpen(false);
+      setConfirmMode("default");
+      setConfirmMeta({});
+      setPendingPlacements([]);
+      if (result.warning) {
+        toast.warning(result.warning);
+      }
+      toast.success(result.message);
+    } finally {
+      setApplying(false);
+      setSavingStudentIds(new Set());
     }
-    toast.success(buildPlacementSuccessToast(placementsSnapshot, students));
-    void refreshWorkspace();
   };
 
   const confirmPreview = useMemo(() => {
@@ -1248,22 +1364,26 @@ export function StudentStreamingClient({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 sm:gap-4">
         <StreamingKpiCard
-          icon={<Users className="h-5 w-5" />}
+          icon={<Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
           label="Students Reviewed"
           value={stats.totalEligible}
         />
         <StreamingKpiCard
-          icon={<CheckCircle2 className="h-5 w-5" />}
+          icon={
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          }
           label="Already Placed"
           value={stats.alreadyStreamed}
         />
         <StreamingKpiCard
-          icon={<Clock className="h-5 w-5" />}
+          icon={<Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
           label="Awaiting Stream"
           value={stats.awaitingPlacement}
         />
         <StreamingKpiCard
-          icon={<Layers className="h-5 w-5" />}
+          icon={
+            <Layers className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+          }
           label="Streams Available"
           value={stats.availableStreams}
         />
@@ -1876,6 +1996,11 @@ export function StudentStreamingClient({
                       </td>
                       <td className="truncate px-2 py-1.5 align-middle text-xs font-bold text-slate-900 dark:text-zinc-50">
                         {s.fullName}
+                        {hasPendingPlacementChange(s, overrides) && (
+                          <span className="ml-1.5 inline-flex h-4 items-center rounded border border-amber-200/80 bg-amber-50/80 px-1.5 text-[10px] font-medium leading-none text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                            Pending
+                          </span>
+                        )}
                       </td>
                       <td className="px-2 py-1.5 align-middle text-[11px] tabular-nums text-slate-500 dark:text-zinc-400">
                         {s.admissionNumber ?? (
@@ -1938,16 +2063,18 @@ export function StudentStreamingClient({
                       <td className="px-2 py-1.5 align-middle">
                         <div className="flex h-6 items-center">
                         <select
-                          value={s.effectivePlacementTargetId ?? ""}
-                          disabled={!canPlace || streamClasses.length === 0}
+                          value={
+                            getRowPlacementTargetId(s, overrides) ?? ""
+                          }
+                          disabled={
+                            !canPlace ||
+                            streamClasses.length === 0 ||
+                            savingStudentIds.has(s.id)
+                          }
                           onChange={(e) => {
                             const v = e.target.value;
                             if (!v) return;
-                            setPlacementTarget(
-                              s.id,
-                              v,
-                              s.ruleRecommendedId
-                            );
+                            setPlacementTarget(s.id, v);
                           }}
                           className={PLACEMENT_TARGET_SELECT_CLASS}
                           aria-label={`Placement target for ${s.fullName}`}
@@ -1965,12 +2092,28 @@ export function StudentStreamingClient({
                       </td>
                       <td className="px-2 py-1.5 align-middle">
                         <div className="flex h-6 items-center">
-                          <PlacementStatusBadge status={s.placementStatus} />
+                          <PlacementStatusBadge
+                            status={displayPlacementStatus(s, overrides)}
+                          />
                         </div>
                       </td>
                       <td className="px-2 py-1.5 align-middle">
                         {(() => {
-                          const action = rowActionType(s, streamIds);
+                          const action = rowActionType(
+                            s,
+                            streamIds,
+                            savingStudentIds,
+                            overrides
+                          );
+                          if (action === "saving") {
+                            return (
+                              <span
+                                className={`${ACTION_CELL} text-slate-500 dark:text-zinc-400`}
+                              >
+                                Saving…
+                              </span>
+                            );
+                          }
                           if (action === "already_correct") {
                             return (
                               <span
@@ -1992,15 +2135,13 @@ export function StudentStreamingClient({
                           return (
                             <button
                               type="button"
-                              onClick={() => {
-                                if (s.effectivePlacementTargetId) {
-                                  handleIndividualAssign(
-                                    s.id,
-                                    s.effectivePlacementTargetId
-                                  );
-                                }
-                              }}
-                              disabled={!canPlace || !s.effectivePlacementTargetId}
+                              onClick={() =>
+                                handleIndividualAssign(
+                                  s.id,
+                                  getRowPlacementTargetId(s, overridesRef.current)
+                                )
+                              }
+                              disabled={!canPlace || savingStudentIds.has(s.id)}
                               className={`${ACTION_CELL} border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800`}
                             >
                               Apply
@@ -2087,7 +2228,7 @@ export function StudentStreamingClient({
                         disabled={!canPlace}
                         className={`${ACTION_CELL} border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800`}
                       >
-                        Apply
+                        Apply selected
                       </button>
                     </div>
                   </div>
@@ -2274,11 +2415,15 @@ export function StudentStreamingClient({
                 className="inline-flex items-center gap-2 rounded-xl bg-school-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
               >
                 {applying ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : null}
-                {confirmMode === "recommended"
-                  ? "Apply Placements"
-                  : "Confirm Placement"}
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving…
+                  </>
+                ) : confirmMode === "recommended" ? (
+                  "Apply Placements"
+                ) : (
+                  "Confirm Placement"
+                )}
               </button>
             </div>
           </div>
