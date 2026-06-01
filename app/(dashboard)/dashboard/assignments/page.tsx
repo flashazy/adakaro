@@ -39,6 +39,7 @@ export default async function AssignmentsPage() {
 
   const teacherMemberRows =
     await fetchSchoolTeacherMembersForTeachersPage(schoolId);
+  const activeTeacherIds = new Set(teacherMemberRows.map((m) => m.user_id));
   const bulkAssignableTeachers = teacherMemberRows
     .filter((m) => m.profilePasswordChanged)
     .map((m) => ({
@@ -173,11 +174,14 @@ export default async function AssignmentsPage() {
 
   const classNameById = allClassNameById;
 
-  const assignments: AssignmentRow[] = taRows.map((row) => {
+  const assignments: AssignmentRow[] = [];
+  const orphanAssignments: AssignmentRow[] = [];
+
+  for (const row of taRows) {
     const prof = profilesById.get(row.teacher_id);
     const fromCatalog = row.subjects?.name?.trim();
     const legacy = row.subject?.trim() ?? "";
-    return {
+    const mapped: AssignmentRow = {
       id: row.id,
       teacherId: row.teacher_id,
       teacherName: teacherDisplayName(prof?.full_name, prof?.email),
@@ -187,12 +191,18 @@ export default async function AssignmentsPage() {
       subjectId: row.subject_id,
       academicYear: row.academic_year ?? "",
     };
-  });
+    if (activeTeacherIds.has(row.teacher_id)) {
+      assignments.push(mapped);
+    } else {
+      orphanAssignments.push(mapped);
+    }
+  }
 
   return (
     <>
       <AssignmentsPageClient
         assignments={assignments}
+        orphanAssignments={orphanAssignments}
         classOptions={classOptions}
         subjectOptionsByClassId={subjectOptionsByClassId}
         bulkAssignableTeachers={bulkAssignableTeachers}

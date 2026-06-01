@@ -8,6 +8,7 @@ import { normalizeTeacherDisplayName } from "@/lib/teacher-display-name";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import type { Database } from "@/types/supabase";
 import { generateTeacherTempPassword } from "@/lib/generate-teacher-temp-password";
+import { assertTeacherIsActiveSchoolMember } from "@/lib/teacher-assignments/active-school-teachers";
 import {
   MANAGEABLE_TEACHER_DEPARTMENTS,
   isTeacherJoinedSchool,
@@ -697,26 +698,13 @@ export async function assignTeacherToClassAction(
     };
   }
 
-  const emailNorm = normalizeEmail(teacherEmailRaw);
-
-  const { data: mem } = await admin
-    .from("school_members")
-    .select("id")
-    .eq("school_id", schoolId)
-    .eq("user_id", teacherId)
-    .eq("role", "teacher")
-    .maybeSingle();
-
-  const { data: invitation } = await admin
-    .from("teacher_invitations")
-    .select("id")
-    .eq("school_id", schoolId)
-    .eq("email", emailNorm)
-    .not("used_at", "is", null)
-    .maybeSingle();
-
-  if (!mem && !invitation) {
-    return { ok: false, error: "That user is not a teacher at your school." };
+  const activeTeacher = await assertTeacherIsActiveSchoolMember(
+    admin,
+    schoolId,
+    teacherId
+  );
+  if (!activeTeacher.ok) {
+    return { ok: false, error: activeTeacher.error };
   }
 
   const { error } = await (admin as Db).from("teacher_assignments").insert({
@@ -837,26 +825,13 @@ export async function bulkAssignTeacherClassesAction(
     };
   }
 
-  const emailNorm = normalizeEmail(teacherEmailRaw);
-
-  const { data: mem } = await admin
-    .from("school_members")
-    .select("id")
-    .eq("school_id", schoolId)
-    .eq("user_id", teacherId)
-    .eq("role", "teacher")
-    .maybeSingle();
-
-  const { data: invitation } = await admin
-    .from("teacher_invitations")
-    .select("id")
-    .eq("school_id", schoolId)
-    .eq("email", emailNorm)
-    .not("used_at", "is", null)
-    .maybeSingle();
-
-  if (!mem && !invitation) {
-    return { ok: false, error: "That user is not a teacher at your school." };
+  const activeTeacher = await assertTeacherIsActiveSchoolMember(
+    admin,
+    schoolId,
+    teacherId
+  );
+  if (!activeTeacher.ok) {
+    return { ok: false, error: activeTeacher.error };
   }
 
   const { data: classRows } = await admin
@@ -1043,6 +1018,15 @@ export async function updateTeacherAssignmentAction(
   }
   if ((existing as { school_id: string }).school_id !== schoolId) {
     return { ok: false, error: "Invalid assignment." };
+  }
+
+  const activeTeacher = await assertTeacherIsActiveSchoolMember(
+    admin,
+    schoolId,
+    (existing as { teacher_id: string }).teacher_id
+  );
+  if (!activeTeacher.ok) {
+    return { ok: false, error: activeTeacher.error };
   }
 
   const { data: cls } = await admin
@@ -1579,6 +1563,7 @@ export async function removeTeacherFromSchoolAction(
   }
 
   revalidatePath("/dashboard/teachers");
+  revalidatePath("/dashboard/assignments");
   revalidatePath("/dashboard/subjects");
   return { ok: true, message: "Teacher removed from your school." };
 }
