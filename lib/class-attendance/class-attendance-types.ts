@@ -17,6 +17,9 @@ export const CLASS_ATTENDANCE_STATUS_LABELS: Record<ClassAttendanceStatus, strin
     permitted: "Permitted",
   };
 
+/** Max length for optional per-student class_attendance.notes (plain text). */
+export const CLASS_ATTENDANCE_NOTE_MAX_LENGTH = 300;
+
 export interface ClassAttendanceStudentRow {
   id: string;
   fullName: string;

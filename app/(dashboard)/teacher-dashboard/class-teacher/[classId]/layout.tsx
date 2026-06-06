@@ -40,7 +40,7 @@ export default async function ClassTeacherClassLayout({
     className =
       (cls as { name: string } | null)?.name?.trim() || className;
   } catch {
-    notFound();
+    /* Keep default label — do not 404 the class workspace on transient load errors. */
   }
 
   return (

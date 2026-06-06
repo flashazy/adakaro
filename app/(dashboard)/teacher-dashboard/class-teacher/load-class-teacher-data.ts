@@ -146,6 +146,7 @@ export async function loadClassTeacherAttendanceOverview(
         .select(
           `
       id,
+      student_id,
       attendance_date,
       status,
       teacher_id,
@@ -183,6 +184,7 @@ export async function loadClassTeacherAttendanceOverview(
   const out: ClassTeacherAttendanceRow[] = [];
   for (const r of att as unknown as {
     id: string;
+    student_id: string;
     attendance_date: string;
     status: string;
     subject_id: string | null;
@@ -197,6 +199,7 @@ export async function loadClassTeacherAttendanceOverview(
         : "Class (general)";
     out.push({
       id: r.id,
+      studentId: r.student_id,
       attendanceDate: r.attendance_date,
       status: r.status,
       subjectName,
@@ -248,6 +251,7 @@ export async function loadClassTeacherGradesReadOnly(
 
   const scores = await fetchAllRows<{
     assignment_id: string;
+    student_id: string;
     score: unknown;
     students: { full_name: string } | null;
   }>({
@@ -258,6 +262,7 @@ export async function loadClassTeacherGradesReadOnly(
         .select(
           `
       assignment_id,
+      student_id,
       score,
       students ( full_name )
     `
@@ -268,6 +273,7 @@ export async function loadClassTeacherGradesReadOnly(
 
   const scoreRows = (scores ?? []) as unknown as {
     assignment_id: string;
+    student_id: string;
     score: unknown;
     students: { full_name: string } | null;
   }[];
@@ -300,6 +306,7 @@ export async function loadClassTeacherGradesReadOnly(
       scoreStr = String(sc.score);
     }
     out.push({
+      studentId: sc.student_id,
       studentName: sc.students?.full_name?.trim() || "Student",
       subject: m.subject,
       assignmentTitle: m.title,

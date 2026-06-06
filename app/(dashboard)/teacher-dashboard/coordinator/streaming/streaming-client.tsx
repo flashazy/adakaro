@@ -37,7 +37,10 @@ import {
   type StreamingStreamClass,
   type StreamingStudentRow,
 } from "@/lib/student-streaming/types";
+import { SubjectCompatibilityModal } from "@/components/students/subject-compatibility-modal";
 import { currentAcademicYear } from "@/lib/student-subject-enrollment";
+import { checkSubjectCompatibilityAction } from "@/lib/student-subject-enrollment/subject-compatibility-actions";
+import type { SubjectCompatibilityBatchResult } from "@/lib/student-subject-enrollment/subject-compatibility-types";
 import {
   applyStudentStreamingAction,
   loadStreamingParentClassesAction,
@@ -728,6 +731,12 @@ export function StudentStreamingClient({
     { studentId: string; targetClassId: string; targetClassName: string }[]
   >([]);
   const [applying, setApplying] = useState(false);
+  const [compatibilityModalOpen, setCompatibilityModalOpen] = useState(false);
+  const [compatibilityModalMode, setCompatibilityModalMode] = useState<
+    "warning" | "blocked"
+  >("warning");
+  const [compatibilityResult, setCompatibilityResult] =
+    useState<SubjectCompatibilityBatchResult | null>(null);
   const [savingStudentIds, setSavingStudentIds] = useState<Set<string>>(
     new Set()
   );
@@ -1310,7 +1319,7 @@ export function StudentStreamingClient({
     });
   };
 
-  const confirmApply = async () => {
+  const executePlacement = async (acknowledgeSubjectCompatibilityWarning: boolean) => {
     if (!parentClassId || !examType) return;
     const placementsSnapshot = [...pendingPlacements];
     const savingIds = new Set(placementsSnapshot.map((p) => p.studentId));
@@ -1326,8 +1335,15 @@ export function StudentStreamingClient({
           studentId: p.studentId,
           targetClassId: p.targetClassId,
         })),
+        acknowledgeSubjectCompatibilityWarning,
       });
       if (!result.ok) {
+        if ("requiresSubjectCompatibilityAck" in result) {
+          setCompatibilityResult(result.compatibility);
+          setCompatibilityModalMode("warning");
+          setCompatibilityModalOpen(true);
+          return;
+        }
         toast.error(result.error);
         return;
       }
@@ -1343,6 +1359,8 @@ export function StudentStreamingClient({
       setConfirmMode("default");
       setConfirmMeta({});
       setPendingPlacements([]);
+      setCompatibilityModalOpen(false);
+      setCompatibilityResult(null);
       if (result.warning) {
         toast.warning(result.warning);
       }
@@ -1350,6 +1368,38 @@ export function StudentStreamingClient({
     } finally {
       setApplying(false);
       setSavingStudentIds(new Set());
+    }
+  };
+
+  const handleConfirmPlacementClick = async () => {
+    if (!parentClassId || !examType || pendingPlacements.length === 0) return;
+    setApplying(true);
+    try {
+      const check = await checkSubjectCompatibilityAction(
+        pendingPlacements.map((p) => ({
+          studentId: p.studentId,
+          targetClassId: p.targetClassId,
+        }))
+      );
+      if (!check.ok) {
+        toast.error(check.error);
+        return;
+      }
+      if (check.result.status === "blocked") {
+        setCompatibilityResult(check.result);
+        setCompatibilityModalMode("blocked");
+        setCompatibilityModalOpen(true);
+        return;
+      }
+      if (check.result.status === "warning") {
+        setCompatibilityResult(check.result);
+        setCompatibilityModalMode("warning");
+        setCompatibilityModalOpen(true);
+        return;
+      }
+      await executePlacement(false);
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -2681,7 +2731,7 @@ export function StudentStreamingClient({
               </button>
               <button
                 type="button"
-                onClick={() => void confirmApply()}
+                onClick={() => void handleConfirmPlacementClick()}
                 disabled={applying}
                 className="inline-flex items-center gap-2 rounded-xl bg-school-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
               >
@@ -2698,6 +2748,19 @@ export function StudentStreamingClient({
           </div>
         </div>
       )}
+
+      <SubjectCompatibilityModal
+        open={compatibilityModalOpen}
+        mode={compatibilityModalMode}
+        result={compatibilityResult}
+        onClose={() => {
+          if (applying) return;
+          setCompatibilityModalOpen(false);
+          setCompatibilityResult(null);
+        }}
+        onContinue={() => void executePlacement(true)}
+        isContinuing={applying}
+      />
     </div>
   );
 }

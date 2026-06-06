@@ -12,6 +12,9 @@ import {
 import { AsyncLoadingShell } from "@/components/dashboard/async-loading-shell";
 import { Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
+import { SubjectCompatibilityModal } from "@/components/students/subject-compatibility-modal";
+import { checkSubjectCompatibilityAction } from "@/lib/student-subject-enrollment/subject-compatibility-actions";
+import type { SubjectCompatibilityBatchResult } from "@/lib/student-subject-enrollment/subject-compatibility-types";
 import {
   applyClassPromotionsAction,
   loadClassStudentsForPromotionAction,
@@ -294,6 +297,12 @@ export function PromotionModal({
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [compatibilityModalOpen, setCompatibilityModalOpen] = useState(false);
+  const [compatibilityModalMode, setCompatibilityModalMode] = useState<
+    "warning" | "blocked"
+  >("warning");
+  const [compatibilityResult, setCompatibilityResult] =
+    useState<SubjectCompatibilityBatchResult | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [resultsFilter, setResultsFilter] = useState<ResultsFilter>("all");
@@ -555,7 +564,40 @@ export function PromotionModal({
     });
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  const promotionEntries = useMemo(
+    () => students.map((s) => ({ studentId: s.id, decision: s.decision })),
+    [students]
+  );
+
+  const executePromotion = (acknowledgeSubjectCompatibilityWarning: boolean) => {
+    startTransition(async () => {
+      setSubmitError(null);
+      const result = await applyClassPromotionsAction(
+        classRow.id,
+        academicYear,
+        promotionEntries,
+        { acknowledgeSubjectCompatibilityWarning }
+      );
+      if ("requiresSubjectCompatibilityAck" in result) {
+        setCompatibilityResult(result.compatibility);
+        setCompatibilityModalMode("warning");
+        setCompatibilityModalOpen(true);
+        return;
+      }
+      if ("error" in result) {
+        setSubmitError(result.error);
+        toast.error(result.error);
+        return;
+      }
+      setCompatibilityModalOpen(false);
+      setCompatibilityResult(null);
+      toast.success(result.message);
+      onSuccess(result.message);
+      onClose();
+    });
+  };
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (isPending || students.length === 0) return;
 
@@ -567,27 +609,42 @@ export function PromotionModal({
       return;
     }
 
-    startTransition(async () => {
-      setSubmitError(null);
-      const result = await applyClassPromotionsAction(
-        classRow.id,
-        academicYear,
-        students.map((s) => ({ studentId: s.id, decision: s.decision }))
-      );
-      if ("error" in result) {
-        setSubmitError(result.error);
-        toast.error(result.error);
+    const nextClassId = classRow.next_class_id;
+    const promoteMoves =
+      nextClassId && nextClassId !== classRow.id
+        ? students
+            .filter((s) => s.decision === "promote")
+            .map((s) => ({ studentId: s.id, targetClassId: nextClassId }))
+        : [];
+
+    if (promoteMoves.length > 0) {
+      const check = await checkSubjectCompatibilityAction(promoteMoves);
+      if (!check.ok) {
+        setSubmitError(check.error);
+        toast.error(check.error);
         return;
       }
-      toast.success(result.message);
-      onSuccess(result.message);
-      onClose();
-    });
+      if (check.result.status === "blocked") {
+        setCompatibilityResult(check.result);
+        setCompatibilityModalMode("blocked");
+        setCompatibilityModalOpen(true);
+        return;
+      }
+      if (check.result.status === "warning") {
+        setCompatibilityResult(check.result);
+        setCompatibilityModalMode("warning");
+        setCompatibilityModalOpen(true);
+        return;
+      }
+    }
+
+    executePromotion(false);
   }
 
   if (!open) return null;
 
   return (
+    <>
     <div
       className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
       role="dialog"
@@ -1295,5 +1352,19 @@ export function PromotionModal({
         </form>
       </div>
     </div>
+
+    <SubjectCompatibilityModal
+      open={compatibilityModalOpen}
+      mode={compatibilityModalMode}
+      result={compatibilityResult}
+      onClose={() => {
+        if (isPending) return;
+        setCompatibilityModalOpen(false);
+        setCompatibilityResult(null);
+      }}
+      onContinue={() => executePromotion(true)}
+      isContinuing={isPending}
+    />
+    </>
   );
 }

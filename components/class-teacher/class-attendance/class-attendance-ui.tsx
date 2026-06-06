@@ -2,15 +2,18 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { CalendarDays, CheckCircle2, Lock, Users } from "lucide-react";
 import type { AttendanceDateEditMode } from "@/lib/attendance-date-policy";
 import { cn } from "@/lib/utils";
 import {
+  CLASS_ATTENDANCE_NOTE_MAX_LENGTH,
   CLASS_ATTENDANCE_STATUSES,
   CLASS_ATTENDANCE_STATUS_LABELS,
   type ClassAttendanceDaySummary,
   type ClassAttendanceHistoryRow,
   type ClassAttendanceStatus,
+  type ClassAttendanceStudentRow,
 } from "@/lib/class-attendance/class-attendance-types";
 import {
   formatHistoryStatusBreakdown,
@@ -436,6 +439,145 @@ export function ClassAttendanceQuickActions({
   );
 }
 
+function attendanceNotePlaceholder(status: ClassAttendanceStatus): string {
+  switch (status) {
+    case "absent":
+      return "Reason for absence (optional)";
+    case "late":
+      return "Reason for lateness (optional)";
+    case "sick":
+      return "Illness or health note (optional)";
+    case "permitted":
+      return "Permission details (optional)";
+    default:
+      return "Optional note";
+  }
+}
+
+function capAttendanceNoteInput(value: string): string | null {
+  if (value.length === 0) return null;
+  return value.slice(0, CLASS_ATTENDANCE_NOTE_MAX_LENGTH);
+}
+
+export function ClassAttendanceNoteControl({
+  studentId,
+  status,
+  notes,
+  readOnly,
+  onNotesChange,
+}: {
+  studentId: string;
+  status: ClassAttendanceStatus;
+  notes: string | null;
+  readOnly?: boolean;
+  onNotesChange: (notes: string | null) => void;
+}) {
+  const hasNote = Boolean(notes?.trim());
+  const [expanded, setExpanded] = useState(false);
+  const prevStatusRef = useRef(status);
+  const inputId = `class-attendance-note-${studentId}`;
+  const placeholder = attendanceNotePlaceholder(status);
+  const emphasizeNote = status !== "present";
+
+  useEffect(() => {
+    if (status !== "present" && status !== prevStatusRef.current && !hasNote) {
+      setExpanded(true);
+    }
+    prevStatusRef.current = status;
+  }, [status, hasNote]);
+
+  if (!expanded) {
+    return (
+      <div className="mt-2 min-w-0 max-w-full">
+        {hasNote ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200/90 bg-slate-50/90 px-2.5 py-1.5 text-left text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+            aria-label="View attendance note"
+          >
+            <span aria-hidden>📝</span>
+            <span>Note added</span>
+            <span className="text-slate-400 dark:text-zinc-500">· View</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className={cn(
+              "text-xs font-medium hover:underline",
+              emphasizeNote
+                ? "text-slate-700 dark:text-zinc-300"
+                : "text-slate-500 dark:text-zinc-400"
+            )}
+          >
+            Add note
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "mt-2 min-w-0 max-w-full space-y-1.5 rounded-lg border px-2.5 py-2",
+        emphasizeNote
+          ? "border-slate-200/90 bg-slate-50/80 dark:border-zinc-700 dark:bg-zinc-800/50"
+          : "border-slate-200/80 bg-slate-50/50 dark:border-zinc-700 dark:bg-zinc-800/40"
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <label
+          htmlFor={inputId}
+          className="text-xs font-medium text-slate-700 dark:text-zinc-300"
+        >
+          {placeholder}
+        </label>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="shrink-0 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            Hide
+          </button>
+        ) : null}
+      </div>
+      <textarea
+        id={inputId}
+        value={notes ?? ""}
+        onChange={(e) => onNotesChange(capAttendanceNoteInput(e.target.value))}
+        maxLength={CLASS_ATTENDANCE_NOTE_MAX_LENGTH}
+        disabled={readOnly}
+        readOnly={readOnly}
+        rows={2}
+        placeholder={placeholder}
+        className="box-border w-full max-w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary disabled:cursor-not-allowed disabled:opacity-70 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+      />
+      <p className="text-right text-[11px] tabular-nums text-slate-400 dark:text-zinc-500">
+        {(notes ?? "").length}/{CLASS_ATTENDANCE_NOTE_MAX_LENGTH}
+      </p>
+    </div>
+  );
+}
+
+export function ViewPreviousAttendanceLink({
+  onClick,
+}: {
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-1 text-left text-xs font-medium text-school-primary hover:underline dark:text-school-primary"
+    >
+      View previous attendance
+    </button>
+  );
+}
+
 export function StatusButtonGroup({
   studentId,
   currentStatus,
@@ -480,19 +622,19 @@ export function ClassAttendanceStudentCard({
   selected,
   onToggleSelect,
   onSelectStatus,
+  onNotesChange,
   readOnly,
+  hasPreviousAttendance,
+  onViewPreviousAttendance,
 }: {
-  student: {
-    id: string;
-    fullName: string;
-    admissionNumber: string | null;
-    avatarUrl: string | null;
-    status: ClassAttendanceStatus;
-  };
+  student: ClassAttendanceStudentRow;
   selected: boolean;
   onToggleSelect: () => void;
   onSelectStatus: (status: ClassAttendanceStatus) => void;
+  onNotesChange: (notes: string | null) => void;
   readOnly?: boolean;
+  hasPreviousAttendance?: boolean;
+  onViewPreviousAttendance?: () => void;
 }) {
   return (
     <article
@@ -532,6 +674,9 @@ export function ClassAttendanceStudentCard({
               ? `Adm. ${student.admissionNumber}`
               : "No admission number"}
           </p>
+          {hasPreviousAttendance && onViewPreviousAttendance ? (
+            <ViewPreviousAttendanceLink onClick={onViewPreviousAttendance} />
+          ) : null}
         </div>
       </div>
       <div className="mt-3 border-t border-slate-100 pt-3 dark:border-zinc-800">
@@ -541,6 +686,13 @@ export function ClassAttendanceStudentCard({
           studentName={student.fullName}
           onSelect={onSelectStatus}
           readOnly={readOnly}
+        />
+        <ClassAttendanceNoteControl
+          studentId={student.id}
+          status={student.status}
+          notes={student.notes}
+          readOnly={readOnly}
+          onNotesChange={onNotesChange}
         />
       </div>
     </article>
@@ -582,19 +734,19 @@ export function ClassAttendanceDesktopRow({
   selected,
   onToggleSelect,
   onSelectStatus,
+  onNotesChange,
   readOnly,
+  hasPreviousAttendance,
+  onViewPreviousAttendance,
 }: {
-  student: {
-    id: string;
-    fullName: string;
-    admissionNumber: string | null;
-    avatarUrl: string | null;
-    status: ClassAttendanceStatus;
-  };
+  student: ClassAttendanceStudentRow;
   selected: boolean;
   onToggleSelect: () => void;
   onSelectStatus: (status: ClassAttendanceStatus) => void;
+  onNotesChange: (notes: string | null) => void;
   readOnly?: boolean;
+  hasPreviousAttendance?: boolean;
+  onViewPreviousAttendance?: () => void;
 }) {
   return (
     <tr
@@ -627,6 +779,9 @@ export function ClassAttendanceDesktopRow({
             <p className="text-xs text-slate-500 lg:hidden dark:text-zinc-400">
               {student.admissionNumber ?? "—"}
             </p>
+            {hasPreviousAttendance && onViewPreviousAttendance ? (
+              <ViewPreviousAttendanceLink onClick={onViewPreviousAttendance} />
+            ) : null}
           </div>
         </div>
       </td>
@@ -640,6 +795,13 @@ export function ClassAttendanceDesktopRow({
           studentName={student.fullName}
           onSelect={onSelectStatus}
           readOnly={readOnly}
+        />
+        <ClassAttendanceNoteControl
+          studentId={student.id}
+          status={student.status}
+          notes={student.notes}
+          readOnly={readOnly}
+          onNotesChange={onNotesChange}
         />
       </td>
     </tr>

@@ -86,27 +86,45 @@ function SchoolLevelBadge({ level }: { level: SchoolLevel }) {
   );
 }
 
-/** Coordinator roster: Approved (green), Pending (yellow), Not generated (gray). */
+/**
+ * Coordinator roster labels (human-facing; maps `report_cards.status`):
+ * - Pending — no card yet, draft, or changes requested (not ready to send)
+ * - Ready — generated (`pending_review`); preview/download OK, not sent to parents
+ * - Sent — shared with parents (`approved`)
+ */
+function coordinatorRosterStatusLabel(
+  status: ReportCardStatus | "none"
+): "pending" | "ready" | "sent" {
+  if (status === "pending_review") return "ready";
+  if (status === "approved") return "sent";
+  return "pending";
+}
+
 function CoordinatorReportCardStatusBadge({
   status,
 }: {
   status: ReportCardStatus | "none";
 }) {
-  if (status === "none") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-        <span aria-hidden>—</span> Not generated
-      </span>
-    );
-  }
-  if (status === "approved") {
+  const label = coordinatorRosterStatusLabel(status);
+
+  if (label === "sent") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/50 dark:text-emerald-100">
-        <span aria-hidden>✅</span>
-        Approved
+        <span aria-hidden>✓</span>
+        Sent
       </span>
     );
   }
+
+  if (label === "ready") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-100">
+        <span aria-hidden>📄</span>
+        Ready
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-100">
       <span aria-hidden>⏳</span>

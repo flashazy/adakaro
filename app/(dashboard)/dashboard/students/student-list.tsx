@@ -11,7 +11,10 @@ import {
   updateStudent,
   updateStudentSubjects,
 } from "./actions";
+import { SubjectCompatibilityModal } from "@/components/students/subject-compatibility-modal";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
+import { checkSubjectCompatibilityAction } from "@/lib/student-subject-enrollment/subject-compatibility-actions";
+import type { SubjectCompatibilityBatchResult } from "@/lib/student-subject-enrollment/subject-compatibility-types";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
 import {
   HINT_ALPHANUM_HYPHEN,
@@ -103,6 +106,12 @@ export function StudentList({
   const [inlineSaveSuccess, setInlineSaveSuccess] = useState<string | null>(
     null
   );
+  const [compatibilityModalOpen, setCompatibilityModalOpen] = useState(false);
+  const [compatibilityModalMode, setCompatibilityModalMode] = useState<
+    "warning" | "blocked"
+  >("warning");
+  const [compatibilityResult, setCompatibilityResult] =
+    useState<SubjectCompatibilityBatchResult | null>(null);
   const [inlineFieldErrors, setInlineFieldErrors] = useState<
     Partial<
       Record<
@@ -454,7 +463,8 @@ export function StudentList({
     setEditSubjectIds(checked ? editClassSubjects.map((s) => s.id) : []);
   }
 
-  const handleInlineSave = useCallback(async () => {
+  const performInlineSave = useCallback(
+    async (acknowledgeSubjectCompatibilityWarning: boolean) => {
     if (!editingId) return;
 
     const fullNameRaw = (editValues.full_name ?? "").trim();
@@ -538,6 +548,9 @@ export function StudentList({
       (editValues.insurance_provider ?? "").trim()
     );
     fd.set("insurance_policy", (editValues.insurance_policy ?? "").trim());
+    if (acknowledgeSubjectCompatibilityWarning) {
+      fd.set("acknowledge_subject_compatibility_warning", "1");
+    }
 
     setIsSaving(true);
     try {
@@ -589,10 +602,18 @@ export function StudentList({
       }
 
       const result = wrapped.result;
+      if (result.requiresSubjectCompatibilityAck && result.subjectCompatibility) {
+        setCompatibilityResult(result.subjectCompatibility);
+        setCompatibilityModalMode("warning");
+        setCompatibilityModalOpen(true);
+        return;
+      }
       if (result.error) {
         setInlineSaveError(result.error);
         return;
       }
+      setCompatibilityModalOpen(false);
+      setCompatibilityResult(null);
       const subResult = await updateStudentSubjects(
         editingId,
         editSubjectIds,
@@ -620,7 +641,8 @@ export function StudentList({
     } finally {
       setIsSaving(false);
     }
-  }, [
+  },
+  [
     editingId,
     editValues,
     editSubjectIds,
@@ -628,6 +650,37 @@ export function StudentList({
     editSubjectTerm,
     router,
   ]);
+
+  const handleInlineSave = useCallback(async () => {
+    if (!editingId || !editingStudent) return;
+
+    const classId = (editValues.class_id ?? "").trim();
+    const classChanged = editingStudent.class_id !== classId;
+
+    if (classChanged && classId) {
+      const check = await checkSubjectCompatibilityAction([
+        { studentId: editingId, targetClassId: classId },
+      ]);
+      if (!check.ok) {
+        setInlineSaveError(check.error);
+        return;
+      }
+      if (check.result.status === "blocked") {
+        setCompatibilityResult(check.result);
+        setCompatibilityModalMode("blocked");
+        setCompatibilityModalOpen(true);
+        return;
+      }
+      if (check.result.status === "warning") {
+        setCompatibilityResult(check.result);
+        setCompatibilityModalMode("warning");
+        setCompatibilityModalOpen(true);
+        return;
+      }
+    }
+
+    await performInlineSave(false);
+  }, [editingId, editingStudent, editValues.class_id, performInlineSave]);
 
   function handleInlineCancel() {
     setEditingStudent(null);
@@ -958,6 +1011,19 @@ export function StudentList({
         cancelLabel="Cancel"
         isDeleting={bulkPending}
         confirmVariant="primary"
+      />
+
+      <SubjectCompatibilityModal
+        open={compatibilityModalOpen}
+        mode={compatibilityModalMode}
+        result={compatibilityResult}
+        onClose={() => {
+          if (isSaving) return;
+          setCompatibilityModalOpen(false);
+          setCompatibilityResult(null);
+        }}
+        onContinue={() => void performInlineSave(true)}
+        isContinuing={isSaving}
       />
     </div>
   );

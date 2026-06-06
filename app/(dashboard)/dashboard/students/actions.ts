@@ -16,7 +16,13 @@ import {
   parseSubjectEnrollmentTerm,
   type SubjectEnrollmentTerm,
 } from "@/lib/student-subject-enrollment";
+import { recordStudentClassMoveIfChanged } from "@/lib/student-class-history/record-student-class-move";
+import { enforceSubjectCompatibilityBeforeMove } from "@/lib/student-subject-enrollment/enforce-subject-compatibility";
+import { notifyClassTeachersOfStudentMovements } from "@/lib/notifications/notify-class-teachers-of-movements";
+import { moveStudentSubjectEnrollment } from "@/lib/student-subject-enrollment/move-student-subject-enrollment";
 import { replaceStudentSubjectEnrollments } from "@/lib/student-subject-enrollment-write";
+import type { SubjectCompatibilityBatchResult } from "@/lib/student-subject-enrollment/subject-compatibility-types";
+import { SUBJECT_COMPATIBILITY_AUDIT_NOTE } from "@/lib/student-subject-enrollment/subject-compatibility-types";
 import { ensureParentAccountForEnrolledStudent } from "@/lib/ensure-parent-account";
 import type { ParentCredentialSheetPayload } from "@/lib/parent-credential-sheet-types";
 
@@ -533,6 +539,8 @@ export async function updateStudentSubjects(
 export interface StudentActionState {
   error?: string;
   success?: string;
+  requiresSubjectCompatibilityAck?: boolean;
+  subjectCompatibility?: SubjectCompatibilityBatchResult;
   /**
    * Real server-issued id of the just-created student. Filled in by
    * `addStudent`. Required by the offline sync queue (Phase 3) so the
@@ -975,6 +983,43 @@ export async function updateStudent(
   try {
     const { supabase, schoolId, userId } = await getSchoolId();
 
+    const { data: existingStudent, error: loadErr } = await supabase
+      .from("students")
+      .select("id, class_id, school_id")
+      .eq("id", studentId)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (loadErr) return { error: loadErr.message };
+    if (!existingStudent) return { error: "Student not found." };
+
+    const previousClassId = (existingStudent as { class_id: string }).class_id;
+    const acknowledgeSubjectCompatibilityWarning =
+      String(formData.get("acknowledge_subject_compatibility_warning") ?? "") ===
+      "1";
+
+    let compatibilityAckStudentIds = new Set<string>();
+
+    if (previousClassId !== classId) {
+      const compatibilityGate = await enforceSubjectCompatibilityBeforeMove(
+        supabase,
+        [{ studentId, targetClassId: classId }],
+        acknowledgeSubjectCompatibilityWarning
+      );
+
+      if (!compatibilityGate.ok) {
+        if (compatibilityGate.blocked) {
+          return { error: compatibilityGate.error };
+        }
+        return {
+          requiresSubjectCompatibilityAck: true,
+          subjectCompatibility: compatibilityGate.result,
+        };
+      }
+
+      compatibilityAckStudentIds = compatibilityGate.ackStudentIds;
+    }
+
     const { error } = await supabase
       .from("students")
       .update({
@@ -1001,12 +1046,81 @@ export async function updateStudent(
       return { error: error.message };
     }
 
+    if (previousClassId !== classId) {
+      const classHistoryResult = await recordStudentClassMoveIfChanged(supabase, {
+        schoolId,
+        studentId,
+        fromClassId: previousClassId,
+        toClassId: classId,
+        source: "admin_edit",
+        actorId: userId,
+        notes: compatibilityAckStudentIds.has(studentId)
+          ? SUBJECT_COMPATIBILITY_AUDIT_NOTE
+          : null,
+      });
+
+      if (classHistoryResult.error) {
+        return {
+          error: `Student updated but class history could not be recorded: ${classHistoryResult.error}`,
+        };
+      }
+
+      if (classHistoryResult.recorded) {
+        await notifyClassTeachersOfStudentMovements([
+          {
+            schoolId,
+            studentId,
+            studentName: fullName || "Student",
+            fromClassId: previousClassId,
+            toClassId: classId,
+            source: "admin_edit",
+          },
+        ]);
+      }
+
+      const enrollmentMove = await moveStudentSubjectEnrollment(supabase, {
+        schoolId,
+        studentId,
+        fromClassId: previousClassId,
+        toClassId: classId,
+      });
+
+      if (enrollmentMove.error) {
+        console.error(
+          "[students] Student class updated but subject enrollment migration failed:",
+          enrollmentMove.error,
+          {
+            studentId,
+            fromClassId: previousClassId,
+            toClassId: classId,
+          }
+        );
+      } else if (enrollmentMove.warning) {
+        console.warn(
+          "[students] Subject enrollment migration warning:",
+          enrollmentMove.warning,
+          {
+            studentId,
+            fromClassId: previousClassId,
+            toClassId: classId,
+            skipped: enrollmentMove.skipped,
+          }
+        );
+      }
+    }
+
     revalidatePath("/dashboard/students");
 
     void logAdminActionFromServerAction(
       userId,
       "update_student",
-      { student_id: studentId, class_id: classId },
+      {
+        student_id: studentId,
+        class_id: classId,
+        subject_compatibility_warning: compatibilityAckStudentIds.has(studentId)
+          ? SUBJECT_COMPATIBILITY_AUDIT_NOTE
+          : undefined,
+      },
       schoolId
     );
 

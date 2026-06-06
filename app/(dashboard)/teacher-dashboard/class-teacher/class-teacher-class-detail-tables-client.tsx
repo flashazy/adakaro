@@ -3,12 +3,31 @@
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import {
+  listStudentsWithHistoricalClassListAction,
+  loadStudentHistoricalClassListAction,
+} from "./historical-class-list-actions";
+import {
+  listStudentsWithHistoricalMarksAction,
+  loadStudentHistoricalMarksAction,
+} from "./historical-marks-actions";
+import {
+  PreviousClassRecordsModal,
+  ViewPreviousClassRecordsLink,
+} from "@/components/class-teacher/previous-class-records-modal";
+import {
+  PreviousMarksModal,
+  ViewPreviousMarksLink,
+} from "@/components/class-teacher/previous-marks-modal";
+import type { HistoricalClassListClassGroup } from "@/lib/teacher-attendance/load-historical-class-list-for-class-teacher";
+import type { HistoricalMarksClassGroup } from "@/lib/gradebook/load-historical-marks-for-class-teacher";
 import { ClassTeacherStudentHealthButtons } from "@/components/class-teacher/class-teacher-student-health-buttons";
 import {
   StudentListPaginationBar,
@@ -158,11 +177,12 @@ function ScrollTableWithOverlay(props: {
 }
 
 export function ClassTeacherClassDetailTablesClient(props: {
+  classId: string;
   students: ClassTeacherStudentParentRow[];
   attendance: ClassTeacherAttendanceRow[];
   grades: ClassTeacherGradeRow[];
 }) {
-  const { students, attendance, grades } = props;
+  const { classId, students, attendance, grades } = props;
 
   /* ── Students ─────────────────────────────────────────── */
   const [studentQuery, setStudentQuery] = useState("");
@@ -271,6 +291,105 @@ export function ClassTeacherClassDetailTablesClient(props: {
 
   const attStale = attQuery.trim() !== deferredAttQuery.trim();
 
+  const [studentsWithPriorClassList, setStudentsWithPriorClassList] = useState(
+    new Set<string>()
+  );
+  const [priorModalStudent, setPriorModalStudent] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [priorModalGroups, setPriorModalGroups] = useState<
+    HistoricalClassListClassGroup[]
+  >([]);
+  const [priorModalLoading, setPriorModalLoading] = useState(false);
+  const [priorModalError, setPriorModalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const studentIds = students.map((s) => s.studentId);
+    if (studentIds.length === 0) {
+      setStudentsWithPriorClassList(new Set());
+      return;
+    }
+
+    let cancelled = false;
+    void listStudentsWithHistoricalClassListAction({
+      classId,
+      studentIds,
+    }).then((res) => {
+      if (cancelled) return;
+      setStudentsWithPriorClassList(
+        res.ok ? new Set(res.studentIds) : new Set()
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, students]);
+
+  const studentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of students) {
+      map.set(s.studentId, s.studentName);
+    }
+    return map;
+  }, [students]);
+
+  const attendanceStudentIds = useMemo(
+    () => new Set(attendance.map((a) => a.studentId)),
+    [attendance]
+  );
+
+  const studentsWithHistoryNotInTable = useMemo(() => {
+    return students.filter(
+      (s) =>
+        studentsWithPriorClassList.has(s.studentId) &&
+        !attendanceStudentIds.has(s.studentId)
+    );
+  }, [students, studentsWithPriorClassList, attendanceStudentIds]);
+
+  const openPreviousClassRecords = useCallback(
+    (student: { id: string; name: string }) => {
+      setPriorModalStudent(student);
+      setPriorModalGroups([]);
+      setPriorModalError(null);
+      setPriorModalLoading(true);
+
+      void loadStudentHistoricalClassListAction({
+        classId,
+        studentId: student.id,
+      }).then((res) => {
+        setPriorModalLoading(false);
+        if (!res.ok) {
+          setPriorModalError(res.error);
+          return;
+        }
+        setPriorModalGroups(res.groups);
+      });
+    },
+    [classId]
+  );
+
+  const closePreviousClassRecords = useCallback(() => {
+    setPriorModalStudent(null);
+    setPriorModalGroups([]);
+    setPriorModalError(null);
+    setPriorModalLoading(false);
+  }, []);
+
+  const firstPriorLinkStudentIdsOnPage = useMemo(() => {
+    const seen = new Set<string>();
+    const firstOnPage = new Set<string>();
+    for (const row of attSlice) {
+      if (!studentsWithPriorClassList.has(row.studentId)) continue;
+      if (!seen.has(row.studentId)) {
+        seen.add(row.studentId);
+        firstOnPage.add(row.studentId);
+      }
+    }
+    return firstOnPage;
+  }, [attSlice, studentsWithPriorClassList]);
+
   /* ── Grades ───────────────────────────────────────────── */
   const [gradeQuery, setGradeQuery] = useState("");
   const deferredGradeQuery = useDeferredValue(gradeQuery);
@@ -320,6 +439,97 @@ export function ClassTeacherClassDetailTablesClient(props: {
       : Math.min(safeGradePage * gradeRows, filteredGrades.length);
 
   const gradeStale = gradeQuery.trim() !== deferredGradeQuery.trim();
+
+  const [studentsWithPriorMarks, setStudentsWithPriorMarks] = useState(
+    new Set<string>()
+  );
+  const [marksModalStudent, setMarksModalStudent] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [marksModalGroups, setMarksModalGroups] = useState<
+    HistoricalMarksClassGroup[]
+  >([]);
+  const [marksModalLoading, setMarksModalLoading] = useState(false);
+  const [marksModalError, setMarksModalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const studentIds = students.map((s) => s.studentId);
+    if (studentIds.length === 0) {
+      setStudentsWithPriorMarks(new Set());
+      return;
+    }
+
+    let cancelled = false;
+    void listStudentsWithHistoricalMarksAction({
+      classId,
+      studentIds,
+    }).then((res) => {
+      if (cancelled) return;
+      setStudentsWithPriorMarks(
+        res.ok ? new Set(res.studentIds) : new Set()
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, students]);
+
+  const gradeStudentIds = useMemo(
+    () => new Set(grades.map((g) => g.studentId)),
+    [grades]
+  );
+
+  const studentsWithMarksHistoryNotInTable = useMemo(() => {
+    return students.filter(
+      (s) =>
+        studentsWithPriorMarks.has(s.studentId) &&
+        !gradeStudentIds.has(s.studentId)
+    );
+  }, [students, studentsWithPriorMarks, gradeStudentIds]);
+
+  const openPreviousMarks = useCallback(
+    (student: { id: string; name: string }) => {
+      setMarksModalStudent(student);
+      setMarksModalGroups([]);
+      setMarksModalError(null);
+      setMarksModalLoading(true);
+
+      void loadStudentHistoricalMarksAction({
+        classId,
+        studentId: student.id,
+      }).then((res) => {
+        setMarksModalLoading(false);
+        if (!res.ok) {
+          setMarksModalError(res.error);
+          return;
+        }
+        setMarksModalGroups(res.groups);
+      });
+    },
+    [classId]
+  );
+
+  const closePreviousMarks = useCallback(() => {
+    setMarksModalStudent(null);
+    setMarksModalGroups([]);
+    setMarksModalError(null);
+    setMarksModalLoading(false);
+  }, []);
+
+  const firstPriorMarksStudentIdsOnPage = useMemo(() => {
+    const seen = new Set<string>();
+    const firstOnPage = new Set<string>();
+    for (const row of gradeSlice) {
+      if (!studentsWithPriorMarks.has(row.studentId)) continue;
+      if (!seen.has(row.studentId)) {
+        seen.add(row.studentId);
+        firstOnPage.add(row.studentId);
+      }
+    }
+    return firstOnPage;
+  }, [gradeSlice, studentsWithPriorMarks]);
 
   return (
     <>
@@ -445,6 +655,33 @@ export function ClassTeacherClassDetailTablesClient(props: {
         title="Class List (all subjects)"
         description="Recent records from all teachers for this class."
       >
+        {studentsWithHistoryNotInTable.length > 0 ? (
+          <div className="border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Students with records from a previous class
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {studentsWithHistoryNotInTable.map((s) => (
+                <li
+                  key={s.studentId}
+                  className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm"
+                >
+                  <span className="font-medium text-slate-800 dark:text-zinc-200">
+                    {s.studentName}
+                  </span>
+                  <ViewPreviousClassRecordsLink
+                    onClick={() =>
+                      openPreviousClassRecords({
+                        id: s.studentId,
+                        name: s.studentName,
+                      })
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <StudentListTableToolbar
           searchId="class-teacher-attendance-search"
           searchPlaceholder="Search student, subject, status, recorded by…"
@@ -489,13 +726,29 @@ export function ClassTeacherClassDetailTablesClient(props: {
                   </td>
                 </tr>
               ) : (
-                attSlice.map((a) => (
+                attSlice.map((a) => {
+                  const showPriorLink = firstPriorLinkStudentIdsOnPage.has(
+                    a.studentId
+                  );
+                  return (
                   <tr key={a.id}>
                     <td className="whitespace-nowrap px-4 py-2 text-slate-800 dark:text-zinc-200">
                       {a.attendanceDate}
                     </td>
                     <td className="px-4 py-2 text-slate-800 dark:text-zinc-200">
-                      {a.studentName}
+                      <div>{a.studentName}</div>
+                      {showPriorLink ? (
+                        <ViewPreviousClassRecordsLink
+                          onClick={() =>
+                            openPreviousClassRecords({
+                              id: a.studentId,
+                              name:
+                                studentNameById.get(a.studentId) ??
+                                a.studentName,
+                            })
+                          }
+                        />
+                      ) : null}
                     </td>
                     <td className="px-4 py-2 text-slate-600 dark:text-zinc-300">
                       {a.subjectName}
@@ -507,7 +760,8 @@ export function ClassTeacherClassDetailTablesClient(props: {
                       {a.recordedByName ?? "—"}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -527,6 +781,33 @@ export function ClassTeacherClassDetailTablesClient(props: {
         title="Marks (read-only)"
         description="Gradebook entries from all subject teachers for this class."
       >
+        {studentsWithMarksHistoryNotInTable.length > 0 ? (
+          <div className="border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Students with marks from a previous class
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {studentsWithMarksHistoryNotInTable.map((s) => (
+                <li
+                  key={s.studentId}
+                  className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm"
+                >
+                  <span className="font-medium text-slate-800 dark:text-zinc-200">
+                    {s.studentName}
+                  </span>
+                  <ViewPreviousMarksLink
+                    onClick={() =>
+                      openPreviousMarks({
+                        id: s.studentId,
+                        name: s.studentName,
+                      })
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <StudentListTableToolbar
           searchId="class-teacher-grades-search"
           searchPlaceholder="Search student, subject, assignment, teacher…"
@@ -571,12 +852,28 @@ export function ClassTeacherClassDetailTablesClient(props: {
                   </td>
                 </tr>
               ) : (
-                gradeSlice.map((g, idx) => (
+                gradeSlice.map((g, idx) => {
+                  const showPriorMarksLink = firstPriorMarksStudentIdsOnPage.has(
+                    g.studentId
+                  );
+                  return (
                   <tr
-                    key={`${g.studentName}-${g.assignmentTitle}-${(safeGradePage - 1) * gradeRows + idx}`}
+                    key={`${g.studentId}-${g.assignmentTitle}-${(safeGradePage - 1) * gradeRows + idx}`}
                   >
                     <td className="px-4 py-2 font-medium text-slate-900 dark:text-white">
-                      {g.studentName}
+                      <div>{g.studentName}</div>
+                      {showPriorMarksLink ? (
+                        <ViewPreviousMarksLink
+                          onClick={() =>
+                            openPreviousMarks({
+                              id: g.studentId,
+                              name:
+                                studentNameById.get(g.studentId) ??
+                                g.studentName,
+                            })
+                          }
+                        />
+                      ) : null}
                     </td>
                     <td className="px-4 py-2 text-slate-700 dark:text-zinc-300">
                       {g.subject}
@@ -591,7 +888,8 @@ export function ClassTeacherClassDetailTablesClient(props: {
                       {g.teacherName ?? "—"}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -602,6 +900,24 @@ export function ClassTeacherClassDetailTablesClient(props: {
           onPage={setGradePage}
         />
       </ClassTeacherCollapsibleSection>
+
+      <PreviousMarksModal
+        open={marksModalStudent !== null}
+        studentName={marksModalStudent?.name ?? "this student"}
+        groups={marksModalGroups}
+        loading={marksModalLoading}
+        error={marksModalError}
+        onClose={closePreviousMarks}
+      />
+
+      <PreviousClassRecordsModal
+        open={priorModalStudent !== null}
+        studentName={priorModalStudent?.name ?? "this student"}
+        groups={priorModalGroups}
+        loading={priorModalLoading}
+        error={priorModalError}
+        onClose={closePreviousClassRecords}
+      />
     </>
   );
 }

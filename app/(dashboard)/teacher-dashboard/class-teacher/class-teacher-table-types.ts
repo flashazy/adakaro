@@ -19,6 +19,7 @@ export type ClassTeacherStudentParentRow = {
 
 export type ClassTeacherAttendanceRow = {
   id: string;
+  studentId: string;
   attendanceDate: string;
   status: string;
   subjectName: string;
@@ -27,6 +28,7 @@ export type ClassTeacherAttendanceRow = {
 };
 
 export type ClassTeacherGradeRow = {
+  studentId: string;
   studentName: string;
   subject: string;
   assignmentTitle: string;

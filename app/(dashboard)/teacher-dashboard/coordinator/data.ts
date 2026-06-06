@@ -44,10 +44,7 @@ import {
   reportAcademicYearToEnrollmentYear,
 } from "@/lib/student-subject-enrollment-queries";
 import { dedupeTeacherAttendanceByStudentAndDate } from "@/lib/teacher-attendance-dedupe";
-import {
-  gradebookAssignmentIsOnOrAfterEnrollment,
-  reportCardIsOnOrAfterEnrollment,
-} from "@/lib/parent-academic-from-enrollment";
+import { reportCardIsOnOrAfterEnrollment } from "@/lib/parent-academic-from-enrollment";
 import { REPORT_TERM_OPTIONS } from "../report-cards/constants";
 import type {
   CoordinatorClassOverview,
@@ -66,6 +63,12 @@ import {
 } from "@/lib/report-card-supplementary";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { buildCoordinatorClassParentAccess } from "@/lib/report-card-fee/coordinator-parent-access";
+import {
+  batchResolveStudentTermExamScores,
+  resolveStudentTermExamScores,
+  termExamSlotsToExamPair,
+  type ReportCardTermValue,
+} from "@/lib/report-card-term-exam-resolver";
 
 // Re-export shared types/constants so existing consumers of `./data` continue
 // to work. The underlying definitions live in the client-safe `./types`
@@ -458,163 +461,10 @@ interface GradebookExamPair {
   exam2Pct: number | null;
 }
 
-function normalizeGradebookAssignmentTitleForCoordinator(raw: string): string {
-  return (raw ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-/**
- * Map (studentId → subject name (lowercased) → { exam1Pct, exam2Pct }) built
- * from `teacher_scores` + `teacher_gradebook_assignments` for the class, so we
- * can backfill comment rows whose exam fields are null (e.g. the coordinator
- * `Generate Report Cards` placeholder ran before the subject teacher entered
- * scores, or the teacher hasn't saved their report card yet but the gradebook
- * already has scores).
- */
-async function loadGradebookScoresForClass(
-  admin: Db,
-  params: {
-    classIds: string[];
-    academicYear: string;
-    term: "Term 1" | "Term 2";
-    studentIds: string[];
-    /** When set (e.g. parent preview), omit assignments before this calendar date. */
-    enrollmentDate?: string | null;
-  }
-): Promise<Map<string, Map<string, GradebookExamPair>>> {
-  const out = new Map<string, Map<string, GradebookExamPair>>();
-  if (params.studentIds.length === 0) return out;
-
-  const wanted: {
-    exam1: GradebookMajorExamTypeValue;
-    exam2: GradebookMajorExamTypeValue;
-  } =
-    params.term === "Term 2"
-      ? { exam1: "September_Midterm", exam2: "December_Annual" }
-      : { exam1: "April_Midterm", exam2: "June_Terminal" };
-
-  const { data: gbRowsRaw } = await admin
-    .from("teacher_gradebook_assignments")
-    .select(
-      "id, title, exam_type, subject, max_score, academic_year, due_date, created_at"
-    )
-    .in("class_id", params.classIds);
-
-  const gbRows = (gbRowsRaw ?? []) as {
-    id: string;
-    title: string;
-    exam_type: string | null;
-    subject: string;
-    max_score: number | string;
-    academic_year: string | null;
-    due_date: string | null;
-    created_at: string;
-  }[];
-
-  type Meta = {
-    subjectKey: string;
-    maxScore: number;
-    slot: "exam1" | "exam2";
-  };
-  const metaByAssignment = new Map<string, Meta>();
-
-  for (const r of gbRows) {
-    const examTypeRaw = parseGradebookExamType(r.exam_type);
-    let slot: "exam1" | "exam2" | null =
-      examTypeRaw === wanted.exam1
-        ? "exam1"
-        : examTypeRaw === wanted.exam2
-          ? "exam2"
-          : null;
-
-    // Deterministic fallback (no inference): exact preset titles used by
-    // markbook assignment creation.
-    if (!slot) {
-      const nt = normalizeGradebookAssignmentTitleForCoordinator(r.title);
-      if (params.term === "Term 1") {
-        if (nt === "april midterm examination") {
-          slot = "exam1";
-        } else if (nt === "june terminal examination") {
-          slot = "exam2";
-        }
-      } else {
-        if (nt === "september midterm examination") {
-          slot = "exam1";
-        } else if (nt === "december annual examination") {
-          slot = "exam2";
-        }
-      }
-    }
-
-    if (!slot) continue;
-    if (
-      params.enrollmentDate != null &&
-      !gradebookAssignmentIsOnOrAfterEnrollment(
-        { due_date: r.due_date, created_at: r.created_at },
-        params.enrollmentDate
-      )
-    ) {
-      continue;
-    }
-    const maxScore = Number(r.max_score);
-    if (!Number.isFinite(maxScore) || maxScore <= 0) continue;
-    metaByAssignment.set(r.id, {
-      subjectKey: r.subject.trim().toLowerCase(),
-      maxScore,
-      slot,
-    });
-  }
-
-  const assignmentIds = [...metaByAssignment.keys()];
-  if (assignmentIds.length === 0) return out;
-
-  const scRows = await fetchAllRows<{
-    assignment_id: string;
-    student_id: string;
-    score: unknown;
-  }>({
-    label: "coordinator:data teacher_scores by assignments+students",
-    fetchPage: async (from, to) =>
-      await admin
-        .from("teacher_scores")
-        .select("assignment_id, student_id, score")
-        .in("assignment_id", assignmentIds)
-        .in("student_id", params.studentIds)
-        .order("id", { ascending: true })
-        .range(from, to),
-  });
-
-  for (const row of scRows) {
-    const meta = metaByAssignment.get(row.assignment_id);
-    if (!meta) continue;
-    const n = parseNumeric(row.score);
-    if (n == null) continue;
-    const pct = Math.round((n / meta.maxScore) * 1000) / 10;
-
-    let bySubject = out.get(row.student_id);
-    if (!bySubject) {
-      bySubject = new Map<string, GradebookExamPair>();
-      out.set(row.student_id, bySubject);
-    }
-    const existing = bySubject.get(meta.subjectKey) ?? {
-      exam1Pct: null,
-      exam2Pct: null,
-    };
-    if (meta.slot === "exam1") existing.exam1Pct = pct;
-    else existing.exam2Pct = pct;
-    bySubject.set(meta.subjectKey, existing);
-  }
-
-  return out;
-}
-
 /**
  * Returns a copy of `comments` where subjects without a stored comment row —
- * or with null exam fields — are backfilled from the gradebook. This mirrors
- * the teacher's report-card auto-fill, so the coordinator preview shows the
- * same April Midterm / June Terminal scores the teacher sees pre-populated.
+ * or with null exam fields — are backfilled from the gradebook via the
+ * student-centric term exam resolver (current + prior classes in the same term).
  */
 function mergeGradebookScoresIntoComments(
   comments: ReportCardCommentRow[],
@@ -821,15 +671,29 @@ async function loadClassReportCards(
   }
 
   const studentIds = [...new Set(cardRows.map((c) => c.student_id))];
-  // Pull major-exam scores straight from the gradebook. Coordinators are not
-  // restricted by `teacher_id`, so `admin` returns every subject teacher's
-  // scores — this matches what the teacher sees auto-filled in their editor.
-  const gradebookByStudent = await loadGradebookScoresForClass(admin, {
-    classIds: params.classIds,
-    academicYear: params.academicYear,
-    term: gbTerm,
-    studentIds,
-  });
+  const schoolIdForResolver =
+    cardRows.find((c) => c.school_id)?.school_id ?? "";
+  const gradebookByStudent = new Map<string, Map<string, GradebookExamPair>>();
+  if (schoolIdForResolver) {
+    const resolved = await batchResolveStudentTermExamScores(admin, {
+      schoolId: schoolIdForResolver,
+      academicYear: params.academicYear,
+      term: gbTerm,
+      subjects: params.classSubjectNames,
+      entries: cardRows.map((c) => ({
+        studentId: c.student_id,
+        reportClassId: c.class_id,
+        enrollmentDate: params.parentExamScope?.enrollmentDate ?? null,
+      })),
+    });
+    for (const [studentId, bySubject] of resolved) {
+      const pairs = new Map<string, GradebookExamPair>();
+      for (const [subjectKey, slots] of bySubject) {
+        pairs.set(subjectKey, termExamSlotsToExamPair(slots));
+      }
+      gradebookByStudent.set(studentId, pairs);
+    }
+  }
   const attendanceByStudent = new Map<
     string,
     {
@@ -1106,9 +970,6 @@ async function loadClassReportCards(
     );
     // Footer summary (rank + total/avg) uses the same cohort that powers the
     // per-subject positions, so the footer line agrees with the table above.
-    // We compute the summary first so we can pass `selectedSubjects` (best 7
-    // for secondary students with >7 subjects) into the row builder for the
-    // ✅ "Selected" indicator column.
     const summary = computeReportCardStudentSummary({
       allStudents: studentsForRank,
       getSubjects: (id) => subjectsByStudent.get(id) ?? allSubjects,
@@ -1119,12 +980,15 @@ async function loadClassReportCards(
       term: termExact,
       academicYear: params.academicYear,
     });
+    // Coordinator preview/PDF: omit the best-7 "Selected" column so every
+    // subject row shows full marks without dropped/green styling (summary still
+    // uses best-7 internally for total marks and division).
     const subjectRows = buildSubjectPreviewRows(
       termExact,
       studentSubjects,
       studentRow,
       positions,
-      summary.selectedSubjects,
+      null,
       params.schoolLevel
     );
 
@@ -1287,21 +1151,38 @@ export async function mergeReportCardCommentsWithGradebookForParent(params: {
   const studentSubjects =
     enrolled.length > 0 ? enrolled : allSubjectsV0;
 
-  const gbTerm: "Term 1" | "Term 2" =
+  const gbTerm: ReportCardTermValue =
     termTrim === "Term 2" ? "Term 2" : "Term 1";
 
-  const gradebookByStudent = await loadGradebookScoresForClass(admin, {
-    classIds: cluster.classIds,
-    academicYear,
-    term: gbTerm,
-    studentIds: [studentId],
-    enrollmentDate: params.enrollmentDate,
-  });
+  const { data: schoolRow } = await admin
+    .from("classes")
+    .select("school_id")
+    .eq("id", classId)
+    .maybeSingle();
+  const schoolId =
+    (schoolRow as { school_id: string } | null)?.school_id ?? "";
+
+  let gradebookBySubject: Map<string, GradebookExamPair> | undefined;
+  if (schoolId) {
+    const resolved = await resolveStudentTermExamScores(admin, {
+      studentId,
+      schoolId,
+      academicYear,
+      term: gbTerm,
+      subjects: studentSubjects,
+      reportClassId: classId,
+      enrollmentDate: params.enrollmentDate,
+    });
+    gradebookBySubject = new Map<string, GradebookExamPair>();
+    for (const [subjectKey, slots] of resolved) {
+      gradebookBySubject.set(subjectKey, termExamSlotsToExamPair(slots));
+    }
+  }
 
   return mergeGradebookScoresIntoComments(
     baseComments,
     studentSubjects,
-    gradebookByStudent.get(studentId)
+    gradebookBySubject
   );
 }
 

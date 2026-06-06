@@ -106,14 +106,12 @@ export async function loadClassAttendancePageData(
       .select("id", { count: "exact", head: true })
       .eq("class_id", classId)
       .eq("status", "active");
-    if (countErr) return null;
 
     const { count: dayRecordCount, error: dErr } = await admin
       .from("class_attendance")
       .select("id", { count: "exact", head: true })
       .eq("class_id", classId)
       .eq("attendance_date", attendanceDate);
-    if (dErr) return null;
 
     const historyStart = new Date(attendanceDate);
     historyStart.setDate(historyStart.getDate() - HISTORY_DAYS);
@@ -125,7 +123,16 @@ export async function loadClassAttendancePageData(
       .eq("class_id", classId)
       .gte("attendance_date", historyStartIso)
       .order("attendance_date", { ascending: false });
-    if (hErr) return null;
+
+    if (countErr && process.env.NODE_ENV === "development") {
+      console.warn("[class-attendance] active student count failed", countErr);
+    }
+    if (dErr && process.env.NODE_ENV === "development") {
+      console.warn("[class-attendance] day record count failed", dErr);
+    }
+    if (hErr && process.env.NODE_ENV === "development") {
+      console.warn("[class-attendance] history load failed", hErr);
+    }
 
     const byDate = new Map<string, ClassAttendanceStatus[]>();
     for (const r of (histRows ?? []) as {
@@ -140,13 +147,13 @@ export async function loadClassAttendancePageData(
       byDate.set(date, arr);
     }
 
-    const totalStudents = totalClassStudents ?? 0;
-    const daySummary = await loadDaySummaryForClass(
-      admin,
-      classId,
-      attendanceDate
-    );
-    const history: ClassAttendanceHistoryRow[] = [...byDate.entries()]
+    const totalStudents = countErr ? 0 : (totalClassStudents ?? 0);
+    const daySummary = dErr
+      ? null
+      : await loadDaySummaryForClass(admin, classId, attendanceDate);
+    const history: ClassAttendanceHistoryRow[] = hErr
+      ? []
+      : [...byDate.entries()]
       .map(([attendanceDateKey, statuses]) => ({
         attendanceDate: attendanceDateKey,
         summary: tallyStatuses(statuses),
@@ -160,7 +167,7 @@ export async function loadClassAttendancePageData(
       className: classRow.name?.trim() || "Class",
       schoolId: classRow.school_id,
       attendanceDate,
-      hasRecordsForDate: (dayRecordCount ?? 0) > 0,
+      hasRecordsForDate: dErr ? false : (dayRecordCount ?? 0) > 0,
       history,
       totalClassStudents: totalStudents,
       daySummary,

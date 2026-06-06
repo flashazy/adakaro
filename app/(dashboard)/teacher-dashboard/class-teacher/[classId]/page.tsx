@@ -40,6 +40,7 @@ export default async function ClassTeacherClassDetailPage({
           </div>
 
           <ClassTeacherClassDetailTablesClient
+            classId={trimmed}
             students={students}
             attendance={attendance}
             grades={grades}

@@ -10,7 +10,10 @@ import {
   useState,
   useTransition,
 } from "react";
-import type { ClassAttendanceStatus } from "@/lib/class-attendance/class-attendance-types";
+import {
+  CLASS_ATTENDANCE_NOTE_MAX_LENGTH,
+  type ClassAttendanceStatus,
+} from "@/lib/class-attendance/class-attendance-types";
 import type {
   ClassAttendanceHistoryRow,
   ClassAttendanceStudentRow,
@@ -22,9 +25,13 @@ import { AttendanceDateRestrictionBanner } from "@/components/attendance/attenda
 import {
   loadClassAttendancePageAction,
   loadClassAttendanceStudentsPageAction,
+  loadStudentHistoricalAttendanceAction,
+  listStudentsWithHistoricalAttendanceAction,
   saveClassAttendanceAction,
   type SaveClassAttendanceEntry,
 } from "@/app/(dashboard)/teacher-dashboard/class-teacher/class-attendance-actions";
+import { PreviousAttendanceModal } from "@/components/class-teacher/previous-attendance-modal";
+import type { HistoricalAttendanceClassGroup } from "@/lib/class-attendance/load-historical-attendance-for-class-teacher";
 import { StudentListPaginationBar } from "@/components/shared/student-list-table-controls";
 import {
   CLASS_ATTENDANCE_ROWS_STORAGE_KEY,
@@ -96,6 +103,17 @@ export function ClassAttendanceForm(props: {
   const [pending, startTransition] = useTransition();
   const [loadingDate, startDateTransition] = useTransition();
   const [loadingStudents, startStudentsTransition] = useTransition();
+  const [studentsWithPriorAttendance, setStudentsWithPriorAttendance] =
+    useState<Set<string>>(new Set());
+  const [priorModalStudent, setPriorModalStudent] = useState<{
+    id: string;
+    fullName: string;
+  } | null>(null);
+  const [priorModalGroups, setPriorModalGroups] = useState<
+    HistoricalAttendanceClassGroup[]
+  >([]);
+  const [priorModalLoading, setPriorModalLoading] = useState(false);
+  const [priorModalError, setPriorModalError] = useState<string | null>(null);
   const scrollTargetRef = useRef<string | null>(null);
   const attendanceEditsRef = useRef<Map<string, AttendanceEdit>>(new Map());
   const skipPageResetRef = useRef(false);
@@ -190,9 +208,23 @@ export function ClassAttendanceForm(props: {
           return;
         }
         setTotalCount(res.data.totalCount);
-        setPageStudents(mergePageStudents(res.data.students));
+        const merged = mergePageStudents(res.data.students);
+        setPageStudents(merged);
         setPage(res.data.page);
         bumpSummary();
+
+        const studentIds = merged.map((s) => s.id);
+        if (studentIds.length === 0) {
+          setStudentsWithPriorAttendance(new Set());
+        } else {
+          const flags = await listStudentsWithHistoricalAttendanceAction({
+            classId: props.classId,
+            studentIds,
+          });
+          setStudentsWithPriorAttendance(
+            flags.ok ? new Set(flags.studentIds) : new Set()
+          );
+        }
       });
     },
     [
@@ -237,6 +269,31 @@ export function ClassAttendanceForm(props: {
       bumpSummary();
     },
     [bumpSummary, readOnly]
+  );
+
+  const setNotes = useCallback(
+    (studentId: string, notes: string | null) => {
+      if (readOnly) return;
+      const normalized =
+        notes && notes.length > 0
+          ? notes.slice(0, CLASS_ATTENDANCE_NOTE_MAX_LENGTH)
+          : null;
+      const edits = attendanceEditsRef.current;
+      const prev = edits.get(studentId);
+      edits.set(studentId, {
+        status: prev?.status ?? "present",
+        notes: normalized,
+      });
+      setPageStudents((prevRows) =>
+        prevRows.map((s) =>
+          s.id === studentId ? { ...s, notes: normalized } : s
+        )
+      );
+      setDirty(true);
+      setMessage(null);
+      setError(null);
+    },
+    [readOnly]
   );
 
   const applyToCurrentPage = useCallback(
@@ -351,7 +408,9 @@ export function ClassAttendanceForm(props: {
       ].map(([studentId, edit]) => ({
         studentId,
         status: edit.status,
-        notes: edit.notes,
+        notes: edit.notes?.trim()
+          ? edit.notes.trim().slice(0, CLASS_ATTENDANCE_NOTE_MAX_LENGTH)
+          : null,
       }));
 
       const res = await saveClassAttendanceAction({
@@ -394,6 +453,35 @@ export function ClassAttendanceForm(props: {
     scrollTargetRef.current = studentId;
     setStatus(studentId, status);
   };
+
+  const openPreviousAttendance = useCallback(
+    (student: { id: string; fullName: string }) => {
+      setPriorModalStudent(student);
+      setPriorModalGroups([]);
+      setPriorModalError(null);
+      setPriorModalLoading(true);
+
+      void loadStudentHistoricalAttendanceAction({
+        classId: props.classId,
+        studentId: student.id,
+      }).then((res) => {
+        setPriorModalLoading(false);
+        if (!res.ok) {
+          setPriorModalError(res.error);
+          return;
+        }
+        setPriorModalGroups(res.groups);
+      });
+    },
+    [props.classId]
+  );
+
+  const closePreviousAttendance = useCallback(() => {
+    setPriorModalStudent(null);
+    setPriorModalGroups([]);
+    setPriorModalError(null);
+    setPriorModalLoading(false);
+  }, []);
 
   return (
     <div className={dirty ? "space-y-6 pb-28" : "space-y-6 pb-6"}>
@@ -499,7 +587,17 @@ export function ClassAttendanceForm(props: {
                       selected={selected.has(s.id)}
                       onToggleSelect={() => toggleSelect(s.id)}
                       onSelectStatus={(st) => handleSelectStatus(s.id, st)}
+                      onNotesChange={(notes) => setNotes(s.id, notes)}
                       readOnly={readOnly}
+                      hasPreviousAttendance={studentsWithPriorAttendance.has(
+                        s.id
+                      )}
+                      onViewPreviousAttendance={() =>
+                        openPreviousAttendance({
+                          id: s.id,
+                          fullName: s.fullName,
+                        })
+                      }
                     />
                   ))}
                 </tbody>
@@ -514,7 +612,17 @@ export function ClassAttendanceForm(props: {
                     selected={selected.has(s.id)}
                     onToggleSelect={() => toggleSelect(s.id)}
                     onSelectStatus={(st) => handleSelectStatus(s.id, st)}
+                    onNotesChange={(notes) => setNotes(s.id, notes)}
                     readOnly={readOnly}
+                    hasPreviousAttendance={studentsWithPriorAttendance.has(
+                      s.id
+                    )}
+                    onViewPreviousAttendance={() =>
+                      openPreviousAttendance({
+                        id: s.id,
+                        fullName: s.fullName,
+                      })
+                    }
                   />
                 </li>
               ))}
@@ -552,6 +660,16 @@ export function ClassAttendanceForm(props: {
         pending={pending}
         disabled={listBusy || noStudentsInClass || readOnly}
         onSave={onSave}
+      />
+
+      <PreviousAttendanceModal
+        open={priorModalStudent !== null}
+        studentName={priorModalStudent?.fullName ?? "this student"}
+        currentClassName={props.className}
+        groups={priorModalGroups}
+        loading={priorModalLoading}
+        error={priorModalError}
+        onClose={closePreviousAttendance}
       />
     </div>
   );

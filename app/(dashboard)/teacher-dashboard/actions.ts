@@ -30,8 +30,10 @@ import { resolveSchoolDisplayTimezone } from "@/lib/school-timezone";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import {
   isStudentHealthAttendanceStatus,
+  type AttendanceLockKind,
   type StudentHealthAttendanceStatus,
 } from "@/lib/student-attendance-status";
+import { fetchAttendanceLocksForStudents } from "@/lib/subject-attendance-lock";
 import { assertAttendanceDateEditableForSave } from "@/lib/attendance-date-policy";
 import {
   formatSupabaseEnvError,
@@ -531,37 +533,21 @@ export async function loadAttendanceData(
     })
   );
 
-  const healthStatusByStudent: Record<string, StudentHealthAttendanceStatus> =
-    {};
-  if (students.length > 0) {
-    const { data: healthRows, error: healthErr } = await supabase
-      .from("student_attendance_status")
-      .select("student_id, status")
-      .in(
-        "student_id",
-        students.map((s) => s.id)
-      );
-    if (healthErr) {
-      console.error(
-        "[loadAttendanceData] student_attendance_status",
-        healthErr.message
-      );
-    }
-    for (const h of (healthRows ?? []) as {
-      student_id: string;
-      status: string;
-    }[]) {
-      if (isStudentHealthAttendanceStatus(h.status)) {
-        healthStatusByStudent[h.student_id] = h.status;
-      }
-    }
-  }
+  const studentIds = students.map((s) => s.id);
+  const attendanceLockByStudent: Record<string, AttendanceLockKind> =
+    studentIds.length > 0
+      ? await fetchAttendanceLocksForStudents(admin, {
+          classId,
+          attendanceDate: dateOnly,
+          studentIds,
+        })
+      : {};
 
     return {
       ok: true as const,
       students,
       attendance: byStudent,
-      healthStatusByStudent,
+      attendanceLockByStudent,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -686,30 +672,15 @@ export async function saveAttendanceAction(input: {
 
   const studentIds = uniqueRecords.map((r) => r.studentId);
 
-  const healthLockedIds = new Set<string>();
-  if (studentIds.length > 0) {
-    const { data: healthRows, error: healthErr } = await supabase
-      .from("student_attendance_status")
-      .select("student_id, status")
-      .in("student_id", studentIds);
-    if (healthErr) {
-      console.error(
-        "[saveAttendanceAction] student_attendance_status",
-        healthErr.message
-      );
-    }
-    for (const h of (healthRows ?? []) as {
-      student_id: string;
-      status: string;
-    }[]) {
-      if (isStudentHealthAttendanceStatus(h.status)) {
-        healthLockedIds.add(h.student_id);
-      }
-    }
-  }
+  const attendanceLocks = await fetchAttendanceLocksForStudents(admin, {
+    classId: input.classId,
+    attendanceDate: dateOnly,
+    studentIds,
+  });
+  const lockedStudentIds = new Set(Object.keys(attendanceLocks));
 
   const recordsToPersist = uniqueRecords.map((r) =>
-    healthLockedIds.has(r.studentId)
+    lockedStudentIds.has(r.studentId)
       ? { studentId: r.studentId, status: "absent" as AttendanceStatus }
       : r
   );
@@ -786,7 +757,7 @@ export async function saveAttendanceAction(input: {
     recordCount: recordsToPersist.length,
     insertCount: toInsert.length,
     updateCount: toUpdate.length,
-    healthLockedCount: healthLockedIds.size,
+    lockedCount: lockedStudentIds.size,
   });
 
   const insertPayload = toInsert.map((r) => ({
@@ -1505,7 +1476,12 @@ export async function saveScoresAction(input: {
     .eq("id", input.assignmentId)
     .single();
 
-  const gr = g as { id: string; teacher_id: string; class_id: string } | null;
+  const gr = g as {
+    id: string;
+    teacher_id: string;
+    class_id: string;
+    max_score: number;
+  } | null;
   if (!gr) {
     return { ok: false, error: "Assignment not found." };
   }
@@ -1514,6 +1490,11 @@ export async function saveScoresAction(input: {
   if (!gate.ok) return { ok: false, error: gate.error };
 
   for (const s of input.scores) {
+    if (s.score != null) {
+      if (!Number.isFinite(s.score) || s.score < 0 || s.score > 100) {
+        return { ok: false, error: "Score must be between 0 and 100" };
+      }
+    }
     const { error } = await (admin as Db).from("teacher_scores").upsert(
       {
         assignment_id: input.assignmentId,

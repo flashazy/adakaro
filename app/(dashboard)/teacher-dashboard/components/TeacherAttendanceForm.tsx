@@ -28,9 +28,10 @@ import {
 import { getCompactPaginationItems } from "@/lib/pagination-page-items";
 import {
   getAttendanceDisplayLabel,
-  getHealthAttendanceTooltip,
-  isAttendanceLockedByHealth,
-  type StudentHealthAttendanceStatus,
+  getAttendanceLockDisplayLabel,
+  getAttendanceLockTooltip,
+  isAttendanceLocked,
+  type AttendanceLockKind,
 } from "@/lib/student-attendance-status";
 import { getAttendanceDateEditMode } from "@/lib/attendance-date-policy";
 import { AttendanceDateRestrictionBanner } from "@/components/attendance/attendance-date-restriction-banner";
@@ -168,8 +169,8 @@ export function TeacherAttendanceForm({
   const [statusByStudent, setStatusByStudent] = useState<
     Record<string, Status>
   >({});
-  const [healthStatusByStudent, setHealthStatusByStudent] = useState<
-    Record<string, StudentHealthAttendanceStatus>
+  const [attendanceLockByStudent, setAttendanceLockByStudent] = useState<
+    Record<string, AttendanceLockKind>
   >({});
   const [historyHealthByStudent, setHistoryHealthByStudent] = useState<
     Record<string, StudentHealthRecord>
@@ -262,6 +263,18 @@ export function TeacherAttendanceForm({
     [subjectChoices, subjectChoiceKey]
   );
 
+  /** Subject teachers always work per assignment; wait for subjectId before loading. */
+  const subjectRosterReady = useMemo(() => {
+    if (!classId) return false;
+    if (subjectChoices.length === 0) return true;
+    if (!subjectChoiceKey || !selectedSubjectMeta) return false;
+    const needsSubjectId = subjectChoices.some((c) => c.subjectId != null);
+    if (needsSubjectId) {
+      return selectedSubjectMeta.subjectId != null;
+    }
+    return true;
+  }, [classId, subjectChoices, subjectChoiceKey, selectedSubjectMeta]);
+
   useEffect(() => {
     const saved =
       typeof window !== "undefined"
@@ -316,7 +329,7 @@ export function TeacherAttendanceForm({
   };
 
   const syncAttendance = useCallback(async () => {
-    if (!classId) return;
+    if (!classId || !subjectRosterReady) return;
     setLoadError(null);
     setSaveOk(false);
     try {
@@ -339,7 +352,7 @@ export function TeacherAttendanceForm({
         setLoadError(res.error);
         setStudents([]);
         setStatusByStudent({});
-        setHealthStatusByStudent({});
+        setAttendanceLockByStudent({});
         setHistoryHealthByStudent({});
         setHistoryLastModifiedIsoByDate({});
         setHistoryDisplayTimeZone(DEFAULT_SCHOOL_DISPLAY_TIMEZONE);
@@ -352,16 +365,15 @@ export function TeacherAttendanceForm({
         studentCount: res.students.length,
       });
       setStudents(res.students);
-      const healthMap = res.healthStatusByStudent ?? {};
+      const lockMap = res.attendanceLockByStudent ?? {};
       const next: Record<string, Status> = {};
       for (const s of res.students) {
-        const studentHealth = healthMap[s.id];
-        next[s.id] = isAttendanceLockedByHealth(studentHealth)
+        next[s.id] = isAttendanceLocked(lockMap[s.id])
           ? "absent"
           : (res.attendance[s.id] ?? "present");
       }
       setStatusByStudent(next);
-      setHealthStatusByStudent(res.healthStatusByStudent ?? {});
+      setAttendanceLockByStudent(lockMap);
       setHasChanges(false);
 
       const hist = await loadAttendanceHistory(classId, {
@@ -400,7 +412,7 @@ export function TeacherAttendanceForm({
       );
       setStudents([]);
       setStatusByStudent({});
-      setHealthStatusByStudent({});
+      setAttendanceLockByStudent({});
       setHistoryDates([]);
       setHistoryByDate({});
       setHistoryHealthByStudent({});
@@ -411,6 +423,7 @@ export function TeacherAttendanceForm({
   }, [
     classId,
     date,
+    subjectRosterReady,
     selectedSubjectMeta?.subjectId,
     selectedSubjectMeta?.academicYear,
     selectedSubjectMeta?.label,
@@ -431,7 +444,7 @@ export function TeacherAttendanceForm({
 
   const setStatus = (studentId: string, status: Status) => {
     if (readOnly) return;
-    if (isAttendanceLockedByHealth(healthStatusByStudent[studentId])) return;
+    if (isAttendanceLocked(attendanceLockByStudent[studentId])) return;
     setStatusByStudent((prev) => ({ ...prev, [studentId]: status }));
     setHasChanges(true);
   };
@@ -445,7 +458,7 @@ export function TeacherAttendanceForm({
     setStatusByStudent((prev) => {
       const next = { ...prev };
       students.forEach((s) => {
-        if (!isAttendanceLockedByHealth(healthStatusByStudent[s.id])) {
+        if (!isAttendanceLocked(attendanceLockByStudent[s.id])) {
           next[s.id] = "present";
         }
       });
@@ -459,7 +472,7 @@ export function TeacherAttendanceForm({
     setStatusByStudent((prev) => {
       const next = { ...prev };
       students.forEach((s) => {
-        if (!isAttendanceLockedByHealth(healthStatusByStudent[s.id])) {
+        if (!isAttendanceLocked(attendanceLockByStudent[s.id])) {
           next[s.id] = "absent";
         }
       });
@@ -675,12 +688,14 @@ export function TeacherAttendanceForm({
 
   const healthRecordsForRollup = useMemo(() => {
     const map: Record<string, StudentHealthRecord | undefined> = {};
-    for (const [id, status] of Object.entries(healthStatusByStudent)) {
+    for (const [id, lock] of Object.entries(attendanceLockByStudent)) {
+      if (lock !== "sick" && lock !== "permitted") continue;
       const hist = historyHealthByStudent[id];
+      const status = lock === "sick" ? "ill" : "permitted";
       map[id] = hist ?? { status, marked_at: "" };
     }
     return map;
-  }, [healthStatusByStudent, historyHealthByStudent]);
+  }, [attendanceLockByStudent, historyHealthByStudent]);
 
   const currentAttendanceRollup = useMemo(() => {
     const rows = students.map((s) => ({
@@ -728,34 +743,34 @@ export function TeacherAttendanceForm({
   const isMonthExpanded = (monthKey: string) =>
     !collapsedMonths.has(monthKey);
 
-  const renderHealthLockedAttendance = (
-    healthStatus: StudentHealthAttendanceStatus
-  ) => {
-    const isIll = healthStatus === "ill";
-    const tooltip = getHealthAttendanceTooltip(healthStatus);
+  const renderLockedAttendance = (lock: AttendanceLockKind) => {
+    const tooltip = getAttendanceLockTooltip(lock);
     return (
       <div
         title={tooltip}
         aria-label={tooltip}
         className={cn(
           "inline-flex max-w-[14rem] items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm",
-          isIll
-            ? "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950/50 dark:text-orange-100"
-            : "border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-100"
+          lock === "sick" &&
+            "border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950/50 dark:text-orange-100",
+          lock === "permitted" &&
+            "border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-100",
+          lock === "absent" &&
+            "border-red-300 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-950/50 dark:text-red-100"
         )}
       >
         <Lock className="h-4 w-4 shrink-0 opacity-75" aria-hidden />
         <span className="whitespace-nowrap">
-          {getAttendanceDisplayLabel("absent", healthStatus)}
+          {getAttendanceLockDisplayLabel(lock)}
         </span>
       </div>
     );
   };
 
   const renderSymbolButtons = (studentId: string, currentStatus: Status) => {
-    const studentHealthStatus = healthStatusByStudent[studentId];
-    if (isAttendanceLockedByHealth(studentHealthStatus)) {
-      return renderHealthLockedAttendance(studentHealthStatus);
+    const lock = attendanceLockByStudent[studentId];
+    if (isAttendanceLocked(lock)) {
+      return renderLockedAttendance(lock);
     }
     if (readOnly) {
       return (
@@ -816,9 +831,9 @@ export function TeacherAttendanceForm({
   };
 
   const renderTextButtons = (studentId: string, currentStatus: Status) => {
-    const studentHealthStatus = healthStatusByStudent[studentId];
-    if (isAttendanceLockedByHealth(studentHealthStatus)) {
-      return renderHealthLockedAttendance(studentHealthStatus);
+    const lock = attendanceLockByStudent[studentId];
+    if (isAttendanceLocked(lock)) {
+      return renderLockedAttendance(lock);
     }
     if (readOnly) {
       return (
@@ -1221,28 +1236,29 @@ export function TeacherAttendanceForm({
               <div>
                 {studentPageSlice.map((s) => {
                   const currentStatus = getStatusForStudent(s.id);
-                  const healthStatus = healthStatusByStudent[s.id] ?? null;
-                  const displayLabel = getAttendanceDisplayLabel(
-                    currentStatus,
-                    healthStatus
-                  );
-                  const healthLocked = isAttendanceLockedByHealth(healthStatus);
+                  const lock = attendanceLockByStudent[s.id] ?? null;
+                  const displayLabel = isAttendanceLocked(lock)
+                    ? getAttendanceLockDisplayLabel(lock)
+                    : getAttendanceDisplayLabel(currentStatus, null);
+                  const attendanceLocked = isAttendanceLocked(lock);
                   return (
                     <div
                       key={s.id}
                       className={cn(
                         "flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 transition hover:bg-gray-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50",
-                        healthStatus === "ill" &&
+                        lock === "sick" &&
                           "bg-orange-50/90 dark:bg-orange-950/25",
-                        healthStatus === "permitted" &&
+                        lock === "permitted" &&
                           "bg-blue-50/90 dark:bg-blue-950/25",
-                        !healthLocked &&
+                        lock === "absent" &&
+                          "bg-red-50/90 dark:bg-red-950/25",
+                        !attendanceLocked &&
                           currentStatus === "present" &&
                           "bg-green-50 dark:bg-green-950/30",
-                        !healthLocked &&
+                        !attendanceLocked &&
                           currentStatus === "absent" &&
                           "bg-red-50 dark:bg-red-950/30",
-                        !healthLocked &&
+                        !attendanceLocked &&
                           currentStatus === "late" &&
                           "bg-yellow-50 dark:bg-yellow-950/30"
                       )}
@@ -1250,15 +1266,17 @@ export function TeacherAttendanceForm({
                       <div className="min-w-0 flex-1">
                         <span className="inline-flex flex-wrap items-center gap-y-1 font-medium text-gray-900 dark:text-white">
                           {s.full_name}
-                          {healthLocked && healthStatus != null ? (
+                          {attendanceLocked && lock != null ? (
                             <span
-                              title={getHealthAttendanceTooltip(healthStatus)}
+                              title={getAttendanceLockTooltip(lock)}
                               className={cn(
                                 "ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
-                                healthStatus === "ill" &&
+                                lock === "sick" &&
                                   "bg-orange-100 text-orange-900 dark:bg-orange-950/60 dark:text-orange-100",
-                                healthStatus === "permitted" &&
-                                  "bg-blue-100 text-blue-900 dark:bg-blue-950/60 dark:text-blue-100"
+                                lock === "permitted" &&
+                                  "bg-blue-100 text-blue-900 dark:bg-blue-950/60 dark:text-blue-100",
+                                lock === "absent" &&
+                                  "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-200"
                               )}
                             >
                               <Lock
@@ -1282,7 +1300,7 @@ export function TeacherAttendanceForm({
                               {displayLabel}
                             </span>
                           )}
-                          {frequentAbsenteeIds.has(s.id) && !healthLocked ? (
+                          {frequentAbsenteeIds.has(s.id) && !attendanceLocked ? (
                             <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600 dark:bg-red-950/40 dark:text-red-300">
                               Frequent Absentee
                             </span>

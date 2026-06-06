@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, UserRole } from "@/types/supabase";
+import { userIsClassTeacherForClass } from "@/lib/class-teacher";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { fetchUserProfileForStudentPage } from "@/lib/student-profile-admin-client";
 
@@ -80,10 +81,15 @@ export async function canUserAccessStudentProfile(
 
   const adminOk = Boolean(isAdmin) || Boolean(isSuper);
   const teacherOk = Boolean(teacherForClass);
+  const classTeacherOk = await userIsClassTeacherForClass(
+    userId,
+    student.class_id
+  );
 
   return (
     adminOk ||
     teacherOk ||
+    classTeacherOk ||
     departmentRoles.size > 0 ||
     hasHealthScope ||
     hasDisciplineScope ||

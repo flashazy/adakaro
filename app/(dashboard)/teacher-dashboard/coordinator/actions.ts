@@ -26,6 +26,7 @@ import { logReportCardFeeAudit } from "@/lib/report-card-fee/audit";
 import { verifySchoolAdminPasswordForOverride } from "@/lib/report-card-fee/verify-admin-password";
 import type { ClassSendEligibilityPreview } from "@/lib/report-card-fee/types";
 import { coordinatorGenerationWarningsForClass } from "./coordinator-gradebook-precalc";
+import { batchResolveStudentTermExamScores } from "@/lib/report-card-term-exam-resolver";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -874,22 +875,47 @@ export async function generateReportCardsForClassAction(
   //    + teacher comments backfilled in step 8b so the coordinator's "Generate
   //    Report Cards" button can be re-run to refresh those columns without first
   //    deleting the cards by hand.
-  const existing = await fetchAllRows<{ id: string; student_id: string }>({
-    label: "coordinator:generate existing report_cards by class/term/year",
+  const existing = await fetchAllRows<{
+    id: string;
+    student_id: string;
+    class_id: string;
+  }>({
+    label: "coordinator:generate existing report_cards by student/term/year",
     fetchPage: async (from, to) =>
       await admin
         .from("report_cards")
-        .select("id, student_id")
-        .eq("class_id", classId)
+        .select("id, student_id, class_id")
         .eq("term", term)
         .eq("academic_year", academicYear)
         .in("student_id", studentIds)
         .range(from, to),
   });
-  const existingCardByStudent = new Map<string, string>();
-  for (const r of (existing ?? []) as { id: string; student_id: string }[]) {
-    existingCardByStudent.set(r.student_id, r.id);
+  const existingCardByStudent = new Map<
+    string,
+    { id: string; classId: string }
+  >();
+  for (const r of (existing ?? []) as {
+    id: string;
+    student_id: string;
+    class_id: string;
+  }[]) {
+    existingCardByStudent.set(r.student_id, {
+      id: r.id,
+      classId: r.class_id,
+    });
   }
+
+  const resolvedExamScores = await batchResolveStudentTermExamScores(admin, {
+    schoolId: klass.school_id,
+    academicYear,
+    term,
+    subjects: subjectList.map((s) => s.name),
+    entries: studentRows.map((s) => ({
+      studentId: s.id,
+      reportClassId:
+        existingCardByStudent.get(s.id)?.classId ?? classId,
+    })),
+  });
 
   // 6. Gradebook assignments that back the report card's exam1 / exam2 for this term.
   //    Use the admin client — coordinators aren't necessarily the teacher who owns
@@ -1116,10 +1142,12 @@ export async function generateReportCardsForClassAction(
       string,
       { exam1Pct: number | null; exam2Pct: number | null; avg: number | null }
     >();
+    const resolvedForStudent = resolvedExamScores.get(stud.id);
     for (const subj of subjectList) {
       const subjectKey = normalizeSubjectKey(subj.name);
-      const e1 = pickPctFor(stud.id, subjectKey, wanted.exam1);
-      const e2 = pickPctFor(stud.id, subjectKey, wanted.exam2);
+      const slots = resolvedForStudent?.get(subjectKey);
+      const e1 = slots?.exam1Pct ?? pickPctFor(stud.id, subjectKey, wanted.exam1);
+      const e2 = slots?.exam2Pct ?? pickPctFor(stud.id, subjectKey, wanted.exam2);
       const avg = termAverage(e1, e2);
       perSubject.set(subjectKey, { exam1Pct: e1, exam2Pct: e2, avg });
       if (avg != null) {
@@ -1157,7 +1185,8 @@ export async function generateReportCardsForClassAction(
   const errors: string[] = [];
 
   for (const stud of studentRows) {
-    const existingCardId = existingCardByStudent.get(stud.id) ?? null;
+    const existingCard = existingCardByStudent.get(stud.id) ?? null;
+    const existingCardId = existingCard?.id ?? null;
 
     let reportCardId: string;
     if (existingCardId) {

@@ -44,6 +44,11 @@ import {
   type SchoolLevel,
 } from "@/lib/school-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import {
+  resolveStudentTermExamScores,
+  termExamSlotsToGradebookPercentages,
+  type ReportCardTermValue,
+} from "@/lib/report-card-term-exam-resolver";
 
 export type {
   PendingReportCardRow,
@@ -1067,7 +1072,7 @@ export async function loadStudentGradebookExamScores(params: {
 
   const { data: stu } = await admin
     .from("students")
-    .select("id")
+    .select("id, school_id")
     .eq("id", params.studentId)
     .eq("class_id", params.classId)
     .maybeSingle();
@@ -1078,6 +1083,7 @@ export async function loadStudentGradebookExamScores(params: {
     );
     return { ok: false, error: "Student not found in this class." };
   }
+  const schoolId = (stu as { school_id: string }).school_id;
 
   let subjects = [
     ...new Set(params.subjects.map((s) => s.trim()).filter(Boolean)),
@@ -1127,124 +1133,54 @@ export async function loadStudentGradebookExamScores(params: {
     }
   }
 
-  let aRowsRaw:
-    | {
-        id: string;
-        title: string;
-        exam_type: string | null;
-        max_score: number;
-        subject: string;
-        term: string | null;
-      }[]
-    | null = null;
-  try {
-    aRowsRaw = await fetchAllRows({
-      label: "report-cards:loadStudentGradebookExamScores assignments",
-      fetchPage: async (from, to) =>
-        await admin
-          .from("teacher_gradebook_assignments")
-          .select("id, title, exam_type, max_score, subject, term")
-          .eq("teacher_id", user.id)
-          .eq("class_id", params.classId)
-          .range(from, to),
-    });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(
-      "[loadStudentGradebookExamScores] teacher_gradebook_assignments query failed",
-      msg
-    );
-    return { ok: false, error: msg };
-  }
-
-  const termForAssignFilter = (params.term ?? "").trim();
-  const aRows = (aRowsRaw ?? []).filter((row: { term: string | null }) => {
-    if (termForAssignFilter !== "Term 1" && termForAssignFilter !== "Term 2") {
-      return true;
-    }
-    const t = row.term;
-    if (t == null || String(t).trim() === "") return true;
-    return t === termForAssignFilter;
-  });
+  const termForResolver: ReportCardTermValue =
+    (params.term ?? "").trim() === "Term 2" ? "Term 2" : "Term 1";
+  const academicYearForResolver =
+    hasTermYear && params.academicYear
+      ? params.academicYear.trim()
+      : String(new Date().getFullYear());
 
   const subjectKeyByLower = new Map(
     subjects.map((s) => [s.trim().toLowerCase(), s.trim()] as const)
   );
 
-  const metaByAssignmentId = new Map<
+  let resolvedBySubjectKey: Map<
     string,
-    { subject: string; maxScore: number; bucket: keyof ReportCardGradebookExamPercentages }
-  >();
-
-  for (const row of aRows) {
-    const r = row as {
-      id: string;
-      title: string;
-      exam_type: string | null;
-      max_score: number;
-      subject: string;
-    };
-    const canonical = subjectKeyByLower.get(r.subject.trim().toLowerCase());
-    if (!canonical) continue;
-    const parsedType = parseGradebookExamType(r.exam_type);
-    const inferredType = parsedType ?? inferMajorExamTypeFromTitle(r.title);
-    const bucket =
-      inferredType != null
-        ? EXAM_TYPE_TO_BUCKET[inferredType]
-        : NORM_TITLE_TO_BUCKET[normalizeGradebookAssignmentTitle(r.title)];
-    if (!bucket) continue;
-    if (allowedBuckets.size > 0 && !allowedBuckets.has(bucket)) continue;
-    metaByAssignmentId.set(r.id, {
-      subject: canonical,
-      maxScore: Number(r.max_score),
-      bucket,
+    { exam1Pct: number | null; exam2Pct: number | null }
+  >;
+  try {
+    resolvedBySubjectKey = await resolveStudentTermExamScores(admin, {
+      studentId: params.studentId,
+      schoolId,
+      academicYear: academicYearForResolver,
+      term: termForResolver,
+      subjects,
+      reportClassId: params.classId,
     });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[loadStudentGradebookExamScores] resolver failed", msg);
+    return { ok: false, error: msg };
   }
 
-  const assignmentIds = [...metaByAssignmentId.keys()];
   const scoresBySubject: Record<string, ReportCardGradebookExamPercentages> =
     {};
   for (const sub of subjects) {
     scoresBySubject[sub] = emptyExamPercents();
   }
 
-  if (assignmentIds.length === 0) {
-    return { ok: true, scoresBySubject };
-  }
-
-  let scRows:
-    | {
-        assignment_id: string;
-        score: unknown;
-      }[]
-    | null = null;
-  try {
-    scRows = await fetchAllRows({
-      label: "report-cards:loadStudentGradebookExamScores scores",
-      fetchPage: async (from, to) =>
-        await admin
-          .from("teacher_scores")
-          .select("assignment_id, score")
-          .eq("student_id", params.studentId)
-          .in("assignment_id", assignmentIds)
-          .range(from, to),
-    });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error("[loadStudentGradebookExamScores] teacher_scores query failed", msg);
-    return { ok: false, error: msg };
-  }
-
-  for (const srow of scRows ?? []) {
-    const sr = srow as { assignment_id: string; score: unknown };
-    const meta = metaByAssignmentId.get(sr.assignment_id);
-    if (!meta) continue;
-    const pct = percentFromScoreAndMax(sr.score, meta.maxScore);
-    const subj = meta.subject;
-    if (!scoresBySubject[subj]) {
-      scoresBySubject[subj] = emptyExamPercents();
+  for (const [subjectKey, slots] of resolvedBySubjectKey) {
+    const canonical = subjectKeyByLower.get(subjectKey) ?? subjectKey;
+    const raw = termExamSlotsToGradebookPercentages(termForResolver, slots);
+    const filtered = { ...emptyExamPercents() };
+    for (const bucket of Object.keys(filtered) as Array<
+      keyof ReportCardGradebookExamPercentages
+    >) {
+      if (allowedBuckets.size === 0 || allowedBuckets.has(bucket)) {
+        filtered[bucket] = raw[bucket];
+      }
     }
-    scoresBySubject[subj][meta.bucket] = pct;
+    scoresBySubject[canonical] = filtered;
   }
 
   return { ok: true, scoresBySubject };

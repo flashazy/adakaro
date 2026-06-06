@@ -1009,6 +1009,39 @@ export interface Database {
           admin_override?: boolean;
         };
       };
+      student_class_history: {
+        Row: {
+          id: string;
+          school_id: string;
+          student_id: string;
+          from_class_id: string | null;
+          to_class_id: string;
+          effective_at: string;
+          source: "streaming" | "promotion" | "admin_edit";
+          source_id: string | null;
+          actor_id: string | null;
+          academic_year: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          student_id: string;
+          from_class_id?: string | null;
+          to_class_id: string;
+          effective_at?: string;
+          source: "streaming" | "promotion" | "admin_edit";
+          source_id?: string | null;
+          actor_id?: string | null;
+          academic_year?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          notes?: string | null;
+        };
+      };
       class_report_settings: {
         Row: {
           id: string;

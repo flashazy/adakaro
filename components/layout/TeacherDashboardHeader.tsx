@@ -11,6 +11,7 @@ import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRo
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { TeacherAcademicNavLink } from "@/components/layout/TeacherAcademicNavLink";
 import { useChatInboxUnreadCount } from "@/components/layout/teacher-chat-unread-count";
+import { TeacherNotificationsBell } from "@/components/notifications/teacher-notifications-bell";
 
 /** Dexie/sync-queue must not load during SSR (breaks teacher dashboard on webpack). */
 const SyncIndicator = dynamic(
@@ -248,6 +249,7 @@ export function TeacherDashboardHeader({
               </div>
             </NavLinkWithLoading>
             <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0 sm:gap-3">
+              <TeacherNotificationsBell enabled={showClassTeacherNav} />
               <SyncIndicator />
               <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
               {userAvatar}
@@ -340,6 +342,7 @@ export function TeacherDashboardHeader({
             Adakaro
           </NavLinkWithLoading>
           <div className="flex flex-wrap items-center gap-2">
+            <TeacherNotificationsBell enabled={showClassTeacherNav} />
             <SyncIndicator />
             <SchoolDashboardRoleToggle enabled={showDashboardRoleToggle} />
             {userAvatar}

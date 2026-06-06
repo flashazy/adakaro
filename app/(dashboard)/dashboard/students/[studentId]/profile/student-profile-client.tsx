@@ -46,6 +46,10 @@ import { ProfilePaymentHistory } from "./profile-payment-history";
 import { StudentProfileFullReportCardButton } from "./student-profile-full-report-card-button";
 import type { ProfilePaymentListQuery } from "@/lib/student-profile-payments-list";
 import type { StudentProfileQuickSummaryCards } from "@/lib/student-profile-quick-summary";
+import type { StudentMovementHistoryRow } from "@/lib/student-class-history/load-student-movement-history";
+import { HistoricalAttendancePanel } from "@/components/students/historical-attendance-panel";
+import { StudentMovementHistoryPanel } from "@/components/students/student-movement-history-panel";
+import type { HistoricalAttendanceClassGroup } from "@/lib/class-attendance/load-historical-attendance-for-class-teacher";
 import { formatStudentDobIdentityValue } from "@/lib/student-dob-display";
 import { cn } from "@/lib/utils";
 
@@ -373,6 +377,12 @@ interface StudentProfileClientProps {
   quickSummaryCards: StudentProfileQuickSummaryCards;
   /** When false, health quick summary shows em dash (same pattern as discipline RLS). */
   quickSummaryHealthAvailable: boolean;
+  showMovementHistory: boolean;
+  movementHistoryRows: StudentMovementHistoryRow[];
+  movementHistoryError: string | null;
+  showHistoricalAttendance: boolean;
+  historicalAttendanceGroups: HistoricalAttendanceClassGroup[];
+  historicalAttendanceError: string | null;
 }
 
 export function StudentProfileClient({
@@ -406,6 +416,12 @@ export function StudentProfileClient({
   currentUserFinanceNoteRecorderLine,
   quickSummaryCards,
   quickSummaryHealthAvailable,
+  showMovementHistory,
+  movementHistoryRows,
+  movementHistoryError,
+  showHistoricalAttendance,
+  historicalAttendanceGroups,
+  historicalAttendanceError,
 }: StudentProfileClientProps) {
   const router = useRouter();
   const canEditAcademicStaffNotes =
@@ -788,6 +804,21 @@ export function StudentProfileClient({
           </div>
         </div>
       </div>
+
+      {showMovementHistory ? (
+        <StudentMovementHistoryPanel
+          rows={movementHistoryRows}
+          loadError={movementHistoryError}
+          displayTimezone={displayTimezone}
+        />
+      ) : null}
+
+      {showHistoricalAttendance ? (
+        <HistoricalAttendancePanel
+          groups={historicalAttendanceGroups}
+          loadError={historicalAttendanceError}
+        />
+      ) : null}
 
       <div className="relative rounded-2xl border border-slate-200/90 bg-slate-50/70 p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/50">
         <div

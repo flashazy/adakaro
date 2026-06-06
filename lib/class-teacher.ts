@@ -47,6 +47,103 @@ export async function userIsClassTeacherForClass(
   }
 }
 
+/** True when `classTeacherId` on the student's class row matches the user. */
+export function isClassTeacherIdForUser(
+  classTeacherId: string | null | undefined,
+  userId: string
+): boolean {
+  const trimmedTeacher = classTeacherId?.trim();
+  const trimmedUser = userId?.trim();
+  return Boolean(
+    trimmedTeacher && trimmedUser && trimmedTeacher === trimmedUser
+  );
+}
+
+/**
+ * Whether the user is the designated class teacher for the student's current
+ * class. Prefers the embedded `classes.class_teacher_id` from the student row,
+ * then confirms via taught-class lookup.
+ */
+export async function isUserClassTeacherForStudentClass(
+  userId: string,
+  studentClassId: string,
+  studentClassTeacherId?: string | null
+): Promise<boolean> {
+  const classId = studentClassId?.trim();
+  if (!classId || !userId?.trim()) return false;
+
+  if (isClassTeacherIdForUser(studentClassTeacherId, userId)) {
+    return true;
+  }
+
+  if (await userIsClassTeacherForClass(userId, classId)) {
+    return true;
+  }
+
+  const taughtClasses = await fetchClassesWhereUserIsClassTeacher(userId);
+  return taughtClasses.some((c) => c.id === classId);
+}
+
+type ClassTeacherIdRow = {
+  class_teacher_id: string | null;
+  parent_class_id: string | null;
+};
+
+/**
+ * True when `userId` is `class_teacher_id` on the student's current class, or on
+ * the parent class when the student sits in a stream/child class.
+ */
+export async function isViewerClassTeacherForStudentClass(
+  userId: string,
+  studentClassId: string,
+  studentClassTeacherId?: string | null
+): Promise<boolean> {
+  const trimmedUserId = userId?.trim();
+  const classId = studentClassId?.trim();
+  if (!trimmedUserId || !classId) return false;
+
+  if (isClassTeacherIdForUser(studentClassTeacherId, trimmedUserId)) {
+    return true;
+  }
+
+  if (await isUserClassTeacherForStudentClass(trimmedUserId, classId)) {
+    return true;
+  }
+
+  try {
+    const admin = createAdminClient();
+    const { data: studentClass, error } = await admin
+      .from("classes")
+      .select("class_teacher_id, parent_class_id")
+      .eq("id", classId)
+      .maybeSingle();
+
+    if (error || !studentClass) return false;
+
+    const row = studentClass as ClassTeacherIdRow;
+    if (isClassTeacherIdForUser(row.class_teacher_id, trimmedUserId)) {
+      return true;
+    }
+
+    const parentId = row.parent_class_id?.trim();
+    if (!parentId) return false;
+
+    const { data: parentClass, error: parentErr } = await admin
+      .from("classes")
+      .select("class_teacher_id")
+      .eq("id", parentId)
+      .maybeSingle();
+
+    if (parentErr || !parentClass) return false;
+    return isClassTeacherIdForUser(
+      (parentClass as { class_teacher_id: string | null }).class_teacher_id,
+      trimmedUserId
+    );
+  } catch {
+    return false;
+  }
+}
+
 export type SchoolTeacherOption = {
   id: string;
   full_name: string;

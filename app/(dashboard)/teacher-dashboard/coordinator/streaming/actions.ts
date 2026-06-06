@@ -11,6 +11,12 @@ import {
   isNumericRule,
   recommendStreamClassId,
 } from "@/lib/student-streaming/evaluate-rules";
+import { recordStudentClassMoveIfChanged } from "@/lib/student-class-history/record-student-class-move";
+import { enforceSubjectCompatibilityBeforeMove } from "@/lib/student-subject-enrollment/enforce-subject-compatibility";
+import { notifyClassTeachersOfStudentMovements } from "@/lib/notifications/notify-class-teachers-of-movements";
+import { moveStudentSubjectEnrollment } from "@/lib/student-subject-enrollment/move-student-subject-enrollment";
+import type { SubjectCompatibilityBatchResult } from "@/lib/student-subject-enrollment/subject-compatibility-types";
+import { SUBJECT_COMPATIBILITY_AUDIT_NOTE } from "@/lib/student-subject-enrollment/subject-compatibility-types";
 import { loadStreamingHistory } from "@/lib/student-streaming/load-streaming-history.server";
 import { loadStreamingWorkspaceData } from "@/lib/student-streaming/load-streaming-page.server";
 import { resolveStreamClassesForParent } from "@/lib/student-streaming/resolve-stream-classes.server";
@@ -218,8 +224,14 @@ export async function applyStudentStreamingAction(input: {
   examType: string;
   performanceMeasure: string;
   placements: StreamingPlacementEntry[];
+  acknowledgeSubjectCompatibilityWarning?: boolean;
 }): Promise<
   | { ok: true; placed: number; message: string; warning?: string }
+  | {
+      ok: false;
+      requiresSubjectCompatibilityAck: true;
+      compatibility: SubjectCompatibilityBatchResult;
+    }
   | { ok: false; error: string }
 > {
   noStore();
@@ -348,6 +360,43 @@ export async function applyStudentStreamingAction(input: {
   let skippedAlreadyPlaced = 0;
   const historyWarnings: string[] = [];
 
+  const compatibilityMoves = input.placements
+    .filter((entry) => {
+      const student = studentsById.get(entry.studentId);
+      return student && student.class_id !== entry.targetClassId;
+    })
+    .map((entry) => ({
+      studentId: entry.studentId,
+      targetClassId: entry.targetClassId,
+    }));
+
+  const compatibilityGate = await enforceSubjectCompatibilityBeforeMove(
+    admin,
+    compatibilityMoves,
+    Boolean(input.acknowledgeSubjectCompatibilityWarning)
+  );
+
+  if (!compatibilityGate.ok) {
+    if (compatibilityGate.blocked) {
+      return { ok: false, error: compatibilityGate.error };
+    }
+    return {
+      ok: false,
+      requiresSubjectCompatibilityAck: true,
+      compatibility: compatibilityGate.result,
+    };
+  }
+
+  const compatibilityAckStudentIds = compatibilityGate.ackStudentIds;
+  const movementNotificationEntries: {
+    schoolId: string;
+    studentId: string;
+    studentName: string;
+    fromClassId: string;
+    toClassId: string;
+    source: "streaming";
+  }[] = [];
+
   for (const entry of input.placements) {
     const student = studentsById.get(entry.studentId)!;
     if (student.class_id === entry.targetClassId) {
@@ -416,7 +465,7 @@ export async function applyStudentStreamingAction(input: {
       return { ok: false, error: PLACEMENT_SAVE_FAILED };
     }
 
-    const { error: historyErr } = await admin
+    const { data: streamingHistoryRow, error: historyErr } = await admin
       .from("student_streaming_history")
       .insert({
         school_id: student.school_id,
@@ -440,7 +489,9 @@ export async function applyStudentStreamingAction(input: {
         academic_year: input.academicYear.trim(),
         coordinator_id: auth.user.id,
         coordinator_name: coordinatorName,
-      } as never);
+      } as never)
+      .select("id")
+      .maybeSingle();
 
     if (historyErr) {
       console.error(
@@ -454,8 +505,82 @@ export async function applyStudentStreamingAction(input: {
       historyWarnings.push(student.full_name);
     }
 
+    const classHistoryResult = await recordStudentClassMoveIfChanged(admin, {
+      schoolId: student.school_id,
+      studentId: entry.studentId,
+      fromClassId: previousClassId,
+      toClassId: entry.targetClassId,
+      source: "streaming",
+      sourceId: (streamingHistoryRow as { id: string } | null)?.id ?? null,
+      actorId: auth.user.id,
+      academicYear: input.academicYear.trim(),
+      effectiveAt: new Date().toISOString(),
+      notes: compatibilityAckStudentIds.has(entry.studentId)
+        ? SUBJECT_COMPATIBILITY_AUDIT_NOTE
+        : null,
+    });
+
+    if (classHistoryResult.error) {
+      console.error(
+        "[streaming] Placement saved but student_class_history insert failed:",
+        classHistoryResult.error,
+        {
+          studentId: entry.studentId,
+          targetClassId: entry.targetClassId,
+        }
+      );
+      if (!historyWarnings.includes(student.full_name)) {
+        historyWarnings.push(student.full_name);
+      }
+    }
+
+    const enrollmentMove = await moveStudentSubjectEnrollment(admin, {
+      schoolId: student.school_id,
+      studentId: entry.studentId,
+      fromClassId: previousClassId,
+      toClassId: entry.targetClassId,
+    });
+
+    if (enrollmentMove.error) {
+      console.error(
+        "[streaming] Placement saved but subject enrollment migration failed:",
+        enrollmentMove.error,
+        {
+          studentId: entry.studentId,
+          fromClassId: previousClassId,
+          toClassId: entry.targetClassId,
+        }
+      );
+    } else if (enrollmentMove.warning) {
+      console.warn(
+        "[streaming] Subject enrollment migration warning:",
+        enrollmentMove.warning,
+        {
+          studentId: entry.studentId,
+          fromClassId: previousClassId,
+          toClassId: entry.targetClassId,
+          skipped: enrollmentMove.skipped,
+        }
+      );
+    }
+
     student.class_id = entry.targetClassId;
     placed += 1;
+
+    if (classHistoryResult.recorded) {
+      movementNotificationEntries.push({
+        schoolId: student.school_id,
+        studentId: entry.studentId,
+        studentName: (student.full_name ?? "").trim() || "Student",
+        fromClassId: previousClassId,
+        toClassId: entry.targetClassId,
+        source: "streaming",
+      });
+    }
+  }
+
+  if (movementNotificationEntries.length > 0) {
+    await notifyClassTeachersOfStudentMovements(movementNotificationEntries);
   }
 
   if (placed === 0) {

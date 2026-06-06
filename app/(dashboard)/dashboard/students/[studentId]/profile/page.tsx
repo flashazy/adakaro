@@ -26,7 +26,22 @@ import {
 import { normalizeSchoolLevel } from "@/lib/school-level";
 import { formatPaymentRecorderLine } from "@/lib/payment-recorder-label";
 import { buildStudentProfileQuickSummaryCards } from "@/lib/student-profile-quick-summary";
+import {
+  fetchClassesWhereUserIsClassTeacher,
+  isClassTeacherIdForUser,
+  isViewerClassTeacherForStudentClass,
+} from "@/lib/class-teacher";
+import {
+  resolveStudentProfileBackNav,
+  resolveStudentProfileDeniedBackNav,
+  STUDENT_PROFILE_CLASS_TEACHER_ENTRY,
+} from "@/lib/student-profile-back-nav";
+import { canViewHistoricalAttendance } from "@/lib/class-attendance/can-view-historical-attendance";
+import { loadHistoricalAttendanceForClassTeacher } from "@/lib/class-attendance/load-historical-attendance-for-class-teacher";
+import { canViewStudentMovementHistoryShell } from "@/lib/student-class-history/can-view-student-movement-history";
+import { loadStudentMovementHistory } from "@/lib/student-class-history/load-student-movement-history";
 import { formatStudentDobWithAge } from "@/lib/student-dob-display";
+import { StudentProfileAccessDenied } from "./student-profile-access-denied";
 import { StudentProfileClient } from "./student-profile-client";
 import type {
   StudentProfileTabId,
@@ -85,7 +100,7 @@ export default async function StudentProfilePage({
   const { data: student, error: studentError } = await supabase
     .from("students")
     .select(
-      "id, full_name, admission_number, school_id, avatar_url, class_id, date_of_birth, allergies, disability, insurance_provider, insurance_policy, class:classes(name)"
+      "id, full_name, admission_number, school_id, avatar_url, class_id, date_of_birth, allergies, disability, insurance_provider, insurance_policy, class:classes(name, class_teacher_id)"
     )
     .eq("id", studentId)
     .eq("school_id", schoolId)
@@ -107,7 +122,7 @@ export default async function StudentProfilePage({
     disability: string | null;
     insurance_provider: string | null;
     insurance_policy: string | null;
-    class: { name: string } | null;
+    class: { name: string; class_teacher_id: string | null } | null;
   };
 
   const [
@@ -166,16 +181,60 @@ export default async function StudentProfilePage({
 
   const adminOk = Boolean(isAdmin) || Boolean(isSuper);
   const teacherOk = Boolean(teacherForClass);
+  const classTeacherClasses = await fetchClassesWhereUserIsClassTeacher(user.id);
+  const hasAnyClassTeacherRole = classTeacherClasses.length > 0;
+  const classTeacherOkFromEmbed = isClassTeacherIdForUser(
+    typedStudent.class?.class_teacher_id,
+    user.id
+  );
+  const classTeacherOkFromTaught = classTeacherClasses.some(
+    (c) => c.id === typedStudent.class_id
+  );
+  const classTeacherOk =
+    classTeacherOkFromEmbed ||
+    classTeacherOkFromTaught ||
+    (await isViewerClassTeacherForStudentClass(
+      user.id,
+      typedStudent.class_id,
+      typedStudent.class?.class_teacher_id
+    ));
+  const hasAcademicDepartmentRole = departmentRoles.has("academic");
+  const openedFromClassTeacherEntry =
+    urlSearch.get("entry") === STUDENT_PROFILE_CLASS_TEACHER_ENTRY;
+  const primaryClassTeacherClassId =
+    classTeacherClasses.find((c) => c.id === typedStudent.class_id)?.id ??
+    classTeacherClasses[0]?.id ??
+    null;
   const canAccessProfile =
     adminOk ||
     teacherOk ||
+    classTeacherOk ||
     departmentRoles.size > 0 ||
     hasHealthScope ||
     hasDisciplineScope ||
     isFinanceOrAccountsProfile;
 
+  const profileBackNav = resolveStudentProfileBackNav({
+    classTeacherForStudent: classTeacherOk,
+    studentClassId: typedStudent.class_id,
+    adminOk,
+    hasAcademicDepartmentRole,
+    hasAnyClassTeacherRole,
+    primaryClassTeacherClassId,
+    openedFromClassTeacherEntry,
+    userRole: me?.role,
+  });
+
   if (!canAccessProfile) {
-    redirect("/dashboard/students");
+    return (
+      <StudentProfileAccessDenied
+        backHref={resolveStudentProfileDeniedBackNav({
+          userRole: me?.role,
+          adminOk,
+          hasAnyClassTeacherRole,
+        })}
+      />
+    );
   }
 
   const allTabs: StudentProfileTabId[] = [
@@ -215,7 +274,7 @@ export default async function StudentProfilePage({
   const viewer: StudentProfileViewerFlags = {
     canManageStaffRecords: adminOk,
     canManageAcademicNotes: adminOk || departmentRoles.has("academic"),
-    canUploadAttachments: adminOk || teacherOk,
+    canUploadAttachments: adminOk || teacherOk || classTeacherOk,
     canDeleteAttachments: adminOk,
     canChangeAvatar: adminOk,
     canRecordPayment,
@@ -421,10 +480,34 @@ export default async function StudentProfilePage({
     disciplineRowsOrdered: (disciplineRows ?? []) as DisciplineRow[],
   });
 
-  const backToStudentsHref =
-    myProfileRole === "teacher" && !adminOk
-      ? "/teacher-dashboard/academic/student-profiles"
-      : "/dashboard/students";
+  const movementHistoryShell = await canViewStudentMovementHistoryShell(
+    supabase,
+    schoolId
+  );
+  const movementHistoryLoaded = await loadStudentMovementHistory(
+    supabase,
+    studentId
+  );
+  const showMovementHistory =
+    movementHistoryShell || movementHistoryLoaded.rows.length > 0;
+  const movementHistoryRows = showMovementHistory
+    ? movementHistoryLoaded.rows
+    : [];
+  const movementHistoryError = showMovementHistory
+    ? movementHistoryLoaded.error
+    : null;
+
+  const showHistoricalAttendance = await canViewHistoricalAttendance(
+    user.id,
+    typedStudent.class_id
+  );
+  const historicalAttendanceLoaded = showHistoricalAttendance
+    ? await loadHistoricalAttendanceForClassTeacher(
+        studentId,
+        typedStudent.class_id,
+        schoolId
+      )
+    : { groups: [], error: null };
 
   return (
     <>
@@ -440,10 +523,10 @@ export default async function StudentProfilePage({
             </p>
           </div>
           <BackButton
-            href={backToStudentsHref}
+            href={profileBackNav.href}
             className="inline-flex w-fit items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
-            ← Back to students
+            {profileBackNav.label}
           </BackButton>
         </div>
       </header>
@@ -490,6 +573,12 @@ export default async function StudentProfilePage({
           currentUserFinanceNoteRecorderLine={currentUserFinanceNoteRecorderLine}
           quickSummaryCards={quickSummaryCards}
           quickSummaryHealthAvailable={canReadHealth && !healthErr}
+          showMovementHistory={showMovementHistory}
+          movementHistoryRows={movementHistoryRows}
+          movementHistoryError={movementHistoryError}
+          showHistoricalAttendance={showHistoricalAttendance}
+          historicalAttendanceGroups={historicalAttendanceLoaded.groups}
+          historicalAttendanceError={historicalAttendanceLoaded.error}
         />
       </main>
     </>

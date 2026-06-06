@@ -15,6 +15,12 @@ import { invalidatePromotionStatsCache } from "@/lib/promotions/promotion-stats-
 import {
   suggestPromotionDecision,
 } from "@/lib/promotions/suggest-promotion-decision";
+import { recordStudentClassMoveIfChanged } from "@/lib/student-class-history/record-student-class-move";
+import { enforceSubjectCompatibilityBeforeMove } from "@/lib/student-subject-enrollment/enforce-subject-compatibility";
+import { notifyClassTeachersOfStudentMovements } from "@/lib/notifications/notify-class-teachers-of-movements";
+import { moveStudentSubjectEnrollment } from "@/lib/student-subject-enrollment/move-student-subject-enrollment";
+import type { SubjectCompatibilityBatchResult } from "@/lib/student-subject-enrollment/subject-compatibility-types";
+import { SUBJECT_COMPATIBILITY_AUDIT_NOTE } from "@/lib/student-subject-enrollment/subject-compatibility-types";
 import { requirePromotionsAccess } from "@/lib/promotions/promotions-access.server";
 import type {
   ApplyPromotionEntry,
@@ -153,8 +159,16 @@ export async function updateClassProgressionAction(
 export async function applyClassPromotionsAction(
   fromClassId: string,
   academicYear: number,
-  entries: ApplyPromotionEntry[]
-): Promise<ApplyPromotionResult | { error: string }> {
+  entries: ApplyPromotionEntry[],
+  options?: { acknowledgeSubjectCompatibilityWarning?: boolean }
+): Promise<
+  | ApplyPromotionResult
+  | { error: string }
+  | {
+      requiresSubjectCompatibilityAck: true;
+      compatibility: SubjectCompatibilityBatchResult;
+    }
+> {
   if (!entries.length) {
     return { error: "No students selected." };
   }
@@ -205,7 +219,7 @@ export async function applyClassPromotionsAction(
     const studentIds = entries.map((e) => e.studentId);
     const { data: students, error: stErr } = await db
       .from("students")
-      .select("id, class_id, status, approval_status")
+      .select("id, full_name, class_id, status, approval_status")
       .eq("school_id", schoolId)
       .in("id", studentIds);
 
@@ -224,6 +238,7 @@ export async function applyClassPromotionsAction(
       (students ?? []).map((s) => {
         const row = s as {
           id: string;
+          full_name: string | null;
           class_id: string;
           status: string;
           approval_status: string;
@@ -235,6 +250,42 @@ export async function applyClassPromotionsAction(
     let promoted = 0;
     let repeated = 0;
     let graduated = 0;
+
+    const compatibilityMoves =
+      nextClassId && nextClassId !== fromClassId
+        ? entries
+            .filter((entry) => entry.decision === "promote")
+            .map((entry) => ({
+              studentId: entry.studentId,
+              targetClassId: nextClassId,
+            }))
+        : [];
+
+    const compatibilityGate = await enforceSubjectCompatibilityBeforeMove(
+      db,
+      compatibilityMoves,
+      Boolean(options?.acknowledgeSubjectCompatibilityWarning)
+    );
+
+    if (!compatibilityGate.ok) {
+      if (compatibilityGate.blocked) {
+        return { error: compatibilityGate.error };
+      }
+      return {
+        requiresSubjectCompatibilityAck: true,
+        compatibility: compatibilityGate.result,
+      };
+    }
+
+    const compatibilityAckStudentIds = compatibilityGate.ackStudentIds;
+    const movementNotificationEntries: {
+      schoolId: string;
+      studentId: string;
+      studentName: string;
+      fromClassId: string;
+      toClassId: string;
+      source: "promotion";
+    }[] = [];
 
     for (const entry of entries) {
       const student = studentMap.get(entry.studentId);
@@ -302,18 +353,93 @@ export async function applyClassPromotionsAction(
         }
       }
 
-      const { error: logErr } = await db.from("student_promotions").insert({
-        school_id: schoolId,
-        student_id: entry.studentId,
-        from_class_id: fromClassId,
-        to_class_id: effectiveDecision === "graduate" ? null : toClassId,
-        decision: effectiveDecision,
-        academic_year: academicYear,
-        promoted_by: userId,
-        admin_override: adminOverride,
-      } as never);
+      const { data: promotionRow, error: logErr } = await db
+        .from("student_promotions")
+        .insert({
+          school_id: schoolId,
+          student_id: entry.studentId,
+          from_class_id: fromClassId,
+          to_class_id: effectiveDecision === "graduate" ? null : toClassId,
+          decision: effectiveDecision,
+          academic_year: academicYear,
+          promoted_by: userId,
+          admin_override: adminOverride,
+        } as never)
+        .select("id")
+        .maybeSingle();
 
       if (logErr) return { error: logErr.message };
+
+      if (
+        effectiveDecision === "promote" &&
+        toClassId &&
+        toClassId !== fromClassId
+      ) {
+        const classHistoryResult = await recordStudentClassMoveIfChanged(db, {
+          schoolId,
+          studentId: entry.studentId,
+          fromClassId,
+          toClassId,
+          source: "promotion",
+          sourceId: (promotionRow as { id: string } | null)?.id ?? null,
+          actorId: userId,
+          academicYear: String(academicYear),
+          notes: compatibilityAckStudentIds.has(entry.studentId)
+            ? SUBJECT_COMPATIBILITY_AUDIT_NOTE
+            : null,
+        });
+
+        if (classHistoryResult.error) {
+          return {
+            error: `Promotion saved but class history could not be recorded: ${classHistoryResult.error}`,
+          };
+        }
+
+        const enrollmentMove = await moveStudentSubjectEnrollment(db, {
+          schoolId,
+          studentId: entry.studentId,
+          fromClassId,
+          toClassId,
+        });
+
+        if (enrollmentMove.error) {
+          console.error(
+            "[promotions] Promotion saved but subject enrollment migration failed:",
+            enrollmentMove.error,
+            {
+              studentId: entry.studentId,
+              fromClassId,
+              toClassId,
+            }
+          );
+        } else if (enrollmentMove.warning) {
+          console.warn(
+            "[promotions] Subject enrollment migration warning:",
+            enrollmentMove.warning,
+            {
+              studentId: entry.studentId,
+              fromClassId,
+              toClassId,
+              skipped: enrollmentMove.skipped,
+            }
+          );
+        }
+
+        if (classHistoryResult.recorded) {
+          movementNotificationEntries.push({
+            schoolId,
+            studentId: entry.studentId,
+            studentName: (student.full_name ?? "").trim() || "Student",
+            fromClassId,
+            toClassId,
+            source: "promotion",
+          });
+        }
+      }
+    }
+
+    if (movementNotificationEntries.length > 0) {
+      await notifyClassTeachersOfStudentMovements(movementNotificationEntries);
     }
 
     invalidatePromotionStatsCache(fromClassId, academicYear);
@@ -331,6 +457,14 @@ export async function applyClassPromotionsAction(
         repeated,
         graduated,
         student_count: entries.length,
+        subject_compatibility_warning:
+          compatibilityAckStudentIds.size > 0
+            ? SUBJECT_COMPATIBILITY_AUDIT_NOTE
+            : undefined,
+        subject_compatibility_student_ids:
+          compatibilityAckStudentIds.size > 0
+            ? [...compatibilityAckStudentIds]
+            : undefined,
       },
       schoolId
     );

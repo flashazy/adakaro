@@ -1,8 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type Ref,
+} from "react";
+import {
+  AlertTriangle,
   BarChart3,
   Check,
   ChevronDown,
@@ -31,7 +41,6 @@ import {
   downloadGradeReportPdf,
   tanzaniaGradeBadgeClass,
   tanzaniaLetterGrade,
-  tanzaniaPercentFromScore,
 } from "./GradeReportPDF";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { enqueueOrRun } from "@/lib/offline/enqueue-or-run";
@@ -156,6 +165,189 @@ const QUICK_REMARK_PHRASES = [
   "Needs more practice at home",
 ] as const;
 
+const SCORE_RANGE_INLINE = "Please enter a score between 0 and 100.";
+const SCORE_RANGE_TOOLTIP = "Valid scores range from 0 to 100.";
+
+function scoreSaveSummaryMessage(invalidCount: number): string {
+  return invalidCount === 1
+    ? "Please correct the highlighted score before saving."
+    : "Please correct the highlighted scores before saving.";
+}
+
+/** Empty input is allowed; any numeric value must be 0–100 inclusive. */
+function scoreInputIsInvalid(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === "") return false;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return true;
+  return n < 0 || n > 100;
+}
+
+function ScoreValidationHint({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <p
+      className="mt-0.5 text-[11px] leading-tight text-red-600 dark:text-red-400"
+      role="alert"
+    >
+      {SCORE_RANGE_INLINE}
+    </p>
+  );
+}
+
+function InvalidScoresSaveNotice({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <div
+      className="space-y-1 rounded-lg border border-amber-200/80 bg-amber-50/40 px-3 py-2.5 dark:border-amber-900/35 dark:bg-amber-950/15"
+      role="status"
+    >
+      <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+        <span aria-hidden>⚠ </span>
+        {count} invalid score{count === 1 ? "" : "s"}
+      </p>
+      <p className="text-sm text-slate-600 dark:text-zinc-400">
+        {scoreSaveSummaryMessage(count)}
+      </p>
+    </div>
+  );
+}
+
+function getScoreInputFieldClasses(invalid: boolean, base: string): string {
+  if (!invalid) {
+    return cn(
+      base,
+      "focus-visible:outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200/90 focus:ring-offset-0 dark:focus:border-zinc-500 dark:focus:ring-zinc-600/80"
+    );
+  }
+  return cn(
+    base,
+    "border-red-500 bg-[#FEF2F2] pr-8",
+    "focus:border-red-500 focus:ring-2 focus:ring-red-500/25 focus:ring-offset-0",
+    "focus-visible:border-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25",
+    "dark:border-red-500 dark:bg-red-950/30"
+  );
+}
+
+type ScoreInputFieldProps = ComponentProps<"input"> & {
+  invalid: boolean;
+  wrapperClassName?: string;
+  inputRef?: Ref<HTMLInputElement>;
+};
+
+const ScoreInputField = forwardRef<HTMLInputElement, ScoreInputFieldProps>(
+  function ScoreInputField(
+    { invalid, wrapperClassName, className, title, inputRef, ...props },
+    forwardedRef
+  ) {
+    const ref = inputRef ?? forwardedRef;
+    return (
+      <div className={wrapperClassName}>
+        <div className="relative">
+          <input
+            {...props}
+            ref={ref}
+            title={invalid ? SCORE_RANGE_TOOLTIP : title}
+            aria-invalid={invalid}
+            className={getScoreInputFieldClasses(invalid, className ?? "")}
+          />
+          {invalid ? (
+            <span
+              className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center text-red-500 dark:text-red-400"
+              aria-hidden
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
+            </span>
+          ) : null}
+        </div>
+        <ScoreValidationHint show={invalid} />
+      </div>
+    );
+  }
+);
+
+/** Percent for valid scores only; caps display at 100% when raw score exceeds max. */
+function cappedPercentFromScore(
+  score: number,
+  maxScore: number
+): number | null {
+  if (maxScore <= 0 || !Number.isFinite(score)) return null;
+  return (
+    Math.round(
+      Math.min(100, Math.max(0, (score / maxScore) * 100)) * 10
+    ) / 10
+  );
+}
+
+function percentFromValidScore(
+  raw: string,
+  score: number,
+  maxScore: number
+): number | null {
+  if (scoreInputIsInvalid(raw)) return null;
+  return cappedPercentFromScore(score, maxScore);
+}
+
+function invalidScoreCellSurface(): string {
+  return "border-red-400 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200";
+}
+
+function buildClassDraftFromMatrix(data: {
+  assignments: { id: string }[];
+  students: { id: string }[];
+  scoreMatrix: Record<string, Record<string, ScoreRow | undefined>>;
+}): Record<string, Record<string, { score: string; remarks: string }>> {
+  const draft: Record<
+    string,
+    Record<string, { score: string; remarks: string }>
+  > = {};
+  for (const a of data.assignments) {
+    draft[a.id] = {};
+    for (const s of data.students) {
+      const ex = data.scoreMatrix[a.id]?.[s.id];
+      draft[a.id][s.id] = {
+        score:
+          ex?.score != null && Number.isFinite(Number(ex.score))
+            ? String(ex.score)
+            : "",
+        remarks: displayRemarks(ex),
+      };
+    }
+  }
+  return draft;
+}
+
+function mergePreservedClassDraft(
+  server: Record<string, Record<string, { score: string; remarks: string }>>,
+  prev: Record<string, Record<string, { score: string; remarks: string }>>,
+  data: {
+    assignments: { id: string }[];
+    students: { id: string }[];
+  }
+): Record<string, Record<string, { score: string; remarks: string }>> {
+  const next: Record<
+    string,
+    Record<string, { score: string; remarks: string }>
+  > = {};
+  for (const a of data.assignments) {
+    next[a.id] = { ...server[a.id] };
+  }
+  for (const a of data.assignments) {
+    for (const s of data.students) {
+      const prevCell = prev[a.id]?.[s.id];
+      if (!prevCell) continue;
+      const serverCell = server[a.id]?.[s.id];
+      if (
+        prevCell.score !== (serverCell?.score ?? "") ||
+        prevCell.remarks !== (serverCell?.remarks ?? "")
+      ) {
+        next[a.id][s.id] = prevCell;
+      }
+    }
+  }
+  return next;
+}
+
 function hasPersistedScore(row: ScoreRow | undefined) {
   if (!row) return false;
   if (row.score != null && Number.isFinite(Number(row.score))) return true;
@@ -209,13 +401,11 @@ function formatMatrixCellDisplay(
 ): { text: string; letter: string } {
   const trimmed = raw.trim();
   if (trimmed === "") return { text: "—", letter: "—" };
+  if (scoreInputIsInvalid(raw)) return { text: trimmed, letter: "—" };
   const n = Number(trimmed);
   if (!Number.isFinite(n)) return { text: "—", letter: "—" };
-  const p =
-    maxScore > 0 ? Math.round((n / maxScore) * 1000) / 10 : null;
-  const tanzPct =
-    maxScore > 0 ? tanzaniaPercentFromScore(n, maxScore) : null;
-  const letter = tanzaniaLetterGrade(tanzPct, schoolLevel);
+  const p = cappedPercentFromScore(n, maxScore);
+  const letter = tanzaniaLetterGrade(p, schoolLevel);
   if (p == null) return { text: "—", letter: "—" };
   const text = formatMarksCellLabel({
     score: n,
@@ -498,8 +688,6 @@ export function TeacherGradebook({
     setClassMatrixLoading(true);
     setClassMatrixError(null);
     setClassMatrixLoadPhase("loading");
-    setClassMatrixData(null);
-    setClassDraft({});
 
     try {
       const assignRes = await loadGradebookAssignmentsForClass(
@@ -785,25 +973,12 @@ export function TeacherGradebook({
       setClassDraft({});
       return;
     }
-    const draft: Record<
-      string,
-      Record<string, { score: string; remarks: string }>
-    > = {};
-    for (const a of classMatrixData.assignments) {
-      draft[a.id] = {};
-      for (const s of classMatrixData.students) {
-        const ex = classMatrixData.scoreMatrix[a.id]?.[s.id];
-        draft[a.id][s.id] = {
-          score:
-            ex?.score != null && Number.isFinite(Number(ex.score))
-              ? String(ex.score)
-              : "",
-          remarks: displayRemarks(ex),
-        };
-      }
-    }
-    setClassDraft(draft);
-  }, [classMatrixData]);
+    if (classMatrixLoadPhase !== "ready") return;
+    const serverDraft = buildClassDraftFromMatrix(classMatrixData);
+    setClassDraft((prev) =>
+      mergePreservedClassDraft(serverDraft, prev, classMatrixData)
+    );
+  }, [classMatrixData, classMatrixLoadPhase]);
 
   useEffect(() => {
     if (!assignmentId) {
@@ -932,9 +1107,36 @@ export function TeacherGradebook({
     }
   };
 
+  const enterScoresInvalidCount = useMemo(() => {
+    if (!matrix) return 0;
+    return matrix.students.filter((s) =>
+      scoreInputIsInvalid(scores[s.id]?.score ?? "")
+    ).length;
+  }, [matrix, scores]);
+
+  const enterScoresHasInvalid = enterScoresInvalidCount > 0;
+
+  const classMatrixInvalidCount = useMemo(() => {
+    if (!classMatrixData) return 0;
+    let count = 0;
+    for (const a of classMatrixData.assignments) {
+      for (const s of classMatrixData.students) {
+        const raw = classDraft[a.id]?.[s.id]?.score ?? "";
+        if (scoreInputIsInvalid(raw)) count += 1;
+      }
+    }
+    return count;
+  }, [classMatrixData, classDraft]);
+
+  const classMatrixHasInvalid = classMatrixInvalidCount > 0;
+
   const handleSaveScores = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!matrix) return;
+    if (enterScoresHasInvalid) {
+      setError(scoreSaveSummaryMessage(enterScoresInvalidCount));
+      return;
+    }
     setIsSaving(true);
     setError(null);
     try {
@@ -1043,6 +1245,10 @@ export function TeacherGradebook({
   const handleSaveClassMatrix = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!classMatrixData) return;
+    if (classMatrixHasInvalid) {
+      setError(scoreSaveSummaryMessage(classMatrixInvalidCount));
+      return;
+    }
     setError(null);
     setClassMatrixSaving(true);
     setEditingMatrixCell(null);
@@ -1096,8 +1302,10 @@ export function TeacherGradebook({
     }
   };
 
-  const pct = (score: number | null, max: number) =>
-    score != null && max > 0 ? Math.round((score / max) * 1000) / 10 : null;
+  const pct = (raw: string, score: number | null, max: number) => {
+    if (score == null || max <= 0 || !Number.isFinite(score)) return null;
+    return percentFromValidScore(raw, score, max);
+  };
 
   const scoreSummary = useMemo(() => {
     if (!matrix) return null;
@@ -1106,7 +1314,7 @@ export function TeacherGradebook({
       const raw = scores[s.id]?.score?.trim() ?? "";
       if (raw === "") continue;
       const n = Number(raw);
-      if (!Number.isFinite(n)) continue;
+      if (!Number.isFinite(n) || scoreInputIsInvalid(raw)) continue;
       nums.push(n);
     }
     if (nums.length === 0) {
@@ -1149,8 +1357,8 @@ export function TeacherGradebook({
         const raw = scores[s.id]?.score?.trim() ?? "";
         if (raw === "") continue;
         const n = Number(raw);
-        if (!Number.isFinite(n)) continue;
-        const p = tanzaniaPercentFromScore(n, max);
+        if (!Number.isFinite(n) || scoreInputIsInvalid(raw)) continue;
+        const p = percentFromValidScore(raw, n, max);
         if (p != null) pcts.push(p);
       }
       return pcts;
@@ -1172,8 +1380,8 @@ export function TeacherGradebook({
       const raw = scores[s.id]?.score?.trim() ?? "";
       if (raw === "") continue;
       const n = Number(raw);
-      if (!Number.isFinite(n)) continue;
-      const p = tanzaniaPercentFromScore(n, max);
+      if (!Number.isFinite(n) || scoreInputIsInvalid(raw)) continue;
+      const p = percentFromValidScore(raw, n, max);
       const letter = tanzaniaLetterGrade(p, schoolLevel);
       if (letter === "A") dist.A += 1;
       else if (letter === "B") dist.B += 1;
@@ -1341,7 +1549,7 @@ export function TeacherGradebook({
         const n = raw === "" ? null : Number(raw);
         const p =
           n != null && Number.isFinite(n)
-            ? tanzaniaPercentFromScore(n, max)
+            ? percentFromValidScore(raw, n, max)
             : null;
         const letter = tanzaniaLetterGrade(p, schoolLevel);
         return {
@@ -1349,7 +1557,7 @@ export function TeacherGradebook({
           genderLabel: genderLabel(s.gender),
           score:
             n != null && Number.isFinite(n) ? String(n) : "—",
-          grade: letter,
+          grade: scoreInputIsInvalid(raw) ? "—" : letter,
           remarks: scores[s.id]?.remarks?.trim() ?? "",
         };
       });
@@ -1762,6 +1970,9 @@ export function TeacherGradebook({
                         {classMatrixData.assignments.map((a) => {
                           const raw =
                             classDraft[a.id]?.[s.id]?.score?.trim() ?? "";
+                          const cellInvalid = scoreInputIsInvalid(
+                            classDraft[a.id]?.[s.id]?.score ?? ""
+                          );
                           const isEditing =
                             editingMatrixCell?.assignmentId === a.id &&
                             editingMatrixCell?.studentId === s.id;
@@ -1771,8 +1982,9 @@ export function TeacherGradebook({
                             schoolLevel,
                             displayFormat
                           );
-                          const surface =
-                            letter !== "—"
+                          const surface = cellInvalid
+                            ? invalidScoreCellSurface()
+                            : letter !== "—"
                               ? tanzaniaGradeCellSurface(letter)
                               : "border-slate-200 bg-white dark:border-zinc-700 dark:bg-zinc-950";
 
@@ -1782,12 +1994,16 @@ export function TeacherGradebook({
                               className="px-1 py-1 align-middle"
                             >
                               {isEditing ? (
-                                <input
-                                  ref={matrixCellInputRef}
+                                <ScoreInputField
+                                  inputRef={matrixCellInputRef}
+                                  invalid={cellInvalid}
+                                  wrapperClassName="min-w-[5rem]"
                                   type="number"
                                   step={0.01}
                                   aria-label={`Score for ${s.full_name}, ${a.title}`}
-                                  value={classDraft[a.id]?.[s.id]?.score ?? ""}
+                                  value={
+                                    classDraft[a.id]?.[s.id]?.score ?? ""
+                                  }
                                   onChange={(e) =>
                                     setClassDraft((prev) => ({
                                       ...prev,
@@ -1796,18 +2012,27 @@ export function TeacherGradebook({
                                         [s.id]: {
                                           score: e.target.value,
                                           remarks:
-                                            prev[a.id]?.[s.id]?.remarks ?? "",
+                                            prev[a.id]?.[s.id]?.remarks ??
+                                            "",
                                         },
                                       },
                                     }))
                                   }
                                   onBlur={() => setEditingMatrixCell(null)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Escape" || e.key === "Enter") {
+                                    if (
+                                      e.key === "Escape" ||
+                                      e.key === "Enter"
+                                    ) {
                                       setEditingMatrixCell(null);
                                     }
                                   }}
-                                  className="w-full min-w-[4.5rem] rounded border border-[rgb(var(--school-primary-rgb)/0.45)] px-1 py-1 text-center text-sm dark:border-school-primary dark:bg-zinc-950"
+                                  className={cn(
+                                    "w-full min-w-[4.5rem] rounded border px-1 py-1 text-center text-sm",
+                                    cellInvalid
+                                      ? ""
+                                      : "border-[rgb(var(--school-primary-rgb)/0.45)] dark:border-school-primary dark:bg-zinc-950"
+                                  )}
                                 />
                               ) : (
                                 <button
@@ -1877,6 +2102,9 @@ export function TeacherGradebook({
                           classMatrixData.scoreMatrix[selected.id]?.[s.id];
                         const draft =
                           classDraft[selected.id]?.[s.id];
+                        const mobileCellInvalid = scoreInputIsInvalid(
+                          draft?.score ?? ""
+                        );
                         return (
                           <div
                             key={`${selected.id}-${s.id}`}
@@ -1901,7 +2129,9 @@ export function TeacherGradebook({
                               ) : null}
                             </div>
                             <div className="mt-2 flex items-stretch gap-2">
-                              <input
+                              <ScoreInputField
+                                invalid={mobileCellInvalid}
+                                wrapperClassName="shrink-0"
                                 type="number"
                                 step={0.01}
                                 inputMode="decimal"
@@ -1954,10 +2184,14 @@ export function TeacherGradebook({
                 })()}
               </div>
 
+              <InvalidScoresSaveNotice count={classMatrixInvalidCount} />
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="submit"
-                  disabled={classMatrixSaving}
+                  disabled={classMatrixSaving || classMatrixHasInvalid}
+                  title={
+                    classMatrixHasInvalid ? SCORE_RANGE_TOOLTIP : undefined
+                  }
                   className="inline-flex items-center justify-center rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
                 >
                   {classMatrixSaving ? (
@@ -2426,19 +2660,16 @@ export function TeacherGradebook({
                   ) : (
                     enterScoresTablePaging.rows.map((s) => {
                       const raw = scores[s.id]?.score?.trim() ?? "";
+                      const scoreRaw = scores[s.id]?.score ?? "";
                       const n = raw === "" ? null : Number(raw);
+                      const scoreInvalid = scoreInputIsInvalid(scoreRaw);
                       const p =
                         n != null && Number.isFinite(n)
-                          ? pct(n, matrix.assignment.max_score)
+                          ? pct(scoreRaw, n, matrix.assignment.max_score)
                           : null;
-                      const tanzPct =
-                        n != null && Number.isFinite(n)
-                          ? tanzaniaPercentFromScore(
-                              n,
-                              matrix.assignment.max_score
-                            )
-                          : null;
-                      const letter = tanzaniaLetterGrade(tanzPct, schoolLevel);
+                      const letter = scoreInvalid
+                        ? "—"
+                        : tanzaniaLetterGrade(p, schoolLevel);
                       const persisted = hasPersistedScore(
                         matrix.scoreByStudent[s.id]
                       );
@@ -2467,8 +2698,9 @@ export function TeacherGradebook({
                           <td className="px-3 py-2 text-slate-600 dark:text-zinc-400">
                             {genderLabel(s.gender)}
                           </td>
-                          <td className="px-3 py-2">
-                            <input
+                          <td className="px-3 py-2 align-top">
+                            <ScoreInputField
+                              invalid={scoreInvalid}
                               type="number"
                               step={0.01}
                               value={scores[s.id]?.score ?? ""}
@@ -2481,17 +2713,19 @@ export function TeacherGradebook({
                                   },
                                 }))
                               }
-                              className="w-24 rounded border border-slate-300 px-2 py-1 dark:border-zinc-600 dark:bg-zinc-950"
+                              className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"
                             />
                           </td>
                           <td className="px-3 py-2 text-slate-600 dark:text-zinc-400 tabular-nums">
-                            {formatMarksCellLabel({
-                              score: n,
-                              maxScore: matrix.assignment.max_score,
-                              percent: p,
-                              letter: null,
-                              format: displayFormat,
-                            })}
+                            {scoreInvalid
+                              ? "—"
+                              : formatMarksCellLabel({
+                                  score: n,
+                                  maxScore: matrix.assignment.max_score,
+                                  percent: p,
+                                  letter: null,
+                                  format: displayFormat,
+                                })}
                           </td>
                           <td className="px-3 py-2">
                             <span
@@ -2598,30 +2832,29 @@ export function TeacherGradebook({
               ) : (
                 enterScoresTablePaging.rows.map((s) => {
                   const raw = scores[s.id]?.score?.trim() ?? "";
+                  const scoreRaw = scores[s.id]?.score ?? "";
                   const n = raw === "" ? null : Number(raw);
+                  const scoreInvalid = scoreInputIsInvalid(scoreRaw);
                   const p =
                     n != null && Number.isFinite(n)
-                      ? pct(n, matrix.assignment.max_score)
+                      ? pct(scoreRaw, n, matrix.assignment.max_score)
                       : null;
-                  const tanzPct =
-                    n != null && Number.isFinite(n)
-                      ? tanzaniaPercentFromScore(
-                          n,
-                          matrix.assignment.max_score
-                        )
-                      : null;
-                  const letter = tanzaniaLetterGrade(tanzPct, schoolLevel);
+                  const letter = scoreInvalid
+                    ? "—"
+                    : tanzaniaLetterGrade(p, schoolLevel);
                   const persisted = hasPersistedScore(
                     matrix.scoreByStudent[s.id]
                   );
                   const isFlashing = flashedStudentRowIds.has(s.id);
-                  const computedLine = formatMarksCellLabel({
-                    score: n,
-                    maxScore: matrix.assignment.max_score,
-                    percent: p,
-                    letter: null,
-                    format: displayFormat,
-                  });
+                  const computedLine = scoreInvalid
+                    ? "—"
+                    : formatMarksCellLabel({
+                        score: n,
+                        maxScore: matrix.assignment.max_score,
+                        percent: p,
+                        letter: null,
+                        format: displayFormat,
+                      });
                   return (
                     <div
                       key={s.id}
@@ -2646,7 +2879,8 @@ export function TeacherGradebook({
                       </div>
 
                       <div className="mt-2 flex flex-col gap-2">
-                        <input
+                        <ScoreInputField
+                          invalid={scoreInvalid}
                           type="number"
                           step={0.01}
                           inputMode="decimal"
@@ -2815,10 +3049,16 @@ export function TeacherGradebook({
                   </button>
                 </div>
               )}
+            <InvalidScoresSaveNotice count={enterScoresInvalidCount} />
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
-                disabled={matrixLoading || isSaving}
+                disabled={
+                  matrixLoading || isSaving || enterScoresHasInvalid
+                }
+                title={
+                  enterScoresHasInvalid ? SCORE_RANGE_TOOLTIP : undefined
+                }
                 className="inline-flex items-center justify-center rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-school-primary dark:hover:brightness-110"
               >
                 {isSaving ? (
