@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
-import type { SubjectCompatibilityBatchResult } from "@/lib/student-subject-enrollment/subject-compatibility-types";
+import { SECONDARY_BEST_SUBJECT_COUNT } from "@/lib/school-level";
+import {
+  isSecondaryMinimumBlock,
+  type SubjectCompatibilityBatchResult,
+} from "@/lib/student-subject-enrollment/subject-compatibility-types";
 
 export interface SubjectCompatibilityModalProps {
   open: boolean;
@@ -11,6 +15,81 @@ export interface SubjectCompatibilityModalProps {
   onClose: () => void;
   onContinue?: () => void;
   isContinuing?: boolean;
+}
+
+function SubjectNameList({
+  title,
+  names,
+  emptyText,
+}: {
+  title: string;
+  names: string[];
+  emptyText: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+        {title}
+      </p>
+      {names.length > 0 ? (
+        <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-slate-700 dark:text-zinc-300">
+          {names.map((name) => (
+            <li key={name}>{name}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">{emptyText}</p>
+      )}
+    </div>
+  );
+}
+
+function StudentCompatibilityDetails({
+  student,
+  showStudentName,
+}: {
+  student: SubjectCompatibilityBatchResult["students"][number];
+  showStudentName: boolean;
+}) {
+  return (
+    <li className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50">
+      {showStudentName ? (
+        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+          {student.studentName}
+          <span className="font-normal text-slate-500 dark:text-zinc-400">
+            {" "}
+            → {student.targetClassName}
+          </span>
+        </p>
+      ) : null}
+
+      <div className="grid gap-2 text-sm text-slate-700 dark:text-zinc-300 sm:grid-cols-2">
+        <p>
+          <span className="text-slate-500 dark:text-zinc-400">Current subjects:</span>{" "}
+          <span className="font-medium text-slate-900 dark:text-white">
+            {student.currentSubjectCount}
+          </span>
+        </p>
+        <p>
+          <span className="text-slate-500 dark:text-zinc-400">After move:</span>{" "}
+          <span className="font-medium text-slate-900 dark:text-white">
+            {student.finalSubjectCount}
+          </span>
+        </p>
+      </div>
+
+      <SubjectNameList
+        title="Subjects that can continue"
+        names={student.compatibleSubjectNames}
+        emptyText="None"
+      />
+      <SubjectNameList
+        title="Subjects that will be removed"
+        names={student.missingSubjectNames}
+        emptyText="None"
+      />
+    </li>
+  );
 }
 
 export function SubjectCompatibilityModal({
@@ -48,8 +127,34 @@ export function SubjectCompatibilityModal({
   const warningStudents = result.students.filter((s) => s.status === "warning");
   const blockedStudents = result.students.filter((s) => s.status === "blocked");
   const isBlocked = mode === "blocked";
+  const hasSecondaryMinimumBlock = blockedStudents.some((s) =>
+    isSecondaryMinimumBlock(s.blockReason)
+  );
 
-  const title = isBlocked ? "Cannot Move Student" : "Subject Compatibility Warning";
+  const title = isBlocked
+    ? hasSecondaryMinimumBlock
+      ? blockedStudents.length > 1
+        ? "Cannot move students safely"
+        : "Cannot move student safely"
+      : blockedStudents.length > 1
+        ? "Cannot move students"
+        : "Cannot move student"
+    : "Subject compatibility warning";
+
+  const subtitle = isBlocked
+    ? hasSecondaryMinimumBlock
+      ? blockedStudents.length === 1
+        ? `This student would have only ${blockedStudents[0]!.finalSubjectCount} ${
+            blockedStudents[0]!.finalSubjectCount === 1 ? "subject" : "subjects"
+          } in ${blockedStudents[0]!.targetClassName}. Secondary division requires at least ${SECONDARY_BEST_SUBJECT_COUNT} subjects. Please assign enough subjects to the target class or choose another class.`
+        : `These students would have fewer than ${SECONDARY_BEST_SUBJECT_COUNT} subjects in their destination classes. Secondary division requires at least ${SECONDARY_BEST_SUBJECT_COUNT} subjects.`
+      : blockedStudents.length === 1
+        ? "This class does not offer any of the student's enrolled subjects. Moving this student would leave them without a valid subject pathway."
+        : "These students cannot be moved because their destination classes do not offer any of their enrolled subjects."
+    : "Some subjects are not offered in the selected class and will be removed if you continue. The student will still have enough subjects for secondary division.";
+
+  const listStudents = isBlocked ? blockedStudents : warningStudents;
+  const showStudentNames = listStudents.length > 1;
 
   return (
     <div
@@ -78,15 +183,8 @@ export function SubjectCompatibilityModal({
               className="text-lg font-semibold text-slate-900 dark:text-white"
             >
               {title}
-              {isBlocked && blockedStudents.length > 1 ? "s" : ""}
             </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-              {isBlocked
-                ? blockedStudents.length === 1
-                  ? "This class does not offer any of the student's enrolled subjects. Moving this student would leave them without a valid subject pathway."
-                  : "These students cannot be moved because their destination classes do not offer any of their enrolled subjects."
-                : "The following subjects are not offered in the selected class and will be removed if you continue:"}
-            </p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">{subtitle}</p>
           </div>
           <button
             type="button"
@@ -101,22 +199,12 @@ export function SubjectCompatibilityModal({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <ul className="space-y-4">
-            {(isBlocked ? blockedStudents : warningStudents).map((student) => (
-              <li
+            {listStudents.map((student) => (
+              <StudentCompatibilityDetails
                 key={`${student.studentId}-${student.targetClassId}`}
-                className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800/50"
-              >
-                {warningStudents.length > 1 || blockedStudents.length > 1 ? (
-                  <p className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">
-                    {student.studentName}
-                  </p>
-                ) : null}
-                <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700 dark:text-zinc-300">
-                  {student.missingSubjectNames.map((name) => (
-                    <li key={name}>{name}</li>
-                  ))}
-                </ul>
-              </li>
+                student={student}
+                showStudentName={showStudentNames}
+              />
             ))}
           </ul>
         </div>
@@ -138,7 +226,7 @@ export function SubjectCompatibilityModal({
                 disabled={isContinuing}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
-                Cancel Move
+                Cancel move
               </button>
               <button
                 type="button"
@@ -152,7 +240,7 @@ export function SubjectCompatibilityModal({
                     Continuing…
                   </>
                 ) : (
-                  "Continue Anyway"
+                  "Continue anyway"
                 )}
               </button>
             </>

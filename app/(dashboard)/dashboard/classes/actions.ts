@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { inheritSubjectClassesForNewStream } from "@/lib/subject-class-cluster-sync";
 import { toUppercase } from "@/lib/utils";
 
 async function getSchoolId() {
@@ -41,18 +43,37 @@ export async function addClass(
   try {
     const { supabase, schoolId, userId } = await getSchoolId();
 
-    const { error } = await supabase.from("classes").insert({
-      school_id: schoolId,
-      name,
-      description,
-      parent_class_id: parentClassId,
-    } as never);
+    const { data: inserted, error } = await supabase
+      .from("classes")
+      .insert({
+        school_id: schoolId,
+        name,
+        description,
+        parent_class_id: parentClassId,
+      } as never)
+      .select("id")
+      .single();
 
     if (error) {
       if (error.code === "23505") {
         return { error: `A class named "${name}" already exists.` };
       }
       return { error: error.message };
+    }
+
+    if (parentClassId && inserted) {
+      const admin = createAdminClient();
+      const inherit = await inheritSubjectClassesForNewStream(
+        admin,
+        (inserted as { id: string }).id,
+        parentClassId
+      );
+      if (!inherit.ok) {
+        return { error: inherit.error };
+      }
+      if (inherit.linkedCount > 0) {
+        revalidatePath("/dashboard/subjects");
+      }
     }
 
     revalidatePath("/dashboard/classes");
@@ -180,6 +201,48 @@ export async function bulkAddClasses(input: {
         skippedExisting,
         error: error.message,
       };
+    }
+
+    if (parentClassId) {
+      const { data: newRows, error: newRowsErr } = await supabase
+        .from("classes")
+        .select("id")
+        .eq("school_id", schoolId)
+        .in("name", toInsert)
+        .eq("parent_class_id", parentClassId);
+
+      if (newRowsErr) {
+        return {
+          ok: false,
+          submitted: names.length,
+          inserted: [],
+          skippedExisting,
+          error: newRowsErr.message,
+        };
+      }
+
+      const admin = createAdminClient();
+      let inheritedAny = false;
+      for (const row of (newRows ?? []) as { id: string }[]) {
+        const inherit = await inheritSubjectClassesForNewStream(
+          admin,
+          row.id,
+          parentClassId
+        );
+        if (!inherit.ok) {
+          return {
+            ok: false,
+            submitted: names.length,
+            inserted: [],
+            skippedExisting,
+            error: inherit.error,
+          };
+        }
+        if (inherit.linkedCount > 0) inheritedAny = true;
+      }
+      if (inheritedAny) {
+        revalidatePath("/dashboard/subjects");
+      }
     }
 
     revalidatePath("/dashboard/classes");

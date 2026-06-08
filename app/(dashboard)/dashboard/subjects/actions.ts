@@ -11,6 +11,7 @@ import {
 } from "@/lib/subject-code";
 import { getCurrentAcademicYearAndTerm } from "@/lib/student-subject-enrollment";
 import { todayIsoLocal } from "@/lib/enrollment-date";
+import { expandClassIdsToSiblingLeafStreams } from "@/lib/subject-class-cluster-sync";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- admin client update typing
 type Db = any;
@@ -106,7 +107,8 @@ async function syncSubjectClassLinks(
   subjectId: string,
   classIds: string[]
 ): Promise<{ ok: false; error: string } | { ok: true }> {
-  const uniqueClassIds = [...new Set(classIds)];
+  const expandedClassIds = await expandClassIdsToSiblingLeafStreams(admin, classIds);
+  const uniqueClassIds = [...new Set(expandedClassIds)];
 
   const { error: delErr } = await admin
     .from("subject_classes")
@@ -141,6 +143,7 @@ async function existingSubjectHasOverlapWithSelectedClasses(
   classIds: string[]
 ): Promise<boolean> {
   if (classIds.length === 0) return false;
+  const expandedClassIds = await expandClassIdsToSiblingLeafStreams(admin, classIds);
   const { data: row } = await admin
     .from("subjects")
     .select("id")
@@ -153,7 +156,7 @@ async function existingSubjectHasOverlapWithSelectedClasses(
     .from("subject_classes")
     .select("class_id")
     .eq("subject_id", subjectId)
-    .in("class_id", classIds);
+    .in("class_id", expandedClassIds);
   return (links ?? []).length > 0;
 }
 
@@ -721,6 +724,8 @@ export async function bulkAssignSubjectsAction(
     return { ok: false, error: "One or more selected classes are invalid for your school." };
   }
 
+  const expandedClassIds = await expandClassIdsToSiblingLeafStreams(admin, classIds);
+
   const { data: subjRows } = await admin
     .from("subjects")
     .select("id")
@@ -734,8 +739,8 @@ export async function bulkAssignSubjectsAction(
     return { ok: false, error: "One or more subjects are invalid for your school." };
   }
 
-  /** Step A — additive subject_class links only */
-  const desiredPairs = cartesianPairs(classIds, subjectIds);
+  /** Step A — additive subject_class links (expanded to all sibling streams per form) */
+  const desiredPairs = cartesianPairs(expandedClassIds, subjectIds);
   const pairKey = (p: { subject_id: string; class_id: string }) =>
     `${p.subject_id}|${p.class_id}`;
   const existingPairKeys = new Set<string>();
@@ -744,7 +749,7 @@ export async function bulkAssignSubjectsAction(
     .from("subject_classes")
     .select("subject_id, class_id")
     .in("subject_id", subjectIds)
-    .in("class_id", classIds);
+    .in("class_id", expandedClassIds);
 
   for (const r of existingLinks ?? []) {
     const row = r as { subject_id: string; class_id: string };
