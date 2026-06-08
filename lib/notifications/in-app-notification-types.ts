@@ -29,6 +29,9 @@ export interface ClassMovementNotificationMetadataClient
   moves: ClassMovementNotificationMoveDetailClient[];
 }
 
+/** Inbox workflow: unread → read → archived (records are never teacher-deleted). */
+export type NotificationInboxState = "unread" | "read" | "archived";
+
 export interface InAppNotificationRow {
   id: string;
   school_id: string;
@@ -39,5 +42,22 @@ export interface InAppNotificationRow {
   type: InAppNotificationType;
   metadata: ClassMovementNotificationMetadata | null;
   read_at: string | null;
+  archived_at: string | null;
   created_at: string;
+}
+
+export function getNotificationInboxState(row: {
+  read_at: string | null;
+  archived_at: string | null;
+}): NotificationInboxState {
+  if (row.archived_at) return "archived";
+  if (row.read_at) return "read";
+  return "unread";
+}
+
+export function isNotificationUnread(row: {
+  read_at: string | null;
+  archived_at: string | null;
+}): boolean {
+  return getNotificationInboxState(row) === "unread";
 }
