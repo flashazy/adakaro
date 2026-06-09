@@ -1,11 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  validateAndNormalizeClassTeacherPhone,
+} from "@/lib/class-teacher-phone";
 import { checkIsTeacher } from "@/lib/teacher-auth";
-import type { Database } from "@/types/supabase";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase v2 update payload narrows to `never` without full generated types in this path
-type Db = any;
 
 export async function updateClassTeacherOwnPhoneAction(
   raw: string
@@ -14,34 +15,29 @@ export async function updateClassTeacherOwnPhoneAction(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user?.id) return { ok: false, error: "Not signed in" };
+  if (!user?.id) return { ok: false, error: "Not signed in." };
 
   if (!(await checkIsTeacher(supabase, user.id))) {
-    return { ok: false, error: "Not allowed" };
+    return { ok: false, error: "Only teachers can update this number." };
   }
 
-  const trimmed = raw.trim();
-
-  const { data: rpcPhone, error: rpcErr } = await supabase.rpc(
-    "update_own_profile_phone",
-    { p_phone: trimmed } as never
-  );
-
-  if (!rpcErr) {
-    const rawPhone =
-      typeof rpcPhone === "string" ? rpcPhone : rpcPhone == null ? null : String(rpcPhone);
-    const phone =
-      rawPhone != null && rawPhone.trim().length > 0 ? rawPhone.trim() : null;
-    return { ok: true, phone };
+  const validated = validateAndNormalizeClassTeacherPhone(raw);
+  if (!validated.ok) {
+    return { ok: false, error: validated.error };
   }
 
-  const phone = trimmed.length === 0 ? null : trimmed;
-  type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
-  const { error } = await (supabase as Db)
+  const admin = createAdminClient();
+  const { error } = await admin
     .from("profiles")
-    .update({ phone } satisfies ProfileUpdate)
+    .update({ phone: validated.phone } as never)
     .eq("id", user.id);
 
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, phone };
+  if (error) {
+    return { ok: false, error: error.message || "Could not save phone number." };
+  }
+
+  revalidatePath("/teacher-dashboard/class-teacher");
+  revalidatePath("/parent-dashboard");
+
+  return { ok: true, phone: validated.phone };
 }

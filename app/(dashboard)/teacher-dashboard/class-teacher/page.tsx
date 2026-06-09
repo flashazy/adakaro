@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { fetchClassesWhereUserIsClassTeacher } from "@/lib/class-teacher";
+import { loadClassTeacherOwnPhone } from "@/lib/class-teacher-phone";
 import {
   loadAcademicBannerForClass,
   loadClassTeacherHomeSummary,
@@ -82,19 +83,11 @@ async function ClassTeacherHome(props: {
 }) {
   const { teacherId, classes, selectedClassId, selectedClassName } = props;
 
-  const supabase = await createClient();
-  const [{ data: prof }, academic, summary] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("phone")
-      .eq("id", teacherId)
-      .maybeSingle(),
+  const [teacherPhone, academic, summary] = await Promise.all([
+    loadClassTeacherOwnPhone(teacherId),
     loadAcademicBannerForClass(selectedClassId),
     loadClassTeacherHomeSummary(teacherId, selectedClassId),
   ]);
-
-  const raw = (prof as { phone: string | null } | null)?.phone?.trim();
-  const teacherPhone = raw && raw.length > 0 ? raw : null;
 
   return (
     <ClassTeacherDashboardHomeView

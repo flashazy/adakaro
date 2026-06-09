@@ -16,6 +16,7 @@ export function ClassTeacherPhoneSection(props: {
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setPhone(props.initialPhone);
@@ -37,6 +38,7 @@ export function ClassTeacherPhoneSection(props: {
   const openModal = () => {
     setDraft(phone ?? "");
     setError(null);
+    setSuccessMessage(null);
     setModalOpen(true);
   };
 
@@ -68,6 +70,11 @@ export function ClassTeacherPhoneSection(props: {
         return;
       }
       setPhone(r.phone);
+      setSuccessMessage(
+        r.phone
+          ? "Phone number saved. Parents in your class can see it on their dashboard."
+          : "Phone number removed."
+      );
       setModalOpen(false);
       router.refresh();
     } finally {
@@ -89,6 +96,11 @@ export function ClassTeacherPhoneSection(props: {
       <p className="mt-3 text-base font-medium tabular-nums text-slate-900 dark:text-white">
         {display}
       </p>
+      {successMessage ? (
+        <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">
+          {successMessage}
+        </p>
+      ) : null}
       <button
         type="button"
         onClick={openModal}
