@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { checkIsTeacher } from "@/lib/teacher-auth";
+import { resolveTeacherAccess } from "@/lib/teacher-auth";
 import {
   getTeacherLockedContactInfo,
   hasClassTeacherAssignment,
@@ -32,6 +32,11 @@ import { TeacherDocuments } from "./components/TeacherDocuments";
 import { TeacherOnDutyCard } from "./components/TeacherOnDutyCard";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { getTeacherDutyAssignment } from "@/lib/teacher-on-duty/teacher-duty";
+import {
+  reportTeacherDashboardAlert,
+  resolveTeacherDashboardAlert,
+} from "@/lib/watchdog/auth-health-alerts";
+import { TEACHER_DASHBOARD_REASONS } from "@/lib/watchdog/auth-reasons";
 
 export const dynamic = "force-dynamic";
 
@@ -63,9 +68,21 @@ export default async function TeacherDashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  if (!(await checkIsTeacher(supabase, user.id))) {
+  const teacherAccess = await resolveTeacherAccess(supabase, user.id);
+  if (!teacherAccess.isTeacher) {
+    if (teacherAccess.authCheckError) {
+      reportTeacherDashboardAlert({
+        reason: TEACHER_DASHBOARD_REASONS.teacherAccessCheckFailed,
+        metadata: { user_id: user.id },
+        error: teacherAccess.authCheckError,
+      });
+    }
     redirect("/dashboard");
   }
+
+  resolveTeacherDashboardAlert(
+    TEACHER_DASHBOARD_REASONS.teacherAccessCheckFailed
+  );
 
   const [assigned, isClassTeacher] = await Promise.all([
     hasTeacherAssignments(supabase, user.id),

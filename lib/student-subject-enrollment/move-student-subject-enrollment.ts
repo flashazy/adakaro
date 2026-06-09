@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
+import { reportSubjectEnrollmentDrift } from "@/lib/watchdog/health-alert-reporters";
 
 type DbClient = SupabaseClient<Database>;
 
@@ -309,9 +310,26 @@ export async function moveStudentSubjectEnrollment(
     };
   }
 
-  return reconcileStudentSubjectEnrollmentToClass(client, {
+  const result = await reconcileStudentSubjectEnrollmentToClass(client, {
     schoolId: params.schoolId,
     studentId: params.studentId,
     toClassId: params.toClassId,
   });
+
+  if (result.error) {
+    reportSubjectEnrollmentDrift(
+      {
+        phase: "reconcile_after_class_move",
+        student_id: params.studentId,
+        from_class_id: params.fromClassId,
+        to_class_id: params.toClassId,
+        error: result.error,
+        migrated_count: result.migratedCount,
+        removed_count: result.removedCount,
+      },
+      params.schoolId
+    );
+  }
+
+  return result;
 }

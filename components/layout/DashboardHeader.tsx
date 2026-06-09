@@ -311,7 +311,7 @@ export function DashboardHeader({
               )}
               {superAdminNavLink(
                 "/super-admin/watchdog",
-                "Watchdog",
+                "Health Center",
                 isSuperAdminWatchdog
               )}
               {superAdminNavLink(

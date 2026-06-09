@@ -16,6 +16,7 @@ import { loadParentSubjectResultsUnread } from "./parent-subject-results-unread"
 import type { SubjectResultsUnreadState } from "@/lib/parent-subject-results-unread-types";
 import { initialEmptySubjectResultsUnread } from "@/lib/parent-subject-results-unread-types";
 import { countParentChatUnreadForClass } from "@/lib/chat/parent-messages-unread";
+import { reportParentDataLoadAlert } from "@/lib/watchdog/auth-health-alerts";
 
 export type ChildTabData = {
   reportCards: any[];
@@ -50,6 +51,7 @@ function emptyTabData(): ChildTabData {
 export async function loadParentChildTabData(
   students: {
     id: string;
+    school_id?: string | null;
     class_id: string;
     class_teacher_id?: string | null;
     enrollment_date: string | null;
@@ -95,6 +97,7 @@ export async function loadParentChildTabData(
 
     const parentUserId = user.id;
     const studentId = s.id;
+    const schoolId = s.school_id ?? null;
     const classId = s.class_id;
     const enrollmentDate = s.enrollment_date;
 
@@ -104,11 +107,18 @@ export async function loadParentChildTabData(
       const loaded = await loadParentReportCardsForStudentDebug(supabase, {
         parentUserId,
         studentId,
+        schoolId,
         enrollmentDate,
       });
       reportCards = loaded.rows;
       reportCardsDebug = loaded.debug;
     } catch (err) {
+      reportParentDataLoadAlert({
+        phase: "report_cards_tab",
+        schoolId,
+        studentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       reportCards = [];
       reportCardsDebug = {
         studentId,
@@ -139,6 +149,7 @@ export async function loadParentChildTabData(
       try {
         classResultSheets = await loadParentClassResultSheets(admin, classId, {
           studentId,
+          schoolId,
           enrollmentDate,
         });
       } catch {
@@ -151,7 +162,8 @@ export async function loadParentChildTabData(
       attendance = await loadParentAttendanceForStudent(
         supabase,
         studentId,
-        enrollmentDate
+        enrollmentDate,
+        schoolId
       );
       attendance.sort((x, y) => {
         if (x.attendance_date !== y.attendance_date) {

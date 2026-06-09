@@ -3,6 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAdminActionFromServerAction } from "@/lib/admin-activity-log";
+import {
+  reportPaymentReceiptAlert,
+  reportPaymentSettlementAlert,
+  resolvePaymentReceiptAlert,
+  resolvePaymentSettlementAlert,
+} from "@/lib/watchdog/payment-health-alerts";
+import { PAYMENT_SETTLEMENT_REASONS } from "@/lib/watchdog/payment-reasons";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
 import type { PaymentMethod, UserRole } from "@/types/supabase";
@@ -170,7 +177,22 @@ export async function recordPayment(
       .select("id")
       .single();
 
-    if (paymentError) return { error: paymentError.message };
+    if (paymentError) {
+      reportPaymentSettlementAlert({
+        reason: PAYMENT_SETTLEMENT_REASONS.manualPaymentInsert,
+        schoolId: studentSchoolId,
+        studentId,
+        feeStructureId,
+        metadata: {
+          student_id: studentId,
+          fee_structure_id: feeStructureId,
+          payment_method: method,
+          amount,
+        },
+        error: paymentError,
+      });
+      return { error: paymentError.message };
+    }
     const paymentTyped = payment as { id: string };
 
     // Create receipt (trigger auto-generates receipt_number)
@@ -183,6 +205,28 @@ export async function recordPayment(
     const receiptTyped = receipt as { receipt_number: string } | null;
     if (receiptError) {
       console.log("[payments] receipt error:", receiptError);
+      reportPaymentReceiptAlert({
+        schoolId: studentSchoolId,
+        paymentId: paymentTyped.id,
+        metadata: {
+          student_id: studentId,
+          payment_method: method,
+          amount,
+          source: "manual_record",
+        },
+        error: receiptError,
+      });
+    } else {
+      resolvePaymentReceiptAlert({
+        schoolId: studentSchoolId,
+        paymentId: paymentTyped.id,
+      });
+      resolvePaymentSettlementAlert({
+        reason: PAYMENT_SETTLEMENT_REASONS.manualPaymentInsert,
+        schoolId: studentSchoolId,
+        studentId,
+        feeStructureId,
+      });
     }
 
     revalidatePath("/dashboard/payments");

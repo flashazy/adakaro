@@ -5,8 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   validateAndNormalizeClassTeacherPhone,
+  loadClassTeacherOwnPhone,
 } from "@/lib/class-teacher-phone";
 import { checkIsTeacher } from "@/lib/teacher-auth";
+import { reportTeacherPhoneFailure } from "@/lib/watchdog/health-alert-reporters";
 
 export async function updateClassTeacherOwnPhoneAction(
   raw: string
@@ -33,7 +35,26 @@ export async function updateClassTeacherOwnPhoneAction(
     .eq("id", user.id);
 
   if (error) {
+    reportTeacherPhoneFailure({
+      phase: "save",
+      teacher_id: user.id,
+      error: error.message,
+    });
     return { ok: false, error: error.message || "Could not save phone number." };
+  }
+
+  const reloaded = await loadClassTeacherOwnPhone(user.id);
+  if (reloaded !== validated.phone) {
+    reportTeacherPhoneFailure({
+      phase: "verify_after_save",
+      teacher_id: user.id,
+      expected_null: validated.phone == null,
+      reloaded_null: reloaded == null,
+    });
+    return {
+      ok: false,
+      error: "Phone number could not be verified after save. Please try again.",
+    };
   }
 
   revalidatePath("/teacher-dashboard/class-teacher");

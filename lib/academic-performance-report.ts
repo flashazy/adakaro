@@ -1,5 +1,7 @@
 import "server-only";
 
+import { reportAcademicReportFailure } from "@/lib/watchdog/health-alert-reporters";
+
 import type { CoordinatorReportCardItem } from "@/app/(dashboard)/teacher-dashboard/coordinator/types";
 import { loadCoordinatorReportCardsForClass } from "@/app/(dashboard)/teacher-dashboard/coordinator/data";
 import type { ReportCardPreviewData } from "@/app/(dashboard)/teacher-dashboard/report-cards/report-card-preview-types";
@@ -588,6 +590,16 @@ export async function persistAcademicPerformanceReport(args: {
     console.error(
       "[academic-performance-report] upsert failed",
       error.message
+    );
+    reportAcademicReportFailure(
+      {
+        phase: "upsert",
+        class_id: classId,
+        term,
+        academic_year: academicYear,
+        error: error.message,
+      },
+      schoolId
     );
   }
 }

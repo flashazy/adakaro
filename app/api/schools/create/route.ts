@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSchoolCurrencyCode } from "@/lib/currency";
+import { reportSchoolCreationFailure } from "@/lib/watchdog/health-alert-reporters";
 
 /**
  * POST /api/schools/create
@@ -132,6 +133,12 @@ export async function POST(request: NextRequest) {
 
     if (rpcError) {
       console.error("[api/schools/create] RPC error:", rpcError);
+      reportSchoolCreationFailure({
+        phase: "create_founding_school_rpc",
+        user_id: user.id,
+        error: rpcError.message,
+        code: rpcError.code ?? null,
+      });
       return NextResponse.json(
         {
           error:
@@ -147,6 +154,10 @@ export async function POST(request: NextRequest) {
 
     const id = schoolId as string | null;
     if (!id) {
+      reportSchoolCreationFailure({
+        phase: "empty_school_id",
+        user_id: user.id,
+      });
       return NextResponse.json(
         {
           error:
@@ -165,6 +176,10 @@ export async function POST(request: NextRequest) {
     );
   } catch (err) {
     console.error("[api/schools/create] unexpected:", err);
+    reportSchoolCreationFailure({
+      phase: "unexpected_exception",
+      error: err instanceof Error ? err.message : String(err),
+    });
     const message =
       err instanceof Error ? err.message : "Internal server error";
     return NextResponse.json({ error: message }, { status: 500 });

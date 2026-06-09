@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { reportParentDataLoadAlert } from "@/lib/watchdog/auth-health-alerts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildParentReportCardPreviewData } from "@/app/(dashboard)/parent-dashboard/build-parent-report-card-preview";
 import { sortParentReportCardsByRecency } from "@/lib/parent-report-card-order";
@@ -73,6 +74,7 @@ export async function loadParentReportCardsForStudentWithDebug(
   params: {
     parentUserId: string;
     studentId: string;
+    schoolId?: string | null;
     enrollmentDate: string | null;
   }
 ): Promise<{ rows: ParentReportCardTabRow[]; debug: ParentReportCardsLoadDebug }> {
@@ -107,6 +109,12 @@ export async function loadParentReportCardsForStudentWithDebug(
 
     if (linkErr) {
       debug.loadError = linkErr.message;
+      reportParentDataLoadAlert({
+        phase: "report_cards_link_check",
+        schoolId: params.schoolId,
+        studentId: params.studentId,
+        error: linkErr.message,
+      });
       logParentReportCardsDebug(debug);
       return { rows: [], debug };
     }
@@ -129,6 +137,12 @@ export async function loadParentReportCardsForStudentWithDebug(
 
     if (qErr) {
       debug.queryError = qErr.message;
+      reportParentDataLoadAlert({
+        phase: "report_cards_query",
+        schoolId: params.schoolId,
+        studentId: params.studentId,
+        error: qErr.message,
+      });
       logParentReportCardsDebug(debug);
       return { rows: [], debug };
     }

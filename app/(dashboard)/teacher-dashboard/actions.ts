@@ -28,6 +28,9 @@ import {
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { resolveSchoolDisplayTimezone } from "@/lib/school-timezone";
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { reportMarksSaveFailure } from "@/lib/watchdog/health-alert-reporters";
+import { reportHealthAlert } from "@/lib/watchdog/report-health-alert";
+import { HEALTH_FEATURES } from "@/lib/watchdog/features";
 import {
   isStudentHealthAttendanceStatus,
   type AttendanceLockKind,
@@ -699,6 +702,21 @@ export async function saveAttendanceAction(input: {
       message: existingErr.message,
       code: existingErr.code,
     });
+    void reportHealthAlert({
+      feature: HEALTH_FEATURES.subjectAttendance,
+      severity: "high",
+      title: "Subject attendance lock check failed",
+      message:
+        "Could not verify existing attendance rows before saving (lock rules).",
+      schoolId,
+      dedupeKey: `subject_attendance:lock_check_fail:${input.classId}:${dateOnly}`,
+      metadata: {
+        class_id: input.classId,
+        date: dateOnly,
+        subject_id: subjectId,
+        error: existingErr.message,
+      },
+    });
     return {
       ok: false,
       error:
@@ -801,6 +819,20 @@ export async function saveAttendanceAction(input: {
         userMessage =
           "A student or class reference is no longer valid. Refresh the page and try again.";
       }
+      void reportHealthAlert({
+        feature: HEALTH_FEATURES.subjectAttendance,
+        severity: "high",
+        title: "Subject attendance save failed",
+        message: "A teacher could not save subject/class attendance.",
+        schoolId,
+        dedupeKey: `subject_attendance:insert_fail:${input.classId}:${dateOnly}:${subjectId ?? "general"}`,
+        metadata: {
+          class_id: input.classId,
+          date: dateOnly,
+          subject_id: subjectId,
+          error: insertError.message,
+        },
+      });
       return { ok: false, error: userMessage };
     }
   }
@@ -827,6 +859,20 @@ export async function saveAttendanceAction(input: {
         userMessage =
           "You do not have permission to save the class list for this class. Contact your school administrator if this persists.";
       }
+      void reportHealthAlert({
+        feature: HEALTH_FEATURES.subjectAttendance,
+        severity: "high",
+        title: "Subject attendance update failed",
+        message: "A teacher could not update subject/class attendance.",
+        schoolId,
+        dedupeKey: `subject_attendance:update_fail:${input.classId}:${dateOnly}:${subjectId ?? "general"}`,
+        metadata: {
+          class_id: input.classId,
+          date: dateOnly,
+          subject_id: subjectId,
+          error: err.message,
+        },
+      });
       return { ok: false, error: userMessage };
     }
   }
@@ -1506,7 +1552,37 @@ export async function saveScoresAction(input: {
       { onConflict: "assignment_id,student_id" }
     );
     if (error) {
+      reportMarksSaveFailure(
+        {
+          phase: "upsert",
+          assignment_id: input.assignmentId,
+          student_id: s.studentId,
+          error: error.message,
+        },
+        gate.schoolId
+      );
       return { ok: false, error: error.message };
+    }
+  }
+
+  const firstScored = input.scores.find((s) => s.score != null);
+  if (firstScored) {
+    const { data: verifyRow } = await (admin as Db)
+      .from("teacher_scores")
+      .select("score")
+      .eq("assignment_id", input.assignmentId)
+      .eq("student_id", firstScored.studentId)
+      .maybeSingle();
+    const saved = (verifyRow as { score: number | null } | null)?.score;
+    if (saved == null || Number(saved) !== Number(firstScored.score)) {
+      reportMarksSaveFailure(
+        {
+          phase: "verify_after_save",
+          assignment_id: input.assignmentId,
+          student_id: firstScored.studentId,
+        },
+        gate.schoolId
+      );
     }
   }
 

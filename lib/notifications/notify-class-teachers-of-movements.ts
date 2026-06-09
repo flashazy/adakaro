@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { reportTeacherNotificationFailure } from "@/lib/watchdog/health-alert-reporters";
 import type { StudentClassHistorySource } from "@/lib/student-class-history/types";
 import type { ClassMovementNotificationMetadata } from "@/lib/notifications/in-app-notification-types";
 
@@ -201,6 +202,11 @@ export async function notifyClassTeachersOfStudentMovements(
       "[notifyClassTeachersOfStudentMovements] classes",
       classErr.message
     );
+    reportTeacherNotificationFailure({
+      phase: "class_lookup",
+      error: classErr.message,
+      movement_count: entries.length,
+    });
     return;
   }
 
@@ -312,6 +318,15 @@ export async function notifyClassTeachersOfStudentMovements(
       "[notifyClassTeachersOfStudentMovements] insert",
       insertErr.message,
       { count: payloads.length }
+    );
+    const schoolId = payloads[0]?.school_id ?? entries[0]?.schoolId;
+    reportTeacherNotificationFailure(
+      {
+        phase: "notification_insert",
+        error: insertErr.message,
+        payload_count: payloads.length,
+      },
+      schoolId
     );
   }
 }

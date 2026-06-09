@@ -10,6 +10,11 @@ import {
   PARENT_RECOVERY_RATE_LIMIT_EXCEEDED,
   recordParentRecoveryCodeIssued,
 } from "@/lib/parent-recovery-in-memory-rate-limit";
+import {
+  reportPasswordRecoveryAlert,
+  resolvePasswordRecoveryAlert,
+} from "@/lib/watchdog/auth-health-alerts";
+import { PASSWORD_RECOVERY_REASONS } from "@/lib/watchdog/auth-reasons";
 
 const CODE_TTL_MS = 6 * 60 * 1000;
 
@@ -217,6 +222,11 @@ export async function verifyParentRecoveryCode(
     .eq("id", r.parent_id)
     .maybeSingle();
   if (pErr) {
+    reportPasswordRecoveryAlert({
+      reason: PASSWORD_RECOVERY_REASONS.recoveryProfileLoadFailed,
+      metadata: { user_id: r.parent_id },
+      error: pErr.message,
+    });
     return { error: "Could not load your account. Try again." };
   }
   const p = profile as { email: string | null; role: string } | null;
@@ -242,8 +252,18 @@ export async function verifyParentRecoveryCode(
   });
   if (signErr) {
     console.error("[parent-recovery] signIn", signErr);
+    reportPasswordRecoveryAlert({
+      reason: PASSWORD_RECOVERY_REASONS.recoverySessionFailed,
+      metadata: { user_id: r.parent_id },
+      error: signErr.message,
+    });
     return { error: "Sign-in failed. Please try again or contact support." };
   }
+
+  resolvePasswordRecoveryAlert(
+    PASSWORD_RECOVERY_REASONS.recoveryProfileLoadFailed
+  );
+  resolvePasswordRecoveryAlert(PASSWORD_RECOVERY_REASONS.recoverySessionFailed);
 
   const { error: delErr } = await admin
     .from("password_reset_codes")

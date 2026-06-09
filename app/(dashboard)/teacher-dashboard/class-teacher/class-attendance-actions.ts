@@ -34,6 +34,8 @@ import {
   type LargeStudentListRowOption,
 } from "@/lib/student-list-pagination";
 import type { Database } from "@/types/supabase";
+import { reportHealthAlert } from "@/lib/watchdog/report-health-alert";
+import { HEALTH_FEATURES } from "@/lib/watchdog/features";
 
 type ClassAttendanceInsert =
   Database["public"]["Tables"]["class_attendance"]["Insert"];
@@ -182,6 +184,19 @@ export async function saveClassAttendanceAction(input: {
       onConflict: "class_id,attendance_date,student_id",
     });
   if (upsertErr) {
+    void reportHealthAlert({
+      feature: HEALTH_FEATURES.classAttendance,
+      severity: "high",
+      title: "Class attendance save failed",
+      message: "Class teacher attendance could not be saved for a class.",
+      schoolId: access.schoolId,
+      dedupeKey: `class_attendance:save_fail:${classId}:${attendanceDate}`,
+      metadata: {
+        class_id: classId,
+        attendance_date: attendanceDate,
+        error: upsertErr.message,
+      },
+    });
     return {
       ok: false,
       error: "Could not save class attendance. Please try again.",

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import type { SubjectEnrollmentTerm } from "@/lib/student-subject-enrollment";
 import { todayIsoLocal } from "@/lib/enrollment-date";
+import { reportStudentSubjectEnrollmentFailure } from "@/lib/watchdog/health-alert-reporters";
 
 export async function assertSubjectsAllowedForClass(
   supabase: SupabaseClient<Database>,
@@ -54,7 +55,17 @@ export async function replaceStudentSubjectEnrollments(
     .eq("academic_year", academicYear)
     .eq("term", term);
 
-  if (delErr) throw new Error(delErr.message);
+  if (delErr) {
+    reportStudentSubjectEnrollmentFailure({
+      phase: "delete_before_replace",
+      student_id: studentId,
+      class_id: classId,
+      academic_year: academicYear,
+      term,
+      error: delErr.message,
+    });
+    throw new Error(delErr.message);
+  }
 
   if (uniqueIds.length === 0) return;
 
@@ -76,5 +87,16 @@ export async function replaceStudentSubjectEnrollments(
     .from("student_subject_enrollment")
     .insert(rows as never);
 
-  if (insErr) throw new Error(insErr.message);
+  if (insErr) {
+    reportStudentSubjectEnrollmentFailure({
+      phase: "insert_after_delete",
+      student_id: studentId,
+      class_id: classId,
+      academic_year: academicYear,
+      term,
+      subject_count: uniqueIds.length,
+      error: insErr.message,
+    });
+    throw new Error(insErr.message);
+  }
 }

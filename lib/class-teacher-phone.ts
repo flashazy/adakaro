@@ -2,6 +2,7 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhoneDigits } from "@/lib/validation";
+import { reportTeacherPhoneFailure } from "@/lib/watchdog/health-alert-reporters";
 
 /**
  * Validate and normalize a class teacher contact phone for `profiles.phone`.
@@ -72,7 +73,15 @@ export async function loadClassTeacherOwnPhone(
     .eq("id", id)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error) {
+    reportTeacherPhoneFailure({
+      phase: "load",
+      teacher_id: id,
+      error: error.message,
+    });
+    return null;
+  }
+  if (!data) return null;
 
   const raw = (data as { phone: string | null }).phone?.trim();
   return raw && raw.length > 0 ? raw : null;

@@ -8,6 +8,8 @@ import {
   isClickPesaOrderCurrency,
   resolveClickPesaOrderCurrency,
 } from "@/lib/currency";
+import { reportPaymentSettlementAlert } from "@/lib/watchdog/payment-health-alerts";
+import { PAYMENT_SETTLEMENT_REASONS } from "@/lib/watchdog/payment-reasons";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -136,6 +138,18 @@ export async function POST(req: NextRequest) {
 
     if (billError) {
       console.error("[payment] Failed to save bill:", billError);
+      reportPaymentSettlementAlert({
+        reason: PAYMENT_SETTLEMENT_REASONS.billPersist,
+        orderReference,
+        schoolId,
+        metadata: {
+          order_reference: orderReference,
+          student_id: studentId as string,
+          fee_structure_id: feeStructureId as string,
+          amount: Number(amount),
+        },
+        error: billError,
+      });
     }
 
     return NextResponse.json({

@@ -12,6 +12,7 @@ import {
 import { getCurrentAcademicYearAndTerm } from "@/lib/student-subject-enrollment";
 import { todayIsoLocal } from "@/lib/enrollment-date";
 import { expandClassIdsToSiblingLeafStreams } from "@/lib/subject-class-cluster-sync";
+import { reportSubjectClassSyncFailure } from "@/lib/watchdog/health-alert-reporters";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- admin client update typing
 type Db = any;
@@ -105,7 +106,8 @@ async function assertClassIdsForSchool(
 async function syncSubjectClassLinks(
   admin: ReturnType<typeof createAdminClient>,
   subjectId: string,
-  classIds: string[]
+  classIds: string[],
+  schoolId?: string | null
 ): Promise<{ ok: false; error: string } | { ok: true }> {
   const expandedClassIds = await expandClassIdsToSiblingLeafStreams(admin, classIds);
   const uniqueClassIds = [...new Set(expandedClassIds)];
@@ -115,6 +117,14 @@ async function syncSubjectClassLinks(
     .delete()
     .eq("subject_id", subjectId);
   if (delErr) {
+    reportSubjectClassSyncFailure(
+      {
+        phase: "delete_links",
+        subject_id: subjectId,
+        error: delErr.message,
+      },
+      schoolId
+    );
     return { ok: false, error: delErr.message || "Could not update class links." };
   }
   if (uniqueClassIds.length === 0) return { ok: true };
@@ -124,6 +134,16 @@ async function syncSubjectClassLinks(
   );
   if (insErr) {
     const code = (insErr as { code?: string }).code;
+    reportSubjectClassSyncFailure(
+      {
+        phase: "insert_after_delete",
+        subject_id: subjectId,
+        class_count: uniqueClassIds.length,
+        error: insErr.message,
+        code: code ?? null,
+      },
+      schoolId
+    );
     if (code === "23505") {
       return {
         ok: false,
@@ -305,7 +325,7 @@ export async function createSubjectAction(
     return { ok: false, error: "Could not create subject." };
   }
 
-  const sync = await syncSubjectClassLinks(admin, newId, classIds);
+  const sync = await syncSubjectClassLinks(admin, newId, classIds, schoolId);
   if (!sync.ok) {
     await admin.from("subjects").delete().eq("id", newId);
     return { ok: false, error: sync.error };
@@ -365,7 +385,7 @@ export async function assignSubjectClassesAction(
   }
 
   for (const subjectId of subjectIds) {
-    const sync = await syncSubjectClassLinks(admin, subjectId, classIds);
+    const sync = await syncSubjectClassLinks(admin, subjectId, classIds, schoolId);
     if (!sync.ok) {
       return { ok: false, error: sync.error };
     }
@@ -447,7 +467,7 @@ export async function updateSubjectAction(
     return { ok: false, error: error.message || "Could not update subject." };
   }
 
-  const sync = await syncSubjectClassLinks(admin, id, classIds);
+  const sync = await syncSubjectClassLinks(admin, id, classIds, schoolId);
   if (!sync.ok) {
     return { ok: false, error: sync.error };
   }
@@ -564,7 +584,7 @@ export async function bulkCreateSubjectsAction(
     }
 
     if (classIds.length > 0) {
-      const sync = await syncSubjectClassLinks(admin, newId, classIds);
+      const sync = await syncSubjectClassLinks(admin, newId, classIds, schoolId);
       if (!sync.ok) {
         await admin.from("subjects").delete().eq("id", newId);
         failed.push(name);

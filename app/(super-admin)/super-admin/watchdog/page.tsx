@@ -1,23 +1,36 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  clearAllAlerts,
-  getServerSnapshot,
-  getSnapshot,
-  subscribe,
-} from "@/watchdog/alerts.store";
-import { WatchdogAlertsPanel } from "@/components/super-admin/WatchdogAlertsPanel";
 
-export default function SuperAdminWatchdogPage() {
-  const alerts = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+interface HealthStats {
+  open: number;
+  critical: number;
+  resolvedToday: number;
+  lastChecked: string;
+}
 
-  const stats = useMemo(() => {
-    const total = alerts.length;
-    const critical = alerts.filter((a) => a.severity === "high").length;
-    return { total, critical };
-  }, [alerts]);
+import { HealthCenterPanel } from "@/components/super-admin/HealthCenterPanel";
+
+export default function SuperAdminHealthCenterPage() {
+  const [stats, setStats] = useState<HealthStats | null>(null);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/super-admin/health/alerts?status=open", {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as { stats?: HealthStats };
+      if (body.stats) setStats(body.stats);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
 
   return (
     <>
@@ -25,14 +38,11 @@ export default function SuperAdminWatchdogPage() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Watchdog monitoring
+              Adakaro Health Center
             </h1>
             <p className="text-sm text-slate-500 dark:text-zinc-400">
-              Non-intrusive observer — events from{" "}
-              <code className="rounded bg-slate-100 px-1 text-xs dark:bg-zinc-800">
-                trackEvent()
-              </code>{" "}
-              only
+              Persistent monitoring for critical school workflows and platform
+              health.
             </p>
           </div>
           <Link
@@ -45,54 +55,63 @@ export default function SuperAdminWatchdogPage() {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-8 py-8">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-              Total alerts
-            </p>
-            <p className="mt-1 text-3xl font-semibold tabular-nums text-slate-900 dark:text-white">
-              {stats.total}
-            </p>
-          </div>
-          <div
-            className={`rounded-xl border p-4 shadow-sm ${
-              stats.critical > 0
-                ? "border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30"
-                : "border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-            }`}
-          >
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-              Critical (high severity)
-            </p>
-            <p
-              className={`mt-1 text-3xl font-semibold tabular-nums ${
-                stats.critical > 0
-                  ? "text-red-700 dark:text-red-300"
-                  : "text-slate-900 dark:text-white"
-              }`}
-            >
-              {stats.critical}
-            </p>
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Open alerts" value={stats?.open ?? "—"} />
+          <StatCard
+            label="Critical alerts"
+            value={stats?.critical ?? "—"}
+            highlight={(stats?.critical ?? 0) > 0}
+          />
+          <StatCard label="Resolved today" value={stats?.resolvedToday ?? "—"} />
+          <StatCard
+            label="Last checked"
+            value={
+              stats?.lastChecked
+                ? new Date(stats.lastChecked).toLocaleTimeString(undefined, {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                : "—"
+            }
+            small
+          />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
-            Alerts
-          </h2>
-          {stats.total > 0 ? (
-            <button
-              type="button"
-              onClick={() => clearAllAlerts()}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Clear all
-            </button>
-          ) : null}
-        </div>
-
-        <WatchdogAlertsPanel />
+        <HealthCenterPanel />
       </main>
     </>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  highlight = false,
+  small = false,
+}: {
+  label: string;
+  value: string | number;
+  highlight?: boolean;
+  small?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 shadow-sm ${
+        highlight
+          ? "border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30"
+          : "border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+      }`}
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+        {label}
+      </p>
+      <p
+        className={`mt-1 font-semibold tabular-nums text-slate-900 dark:text-white ${
+          small ? "text-base" : "text-3xl"
+        } ${highlight ? "text-red-700 dark:text-red-300" : ""}`}
+      >
+        {value}
+      </p>
+    </div>
   );
 }

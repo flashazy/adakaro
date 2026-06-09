@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { reportParentDataLoadAlert } from "@/lib/watchdog/auth-health-alerts";
 import {
   loadParentReportCardsForStudentWithDebug,
   type ParentReportCardsLoadDebug,
@@ -14,7 +15,12 @@ export type { ParentReportCardsLoadDebug };
  */
 export async function loadParentReportCardsForStudent(
   supabase: SupabaseClient,
-  params: { parentUserId: string; studentId: string; enrollmentDate: string | null }
+  params: {
+    parentUserId: string;
+    studentId: string;
+    schoolId?: string | null;
+    enrollmentDate: string | null;
+  }
 ): Promise<unknown[]> {
   const { rows } = await loadParentReportCardsForStudentWithDebug(supabase, params);
   return rows;
@@ -22,7 +28,12 @@ export async function loadParentReportCardsForStudent(
 
 export async function loadParentReportCardsForStudentDebug(
   supabase: SupabaseClient,
-  params: { parentUserId: string; studentId: string; enrollmentDate: string | null }
+  params: {
+    parentUserId: string;
+    studentId: string;
+    schoolId?: string | null;
+    enrollmentDate: string | null;
+  }
 ) {
   return loadParentReportCardsForStudentWithDebug(supabase, params);
 }
@@ -37,7 +48,11 @@ type ServiceRoleClient = ReturnType<
 export async function loadParentClassResultSheets(
   admin: ServiceRoleClient,
   studentClassId: string,
-  opts?: { studentId: string; enrollmentDate: string | null }
+  opts?: {
+    studentId: string;
+    schoolId?: string | null;
+    enrollmentDate: string | null;
+  }
 ): Promise<unknown[]> {
   try {
     return (await loadParentPublishedClassResultPeriods(admin, {
@@ -45,7 +60,14 @@ export async function loadParentClassResultSheets(
       studentId: opts?.studentId,
       enrollmentDate: opts?.enrollmentDate ?? null,
     })) as unknown[];
-  } catch {
+  } catch (err) {
+    reportParentDataLoadAlert({
+      phase: "class_results",
+      schoolId: opts?.schoolId,
+      studentId: opts?.studentId,
+      metadata: { class_id: studentClassId },
+      error: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
 }
@@ -56,7 +78,8 @@ export async function loadParentClassResultSheets(
 export async function loadParentAttendanceForStudent(
   supabase: SupabaseClient,
   studentId: string,
-  enrollmentDate: string | null
+  enrollmentDate: string | null,
+  schoolId?: string | null
 ): Promise<unknown[]> {
   try {
     const { data: attRows, error: attErr } = await supabase
@@ -67,7 +90,15 @@ export async function loadParentAttendanceForStudent(
       .eq("student_id", studentId)
       .order("attendance_date", { ascending: false })
       .limit(2000);
-    if (attErr) return [];
+    if (attErr) {
+      reportParentDataLoadAlert({
+        phase: "attendance",
+        schoolId,
+        studentId,
+        error: attErr.message,
+      });
+      return [];
+    }
     const rows = (attRows ?? []) as unknown as {
       id: string;
       student_id: string;
@@ -107,7 +138,13 @@ export async function loadParentAttendanceForStudent(
         recordedAt,
       };
     });
-  } catch {
+  } catch (err) {
+    reportParentDataLoadAlert({
+      phase: "attendance_exception",
+      schoolId,
+      studentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
 }

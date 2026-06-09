@@ -46,6 +46,19 @@ import {
 import { fetchClassTeacherContactByClassIds } from "@/lib/class-teacher";
 import { ParentClassTeacherContactLine } from "@/components/parent/parent-class-teacher-contact-line";
 import { Users, GraduationCap, Hash, ChevronRight } from "lucide-react";
+import { resolveParentDashboardShell } from "@/lib/parent-dashboard-access";
+import {
+  reportParentDashboardAlert,
+  reportParentDataLoadAlert,
+  reportProfileAccessAlert,
+  resolveParentDashboardAlert,
+  resolveParentDataLoadAlert,
+  resolveProfileAccessAlert,
+} from "@/lib/watchdog/auth-health-alerts";
+import {
+  PARENT_DASHBOARD_REASONS,
+  PROFILE_ACCESS_REASONS,
+} from "@/lib/watchdog/auth-reasons";
 
 interface StudentWithClass {
   id: string;
@@ -171,51 +184,41 @@ export default async function ParentDashboard() {
 
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, role")
-    .eq("id", user.id)
-    .maybeSingle();
+  const shell = await resolveParentDashboardShell(supabase, user.id);
 
-  const profileTyped = profile as { full_name: string; role: UserRole } | null;
-  const profileRole = profileTyped?.role;
-
-  /** Service role: profiles RLS often fails; still show Admin entry when DB says admin. */
-  let hasAdminDashboardAccess = profileRole === "admin";
-  if (!hasAdminDashboardAccess) {
-    try {
-      const admin = createAdminClient();
-      const { data: profRow } = await admin
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-      if ((profRow as { role: string } | null)?.role === "admin") {
-        hasAdminDashboardAccess = true;
-      }
-      if (!hasAdminDashboardAccess) {
-        const { data: memRow } = await admin
-          .from("school_members")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("role", "admin")
-          .limit(1)
-          .maybeSingle();
-        if (memRow) hasAdminDashboardAccess = true;
-      }
-    } catch {
-      /* no service role */
-    }
+  if (shell.profileAccessBlocked) {
+    reportProfileAccessAlert({
+      reason: PROFILE_ACCESS_REASONS.profileQueryFailed,
+      metadata: { user_id: user.id },
+      error: shell.profileAccessError,
+    });
+  } else {
+    resolveProfileAccessAlert(PROFILE_ACCESS_REASONS.profileQueryFailed);
   }
+
+  if (shell.parentStudentsAccessBlocked) {
+    reportParentDashboardAlert({
+      reason: PARENT_DASHBOARD_REASONS.shellLoadFailed,
+      metadata: { user_id: user.id },
+      error: shell.parentStudentsAccessError,
+    });
+  } else {
+    resolveParentDashboardAlert(PARENT_DASHBOARD_REASONS.shellLoadFailed);
+  }
+
+  const profileTyped =
+    shell.profileFullName != null || shell.profileRole != null
+      ? {
+          full_name: shell.profileFullName ?? "",
+          role: (shell.profileRole ?? "parent") as UserRole,
+        }
+      : null;
+  const hasAdminDashboardAccess = shell.hasAdminDashboardAccess;
+  const studentIds = shell.studentLinkIds;
 
   const nowIso = new Date().toISOString();
 
-  // Fetch linked students, pending link requests, and school admin invites in parallel
-  const [linksResult, pendingReqsResult, invitesResult] = await Promise.all([
-    supabase
-      .from("parent_students")
-      .select("student_id")
-      .eq("parent_id", user.id),
+  const [pendingReqsResult, invitesResult] = await Promise.all([
     supabase
       .from("parent_link_requests")
       .select("id, admission_number, status, created_at")
@@ -228,27 +231,6 @@ export default async function ParentDashboard() {
       .eq("status", "pending")
       .gt("expires_at", nowIso),
   ]);
-
-  let typedLinks = (linksResult.data ?? []) as { student_id: string }[];
-  if (
-    typedLinks.length === 0 &&
-    profileTyped?.role === "parent" &&
-    !linksResult.error
-  ) {
-    try {
-      const admin = createAdminClient();
-      const { data: adminLinks, error: adminLinkErr } = await admin
-        .from("parent_students")
-        .select("student_id")
-        .eq("parent_id", user.id);
-      if (!adminLinkErr && adminLinks && adminLinks.length > 0) {
-        typedLinks = adminLinks as { student_id: string }[];
-      }
-    } catch {
-      /* service role unavailable */
-    }
-  }
-  const studentIds = typedLinks.map((l) => l.student_id);
   const childCount = studentIds.length;
   const typedPendingReqs = (pendingReqsResult.data ?? []) as {
     id: string;
@@ -381,7 +363,48 @@ export default async function ParentDashboard() {
         .limit(20),
     ]);
 
+    if (studentsRes.error) {
+      reportParentDataLoadAlert({
+        phase: "students_query",
+        metadata: { user_id: user.id },
+        error: studentsRes.error.message,
+      });
+    }
+    if (balancesRes.error) {
+      reportParentDataLoadAlert({
+        phase: "fee_balances_query",
+        metadata: { user_id: user.id },
+        error: balancesRes.error.message,
+      });
+    }
+    if (paymentsRes.error) {
+      reportParentDataLoadAlert({
+        phase: "payments_query",
+        metadata: { user_id: user.id },
+        error: paymentsRes.error.message,
+      });
+    }
+
     students = (studentsRes.data ?? []) as StudentWithClass[];
+
+    if (!studentsRes.error) {
+      resolveParentDataLoadAlert({ phase: "students_query" });
+      for (const sid of new Set(students.map((s) => s.school_id))) {
+        resolveParentDataLoadAlert({ phase: "students_query", schoolId: sid });
+      }
+    }
+    if (!balancesRes.error) {
+      resolveParentDataLoadAlert({ phase: "fee_balances_query" });
+      for (const sid of new Set(students.map((s) => s.school_id))) {
+        resolveParentDataLoadAlert({ phase: "fee_balances_query", schoolId: sid });
+      }
+    }
+    if (!paymentsRes.error) {
+      resolveParentDataLoadAlert({ phase: "payments_query" });
+      for (const sid of new Set(students.map((s) => s.school_id))) {
+        resolveParentDataLoadAlert({ phase: "payments_query", schoolId: sid });
+      }
+    }
     balances = (balancesRes.data ?? []) as BalanceRow[];
     payments = (paymentsRes.data ?? []) as PaymentRow[];
 
@@ -404,6 +427,7 @@ export default async function ParentDashboard() {
       childTabDataById = await loadParentChildTabData(
         students.map((s) => ({
           id: s.id,
+          school_id: s.school_id,
           class_id: s.class_id,
           class_teacher_id: s.class?.class_teacher_id ?? null,
           enrollment_date: s.enrollment_date ?? null,

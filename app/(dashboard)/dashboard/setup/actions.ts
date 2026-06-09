@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSchoolCurrencyCode } from "@/lib/currency";
+import { reportSchoolCreationFailure } from "@/lib/watchdog/health-alert-reporters";
 
 export interface SetupState {
   error?: string;
@@ -100,10 +101,20 @@ export async function createSchool(
 
   if (rpcError) {
     console.error("[createSchool] create_founding_school error:", rpcError);
+    reportSchoolCreationFailure({
+      phase: "create_founding_school_rpc",
+      user_id: user.id,
+      error: rpcError.message,
+      code: rpcError.code ?? null,
+    });
     return { error: rpcError.message };
   }
 
   if (!schoolId) {
+    reportSchoolCreationFailure({
+      phase: "empty_school_id",
+      user_id: user.id,
+    });
     return { error: "School was not created." };
   }
 

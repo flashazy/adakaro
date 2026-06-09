@@ -20,6 +20,19 @@ import { performSignOut } from "@/lib/auth/perform-sign-out";
 import type { UserRole } from "@/types/supabase";
 import bcrypt from "bcryptjs";
 import type { User } from "@supabase/supabase-js";
+import { isExpectedAuthError } from "@/lib/watchdog/health-alert-reporters";
+import {
+  reportAuthPlatformAlert,
+  reportCaptureCardLoginAlert,
+  reportParentLoginAlert,
+  reportTeacherLoginAlert,
+} from "@/lib/watchdog/auth-health-alerts";
+import {
+  AUTH_PLATFORM_REASONS,
+  CAPTURE_CARD_LOGIN_REASONS,
+  PARENT_LOGIN_REASONS,
+  TEACHER_LOGIN_REASONS,
+} from "@/lib/watchdog/auth-reasons";
 
 export interface AuthState {
   error?: string;
@@ -126,6 +139,9 @@ export async function login(
     admin = createAdminClient();
   } catch {
     console.error(`${trace} createAdminClient failed`);
+    reportAuthPlatformAlert({
+      reason: AUTH_PLATFORM_REASONS.adminClientUnavailable,
+    });
     return {
       error:
         process.env.NODE_ENV === "development"
@@ -155,6 +171,13 @@ export async function login(
       await clearCaptureCardSessionCookie();
     } else if (error) {
       console.info(`${trace} supabase attempt#1 failed`, { message: error.message });
+      if (!isExpectedAuthError(error.message)) {
+        reportParentLoginAlert({
+          reason: PARENT_LOGIN_REASONS.signInError,
+          metadata: { path: "email" },
+          error: error.message,
+        });
+      }
     }
   }
 
@@ -173,9 +196,25 @@ export async function login(
         await clearCaptureCardSessionCookie();
       } else if (error) {
         console.info(`${trace} supabase attempt#2 failed`, { message: error.message });
+        if (!isExpectedAuthError(error.message)) {
+          reportTeacherLoginAlert({
+            reason: TEACHER_LOGIN_REASONS.signInError,
+            metadata: { path: "username_resolved" },
+            error: error.message,
+          });
+        }
       }
     } else {
       console.info(`${trace} resolveLoginEmailForSignIn not ok`, { error: resolved.error });
+      if (
+        resolved.error &&
+        !/not found|no account|unknown/i.test(resolved.error)
+      ) {
+        reportTeacherLoginAlert({
+          reason: TEACHER_LOGIN_REASONS.emailResolutionFailed,
+          error: resolved.error,
+        });
+      }
     }
   }
 
@@ -369,6 +408,10 @@ export async function login(
 
   if (qErr) {
     console.error("[login] capture_card_users query error", qErr);
+    reportCaptureCardLoginAlert({
+      reason: CAPTURE_CARD_LOGIN_REASONS.captureCardLookupFailed,
+      error: qErr.message,
+    });
     return {
       error: looksLikeEmail || resolvedEmail
         ? "Invalid email or password."

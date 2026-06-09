@@ -1678,6 +1678,63 @@ export interface Database {
           updated_at?: string;
         };
       };
+      health_alerts: {
+        Row: {
+          id: string;
+          school_id: string | null;
+          feature: string;
+          severity: "low" | "medium" | "high" | "critical";
+          title: string;
+          message: string;
+          metadata: Json | null;
+          status: "open" | "resolved" | "ignored";
+          dedupe_key: string;
+          first_seen_at: string;
+          last_seen_at: string;
+          resolved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id?: string | null;
+          feature: string;
+          severity: "low" | "medium" | "high" | "critical";
+          title: string;
+          message: string;
+          metadata?: Json | null;
+          status?: "open" | "resolved" | "ignored";
+          dedupe_key: string;
+          first_seen_at?: string;
+          last_seen_at?: string;
+          resolved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          school_id?: string | null;
+          feature?: string;
+          severity?: "low" | "medium" | "high" | "critical";
+          title?: string;
+          message?: string;
+          metadata?: Json | null;
+          status?: "open" | "resolved" | "ignored";
+          dedupe_key?: string;
+          first_seen_at?: string;
+          last_seen_at?: string;
+          resolved_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "health_alerts_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       payments: {
         Row: {
           id: string;

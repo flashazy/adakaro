@@ -18,6 +18,17 @@ export function trackEvent(event: WatchdogEvent): void {
     };
 
     evaluateEvent(normalized);
+
+    if (typeof window !== "undefined") {
+      void fetch("/api/watchdog/events", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(normalized),
+      }).catch(() => {
+        /* persistence is best-effort */
+      });
+    }
   } catch {
     /* optional monitoring — never break callers */
   }

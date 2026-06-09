@@ -27,6 +27,10 @@ import { verifySchoolAdminPasswordForOverride } from "@/lib/report-card-fee/veri
 import type { ClassSendEligibilityPreview } from "@/lib/report-card-fee/types";
 import { coordinatorGenerationWarningsForClass } from "./coordinator-gradebook-precalc";
 import { batchResolveStudentTermExamScores } from "@/lib/report-card-term-exam-resolver";
+import { reportReportCardGenerationFailure } from "@/lib/watchdog/health-alert-reporters";
+import { reportHealthAlert } from "@/lib/watchdog/report-health-alert";
+import { HEALTH_FEATURES } from "@/lib/watchdog/features";
+import { SECONDARY_BEST_SUBJECT_COUNT } from "@/lib/school-level";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminDb = any;
@@ -460,7 +464,23 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
     .eq("academic_year", academicYear)
     .eq("status", "pending_review");
 
-  if (fetchErr) return { ok: false, error: fetchErr.message };
+  if (fetchErr) {
+    void reportHealthAlert({
+      feature: HEALTH_FEATURES.parentReportPublishing,
+      severity: "high",
+      title: "Parent report publish failed",
+      message: "Could not load pending report cards before sending to parents.",
+      schoolId,
+      dedupeKey: `parent_report:fetch_fail:${classId}:${term}:${academicYear}`,
+      metadata: {
+        class_id: classId,
+        term,
+        academic_year: academicYear,
+        error: fetchErr.message,
+      },
+    });
+    return { ok: false, error: fetchErr.message };
+  }
 
   const pending = (pendingCards ?? []) as {
     id: string;
@@ -669,6 +689,21 @@ export async function sendCoordinatorClassReportCardsToParentsAction(
     .select("id");
 
   if (error) {
+    void reportHealthAlert({
+      feature: HEALTH_FEATURES.parentReportPublishing,
+      severity: "critical",
+      title: "Parent report publish failed",
+      message: "Report cards could not be approved for parent access.",
+      schoolId,
+      dedupeKey: `parent_report:approve_fail:${classId}:${term}:${academicYear}`,
+      metadata: {
+        class_id: classId,
+        term,
+        academic_year: academicYear,
+        pending_count: idsToApprove.length,
+        error: error.message,
+      },
+    });
     return { ok: false, error: error.message };
   }
 
@@ -1343,6 +1378,35 @@ export async function generateReportCardsForClassAction(
         `${stud.full_name || "Student"}: could not save report card summary (${summaryErr})`
       );
     }
+
+    if (
+      coordinatorSchoolLevel === "secondary" &&
+      completedSubjectsCount > 0 &&
+      completedSubjectsCount < SECONDARY_BEST_SUBJECT_COUNT
+    ) {
+      const { data: summaryRow } = await admin
+        .from("report_cards")
+        .select("is_complete, completed_subjects_count")
+        .eq("id", reportCardId)
+        .maybeSingle();
+      const isComplete = (
+        summaryRow as { is_complete?: boolean } | null
+      )?.is_complete;
+      if (isComplete === true) {
+        reportReportCardGenerationFailure(
+          {
+            phase: "secondary_incomplete_marked_complete",
+            student_id: stud.id,
+            report_card_id: reportCardId,
+            completed_subjects_count: completedSubjectsCount,
+            class_id: classId,
+            term,
+            academic_year: academicYear,
+          },
+          klass.school_id
+        );
+      }
+    }
   }
 
   // `skipped` in the return value counts existing cards that had their rows
@@ -1352,10 +1416,65 @@ export async function generateReportCardsForClassAction(
   // Any DB error for an individual student is surfaced but we still revalidate and
   // report partial success so the coordinator can see what landed.
   if (generated === 0 && refreshed === 0 && errors.length > 0) {
+    const errMsg =
+      errors.slice(0, 3).join("; ") || "Could not generate report cards.";
+    reportReportCardGenerationFailure(
+      {
+        phase: "total_failure",
+        class_id: classId,
+        term,
+        academic_year: academicYear,
+        error_count: errors.length,
+        error_preview: errMsg.slice(0, 200),
+      },
+      klass.school_id
+    );
     return {
       ok: false,
-      error: errors.slice(0, 3).join("; ") || "Could not generate report cards.",
+      error: errMsg,
     };
+  }
+
+  const finalCards = await fetchAllRows<{ student_id: string }>({
+    label: "coordinator:verify report_cards after generation",
+    fetchPage: async (from, to) =>
+      await admin
+        .from("report_cards")
+        .select("student_id")
+        .eq("term", term)
+        .eq("academic_year", academicYear)
+        .in("student_id", studentIds)
+        .range(from, to),
+  });
+  const cardStudentIds = new Set(
+    (finalCards ?? []).map((r) => r.student_id)
+  );
+  const missingStudentIds = studentIds.filter((id) => !cardStudentIds.has(id));
+  if (missingStudentIds.length > 0) {
+    reportReportCardGenerationFailure(
+      {
+        phase: "missing_after_generation",
+        class_id: classId,
+        term,
+        academic_year: academicYear,
+        missing_count: missingStudentIds.length,
+        student_ids: missingStudentIds.slice(0, 25),
+      },
+      klass.school_id
+    );
+  }
+
+  if (errors.length > 0) {
+    reportReportCardGenerationFailure(
+      {
+        phase: "partial_errors",
+        class_id: classId,
+        term,
+        academic_year: academicYear,
+        error_count: errors.length,
+      },
+      klass.school_id
+    );
   }
 
   await persistAcademicPerformanceReport({
