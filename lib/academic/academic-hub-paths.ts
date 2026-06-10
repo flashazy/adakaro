@@ -7,6 +7,8 @@ export const ACADEMIC_REPORTS = `${ACADEMIC_HUB}/reports`;
 
 export const ACADEMIC_PROMOTIONS = `${ACADEMIC_HUB}/promotions`;
 
+export const ACADEMIC_CURRICULUM_COVERAGE = `${ACADEMIC_HUB}/curriculum-coverage`;
+
 /** Legacy routes kept for bookmarks and deep links. */
 export const LEGACY_STUDENT_PROFILES = "/teacher-dashboard/students";
 

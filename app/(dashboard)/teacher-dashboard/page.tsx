@@ -656,7 +656,7 @@ export default async function TeacherDashboardPage() {
                   <p className="mt-1.5 text-sm text-gray-500 dark:text-zinc-500 sm:mt-2">
                     {n} student{n === 1 ? "" : "s"} • Year {yearLabel}
                   </p>
-                  <div className="mt-4 grid grid-cols-3 gap-1.5 sm:mt-5 sm:flex sm:flex-wrap sm:gap-3">
+                  <div className="mt-4 grid grid-cols-2 gap-1.5 sm:mt-5 sm:flex sm:flex-wrap sm:gap-3">
                     <Link
                       href={`/teacher-dashboard/attendance?classId=${item.classId}`}
                       className="inline-flex h-9 min-w-0 items-center justify-center gap-1 rounded-lg bg-school-primary px-2 text-xs font-medium whitespace-nowrap text-white transition-colors duration-150 hover:brightness-105 sm:h-10 sm:gap-1.5 sm:px-4 sm:text-sm sm:flex-none"
@@ -689,6 +689,17 @@ export default async function TeacherDashboardPage() {
                       />
                       <span className="sm:hidden">Plans</span>
                       <span className="hidden sm:inline">Lesson plans</span>
+                    </Link>
+                    <Link
+                      href={`/teacher-dashboard/syllabus-coverage?classId=${item.classId}`}
+                      className="inline-flex h-9 min-w-0 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 text-xs font-medium whitespace-nowrap text-slate-800 transition-colors duration-150 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800 sm:h-10 sm:gap-1.5 sm:px-4 sm:text-sm sm:flex-none"
+                    >
+                      <BookOpen
+                        className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4"
+                        aria-hidden
+                      />
+                      <span className="sm:hidden">Syllabus</span>
+                      <span className="hidden sm:inline">Syllabus</span>
                     </Link>
                   </div>
                 </div>

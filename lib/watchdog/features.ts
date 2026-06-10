@@ -27,6 +27,7 @@ export const HEALTH_FEATURES = {
   parentDataLoad: "parent_data_load",
   teacherNotifications: "teacher_notifications",
   academicReports: "academic_reports",
+  syllabusCoverage: "syllabus_coverage",
 } as const;
 
 export type HealthFeature =

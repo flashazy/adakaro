@@ -1,13 +1,16 @@
 import {
   BarChart3,
+  BookOpenCheck,
   GraduationCap,
   Users,
 } from "lucide-react";
 import {
+  ACADEMIC_CURRICULUM_COVERAGE,
   ACADEMIC_PROMOTIONS,
   ACADEMIC_REPORTS,
   ACADEMIC_STUDENT_PROFILES,
 } from "@/lib/academic/academic-hub-paths";
+import { cn } from "@/lib/utils";
 import { academicSectionHeadingHeroClass } from "./academic-ui-styles";
 import { AcademicQuickActionCard } from "./academic-quick-action-card";
 
@@ -32,6 +35,14 @@ export function AcademicQuickActions({
       description: "Review class performance summaries by term.",
       icon: <BarChart3 className="text-indigo-600 dark:text-indigo-400" aria-hidden />,
     },
+    {
+      href: ACADEMIC_CURRICULUM_COVERAGE,
+      title: "Curriculum Coverage",
+      description: "Monitor school-wide syllabus progress across classes.",
+      icon: (
+        <BookOpenCheck className="text-violet-600 dark:text-violet-400" aria-hidden />
+      ),
+    },
   ];
 
   if (showPromotions) {
@@ -49,11 +60,14 @@ export function AcademicQuickActions({
     <section aria-label="Quick actions">
       <h2 className={academicSectionHeadingHeroClass}>Quick actions</h2>
       <div
-        className={`mt-3 grid gap-3 ${
-          actions.length >= 3
-            ? "sm:grid-cols-2 lg:grid-cols-3"
-            : "sm:grid-cols-2"
-        }`}
+        className={cn(
+          "mt-3 grid gap-3 sm:grid-cols-2",
+          actions.length >= 4
+            ? "lg:grid-cols-4"
+            : actions.length >= 3
+              ? "lg:grid-cols-3"
+              : undefined
+        )}
       >
         {actions.map((action) => (
           <AcademicQuickActionCard

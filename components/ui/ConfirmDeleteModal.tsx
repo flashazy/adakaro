@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, X } from "lucide-react";
+import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface ConfirmDeleteModalProps {
   open: boolean;
@@ -15,6 +16,12 @@ export interface ConfirmDeleteModalProps {
   isDeleting?: boolean;
   /** Default `danger` (red). Use `primary` for non-destructive confirmations. */
   confirmVariant?: "danger" | "primary";
+  /** Shown as: “NAME” will be deleted. */
+  itemName?: string;
+  /** Inline error when the confirm action fails. */
+  error?: string | null;
+  /** Warning trash icon in header (syllabus / premium delete flows). */
+  showWarningIcon?: boolean;
 }
 
 /**
@@ -30,6 +37,9 @@ export function ConfirmDeleteModal({
   cancelLabel = "Cancel",
   isDeleting = false,
   confirmVariant = "danger",
+  itemName,
+  error = null,
+  showWarningIcon = false,
 }: ConfirmDeleteModalProps) {
   const [rendered, setRendered] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -93,7 +103,7 @@ export function ConfirmDeleteModal({
             : "translate-y-2 scale-[0.98] opacity-0 sm:translate-y-0"
         }`}
       >
-        <div className="relative border-b border-slate-200 px-4 py-3 dark:border-zinc-700 sm:px-5">
+        <div className="relative border-b border-slate-200 px-4 py-4 dark:border-zinc-700 sm:px-5">
           <button
             type="button"
             onClick={isDeleting ? undefined : onClose}
@@ -103,12 +113,24 @@ export function ConfirmDeleteModal({
           >
             <X className="h-5 w-5" aria-hidden />
           </button>
-          <h2
-            id="confirm-delete-title"
-            className="pr-10 text-base font-semibold text-slate-900 dark:text-white"
-          >
-            {title}
-          </h2>
+          <div className="flex items-start gap-3 pr-10">
+            {showWarningIcon ? (
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400"
+                aria-hidden
+              >
+                <Trash2 className="h-5 w-5" />
+              </div>
+            ) : null}
+            <div className="min-w-0">
+              <h2
+                id="confirm-delete-title"
+                className="text-base font-semibold text-slate-900 dark:text-white"
+              >
+                {title}
+              </h2>
+            </div>
+          </div>
         </div>
         <div className="px-4 py-4 sm:px-5">
           <p
@@ -117,12 +139,34 @@ export function ConfirmDeleteModal({
           >
             {message}
           </p>
+          {itemName ? (
+            <p className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-800 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-100">
+              &ldquo;{itemName}&rdquo; will be deleted.
+            </p>
+          ) : null}
+          {error ? (
+            <p
+              className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200"
+              role="alert"
+            >
+              <AlertTriangle
+                className="mt-0.5 h-4 w-4 shrink-0"
+                aria-hidden
+              />
+              <span>{error}</span>
+            </p>
+          ) : null}
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
             <button
               type="button"
               onClick={onClose}
               disabled={isDeleting}
-              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 sm:w-auto"
+              className={cn(
+                "w-full rounded-lg border px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 sm:w-auto",
+                showWarningIcon
+                  ? "border-violet-200 bg-violet-50/80 text-violet-800 hover:bg-violet-100 dark:border-violet-800/50 dark:bg-violet-950/30 dark:text-violet-200 dark:hover:bg-violet-950/50"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              )}
             >
               {cancelLabel}
             </button>

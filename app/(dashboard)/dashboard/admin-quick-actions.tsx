@@ -203,6 +203,12 @@ export function AdminQuickActions({
           icon={icons.assignments}
         />
         <AdminQuickActionCard
+          href="/dashboard/syllabus-coverage"
+          title="Syllabus Coverage"
+          description="View teaching progress across classes and subjects."
+          icon={icons.subjects}
+        />
+        <AdminQuickActionCard
           href="/dashboard/team"
           title="Team"
           description="Manage school administrators."

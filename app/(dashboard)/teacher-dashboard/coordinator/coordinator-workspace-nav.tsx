@@ -26,6 +26,13 @@ const TABS = [
     match: (path: string) =>
       path === "/teacher-dashboard/coordinator/streaming/history",
   },
+  {
+    href: "/teacher-dashboard/coordinator/syllabus-coverage",
+    label: "Syllabus Coverage",
+    match: (path: string) =>
+      path === "/teacher-dashboard/coordinator/syllabus-coverage" ||
+      path.startsWith("/teacher-dashboard/coordinator/syllabus-coverage/"),
+  },
 ] as const;
 
 export function CoordinatorWorkspaceNav() {

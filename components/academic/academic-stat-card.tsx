@@ -16,6 +16,8 @@ interface AcademicStatCardProps {
   icon: LucideIcon;
   className?: string;
   href?: string;
+  onClick?: () => void;
+  isActive?: boolean;
   accent?: AcademicKpiAccent;
   /** Compact value display for long text (e.g. dates). */
   valueSize?: "default" | "compact";
@@ -28,6 +30,8 @@ export function AcademicStatCard({
   icon: Icon,
   className,
   href,
+  onClick,
+  isActive,
   accent,
   valueSize = "default",
 }: AcademicStatCardProps) {
@@ -69,7 +73,8 @@ export function AcademicStatCard({
     "flex min-h-[88px] flex-col justify-between p-4",
     academicCardBaseClass,
     accentClasses.accentBorder,
-    href && academicCardInteractiveClass,
+    (href || onClick) && academicCardInteractiveClass,
+    isActive && "ring-2 ring-violet-400/50 dark:ring-violet-500/40",
     className
   );
 
@@ -78,6 +83,14 @@ export function AcademicStatCard({
       <NavLinkWithLoading href={href} className={cardClass}>
         {content}
       </NavLinkWithLoading>
+    );
+  }
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cn(cardClass, "text-left")}>
+        {content}
+      </button>
     );
   }
 

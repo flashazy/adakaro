@@ -3,6 +3,7 @@
 import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { cn } from "@/lib/utils";
 import {
+  ACADEMIC_CURRICULUM_COVERAGE,
   ACADEMIC_PROMOTIONS,
   ACADEMIC_REPORTS,
   ACADEMIC_STUDENT_PROFILES,
@@ -10,7 +11,7 @@ import {
   LEGACY_PROMOTIONS,
   LEGACY_STUDENT_PROFILES,
 } from "@/lib/academic/academic-hub-paths";
-import { FileBarChart, GraduationCap, Users } from "lucide-react";
+import { BookOpenCheck, FileBarChart, GraduationCap, Users } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 function tabMatches(pathname: string, href: string, legacy?: string): boolean {
@@ -41,6 +42,11 @@ const TAB_CONFIG = [
     icon: GraduationCap,
     promotionsOnly: true,
   },
+  {
+    href: ACADEMIC_CURRICULUM_COVERAGE,
+    label: "Curriculum Coverage",
+    icon: BookOpenCheck,
+  },
 ] as const;
 
 export function AcademicHubTabs({
@@ -61,7 +67,11 @@ export function AcademicHubTabs({
       role="tablist"
     >
       {visibleTabs.map((tab) => {
-        const active = tabMatches(pathname, tab.href, tab.legacy);
+        const active = tabMatches(
+          pathname,
+          tab.href,
+          "legacy" in tab ? tab.legacy : undefined
+        );
         const Icon = tab.icon;
         const base =
           "group relative inline-flex min-h-[42px] shrink-0 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-950 sm:px-4";
