@@ -82,7 +82,7 @@ function UpgradeSubscriptionBanner({
   return (
     <div
       className={cn(
-        "mt-0 flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+        "mt-4 flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
         "border-[rgb(var(--school-primary-rgb)/0.14)] bg-[rgb(var(--school-primary-rgb)/0.05)]",
         "dark:border-[rgb(var(--school-primary-rgb)/0.2)] dark:bg-[rgb(var(--school-primary-rgb)/0.08)]"
       )}
@@ -127,7 +127,7 @@ export function AdminQuickActions({
 }: AdminQuickActionsProps) {
   return (
     <>
-      <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-2">
+      <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <AdminQuickActionCard
           href="/dashboard/classes"
           title="Manage Classes"
@@ -135,15 +135,9 @@ export function AdminQuickActions({
           icon={icons.classes}
         />
         <AdminQuickActionCard
-          href="/dashboard/promotions"
-          title="Year-end promotions"
-          description="Move students to the next class or graduate."
-          icon={icons.students}
-        />
-        <AdminQuickActionCard
           href="/dashboard/subjects"
           title="Manage Subjects"
-          description="Add, edit, or remove subjects"
+          description="Add, edit, or remove subjects."
           icon={icons.subjects}
         />
         <AdminQuickActionCard
@@ -153,11 +147,28 @@ export function AdminQuickActions({
           icon={icons.students}
         />
         <AdminQuickActionCard
+          href="/dashboard/teachers"
+          title="Teachers"
+          description="Create and manage teacher accounts."
+          icon={icons.teachers}
+        />
+        <AdminQuickActionCard
+          href="/dashboard/assignments"
+          title="Assignments"
+          description="View and manage teacher class assignments."
+          icon={icons.assignments}
+        />
+        <AdminQuickActionCard
+          href="/dashboard/syllabus-coverage"
+          title="Syllabus Coverage"
+          description="View teaching progress across classes and subjects."
+          icon={icons.subjects}
+        />
+        <AdminQuickActionCard
           href="/dashboard/payments"
           title="Finance"
           description="Payments, fee setup, access rules & reports."
           icon={icons.finance}
-          emphasized
         />
         <AdminQuickActionHub
           title="Parent Access"
@@ -191,36 +202,22 @@ export function AdminQuickActions({
           ]}
         />
         <AdminQuickActionCard
-          href="/dashboard/teachers"
-          title="Teachers"
-          description="Create and manage teacher accounts."
-          icon={icons.teachers}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/assignments"
-          title="Assignments"
-          description="View and manage teacher class assignments."
-          icon={icons.assignments}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/syllabus-coverage"
-          title="Syllabus Coverage"
-          description="View teaching progress across classes and subjects."
-          icon={icons.subjects}
-        />
-        <AdminQuickActionCard
           href="/dashboard/team"
           title="Team"
           description="Manage school administrators."
           icon={icons.team}
         />
         <AdminQuickActionCard
+          href="/dashboard/promotions"
+          title="Year-end promotions"
+          description="Move students to the next class or graduate."
+          icon={icons.students}
+        />
+        <AdminQuickActionCard
           href="/dashboard/school-settings"
           title="School settings"
           description="Manage currency, school profile and preferences."
           icon={icons.settings}
-          metaChip="General Setup"
-          className="lg:col-span-2"
         />
       </div>
       <UpgradeSubscriptionBanner schoolId={schoolId} currentPlan={currentPlan} />

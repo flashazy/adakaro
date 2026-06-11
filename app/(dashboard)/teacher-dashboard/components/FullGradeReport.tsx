@@ -154,20 +154,6 @@ function FullGradeReportRankingBody({ ranking }: { ranking: RankingRow[] }) {
     return ranking.slice(start, start + screenPageSize);
   }, [ranking, isPrinting, effectivePage, screenPageSize]);
 
-  /** Print: original half / half split (unchanged). */
-  const rankingSplitPrint = useMemo(() => {
-    const list = visibleRanking;
-    const n = list.length;
-    if (n === 0) {
-      return { left: [] as RankingRow[], right: [] as RankingRow[] };
-    }
-    const leftCount = Math.ceil(n / 2);
-    return {
-      left: list.slice(0, leftCount),
-      right: list.slice(leftCount),
-    };
-  }, [visibleRanking]);
-
   const desktopRankingColumns = useMemo(() => {
     const list = visibleRanking;
     const n = list.length;
@@ -191,7 +177,7 @@ function FullGradeReportRankingBody({ ranking }: { ranking: RankingRow[] }) {
 
   return (
     <div className="mt-3 border-t border-slate-100 pt-3 dark:border-zinc-700">
-      <div className="mb-3">
+      <div className="mb-3 print:hidden">
         <RankingPaginationBar
           total={ranking.length}
           page={effectivePage}
@@ -266,44 +252,53 @@ function FullGradeReportRankingBody({ ranking }: { ranking: RankingRow[] }) {
           </div>
         ))}
       </div>
-      <div className="hidden gap-4 print:grid print:grid-cols-2">
-        {(
-          [rankingSplitPrint.left, rankingSplitPrint.right] as const
-        ).map((rows, idx) => (
-          <div
-            key={idx === 0 ? "rank-print-left" : "rank-print-right"}
-            className="overflow-x-auto rounded-lg border border-slate-200 dark:border-zinc-700"
-          >
-            <table className="w-full min-w-0 border-collapse text-left text-xs sm:text-sm">
-              <thead>
-                <tr className="bg-slate-800 text-white dark:bg-slate-800">
-                  <th className="w-14 border border-slate-600 px-2 py-2 font-semibold">
-                    #
-                  </th>
-                  <th className="border border-slate-600 px-2 py-2 font-semibold">
-                    Student
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={`print-${idx}-${r.rank}-${r.name}`}
-                    className="break-inside-avoid odd:bg-white even:bg-slate-50/90 dark:odd:bg-zinc-900/80 dark:even:bg-zinc-900/50"
-                    style={{ pageBreakInside: "avoid" }}
-                  >
-                    <td className="border border-slate-200 px-2 py-1.5 tabular-nums font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
-                      {r.rank}
-                    </td>
-                    <td className="whitespace-normal break-words border border-slate-200 px-2 py-1.5 font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
-                      {r.name}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 print:block dark:border-zinc-700">
+        <table className="w-full border-collapse text-left text-xs print:table-fixed">
+          <thead>
+            <tr className="bg-slate-800 text-white dark:bg-slate-800">
+              <th className="w-[8%] border border-slate-600 px-2 py-2 font-semibold">
+                #
+              </th>
+              <th className="w-[34%] border border-slate-600 px-2 py-2 font-semibold">
+                Student
+              </th>
+              <th className="w-[18%] border border-slate-600 px-2 py-2 font-semibold">
+                Score
+              </th>
+              <th className="w-[12%] border border-slate-600 px-2 py-2 font-semibold">
+                Grade
+              </th>
+              <th className="w-[28%] border border-slate-600 px-2 py-2 font-semibold">
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRanking.map((r) => (
+              <tr
+                key={`print-rank-${r.rank}-${r.name}`}
+                className="break-inside-avoid odd:bg-white even:bg-slate-50/90 dark:odd:bg-zinc-900/80 dark:even:bg-zinc-900/50"
+                style={{ pageBreakInside: "avoid" }}
+              >
+                <td className="border border-slate-200 px-2 py-1.5 tabular-nums font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                  {r.rank}
+                </td>
+                <td className="whitespace-normal break-words border border-slate-200 px-2 py-1.5 font-medium text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                  {r.name}
+                </td>
+                <td className="border border-slate-200 px-2 py-1.5 tabular-nums text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                  {r.scorePct}
+                </td>
+                <td className="border border-slate-200 px-2 py-1.5 font-semibold text-slate-800 dark:border-zinc-600 dark:text-zinc-100">
+                  {r.grade}
+                </td>
+                <td className="whitespace-normal break-words border border-slate-200 px-2 py-1.5 text-slate-700 dark:border-zinc-600 dark:text-zinc-300">
+                  {r.badge || "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -461,29 +456,35 @@ export function FullGradeReport({
           color: #000 !important;
         }
 
-        /* Keep tables, rows, and ranking entries from splitting. */
+        /* PDF-safe table flow: full width, repeat headers, avoid row splits. */
         #full-grade-report-print-surface table {
           border-collapse: collapse !important;
           width: 100% !important;
-          page-break-inside: avoid;
-          break-inside: avoid;
+          table-layout: fixed !important;
         }
-        #full-grade-report-print-surface table thead,
+        #full-grade-report-print-surface table thead {
+          display: table-header-group !important;
+        }
         #full-grade-report-print-surface table tr {
-          page-break-inside: avoid;
-          break-inside: avoid;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
         }
         #full-grade-report-print-surface table th,
         #full-grade-report-print-surface table td {
           border: 1px solid #cbd5e1 !important;
           padding: 4px 6px !important;
           vertical-align: top !important;
+          overflow-wrap: anywhere !important;
+          word-break: break-word !important;
         }
-        #full-grade-report-print-surface section,
+        #full-grade-report-print-surface section {
+          page-break-inside: auto !important;
+          break-inside: auto !important;
+        }
         #full-grade-report-print-surface ol > li,
         #full-grade-report-print-surface ul > li {
-          page-break-inside: avoid;
-          break-inside: avoid;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
         }
       }
     `;

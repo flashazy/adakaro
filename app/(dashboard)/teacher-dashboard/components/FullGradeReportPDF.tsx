@@ -107,6 +107,48 @@ function writePassRates(
   return y + 2;
 }
 
+const PDF_TABLE_HEAD_FILL: [number, number, number] = [51, 65, 85];
+const PDF_TABLE_GRID_STYLES = {
+  theme: "grid" as const,
+  showHead: "everyPage" as const,
+  rowPageBreak: "avoid" as const,
+  styles: {
+    fontSize: 9,
+    cellPadding: 2,
+    overflow: "linebreak" as OverflowType,
+    valign: "top" as VAlignType,
+    lineWidth: 0.1,
+    lineColor: [0, 0, 0] as [number, number, number],
+  },
+  headStyles: {
+    fillColor: PDF_TABLE_HEAD_FILL,
+    textColor: [255, 255, 255] as [number, number, number],
+    fontStyle: "bold" as FontStyle,
+    halign: "center" as HAlignType,
+    lineWidth: 0.1,
+    lineColor: [0, 0, 0] as [number, number, number],
+  },
+  alternateRowStyles: {
+    fillColor: [245, 245, 245] as [number, number, number],
+  },
+};
+
+function addPdfPageNumbers(doc: jsPDF): void {
+  const pageCount = doc.getNumberOfPages();
+  const pageH = doc.internal.pageSize.getHeight();
+  const pageW = doc.internal.pageSize.getWidth();
+  for (let i = 1; i <= pageCount; i += 1) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Page ${i} of ${pageCount}`, pageW / 2, pageH - 8, {
+      align: "center",
+    });
+    doc.setTextColor(0, 0, 0);
+  }
+}
+
 function writeFailRates(
   doc: jsPDF,
   margin: number,
@@ -238,78 +280,42 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
     doc.text("No scores entered for this assignment.", margin, y);
     y += 6;
   } else {
-    /** Left column ranks 1 … ceil(N/2); right column the rest. Same data as UI. */
-    const nLen = data.ranking.length;
-    const leftCount = Math.ceil(nLen / 2);
-    const leftRows = data.ranking.slice(0, leftCount);
-    const rightRows = data.ranking.slice(leftCount);
-    const rankStartY = y;
-    const rankGapMm = 3;
-    const rankColW = (contentW - rankGapMm) / 2;
-    const numW = rankColW * 0.14;
-
-    const rankGrid = {
-      theme: "grid" as const,
-      showHead: "everyPage" as const,
-      startY: rankStartY,
-      head: [["#", "Student"]] as [[string, string]],
-      styles: {
-        fontSize: 9,
-        cellPadding: 2,
-        overflow: "linebreak" as OverflowType,
-        valign: "top" as VAlignType,
-        lineWidth: 0.1,
-        lineColor: [0, 0, 0] as [number, number, number],
-      },
-      headStyles: {
-        fillColor: [51, 65, 85] as [number, number, number],
-        textColor: [255, 255, 255] as [number, number, number],
-        fontStyle: "bold" as FontStyle,
-        halign: "center" as HAlignType,
-        lineWidth: 0.1,
-        lineColor: [0, 0, 0] as [number, number, number],
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245] as [number, number, number],
-      },
+    autoTable(doc, {
+      ...PDF_TABLE_GRID_STYLES,
+      startY: y,
+      margin: { left: margin, right: margin, bottom: 14 },
+      tableWidth: contentW,
+      head: [["#", "Student", "Score", "Grade", "Status"]],
+      body: data.ranking.map((row) => [
+        String(row.rank),
+        sanitizeMarksReportPdfText(row.name),
+        sanitizeMarksReportPdfText(row.scorePct),
+        sanitizeMarksReportPdfText(row.grade),
+        sanitizeMarksReportPdfText(row.badge) || "—",
+      ]),
       columnStyles: {
         0: {
-          cellWidth: numW,
+          cellWidth: contentW * 0.08,
+          halign: "center" as HAlignType,
+          font: "courier" as StandardFontType,
+        },
+        1: { cellWidth: contentW * 0.38, halign: "left" as HAlignType },
+        2: {
+          cellWidth: contentW * 0.18,
           halign: "right" as HAlignType,
           font: "courier" as StandardFontType,
         },
-        1: {
-          cellWidth: rankColW - numW,
-          halign: "left" as HAlignType,
+        3: {
+          cellWidth: contentW * 0.12,
+          halign: "center" as HAlignType,
+          fontStyle: "bold" as FontStyle,
         },
+        4: { cellWidth: contentW * 0.24, halign: "left" as HAlignType },
       },
-    };
-
-    autoTable(doc, {
-      ...rankGrid,
-      margin: { left: margin, right: margin + rankColW + rankGapMm },
-      tableWidth: rankColW,
-      body: leftRows.map((r) => [
-        String(r.rank),
-        sanitizeMarksReportPdfText(r.name),
-      ]),
     });
 
     const docExt = doc as unknown as { lastAutoTable?: { finalY: number } };
-    const leftFinalY = docExt.lastAutoTable?.finalY ?? rankStartY;
-
-    autoTable(doc, {
-      ...rankGrid,
-      margin: { left: margin + rankColW + rankGapMm, right: margin },
-      tableWidth: rankColW,
-      body: rightRows.map((r) => [
-        String(r.rank),
-        sanitizeMarksReportPdfText(r.name),
-      ]),
-    });
-
-    const rightFinalY = docExt.lastAutoTable?.finalY ?? rankStartY;
-    y = Math.max(leftFinalY, rightFinalY) + 6;
+    y = (docExt.lastAutoTable?.finalY ?? y) + 6;
   }
 
   if (y > pageH - 40) {
@@ -327,54 +333,30 @@ export function downloadFullGradeReportPdf(data: FullGradeReportPdfInput): void 
   ]);
 
   autoTable(doc, {
+    ...PDF_TABLE_GRID_STYLES,
     startY: y,
-    showHead: "everyPage",
+    margin: { left: margin, right: margin, bottom: 14 },
+    tableWidth: contentW,
     head,
     body,
-    // Same percentage-of-content-width strategy as the ranking table
-    // so the scores table also fills the page edge-to-edge on every
-    // page, with cells aligned exactly under their headers.
-    //   Student : 30%
-    //   Gender  : 12%
-    //   Score   : 15%
-    //   Grade   : 13%
-    //   Remarks : 30%
-    //   Σ       : 100%
-    theme: "grid",
-    styles: {
-      fontSize: 9,
-      cellPadding: 2,
-      overflow: "linebreak" as OverflowType,
-      valign: "top" as VAlignType,
-      // Hairline border on every cell → horizontal lines between
-      // rows AND vertical lines between columns.
-      lineWidth: 0.1,
-      lineColor: [0, 0, 0],
-    },
-    headStyles: {
-      fillColor: [51, 65, 85],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      halign: "center",
-      lineWidth: 0.1,
-      lineColor: [0, 0, 0],
-    },
-    alternateRowStyles: { fillColor: [245, 245, 245] },
     columnStyles: {
-      // Student — left-aligned, the widest text column.
       0: { cellWidth: contentW * 0.3, halign: "left" },
-      // Gender — centered.
       1: { cellWidth: contentW * 0.12, halign: "center" },
-      // Score — right-aligned + monospace so the digits line up
-      // perfectly down the column.
-      2: { cellWidth: contentW * 0.15, halign: "right", font: "courier" },
-      // Grade letter — centered, bold.
-      3: { cellWidth: contentW * 0.13, halign: "center", fontStyle: "bold" },
-      // Remarks — left-aligned, takes the remaining 30%.
+      2: {
+        cellWidth: contentW * 0.15,
+        halign: "right",
+        font: "courier" as StandardFontType,
+      },
+      3: {
+        cellWidth: contentW * 0.13,
+        halign: "center",
+        fontStyle: "bold" as FontStyle,
+      },
       4: { cellWidth: contentW * 0.3, halign: "left" },
     },
-    margin: { left: margin, right: margin },
   });
+
+  addPdfPageNumbers(doc);
 
   const safe = (s: string) =>
     s.replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").slice(0, 40);
