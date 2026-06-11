@@ -16,6 +16,32 @@ export const LEGACY_ACADEMIC_REPORTS = "/teacher-dashboard/academic-reports";
 
 export const LEGACY_PROMOTIONS = "/dashboard/promotions";
 
+/** Whether the quick-action card for `href` matches the current route. */
+export function academicQuickActionIsActive(
+  pathname: string,
+  href: string
+): boolean {
+  if (pathname === href || pathname.startsWith(`${href}/`)) {
+    return true;
+  }
+
+  const legacyByHref: Record<string, string> = {
+    [ACADEMIC_STUDENT_PROFILES]: LEGACY_STUDENT_PROFILES,
+    [ACADEMIC_REPORTS]: LEGACY_ACADEMIC_REPORTS,
+    [ACADEMIC_PROMOTIONS]: LEGACY_PROMOTIONS,
+  };
+
+  const legacy = legacyByHref[href];
+  if (
+    legacy &&
+    (pathname === legacy || pathname.startsWith(`${legacy}/`))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function pathIsUnderAcademicSection(pathname: string): boolean {
   if (
     pathname === ACADEMIC_HUB ||

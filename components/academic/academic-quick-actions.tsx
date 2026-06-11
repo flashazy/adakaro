@@ -61,7 +61,7 @@ export function AcademicQuickActions({
       <h2 className={academicSectionHeadingHeroClass}>Quick actions</h2>
       <div
         className={cn(
-          "mt-3 grid gap-3 sm:grid-cols-2",
+          "mt-3 grid auto-rows-fr gap-3 sm:grid-cols-2",
           actions.length >= 4
             ? "lg:grid-cols-4"
             : actions.length >= 3

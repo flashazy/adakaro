@@ -8,9 +8,9 @@ export const academicCardBaseClass = `${academicRadiusClass} border border-slate
 export const academicCardInteractiveClass =
   "cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--school-primary-rgb)/0.35)] focus-visible:ring-offset-2 dark:hover:border-zinc-600 dark:focus-visible:ring-offset-zinc-950";
 
-/** Hero quick-action cards — premium lift (−3px) and shadow. */
+/** Hero quick-action cards — premium lift and shadow. */
 export const academicQuickActionHeroClass =
-  "cursor-pointer transition-all duration-200 ease-out hover:-translate-y-[3px] hover:border-slate-300 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--school-primary-rgb)/0.4)] focus-visible:ring-offset-2 dark:hover:border-zinc-500 dark:focus-visible:ring-offset-zinc-950";
+  "cursor-pointer transition-all duration-200 ease-out hover:-translate-y-1 hover:border-slate-300 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--school-primary-rgb)/0.4)] focus-visible:ring-offset-2 dark:hover:border-zinc-500 dark:focus-visible:ring-offset-zinc-950";
 
 /** Enterprise status pills (promotions, readiness). */
 export const academicBadgeReadyClass =
