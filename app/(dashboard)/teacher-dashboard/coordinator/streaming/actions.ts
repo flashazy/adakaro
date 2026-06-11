@@ -6,11 +6,20 @@ import { resolveClassCluster } from "@/lib/class-cluster";
 import { parseGradebookExamType } from "@/lib/gradebook-major-exams";
 import { streamingExamLabel } from "@/lib/student-streaming/exam-labels";
 import {
+  detectOverlappingDivisionPointsRules,
+  filterRulesForDivisionMode,
   formatPerformanceValue,
+  isDivisionPointsRule,
   isDivisionRule,
   isNumericRule,
+  isPointsBasedDivisionMode,
   recommendStreamClassId,
+  resolveDivisionRuleMode,
+  serializeStreamingRulesPayload,
+  validateDivisionPointsRule,
 } from "@/lib/student-streaming/evaluate-rules";
+import type { DivisionRuleMode } from "@/lib/student-streaming/types";
+import { normalizeSchoolLevel } from "@/lib/school-level";
 import { recordStudentClassMoveIfChanged } from "@/lib/student-class-history/record-student-class-move";
 import { enforceSubjectCompatibilityBeforeMove } from "@/lib/student-subject-enrollment/enforce-subject-compatibility";
 import { notifyClassTeachersOfStudentMovements } from "@/lib/notifications/notify-class-teachers-of-movements";
@@ -60,16 +69,68 @@ function parseExamType(raw: string): GradebookMajorExamTypeValue | null {
 
 function validateRules(
   measure: StreamingPerformanceMeasure,
-  rules: StreamingRuleEntry[]
+  rules: StreamingRuleEntry[],
+  schoolLevel: string | null | undefined,
+  options?: {
+    requireNonEmpty?: boolean;
+    divisionRuleMode?: DivisionRuleMode | null;
+  }
 ): string | null {
-  if (rules.length === 0) return null;
-  for (const rule of rules) {
+  if (rules.length === 0) {
+    if (options?.requireNonEmpty) {
+      return "Add at least one streaming rule before saving.";
+    }
+    return null;
+  }
+
+  const level = normalizeSchoolLevel(schoolLevel);
+  const divisionMode =
+    measure === "division"
+      ? resolveDivisionRuleMode(options?.divisionRuleMode, rules)
+      : null;
+  const activeRules =
+    measure === "division" && divisionMode
+      ? filterRulesForDivisionMode(rules, divisionMode)
+      : rules;
+
+  if (
+    options?.requireNonEmpty &&
+    measure === "division" &&
+    activeRules.length === 0
+  ) {
+    return "Add at least one streaming rule for the selected mode before saving.";
+  }
+  const hasPointsRules = activeRules.some(isDivisionPointsRule);
+
+  if (hasPointsRules && level !== "secondary") {
+    return "Points-based division rules are only available for secondary schools.";
+  }
+
+  if (
+    measure === "division" &&
+    isPointsBasedDivisionMode(divisionMode!) &&
+    activeRules.filter(isDivisionPointsRule).length === 0
+  ) {
+    return "Add at least one points rule for this mode.";
+  }
+
+  for (const rule of activeRules) {
     if (!rule.targetClassId?.trim()) {
       return "Each rule must specify a target stream.";
     }
     if (measure === "division") {
-      if (!isDivisionRule(rule) || rule.divisions.length === 0) {
-        return "Division rules must list at least one division.";
+      if (isDivisionPointsRule(rule)) {
+        if (level !== "secondary") {
+          return "Points-based division rules are only available for secondary schools.";
+        }
+        const pointsError = validateDivisionPointsRule(rule);
+        if (pointsError) return pointsError;
+      } else if (isDivisionRule(rule)) {
+        if (rule.divisions.length === 0) {
+          return "Division rules must list at least one division.";
+        }
+      } else {
+        return "Invalid division rule format.";
       }
     } else if (!isNumericRule(rule)) {
       return "Score and marks rules must include min and max values.";
@@ -77,7 +138,34 @@ function validateRules(
       return "Rule minimum cannot exceed maximum.";
     }
   }
+
+  if (measure === "division" && hasPointsRules) {
+    const overlap = detectOverlappingDivisionPointsRules(activeRules);
+    if (overlap) return overlap;
+  }
+
   return null;
+}
+
+function normalizeRulesForPersistence(
+  measure: StreamingPerformanceMeasure,
+  rules: StreamingRuleEntry[],
+  divisionRuleMode: DivisionRuleMode | null
+): StreamingRuleEntry[] {
+  if (measure !== "division") return rules;
+  const mode = resolveDivisionRuleMode(divisionRuleMode, rules);
+  const active = filterRulesForDivisionMode(rules, mode);
+  return active.map((rule) => {
+    if (isDivisionRule(rule)) {
+      return { ...rule, mode: "division_only" as const };
+    }
+    if (isDivisionPointsRule(rule)) {
+      const ruleMode: DivisionRuleMode =
+        rule.mode === "custom_points" ? "custom_points" : "necta_points";
+      return { ...rule, mode: ruleMode };
+    }
+    return rule;
+  });
 }
 
 export async function loadStreamingParentClassesAction(): Promise<
@@ -107,6 +195,8 @@ export async function loadStreamingWorkspaceAction(input: {
       stats: StreamingOverviewStats;
       students: StreamingStudentRow[];
       streamClasses: StreamingStreamClass[];
+      schoolLevel: string | null;
+      divisionRuleMode: DivisionRuleMode | null;
     }
   | { ok: false; error: string }
 > {
@@ -145,6 +235,8 @@ export async function loadStreamingWorkspaceAction(input: {
     stats: data.stats,
     students: data.students,
     streamClasses: data.streamClasses,
+    schoolLevel: data.schoolLevel,
+    divisionRuleMode: data.divisionRuleMode,
   };
 }
 
@@ -154,6 +246,7 @@ export async function saveStreamingRulesAction(input: {
   examType: string;
   performanceMeasure: string;
   rules: StreamingRuleEntry[];
+  divisionRuleMode?: DivisionRuleMode | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const auth = await requireStreamingUser();
   if (!auth.user) return { ok: false, error: auth.error ?? "Unauthorized." };
@@ -170,11 +263,40 @@ export async function saveStreamingRulesAction(input: {
     return { ok: false, error: "Invalid exam or performance measure." };
   }
 
-  const validationError = validateRules(measure, input.rules);
-  if (validationError) return { ok: false, error: validationError };
-
   const admin = createAdminClient();
   const cluster = await resolveClassCluster(admin, input.parentClassId);
+
+  const { data: schoolRow } = await admin
+    .from("schools")
+    .select("school_level")
+    .eq("id", access.schoolId)
+    .maybeSingle();
+
+  const schoolLevel =
+    (schoolRow as { school_level?: string | null } | null)?.school_level ??
+    null;
+
+  const divisionRuleMode =
+    measure === "division"
+      ? resolveDivisionRuleMode(input.divisionRuleMode, input.rules)
+      : null;
+
+  const validationError = validateRules(measure, input.rules, schoolLevel, {
+    requireNonEmpty: true,
+    divisionRuleMode,
+  });
+  if (validationError) return { ok: false, error: validationError };
+
+  const rulesToSave = normalizeRulesForPersistence(
+    measure,
+    input.rules,
+    divisionRuleMode
+  );
+  const rulesPayload = serializeStreamingRulesPayload(
+    rulesToSave,
+    measure,
+    divisionRuleMode
+  );
 
   const { data: existing } = await admin
     .from("streaming_placement_rules")
@@ -191,7 +313,7 @@ export async function saveStreamingRulesAction(input: {
     academic_year: input.academicYear.trim(),
     exam_type: examType,
     performance_measure: measure,
-    rules: input.rules,
+    rules: rulesPayload,
     updated_by: auth.user.id,
   };
 
@@ -336,7 +458,12 @@ export async function applyStudentStreamingAction(input: {
     workspace.students.map((s) => {
       const recommendedClassId =
         workspace.rules.length > 0
-          ? recommendStreamClassId(measure, s.performance, workspace.rules)
+          ? recommendStreamClassId(
+              measure,
+              s.performance,
+              workspace.rules,
+              workspace.divisionRuleMode
+            )
           : s.recommendedClassId;
       return [s.id, recommendedClassId] as const;
     })
@@ -413,7 +540,11 @@ export async function applyStudentStreamingAction(input: {
     const performance = performanceByStudent.get(entry.studentId);
     const performanceValue =
       performance != null
-        ? (formatPerformanceValue(measure, performance) ?? "—")
+        ? (formatPerformanceValue(
+            measure,
+            performance,
+            workspace.divisionRuleMode
+          ) ?? "—")
         : "—";
     const recommendedClassId = recommendedByStudent.get(entry.studentId) ?? null;
     const recommendedClassName = recommendedClassId

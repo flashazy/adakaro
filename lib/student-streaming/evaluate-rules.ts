@@ -1,4 +1,6 @@
 import type {
+  DivisionPointsStreamingRule,
+  DivisionRuleMode,
   DivisionStreamingRule,
   EnrichedStreamingStudent,
   NumericStreamingRule,
@@ -12,6 +14,7 @@ import type {
   StreamingSummaryCounts,
   StudentStreamingPerformance,
 } from "@/lib/student-streaming/types";
+import { NECTA_DIVISION_POINT_RANGES } from "@/lib/student-streaming/types";
 
 export function isDivisionRule(
   rule: StreamingRuleEntry
@@ -19,15 +22,289 @@ export function isDivisionRule(
   return "divisions" in rule && Array.isArray(rule.divisions);
 }
 
+export function isDivisionPointsRule(
+  rule: StreamingRuleEntry
+): rule is DivisionPointsStreamingRule {
+  return (
+    "division" in rule &&
+    "minPoints" in rule &&
+    "maxPoints" in rule &&
+    !("divisions" in rule)
+  );
+}
+
 export function isNumericRule(
   rule: StreamingRuleEntry
 ): rule is NumericStreamingRule {
-  return "min" in rule && "max" in rule;
+  return "min" in rule && "max" in rule && !isDivisionPointsRule(rule);
+}
+
+export function isPointsBasedDivisionMode(
+  mode: DivisionRuleMode
+): mode is "necta_points" | "custom_points" {
+  return mode === "necta_points" || mode === "custom_points";
+}
+
+/** Infer workspace mode from persisted rules. */
+export function inferDivisionRuleMode(
+  rules: StreamingRuleEntry[]
+): DivisionRuleMode {
+  const pointsRules = rules.filter(isDivisionPointsRule);
+  if (pointsRules.length === 0) return "division_only";
+  if (pointsRules.some((r) => r.mode === "custom_points")) {
+    return "custom_points";
+  }
+  return "necta_points";
+}
+
+function parseDivisionRuleModeValue(raw: unknown): DivisionRuleMode | null {
+  const value = String(raw ?? "").trim();
+  if (
+    value === "division_only" ||
+    value === "necta_points" ||
+    value === "custom_points"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function parseStreamingRuleEntry(item: unknown): StreamingRuleEntry | null {
+  if (!item || typeof item !== "object") return null;
+  const row = item as Record<string, unknown>;
+  const targetClassId = String(row.targetClassId ?? "").trim();
+  if (!targetClassId) return null;
+
+  if (Array.isArray(row.divisions)) {
+    return {
+      mode: "division_only",
+      targetClassId,
+      divisions: row.divisions.map((d) => String(d)),
+    };
+  }
+
+  const division = String(row.division ?? "").trim();
+  const minPoints = Number(row.minPoints);
+  const maxPoints = Number(row.maxPoints);
+  if (division && Number.isFinite(minPoints) && Number.isFinite(maxPoints)) {
+    const rawMode = String(row.mode ?? "").trim();
+    const mode =
+      rawMode === "custom_points" ? "custom_points" : "necta_points";
+    return {
+      mode,
+      targetClassId,
+      division,
+      minPoints,
+      maxPoints,
+    };
+  }
+
+  const min = Number(row.min);
+  const max = Number(row.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return { targetClassId, min, max };
+}
+
+export function parseStreamingRuleEntries(raw: unknown): StreamingRuleEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: StreamingRuleEntry[] = [];
+  for (const item of raw) {
+    const parsed = parseStreamingRuleEntry(item);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/** Parse rules JSONB — supports legacy array or `{ divisionRuleMode, rules }`. */
+export function parseStreamingRulesPayload(raw: unknown): {
+  rules: StreamingRuleEntry[];
+  divisionRuleMode: DivisionRuleMode | null;
+} {
+  if (Array.isArray(raw)) {
+    return {
+      rules: parseStreamingRuleEntries(raw),
+      divisionRuleMode: null,
+    };
+  }
+  if (raw && typeof raw === "object") {
+    const doc = raw as Record<string, unknown>;
+    return {
+      rules: parseStreamingRuleEntries(doc.rules),
+      divisionRuleMode: parseDivisionRuleModeValue(doc.divisionRuleMode),
+    };
+  }
+  return { rules: [], divisionRuleMode: null };
+}
+
+export function resolveDivisionRuleMode(
+  explicit: DivisionRuleMode | null | undefined,
+  rules: StreamingRuleEntry[]
+): DivisionRuleMode {
+  return explicit ?? inferDivisionRuleMode(rules);
+}
+
+/** Rules that participate in matching for the active division workspace mode. */
+export function filterRulesForDivisionMode(
+  rules: StreamingRuleEntry[],
+  mode: DivisionRuleMode
+): StreamingRuleEntry[] {
+  if (mode === "division_only") {
+    return rules.filter(isDivisionRule);
+  }
+  if (mode === "necta_points") {
+    return rules.filter(
+      (rule) =>
+        isDivisionRule(rule) ||
+        (isDivisionPointsRule(rule) &&
+          getDivisionPointsRuleMode(rule) === "necta_points")
+    );
+  }
+  return rules.filter(
+    (rule) =>
+      isDivisionRule(rule) ||
+      (isDivisionPointsRule(rule) &&
+        getDivisionPointsRuleMode(rule) === "custom_points")
+  );
+}
+
+export function serializeStreamingRulesPayload(
+  rules: StreamingRuleEntry[],
+  measure: StreamingPerformanceMeasure,
+  divisionRuleMode: DivisionRuleMode | null
+): unknown {
+  if (measure !== "division") return rules;
+  return {
+    divisionRuleMode:
+      divisionRuleMode ?? inferDivisionRuleMode(rules),
+    rules,
+  };
+}
+
+export function getDivisionPointsRuleMode(
+  rule: DivisionPointsStreamingRule
+): "necta_points" | "custom_points" {
+  return rule.mode === "custom_points" ? "custom_points" : "necta_points";
+}
+
+export function isPositiveWholeNumber(n: number): boolean {
+  return Number.isInteger(n) && n > 0;
+}
+
+/** Validate a rule range stays within official NECTA bands for the division. */
+export function validateNectaPointsRuleRange(
+  division: string,
+  minPoints: number,
+  maxPoints: number
+): string | null {
+  const key = division.trim().toUpperCase();
+  const band =
+    key in NECTA_DIVISION_POINT_RANGES
+      ? NECTA_DIVISION_POINT_RANGES[
+          key as keyof typeof NECTA_DIVISION_POINT_RANGES
+        ]
+      : null;
+  if (!band) {
+    return `Invalid division for NECTA points: ${division}.`;
+  }
+  const min = Math.min(minPoints, maxPoints);
+  const max = Math.max(minPoints, maxPoints);
+  if (key === "0") {
+    if (min < band.min) {
+      return `Division 0 NECTA points start at ${band.min}.`;
+    }
+    return null;
+  }
+  if (min < band.min || max > band.max) {
+    return `NECTA Division ${key} allows ${band.min}–${band.max} points only.`;
+  }
+  return null;
+}
+
+export function validateDivisionPointsRule(
+  rule: DivisionPointsStreamingRule
+): string | null {
+  if (!rule.division.trim()) {
+    return "Each points rule must specify a division.";
+  }
+  if (
+    !isPositiveWholeNumber(rule.minPoints) ||
+    !isPositiveWholeNumber(rule.maxPoints)
+  ) {
+    return "Points must be positive whole numbers.";
+  }
+  if (rule.minPoints > rule.maxPoints) {
+    return "Rule minimum points cannot exceed maximum points.";
+  }
+  if (getDivisionPointsRuleMode(rule) === "necta_points") {
+    return validateNectaPointsRuleRange(
+      rule.division,
+      rule.minPoints,
+      rule.maxPoints
+    );
+  }
+  return null;
+}
+
+function formatDivisionLabelOnly(
+  performance: StudentStreamingPerformance
+): string | null {
+  if (performance.subjectsScored === 0) return null;
+  const div = (performance.division ?? "").trim();
+  if (!div) return null;
+  if (div === "INC" || div === "ABS") return div;
+  return `Division ${div}`;
+}
+
+/** Compact string for points modes: "Division I · 7 pts", or INC/ABS. */
+export function formatDivisionWithPoints(
+  performance: StudentStreamingPerformance
+): string | null {
+  if (performance.subjectsScored === 0) return null;
+  const div = (performance.division ?? "").trim();
+  if (!div) return null;
+  if (div === "INC" || div === "ABS") return div;
+  const pts = performance.divisionPoints;
+  if (pts != null && Number.isFinite(pts)) {
+    return `Division ${div} · ${pts} pts`;
+  }
+  return `Division ${div}`;
+}
+
+export function formatDivisionPerformanceDisplay(
+  performance: StudentStreamingPerformance,
+  divisionRuleMode: DivisionRuleMode
+): string | null {
+  if (isPointsBasedDivisionMode(divisionRuleMode)) {
+    return formatDivisionWithPoints(performance);
+  }
+  return formatDivisionLabelOnly(performance);
+}
+
+/** Parts for compact two-line division table cell. */
+export function getDivisionTableDisplay(
+  performance: StudentStreamingPerformance,
+  divisionRuleMode: DivisionRuleMode = "division_only"
+): { label: string; points: number | null } | null {
+  if (performance.subjectsScored === 0) return null;
+  const div = (performance.division ?? "").trim();
+  if (!div) return null;
+  if (div === "INC" || div === "ABS") {
+    return { label: div, points: null };
+  }
+  if (divisionRuleMode === "division_only") {
+    return { label: `Division ${div}`, points: null };
+  }
+  const pts = performance.divisionPoints;
+  return {
+    label: `Division ${div}`,
+    points: pts != null && Number.isFinite(pts) ? pts : null,
+  };
 }
 
 export function formatPerformanceValue(
   measure: StreamingPerformanceMeasure,
-  performance: StudentStreamingPerformance
+  performance: StudentStreamingPerformance,
+  divisionRuleMode?: DivisionRuleMode | null
 ): string | null {
   if (performance.subjectsScored === 0) return null;
   switch (measure) {
@@ -40,11 +317,10 @@ export function formatPerformanceValue(
         ? String(Math.round(performance.totalMarks))
         : null;
     case "division":
-      return performance.division != null
-        ? performance.division === "INC" || performance.division === "ABS"
-          ? performance.division
-          : `Division ${performance.division}`
-        : null;
+      return formatDivisionPerformanceDisplay(
+        performance,
+        resolveDivisionRuleMode(divisionRuleMode, [])
+      );
     default:
       return null;
   }
@@ -86,9 +362,16 @@ export function formatRuleSummary(
   streamNameById: Map<string, string>
 ): string {
   const target = streamNameById.get(rule.targetClassId) ?? "Unknown stream";
+  if (isDivisionPointsRule(rule)) {
+    const div = rule.division.trim() || "—";
+    const min = Math.min(rule.minPoints, rule.maxPoints);
+    const max = Math.max(rule.minPoints, rule.maxPoints);
+    return `Division ${div}, ${min}–${max} points → ${target}`;
+  }
   if (isDivisionRule(rule)) {
     const divisions = rule.divisions.map((d) => d.trim()).filter(Boolean);
-    return `${divisions.join(", ") || "—"} → ${target}`;
+    const label = divisions.map((d) => `Division ${d}`).join(", ");
+    return `${label || "—"} → ${target}`;
   }
   if (isNumericRule(rule)) {
     return `${formatNumericRange(rule.min, rule.max)} → ${target}`;
@@ -96,24 +379,92 @@ export function formatRuleSummary(
   return `→ ${target}`;
 }
 
+function divisionMatchesRule(
+  performance: StudentStreamingPerformance,
+  rule: StreamingRuleEntry
+): boolean {
+  const division = (performance.division ?? "").trim().toUpperCase();
+  if (!division) return false;
+
+  if (isDivisionPointsRule(rule)) {
+    const ruleDivision = rule.division.trim().toUpperCase();
+    if (ruleDivision !== division) return false;
+    const points = performance.divisionPoints;
+    if (points == null || !Number.isFinite(points)) return false;
+    const min = Math.min(rule.minPoints, rule.maxPoints);
+    const max = Math.max(rule.minPoints, rule.maxPoints);
+    return points >= min && points <= max;
+  }
+
+  if (isDivisionRule(rule)) {
+    const normalized = rule.divisions.map((d) => d.trim().toUpperCase());
+    return normalized.includes(division);
+  }
+
+  return false;
+}
+
+function activeRulesForMeasure(
+  measure: StreamingPerformanceMeasure,
+  rules: StreamingRuleEntry[],
+  divisionRuleMode?: DivisionRuleMode | null
+): StreamingRuleEntry[] {
+  if (measure !== "division") return rules;
+  const mode = resolveDivisionRuleMode(divisionRuleMode, rules);
+  return filterRulesForDivisionMode(rules, mode);
+}
+
+/** First matching division rule (same order semantics as placement). */
+export function findMatchingStreamingRule(
+  measure: StreamingPerformanceMeasure,
+  performance: StudentStreamingPerformance,
+  rules: StreamingRuleEntry[],
+  divisionRuleMode?: DivisionRuleMode | null
+): StreamingRuleEntry | null {
+  if (performance.subjectsScored === 0 || rules.length === 0) return null;
+
+  const activeRules = activeRulesForMeasure(measure, rules, divisionRuleMode);
+
+  if (measure === "division") {
+    for (const rule of activeRules) {
+      if (isDivisionRule(rule) || isDivisionPointsRule(rule)) {
+        if (divisionMatchesRule(performance, rule)) return rule;
+      }
+    }
+    return null;
+  }
+
+  const value =
+    measure === "average_score"
+      ? performance.averageScorePercent
+      : performance.totalMarks;
+  if (value == null || !Number.isFinite(value)) return null;
+
+  for (const rule of activeRules) {
+    if (!isNumericRule(rule)) continue;
+    const min = Math.min(rule.min, rule.max);
+    const max = Math.max(rule.min, rule.max);
+    if (value >= min && value <= max) return rule;
+  }
+  return null;
+}
+
 export function recommendStreamClassId(
   measure: StreamingPerformanceMeasure,
   performance: StudentStreamingPerformance,
-  rules: StreamingRuleEntry[]
+  rules: StreamingRuleEntry[],
+  divisionRuleMode?: DivisionRuleMode | null
 ): string | null {
   if (performance.subjectsScored === 0 || rules.length === 0) return null;
 
   if (measure === "division") {
-    const division = (performance.division ?? "").trim();
-    if (!division) return null;
-    for (const rule of rules) {
-      if (!isDivisionRule(rule)) continue;
-      const normalized = rule.divisions.map((d) => d.trim().toUpperCase());
-      if (normalized.includes(division.toUpperCase())) {
-        return rule.targetClassId;
-      }
-    }
-    return null;
+    const matched = findMatchingStreamingRule(
+      measure,
+      performance,
+      rules,
+      divisionRuleMode
+    );
+    return matched?.targetClassId ?? null;
   }
 
   const value =
@@ -136,7 +487,8 @@ export function recommendStreamClassId(
 export function comparePerformanceForRanking(
   measure: StreamingPerformanceMeasure,
   a: StudentStreamingPerformance,
-  b: StudentStreamingPerformance
+  b: StudentStreamingPerformance,
+  divisionRuleMode?: DivisionRuleMode | null
 ): number {
   const aScored = a.subjectsScored > 0;
   const bScored = b.subjectsScored > 0;
@@ -149,6 +501,14 @@ export function comparePerformanceForRanking(
   }
   if (measure === "total_marks") {
     return (b.totalMarks ?? -1) - (a.totalMarks ?? -1);
+  }
+  const mode = divisionRuleMode ?? "division_only";
+  if (mode === "division_only") {
+    const rankA =
+      DIVISION_RANK[(a.division ?? "").trim().toUpperCase()] ?? 99;
+    const rankB =
+      DIVISION_RANK[(b.division ?? "").trim().toUpperCase()] ?? 99;
+    return rankA - rankB;
   }
   const rankA =
     a.divisionPoints ??
@@ -165,7 +525,8 @@ export function assignStudentRanks<
   T extends { performance: StudentStreamingPerformance; fullName?: string },
 >(
   students: T[],
-  measure: StreamingPerformanceMeasure
+  measure: StreamingPerformanceMeasure,
+  divisionRuleMode?: DivisionRuleMode | null
 ): (T & { rank: number | null })[] {
   const scored = students
     .map((student, index) => ({ student, index }))
@@ -175,7 +536,8 @@ export function assignStudentRanks<
     const cmp = comparePerformanceForRanking(
       measure,
       left.student.performance,
-      right.student.performance
+      right.student.performance,
+      divisionRuleMode
     );
     if (cmp !== 0) return cmp;
     return (left.student.fullName ?? "").localeCompare(
@@ -194,7 +556,8 @@ export function assignStudentRanks<
       comparePerformanceForRanking(
         measure,
         entry.student.performance,
-        scored[i - 1]!.student.performance
+        scored[i - 1]!.student.performance,
+        divisionRuleMode
       ) === 0
     ) {
       rankByIndex.set(entry.index, rankByIndex.get(scored[i - 1]!.index)!);
@@ -384,6 +747,7 @@ function enrichStreamingStudents(params: {
   overrides: Record<string, string>;
   streamClasses: StreamingStreamClass[];
   performanceMeasure: StreamingPerformanceMeasure;
+  divisionRuleMode?: DivisionRuleMode | null;
 }): EnrichedStreamingStudent[] {
   const streamIds = new Set(params.streamClasses.map((stream) => stream.id));
   const streamNameById = buildStreamNameMap(params.streamClasses, params.students);
@@ -395,7 +759,8 @@ function enrichStreamingStudents(params: {
         ? recommendStreamClassId(
             params.performanceMeasure,
             student.performance,
-            params.rules
+            params.rules,
+            params.divisionRuleMode
           )
         : student.recommendedClassId;
     const hasExplicitOverride = params.overrides[student.id] != null;
@@ -547,6 +912,7 @@ export function computeStreamingPlacementResults(params: {
   overrides: Record<string, string>;
   streamClasses: StreamingStreamClass[];
   performanceMeasure: StreamingPerformanceMeasure;
+  divisionRuleMode?: DivisionRuleMode | null;
 }): StreamingPlacementResults {
   const students = enrichStreamingStudents(params);
   const streamIds = new Set(params.streamClasses.map((stream) => stream.id));
@@ -595,7 +961,9 @@ export function studentRelatesToStream(
 export function formatStreamingPlacementReason(
   measure: StreamingPerformanceMeasure,
   performance: StudentStreamingPerformance,
-  isManualOverride: boolean
+  isManualOverride: boolean,
+  rules: StreamingRuleEntry[] = [],
+  divisionRuleMode?: DivisionRuleMode | null
 ): string {
   if (isManualOverride) {
     return "Manual override selected by coordinator";
@@ -612,13 +980,65 @@ export function formatStreamingPlacementReason(
       return performance.totalMarks != null
         ? `Recommended by streaming rules (${Math.round(performance.totalMarks)} marks)`
         : "Recommended by streaming rules";
-    case "division":
-      return performance.division
-        ? `Recommended by streaming rules (Division ${performance.division})`
-        : "Recommended by streaming rules";
+    case "division": {
+      const mode = resolveDivisionRuleMode(divisionRuleMode, rules);
+      const matched = findMatchingStreamingRule(
+        measure,
+        performance,
+        rules,
+        mode
+      );
+      const div = (performance.division ?? "").trim();
+      const pts = performance.divisionPoints;
+      if (matched && isDivisionPointsRule(matched)) {
+        const min = Math.min(matched.minPoints, matched.maxPoints);
+        const max = Math.max(matched.minPoints, matched.maxPoints);
+        if (pts != null && Number.isFinite(pts)) {
+          return `Matched Division ${matched.division} with ${pts} points`;
+        }
+        return `Matched Division ${matched.division} points ${min}–${max}`;
+      }
+      if (div) {
+        if (
+          isPointsBasedDivisionMode(mode) &&
+          pts != null &&
+          Number.isFinite(pts) &&
+          div !== "INC" &&
+          div !== "ABS"
+        ) {
+          return `Matched Division ${div} with ${pts} points`;
+        }
+        return `Matched Division ${div}`;
+      }
+      return "Recommended by streaming rules";
+    }
     default:
       return "Recommended by streaming rules";
   }
+}
+
+/** Detect overlapping inclusive point ranges within the same division. */
+export function detectOverlappingDivisionPointsRules(
+  rules: StreamingRuleEntry[]
+): string | null {
+  const pointsRules = rules.filter(isDivisionPointsRule);
+  for (let i = 0; i < pointsRules.length; i += 1) {
+    for (let j = i + 1; j < pointsRules.length; j += 1) {
+      const a = pointsRules[i]!;
+      const b = pointsRules[j]!;
+      if (a.division.trim().toUpperCase() !== b.division.trim().toUpperCase()) {
+        continue;
+      }
+      const aMin = Math.min(a.minPoints, a.maxPoints);
+      const aMax = Math.max(a.minPoints, a.maxPoints);
+      const bMin = Math.min(b.minPoints, b.maxPoints);
+      const bMax = Math.max(b.minPoints, b.maxPoints);
+      if (aMin <= bMax && bMin <= aMax) {
+        return `Overlapping point ranges for Division ${a.division}: ${aMin}–${aMax} and ${bMin}–${bMax}. Adjust ranges — first matching rule wins.`;
+      }
+    }
+  }
+  return null;
 }
 
 export function buildCapacityWarnings(

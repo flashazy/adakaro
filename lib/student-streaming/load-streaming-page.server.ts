@@ -9,9 +9,12 @@ import {
 import { streamingExamLabel } from "@/lib/student-streaming/exam-labels";
 import {
   formatPerformanceValue,
+  parseStreamingRulesPayload,
   recommendStreamClassId,
+  resolveDivisionRuleMode,
 } from "@/lib/student-streaming/evaluate-rules";
 import type {
+  DivisionRuleMode,
   StreamingExamOption,
   StreamingOverviewStats,
   StreamingRuleEntry,
@@ -25,29 +28,6 @@ import {
 import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { resolveStreamClassesForParent } from "@/lib/student-streaming/resolve-stream-classes.server";
 
-function parseRulesJson(raw: unknown): StreamingRuleEntry[] {
-  if (!Array.isArray(raw)) return [];
-  const out: StreamingRuleEntry[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    const targetClassId = String(row.targetClassId ?? "").trim();
-    if (!targetClassId) continue;
-    if (Array.isArray(row.divisions)) {
-      out.push({
-        targetClassId,
-        divisions: row.divisions.map((d) => String(d)),
-      });
-      continue;
-    }
-    const min = Number(row.min);
-    const max = Number(row.max);
-    if (!Number.isFinite(min) || !Number.isFinite(max)) continue;
-    out.push({ targetClassId, min, max });
-  }
-  return out;
-}
-
 export async function loadStreamingWorkspaceData(params: {
   parentClassId: string;
   academicYear: string;
@@ -58,6 +38,7 @@ export async function loadStreamingWorkspaceData(params: {
       ok: true;
       examOptions: StreamingExamOption[];
       rules: StreamingRuleEntry[];
+      divisionRuleMode: DivisionRuleMode | null;
       stats: StreamingOverviewStats;
       students: StreamingStudentRow[];
       streamClasses: StreamingStreamClass[];
@@ -184,9 +165,17 @@ export async function loadStreamingWorkspaceData(params: {
         .maybeSingle()
     : { data: null };
 
-  const rules = parseRulesJson(
+  const parsedRules = parseStreamingRulesPayload(
     (rulesRow as { rules?: unknown } | null)?.rules
   );
+  const rules = parsedRules.rules;
+  const divisionRuleMode =
+    params.performanceMeasure === "division"
+      ? resolveDivisionRuleMode(
+          parsedRules.divisionRuleMode,
+          parsedRules.rules
+        )
+      : null;
 
   const { data: lastHistoryRow } = await admin
     .from("student_streaming_history")
@@ -242,7 +231,8 @@ export async function loadStreamingWorkspaceData(params: {
     const recommendedClassId = recommendStreamClassId(
       params.performanceMeasure,
       performance,
-      rules
+      rules,
+      divisionRuleMode
     );
     const latestAppliedTarget = appliedPlacementByStudentId.get(s.id) ?? null;
     const appliedPlacementClassId =
@@ -271,7 +261,8 @@ export async function loadStreamingWorkspaceData(params: {
       appliedPlacementClassId,
       performanceDisplay: formatPerformanceValue(
         params.performanceMeasure,
-        performance
+        performance,
+        divisionRuleMode
       ),
     };
   });
@@ -296,6 +287,7 @@ export async function loadStreamingWorkspaceData(params: {
     ok: true,
     examOptions,
     rules,
+    divisionRuleMode,
     stats: {
       totalEligible,
       alreadyStreamed,

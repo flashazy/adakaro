@@ -45,11 +45,67 @@ export interface NumericStreamingRule {
 }
 
 export interface DivisionStreamingRule {
+  mode?: "division_only";
   targetClassId: string;
   divisions: string[];
 }
 
-export type StreamingRuleEntry = NumericStreamingRule | DivisionStreamingRule;
+/** Division + inclusive points range (secondary schools only). */
+export interface DivisionPointsStreamingRule {
+  mode: "necta_points" | "custom_points";
+  targetClassId: string;
+  /** "I", "II", "III", "IV", or "0". */
+  division: string;
+  minPoints: number;
+  maxPoints: number;
+}
+
+export type StreamingRuleEntry =
+  | NumericStreamingRule
+  | DivisionStreamingRule
+  | DivisionPointsStreamingRule;
+
+/** Workspace rule mode when performance measure is division. */
+export type DivisionRuleMode =
+  | "division_only"
+  | "necta_points"
+  | "custom_points";
+
+/** Persisted JSONB shape for division streaming rules (array remains supported). */
+export interface StreamingRulesDocument {
+  divisionRuleMode?: DivisionRuleMode;
+  rules: StreamingRuleEntry[];
+}
+
+export const DIVISION_POINTS_RULE_DIVISIONS = [
+  "I",
+  "II",
+  "III",
+  "IV",
+  "0",
+] as const;
+
+/** Official NECTA point bands per division (secondary). */
+export const NECTA_DIVISION_POINT_RANGES: Record<
+  (typeof DIVISION_POINTS_RULE_DIVISIONS)[number],
+  { min: number; max: number }
+> = {
+  I: { min: 7, max: 17 },
+  II: { min: 18, max: 21 },
+  III: { min: 22, max: 25 },
+  IV: { min: 26, max: 33 },
+  "0": { min: 34, max: 49 },
+};
+
+export const DIVISION_ONLY_RULE_DIVISIONS = [
+  "I",
+  "II",
+  "III",
+  "IV",
+  "0",
+  "INC",
+  "ABS",
+] as const;
 
 export interface StudentStreamingPerformance {
   averageScorePercent: number | null;

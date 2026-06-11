@@ -18,12 +18,25 @@ import {
   assignStudentRanks,
   buildCapacityWarnings,
   computeStreamingPlacementResults,
+  detectOverlappingDivisionPointsRules,
+  filterRulesForDivisionMode,
   formatRuleSummary,
   formatStreamingPlacementReason,
+  getDivisionTableDisplay,
+  inferDivisionRuleMode,
+  isDivisionPointsRule,
+  isDivisionRule,
+  isNumericRule,
+  isPointsBasedDivisionMode,
+  resolveDivisionRuleMode,
   studentRelatesToStream,
 } from "@/lib/student-streaming/evaluate-rules";
 import {
+  DIVISION_ONLY_RULE_DIVISIONS,
+  DIVISION_POINTS_RULE_DIVISIONS,
   STREAMING_PERFORMANCE_MEASURE_LABELS,
+  type DivisionPointsStreamingRule,
+  type DivisionRuleMode,
   type DivisionStreamingRule,
   type NumericStreamingRule,
   type StreamingExamOption,
@@ -36,6 +49,7 @@ import {
   type StreamingRuleEntry,
   type StreamingStreamClass,
   type StreamingStudentRow,
+  type StudentStreamingPerformance,
 } from "@/lib/student-streaming/types";
 import { SubjectCompatibilityModal } from "@/components/students/subject-compatibility-modal";
 import { currentAcademicYear } from "@/lib/student-subject-enrollment";
@@ -63,7 +77,7 @@ type BulkApplyEligibility = {
   skippedAlreadyPlaced: EnrichedStreamingStudent[];
 };
 
-const DIVISION_OPTIONS = ["I", "II", "III", "IV", "0", "INC", "ABS"] as const;
+const DIVISION_OPTIONS = DIVISION_ONLY_RULE_DIVISIONS;
 
 function academicYearOptions(): string[] {
   const current = currentAcademicYear();
@@ -94,6 +108,152 @@ function buildExampleNumericRules(
       targetClassId: streamClasses[streamClasses.length - 1]!.id,
       min: 0,
       max: 49.99,
+    },
+  ];
+}
+
+function buildExampleNectaPointsRules(
+  streamClasses: StreamingStreamClass[]
+): StreamingRuleEntry[] {
+  if (streamClasses.length === 0) return [];
+  if (streamClasses.length === 1) {
+    return [
+      {
+        mode: "necta_points",
+        targetClassId: streamClasses[0]!.id,
+        division: "I",
+        minPoints: 7,
+        maxPoints: 17,
+      },
+      {
+        mode: "division_only",
+        targetClassId: streamClasses[0]!.id,
+        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
+      },
+    ];
+  }
+  if (streamClasses.length === 2) {
+    return [
+      {
+        mode: "necta_points",
+        targetClassId: streamClasses[0]!.id,
+        division: "I",
+        minPoints: 7,
+        maxPoints: 12,
+      },
+      {
+        mode: "necta_points",
+        targetClassId: streamClasses[0]!.id,
+        division: "I",
+        minPoints: 13,
+        maxPoints: 17,
+      },
+      {
+        mode: "division_only",
+        targetClassId: streamClasses[1]!.id,
+        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
+      },
+    ];
+  }
+  return [
+    {
+      mode: "necta_points",
+      targetClassId: streamClasses[0]!.id,
+      division: "I",
+      minPoints: 7,
+      maxPoints: 12,
+    },
+    {
+      mode: "necta_points",
+      targetClassId: streamClasses[1]!.id,
+      division: "I",
+      minPoints: 13,
+      maxPoints: 17,
+    },
+    {
+      mode: "necta_points",
+      targetClassId: streamClasses[1]!.id,
+      division: "II",
+      minPoints: 18,
+      maxPoints: 21,
+    },
+    {
+      mode: "division_only",
+      targetClassId: streamClasses[streamClasses.length - 1]!.id,
+      divisions: ["III", "IV", "0", "INC", "ABS"],
+    },
+  ];
+}
+
+function buildExampleCustomPointsRules(
+  streamClasses: StreamingStreamClass[]
+): StreamingRuleEntry[] {
+  if (streamClasses.length === 0) return [];
+  if (streamClasses.length === 1) {
+    return [
+      {
+        mode: "custom_points",
+        targetClassId: streamClasses[0]!.id,
+        division: "I",
+        minPoints: 7,
+        maxPoints: 10,
+      },
+      {
+        mode: "division_only",
+        targetClassId: streamClasses[0]!.id,
+        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
+      },
+    ];
+  }
+  if (streamClasses.length === 2) {
+    return [
+      {
+        mode: "custom_points",
+        targetClassId: streamClasses[0]!.id,
+        division: "I",
+        minPoints: 7,
+        maxPoints: 10,
+      },
+      {
+        mode: "custom_points",
+        targetClassId: streamClasses[1]!.id,
+        division: "I",
+        minPoints: 11,
+        maxPoints: 17,
+      },
+      {
+        mode: "division_only",
+        targetClassId: streamClasses[1]!.id,
+        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
+      },
+    ];
+  }
+  return [
+    {
+      mode: "custom_points",
+      targetClassId: streamClasses[0]!.id,
+      division: "I",
+      minPoints: 7,
+      maxPoints: 10,
+    },
+    {
+      mode: "custom_points",
+      targetClassId: streamClasses[1]!.id,
+      division: "I",
+      minPoints: 11,
+      maxPoints: 17,
+    },
+    {
+      mode: "custom_points",
+      targetClassId: streamClasses[1]!.id,
+      division: "II",
+      minPoints: 18,
+      maxPoints: 21,
+    },
+    {
+      mode: "division_only",
+      targetClassId: streamClasses[streamClasses.length - 1]!.id,
+      divisions: ["III", "IV", "0", "INC", "ABS"],
     },
   ];
 }
@@ -242,6 +402,41 @@ const TABLE_HEADER_CLASS =
 
 const MUTED_CELL_CLASS =
   "text-[11px] font-normal text-slate-400 dark:text-zinc-500";
+
+function DivisionPerformanceCell({
+  performance,
+  divisionRuleMode,
+}: {
+  performance: StudentStreamingPerformance;
+  divisionRuleMode: DivisionRuleMode;
+}) {
+  const display = getDivisionTableDisplay(performance, divisionRuleMode);
+  if (!display) {
+    return <span className={MUTED_CELL_CLASS}>—</span>;
+  }
+  if (
+    display.points == null &&
+    (display.label === "INC" || display.label === "ABS")
+  ) {
+    return (
+      <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200">
+        {display.label}
+      </span>
+    );
+  }
+  return (
+    <div className="leading-tight">
+      <div className="text-[11px] font-semibold text-slate-900 dark:text-zinc-100">
+        {display.label}
+      </div>
+      {display.points != null && (
+        <div className="text-[10px] tabular-nums text-slate-500 dark:text-zinc-400">
+          {display.points} pts
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PAGINATION_BUTTON_CLASS =
   "inline-flex h-7 min-w-[4.5rem] items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors duration-150 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800";
@@ -667,8 +862,22 @@ function emptyDivisionRule(
   streamClasses: StreamingStreamClass[]
 ): DivisionStreamingRule {
   return {
+    mode: "division_only",
     targetClassId: streamClasses[0]?.id ?? "",
     divisions: ["I"],
+  };
+}
+
+function emptyDivisionPointsRule(
+  streamClasses: StreamingStreamClass[],
+  mode: "necta_points" | "custom_points"
+): DivisionPointsStreamingRule {
+  return {
+    mode,
+    targetClassId: streamClasses[0]?.id ?? "",
+    division: "I",
+    minPoints: mode === "custom_points" ? 7 : 7,
+    maxPoints: mode === "custom_points" ? 10 : 12,
   };
 }
 
@@ -703,6 +912,10 @@ export function StudentStreamingClient({
   const [streamClasses, setStreamClasses] = useState<StreamingStreamClass[]>([]);
   const [examOptions, setExamOptions] = useState<StreamingExamOption[]>([]);
   const [rules, setRules] = useState<StreamingRuleEntry[]>([]);
+  const [divisionRuleMode, setDivisionRuleMode] =
+    useState<DivisionRuleMode>("division_only");
+  const [schoolLevel, setSchoolLevel] = useState<string | null>(null);
+  const [nectaGuideExpanded, setNectaGuideExpanded] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const overridesRef = useRef(overrides);
   overridesRef.current = overrides;
@@ -814,6 +1027,11 @@ export function StudentStreamingClient({
     setStreamClasses(result.streamClasses);
     setExamOptions(result.examOptions);
     setRules(result.rules);
+    setSchoolLevel(result.schoolLevel);
+    setDivisionRuleMode(
+      result.divisionRuleMode ??
+        inferDivisionRuleMode(result.rules)
+    );
     setOverrides({});
     setSelectedIds(new Set());
     setPreviewStreamFilter(null);
@@ -845,6 +1063,11 @@ export function StudentStreamingClient({
     setStreamClasses(result.streamClasses);
     setExamOptions(result.examOptions);
     setRules(result.rules);
+    setSchoolLevel(result.schoolLevel);
+    setDivisionRuleMode(
+      result.divisionRuleMode ??
+        inferDivisionRuleMode(result.rules)
+    );
     setOverrides({});
     setSelectedIds(new Set());
     setPreviewStreamFilter(null);
@@ -882,6 +1105,22 @@ export function StudentStreamingClient({
     [streamClasses]
   );
 
+  const effectiveDivisionRuleMode = useMemo(
+    () =>
+      performanceMeasure === "division"
+        ? resolveDivisionRuleMode(divisionRuleMode, rules)
+        : "division_only",
+    [performanceMeasure, divisionRuleMode, rules]
+  );
+
+  const activeRulesForMode = useMemo(
+    () =>
+      performanceMeasure === "division"
+        ? filterRulesForDivisionMode(rules, effectiveDivisionRuleMode)
+        : rules,
+    [performanceMeasure, rules, effectiveDivisionRuleMode]
+  );
+
   const placementResults = useMemo(
     () =>
       computeStreamingPlacementResults({
@@ -890,8 +1129,16 @@ export function StudentStreamingClient({
         overrides,
         streamClasses,
         performanceMeasure,
+        divisionRuleMode: effectiveDivisionRuleMode,
       }),
-    [students, rules, overrides, streamClasses, performanceMeasure]
+    [
+      students,
+      rules,
+      overrides,
+      streamClasses,
+      performanceMeasure,
+      effectiveDivisionRuleMode,
+    ]
   );
 
   const enrichedStudents = placementResults.students;
@@ -900,7 +1147,11 @@ export function StudentStreamingClient({
   const previewImpact = placementResults.impact;
 
   const rankedStudents = useMemo(() => {
-    const withRanks = assignStudentRanks(enrichedStudents, performanceMeasure);
+    const withRanks = assignStudentRanks(
+      enrichedStudents,
+      performanceMeasure,
+      effectiveDivisionRuleMode
+    );
     return [...withRanks].sort((a, b) => {
       if (a.rank == null && b.rank == null) {
         return a.fullName.localeCompare(b.fullName, undefined, {
@@ -914,7 +1165,7 @@ export function StudentStreamingClient({
         sensitivity: "base",
       });
     });
-  }, [enrichedStudents, performanceMeasure]);
+  }, [enrichedStudents, performanceMeasure, effectiveDivisionRuleMode]);
 
   const displayedStudents = useMemo(() => {
     if (!previewStreamFilter) return rankedStudents;
@@ -1015,16 +1266,34 @@ export function StudentStreamingClient({
     canPlace,
   ]);
 
+  const isSecondarySchool = schoolLevel === "secondary";
+
+  const rulesOverlapWarning = useMemo(() => {
+    if (performanceMeasure !== "division") return null;
+    if (!isPointsBasedDivisionMode(effectiveDivisionRuleMode)) return null;
+    return detectOverlappingDivisionPointsRules(activeRulesForMode);
+  }, [
+    performanceMeasure,
+    effectiveDivisionRuleMode,
+    activeRulesForMode,
+  ]);
+
   const applyExampleRules = () => {
     if (streamClasses.length === 0) {
       toast.error("Add stream classes before defining rules.");
       return;
     }
-    setRules(
-      performanceMeasure === "division"
-        ? buildExampleDivisionRules(streamClasses)
-        : buildExampleNumericRules(streamClasses)
-    );
+    if (performanceMeasure === "division") {
+      if (divisionRuleMode === "necta_points" && isSecondarySchool) {
+        setRules(buildExampleNectaPointsRules(streamClasses));
+      } else if (divisionRuleMode === "custom_points" && isSecondarySchool) {
+        setRules(buildExampleCustomPointsRules(streamClasses));
+      } else {
+        setRules(buildExampleDivisionRules(streamClasses));
+      }
+      return;
+    }
+    setRules(buildExampleNumericRules(streamClasses));
   };
   const capacityWarnings = useMemo(
     () =>
@@ -1037,6 +1306,24 @@ export function StudentStreamingClient({
       toast.error("Select an exam before saving rules.");
       return;
     }
+    if (rules.length === 0) {
+      toast.error("Add at least one rule before saving.");
+      return;
+    }
+    if (rulesOverlapWarning) {
+      toast.error(rulesOverlapWarning);
+      return;
+    }
+    if (
+      performanceMeasure === "division" &&
+      isPointsBasedDivisionMode(divisionRuleMode) &&
+      !isSecondarySchool
+    ) {
+      toast.error(
+        "Points-based division rules are only available for secondary schools."
+      );
+      return;
+    }
     setSavingRules(true);
     const result = await saveStreamingRulesAction({
       parentClassId,
@@ -1044,6 +1331,7 @@ export function StudentStreamingClient({
       examType,
       performanceMeasure,
       rules,
+      divisionRuleMode: effectiveDivisionRuleMode,
     });
     setSavingRules(false);
     if (!result.ok) {
@@ -1285,7 +1573,9 @@ export function StudentStreamingClient({
         reason: formatStreamingPlacementReason(
           performanceMeasure,
           student.performance,
-          student.isManualTarget
+          student.isManualTarget,
+          rules,
+          effectiveDivisionRuleMode
         ),
         actionType,
       };
@@ -1476,12 +1766,41 @@ export function StudentStreamingClient({
 
   const addRule = () => {
     if (streamClasses.length === 0) return;
-    setRules((prev) => [
-      ...prev,
-      performanceMeasure === "division"
-        ? emptyDivisionRule(streamClasses)
-        : emptyNumericRule(streamClasses),
-    ]);
+    if (performanceMeasure === "division") {
+      if (isPointsBasedDivisionMode(divisionRuleMode) && isSecondarySchool) {
+        setRules((prev) => [
+          ...prev,
+          emptyDivisionPointsRule(streamClasses, divisionRuleMode),
+        ]);
+      } else {
+        setRules((prev) => [...prev, emptyDivisionRule(streamClasses)]);
+      }
+      return;
+    }
+    setRules((prev) => [...prev, emptyNumericRule(streamClasses)]);
+  };
+
+  const handleDivisionRuleModeChange = (mode: DivisionRuleMode) => {
+    if (isPointsBasedDivisionMode(mode) && !isSecondarySchool) {
+      toast.error(
+        "Points-based division rules are only available for secondary schools."
+      );
+      return;
+    }
+    if (mode === "division_only") {
+      const hasPointsRules = rules.some(isDivisionPointsRule);
+      if (hasPointsRules) {
+        setRules((prev) => prev.filter((rule) => !isDivisionPointsRule(rule)));
+        toast.info("Points-based rules were removed. Division-only rules were kept.");
+      }
+    } else if (isPointsBasedDivisionMode(mode)) {
+      setRules((prev) =>
+        prev.map((rule) =>
+          isDivisionPointsRule(rule) ? { ...rule, mode } : rule
+        )
+      );
+    }
+    setDivisionRuleMode(mode);
   };
 
   const updateNumericRule = (
@@ -1501,7 +1820,18 @@ export function StudentStreamingClient({
   ) => {
     setRules((prev) =>
       prev.map((rule, i) =>
-        i === index && "divisions" in rule ? { ...rule, ...patch } : rule
+        i === index && isDivisionRule(rule) ? { ...rule, ...patch } : rule
+      )
+    );
+  };
+
+  const updateDivisionPointsRule = (
+    index: number,
+    patch: Partial<DivisionPointsStreamingRule>
+  ) => {
+    setRules((prev) =>
+      prev.map((rule, i) =>
+        i === index && isDivisionPointsRule(rule) ? { ...rule, ...patch } : rule
       )
     );
   };
@@ -1759,56 +2089,169 @@ export function StudentStreamingClient({
                 </h2>
               </button>
               {rulesExpanded && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col items-end gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={addRule}
+                      disabled={streamClasses.length === 0}
+                      className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                    >
+                      Add rule
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveRules()}
+                      disabled={savingRules || !examType}
+                      className="inline-flex items-center gap-2 rounded-xl bg-school-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                      {savingRules ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      Save rules
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={applyExampleRules}
                     disabled={streamClasses.length === 0}
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                    className="text-xs font-medium text-school-primary hover:underline disabled:opacity-50"
                   >
-                    Example rules
-                  </button>
-                  <button
-                    type="button"
-                    onClick={addRule}
-                    disabled={streamClasses.length === 0}
-                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                  >
-                    Add rule
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveRules()}
-                    disabled={savingRules || !examType}
-                    className="inline-flex items-center gap-2 rounded-xl bg-school-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                  >
-                    {savingRules ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : null}
-                    Save rules
+                    Load example rules
                   </button>
                 </div>
               )}
             </div>
 
             <div id="streaming-rules-panel">
-            {rules.length === 0 ? (
+            {performanceMeasure === "division" && rulesExpanded && (
+              <div className="mb-4 space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
+                <p className="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                  How do you want to place students?
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDivisionRuleModeChange("division_only")}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      divisionRuleMode === "division_only"
+                        ? "bg-school-primary text-white shadow-sm"
+                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                    }`}
+                  >
+                    Division only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDivisionRuleModeChange("necta_points")}
+                    disabled={!isSecondarySchool}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      divisionRuleMode === "necta_points"
+                        ? "bg-school-primary text-white shadow-sm"
+                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                    }`}
+                  >
+                    NECTA points
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDivisionRuleModeChange("custom_points")}
+                    disabled={!isSecondarySchool}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      divisionRuleMode === "custom_points"
+                        ? "bg-school-primary text-white shadow-sm"
+                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                    }`}
+                  >
+                    Custom points
+                  </button>
+                </div>
+                {divisionRuleMode === "division_only" && (
+                  <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
+                    Place students by division result. Points are not used.
+                  </p>
+                )}
+                {divisionRuleMode === "necta_points" && isSecondarySchool && (
+                  <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
+                    Uses official NECTA point ranges. Lower points mean stronger
+                    performance.
+                  </p>
+                )}
+                {divisionRuleMode === "custom_points" && isSecondarySchool && (
+                  <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
+                    Create your own point ranges for student placement.
+                  </p>
+                )}
+                {!isSecondarySchool && (
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    Point-based placement is for secondary schools. Use Division
+                    only for this school.
+                  </p>
+                )}
+                {divisionRuleMode === "necta_points" && isSecondarySchool && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setNectaGuideExpanded((v) => !v)}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-school-primary hover:underline"
+                    >
+                      {nectaGuideExpanded ? (
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      )}
+                      Official NECTA point ranges
+                    </button>
+                    {nectaGuideExpanded && (
+                      <ul className="mt-2 space-y-1 rounded-lg border border-slate-200/80 bg-white px-3 py-2 text-xs text-slate-600 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-400">
+                        <li>Division I: 7–17 points</li>
+                        <li>Division II: 18–21 points</li>
+                        <li>Division III: 22–25 points</li>
+                        <li>Division IV: 26–33 points</li>
+                        <li>Division 0: 34+ points</li>
+                      </ul>
+                    )}
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500 dark:text-zinc-500">
+                  Rules are checked from top to bottom. The first match wins.
+                </p>
+              </div>
+            )}
+            {rulesOverlapWarning && rulesExpanded && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                {rulesOverlapWarning}
+              </div>
+            )}
+            {activeRulesForMode.length === 0 ? (
               rulesExpanded ? (
                 <p className="text-sm text-slate-500 dark:text-zinc-400">
-                  No active rules yet. Use{" "}
-                  <span className="font-medium">Example rules</span> or{" "}
-                  <span className="font-medium">Add rule</span> to define score
-                  ranges for each stream (e.g. 70–100 → FORM TWO A).
+                  No placement rules yet. Choose how to place students above,
+                  then click{" "}
+                  <span className="font-medium">Add rule</span>
+                  {performanceMeasure === "division"
+                    ? ""
+                    : " to set score ranges for each stream"}
+                  —or{" "}
+                  <button
+                    type="button"
+                    onClick={applyExampleRules}
+                    disabled={streamClasses.length === 0}
+                    className="font-medium text-school-primary hover:underline disabled:opacity-50"
+                  >
+                    load example rules
+                  </button>{" "}
+                  to get started.
                 </p>
               ) : null
             ) : (
               <div className={rulesExpanded ? "space-y-4" : ""}>
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                    Active rules
+                    Placement summary
                   </p>
                   <ul className="space-y-1">
-                    {rules.map((rule, index) => (
+                    {activeRulesForMode.map((rule, index) => (
                       <li
                         key={`summary-${index}`}
                         className="text-sm font-medium text-slate-800 dark:text-zinc-100"
@@ -1827,8 +2270,121 @@ export function StudentStreamingClient({
 
                 {rulesExpanded && (
                 <div className="space-y-3">
-                {rules.map((rule, index) =>
-                  "divisions" in rule ? (
+                {activeRulesForMode.map((rule) => {
+                  const index = rules.indexOf(rule);
+                  if (index < 0) return null;
+                  return isDivisionPointsRule(rule) &&
+                  performanceMeasure === "division" &&
+                  isPointsBasedDivisionMode(divisionRuleMode) ? (
+                    <div
+                      key={`pts-${index}`}
+                      className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200/80 p-3 md:grid-cols-[auto_1fr_1fr_1fr_1fr_auto] dark:border-zinc-700"
+                    >
+                      <div className="flex flex-col gap-1 self-start">
+                        <button
+                          type="button"
+                          onClick={() => moveRule(index, -1)}
+                          disabled={index === 0}
+                          className="rounded-lg border border-slate-200 p-1 disabled:opacity-40 dark:border-zinc-700"
+                          aria-label="Move rule up"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveRule(index, 1)}
+                          disabled={index === rules.length - 1}
+                          className="rounded-lg border border-slate-200 p-1 disabled:opacity-40 dark:border-zinc-700"
+                          aria-label="Move rule down"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-slate-500">
+                          Division
+                        </span>
+                        <select
+                          value={rule.division}
+                          onChange={(e) =>
+                            updateDivisionPointsRule(index, {
+                              division: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        >
+                          {DIVISION_POINTS_RULE_DIVISIONS.map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span className="mb-1 block text-xs font-medium text-slate-500">
+                          {divisionRuleMode === "necta_points"
+                            ? "From (points)"
+                            : "Minimum points"}
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={rule.minPoints}
+                          onChange={(e) =>
+                            updateDivisionPointsRule(index, {
+                              minPoints: Number(e.target.value),
+                            })
+                          }
+                          className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        />
+                      </label>
+                      <label>
+                        <span className="mb-1 block text-xs font-medium text-slate-500">
+                          {divisionRuleMode === "necta_points"
+                            ? "To (points)"
+                            : "Maximum points"}
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={rule.maxPoints}
+                          onChange={(e) =>
+                            updateDivisionPointsRule(index, {
+                              maxPoints: Number(e.target.value),
+                            })
+                          }
+                          className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-slate-500">
+                          Place in stream
+                        </span>
+                        <select
+                          value={rule.targetClassId}
+                          onChange={(e) =>
+                            updateDivisionPointsRule(index, {
+                              targetClassId: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        >
+                          {streamClasses.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeRule(index)}
+                        className="self-end rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ) : isDivisionRule(rule) ? (
                     <div
                       key={`div-${index}`}
                       className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200/80 p-3 md:grid-cols-[auto_1fr_1fr_auto] dark:border-zinc-700"
@@ -1855,7 +2411,10 @@ export function StudentStreamingClient({
                       </div>
                       <div>
                         <span className="mb-1 block text-xs font-medium text-slate-500">
-                          Divisions
+                          {performanceMeasure === "division" &&
+                          isPointsBasedDivisionMode(divisionRuleMode)
+                            ? "Students with"
+                            : "Division"}
                         </span>
                         <div className="flex flex-wrap gap-2">
                           {DIVISION_OPTIONS.map((d) => {
@@ -1885,7 +2444,7 @@ export function StudentStreamingClient({
                       </div>
                       <label className="block">
                         <span className="mb-1 block text-xs font-medium text-slate-500">
-                          Target stream
+                          Place in stream
                         </span>
                         <select
                           value={rule.targetClassId}
@@ -1911,7 +2470,7 @@ export function StudentStreamingClient({
                         Delete
                       </button>
                     </div>
-                  ) : (
+                  ) : isNumericRule(rule) ? (
                     <div
                       key={`num-${index}`}
                       className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200/80 p-3 md:grid-cols-[auto_1fr_1fr_1fr_auto] dark:border-zinc-700"
@@ -1968,7 +2527,7 @@ export function StudentStreamingClient({
                       </label>
                       <label>
                         <span className="mb-1 block text-xs font-medium text-slate-500">
-                          Target stream
+                          Place in stream
                         </span>
                         <select
                           value={rule.targetClassId}
@@ -1994,8 +2553,8 @@ export function StudentStreamingClient({
                         Delete
                       </button>
                     </div>
-                  )
-                )}
+                  ) : null;
+                })}
                 </div>
                 )}
               </div>
@@ -2003,7 +2562,7 @@ export function StudentStreamingClient({
             </div>
           </section>
 
-          {rules.length > 0 && streamClasses.length > 0 && (
+          {activeRulesForMode.length > 0 && streamClasses.length > 0 && (
             <section className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-zinc-700/80 dark:bg-zinc-900/80">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-zinc-50">
@@ -2266,17 +2825,11 @@ export function StudentStreamingClient({
                         </td>
                       )}
                       {performanceMeasure === "division" && (
-                        <td className="px-2 py-1.5 align-middle text-xs font-semibold text-slate-900 dark:text-zinc-100">
-                          {s.performance.division ? (
-                            s.performance.division === "INC" ||
-                            s.performance.division === "ABS" ? (
-                              s.performance.division
-                            ) : (
-                              `Division ${s.performance.division}`
-                            )
-                          ) : (
-                            <span className={MUTED_CELL_CLASS}>—</span>
-                          )}
+                        <td className="px-2 py-1.5 align-middle">
+                          <DivisionPerformanceCell
+                            performance={s.performance}
+                            divisionRuleMode={effectiveDivisionRuleMode}
+                          />
                         </td>
                       )}
                       {performanceMeasure === "total_marks" && (
