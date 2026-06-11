@@ -17,13 +17,19 @@ import { AsyncLoadingShell } from "@/components/dashboard/async-loading-shell";
 import {
   assignStudentRanks,
   buildCapacityWarnings,
+  buildExampleCustomPointsRules,
+  buildExampleDivisionRules,
+  buildExampleNectaPointsRules,
+  buildExampleNumericRules,
   computeStreamingPlacementResults,
   detectOverlappingDivisionPointsRules,
   filterRulesForDivisionMode,
+  findStreamsWithoutRules,
   formatRuleSummary,
   formatStreamingPlacementReason,
   getDivisionTableDisplay,
   inferDivisionRuleMode,
+  inferTotalMarksCeilingFromPerformance,
   isDivisionPointsRule,
   isDivisionRule,
   isNumericRule,
@@ -79,6 +85,27 @@ type BulkApplyEligibility = {
 
 const DIVISION_OPTIONS = DIVISION_ONLY_RULE_DIVISIONS;
 
+const NUMERIC_MEASURE_COPY = {
+  average_score: {
+    helperText:
+      "Students will be placed using their average percentage score from the selected exam.",
+    example: "70%–100% → FORM 2A",
+    minLabel: "Minimum Average (%)",
+    maxLabel: "Maximum Average (%)",
+    minPlaceholder: "e.g. 70",
+    maxPlaceholder: "e.g. 100",
+  },
+  total_marks: {
+    helperText:
+      "Students will be placed using their total marks from the selected exam.",
+    example: "700–1000 Marks → FORM 2A",
+    minLabel: "Minimum Total Marks",
+    maxLabel: "Maximum Total Marks",
+    minPlaceholder: "e.g. 700",
+    maxPlaceholder: "e.g. 1000",
+  },
+} as const;
+
 function academicYearOptions(): string[] {
   const current = currentAcademicYear();
   const years: string[] = [];
@@ -86,207 +113,6 @@ function academicYearOptions(): string[] {
     years.push(String(y));
   }
   return years;
-}
-
-function buildExampleNumericRules(
-  streamClasses: StreamingStreamClass[]
-): NumericStreamingRule[] {
-  if (streamClasses.length === 0) return [];
-  if (streamClasses.length === 1) {
-    return [{ targetClassId: streamClasses[0]!.id, min: 0, max: 100 }];
-  }
-  if (streamClasses.length === 2) {
-    return [
-      { targetClassId: streamClasses[0]!.id, min: 50, max: 100 },
-      { targetClassId: streamClasses[1]!.id, min: 0, max: 49.99 },
-    ];
-  }
-  return [
-    { targetClassId: streamClasses[0]!.id, min: 70, max: 100 },
-    { targetClassId: streamClasses[1]!.id, min: 50, max: 69.99 },
-    {
-      targetClassId: streamClasses[streamClasses.length - 1]!.id,
-      min: 0,
-      max: 49.99,
-    },
-  ];
-}
-
-function buildExampleNectaPointsRules(
-  streamClasses: StreamingStreamClass[]
-): StreamingRuleEntry[] {
-  if (streamClasses.length === 0) return [];
-  if (streamClasses.length === 1) {
-    return [
-      {
-        mode: "necta_points",
-        targetClassId: streamClasses[0]!.id,
-        division: "I",
-        minPoints: 7,
-        maxPoints: 17,
-      },
-      {
-        mode: "division_only",
-        targetClassId: streamClasses[0]!.id,
-        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
-      },
-    ];
-  }
-  if (streamClasses.length === 2) {
-    return [
-      {
-        mode: "necta_points",
-        targetClassId: streamClasses[0]!.id,
-        division: "I",
-        minPoints: 7,
-        maxPoints: 12,
-      },
-      {
-        mode: "necta_points",
-        targetClassId: streamClasses[0]!.id,
-        division: "I",
-        minPoints: 13,
-        maxPoints: 17,
-      },
-      {
-        mode: "division_only",
-        targetClassId: streamClasses[1]!.id,
-        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
-      },
-    ];
-  }
-  return [
-    {
-      mode: "necta_points",
-      targetClassId: streamClasses[0]!.id,
-      division: "I",
-      minPoints: 7,
-      maxPoints: 12,
-    },
-    {
-      mode: "necta_points",
-      targetClassId: streamClasses[1]!.id,
-      division: "I",
-      minPoints: 13,
-      maxPoints: 17,
-    },
-    {
-      mode: "necta_points",
-      targetClassId: streamClasses[1]!.id,
-      division: "II",
-      minPoints: 18,
-      maxPoints: 21,
-    },
-    {
-      mode: "division_only",
-      targetClassId: streamClasses[streamClasses.length - 1]!.id,
-      divisions: ["III", "IV", "0", "INC", "ABS"],
-    },
-  ];
-}
-
-function buildExampleCustomPointsRules(
-  streamClasses: StreamingStreamClass[]
-): StreamingRuleEntry[] {
-  if (streamClasses.length === 0) return [];
-  if (streamClasses.length === 1) {
-    return [
-      {
-        mode: "custom_points",
-        targetClassId: streamClasses[0]!.id,
-        division: "I",
-        minPoints: 7,
-        maxPoints: 10,
-      },
-      {
-        mode: "division_only",
-        targetClassId: streamClasses[0]!.id,
-        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
-      },
-    ];
-  }
-  if (streamClasses.length === 2) {
-    return [
-      {
-        mode: "custom_points",
-        targetClassId: streamClasses[0]!.id,
-        division: "I",
-        minPoints: 7,
-        maxPoints: 10,
-      },
-      {
-        mode: "custom_points",
-        targetClassId: streamClasses[1]!.id,
-        division: "I",
-        minPoints: 11,
-        maxPoints: 17,
-      },
-      {
-        mode: "division_only",
-        targetClassId: streamClasses[1]!.id,
-        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
-      },
-    ];
-  }
-  return [
-    {
-      mode: "custom_points",
-      targetClassId: streamClasses[0]!.id,
-      division: "I",
-      minPoints: 7,
-      maxPoints: 10,
-    },
-    {
-      mode: "custom_points",
-      targetClassId: streamClasses[1]!.id,
-      division: "I",
-      minPoints: 11,
-      maxPoints: 17,
-    },
-    {
-      mode: "custom_points",
-      targetClassId: streamClasses[1]!.id,
-      division: "II",
-      minPoints: 18,
-      maxPoints: 21,
-    },
-    {
-      mode: "division_only",
-      targetClassId: streamClasses[streamClasses.length - 1]!.id,
-      divisions: ["III", "IV", "0", "INC", "ABS"],
-    },
-  ];
-}
-
-function buildExampleDivisionRules(
-  streamClasses: StreamingStreamClass[]
-): DivisionStreamingRule[] {
-  if (streamClasses.length === 0) return [];
-  if (streamClasses.length === 1) {
-    return [
-      {
-        targetClassId: streamClasses[0]!.id,
-        divisions: ["I", "II", "III", "IV", "0", "INC", "ABS"],
-      },
-    ];
-  }
-  if (streamClasses.length === 2) {
-    return [
-      { targetClassId: streamClasses[0]!.id, divisions: ["I"] },
-      {
-        targetClassId: streamClasses[1]!.id,
-        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
-      },
-    ];
-  }
-  return [
-    { targetClassId: streamClasses[0]!.id, divisions: ["I"] },
-    { targetClassId: streamClasses[1]!.id, divisions: ["II"] },
-    {
-      targetClassId: streamClasses[streamClasses.length - 1]!.id,
-      divisions: ["III", "IV", "0", "INC", "ABS"],
-    },
-  ];
 }
 
 type PlacementPreviewRow = StreamingPlacementPreview;
@@ -1278,6 +1104,22 @@ export function StudentStreamingClient({
     activeRulesForMode,
   ]);
 
+  const streamsWithoutRules = useMemo(
+    () =>
+      findStreamsWithoutRules(
+        streamClasses,
+        rules,
+        performanceMeasure,
+        effectiveDivisionRuleMode
+      ),
+    [
+      streamClasses,
+      rules,
+      performanceMeasure,
+      effectiveDivisionRuleMode,
+    ]
+  );
+
   const applyExampleRules = () => {
     if (streamClasses.length === 0) {
       toast.error("Add stream classes before defining rules.");
@@ -1293,7 +1135,18 @@ export function StudentStreamingClient({
       }
       return;
     }
-    setRules(buildExampleNumericRules(streamClasses));
+    if (performanceMeasure === "total_marks") {
+      const totalMarksCeiling = inferTotalMarksCeilingFromPerformance(
+        students.map((student) => student.performance)
+      );
+      setRules(
+        buildExampleNumericRules(streamClasses, "total_marks", {
+          totalMarksCeiling,
+        })
+      );
+      return;
+    }
+    setRules(buildExampleNumericRules(streamClasses, "average_score"));
   };
   const capacityWarnings = useMemo(
     () =>
@@ -1900,18 +1753,19 @@ export function StudentStreamingClient({
 
       {parentClasses.length > 0 && streamClasses.length === 0 && !loadingData && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
-          No stream sections found for{" "}
+          No stream classes found for{" "}
           <span className="font-semibold">
-            {selectedParent?.name ?? "this class"}
+            {selectedParent?.name ?? "this level"}
           </span>
-          . Create stream classes (e.g. FORM ONE A, FORM ONE B, FORM ONE C) in{" "}
+          . Please create streams/classes first in{" "}
           <a
             href="/dashboard/classes"
             className="font-semibold underline underline-offset-2"
           >
             Classes
           </a>{" "}
-          and link them to the parent class.
+          (e.g. FORM 2A, FORM 2B, FORM 2Q) and link them to the parent
+          class.
         </div>
       )}
 
@@ -2124,6 +1978,21 @@ export function StudentStreamingClient({
             </div>
 
             <div id="streaming-rules-panel">
+            {(performanceMeasure === "average_score" ||
+              performanceMeasure === "total_marks") &&
+              rulesExpanded && (
+                <div className="mb-4 rounded-xl border border-sky-100 bg-sky-50/70 px-3 py-2.5 dark:border-sky-900/30 dark:bg-sky-950/20">
+                  <p className="text-xs leading-relaxed text-slate-700 dark:text-zinc-300">
+                    {NUMERIC_MEASURE_COPY[performanceMeasure].helperText}
+                  </p>
+                  <p className="mt-1.5 text-xs text-slate-500 dark:text-zinc-400">
+                    <span className="font-medium text-slate-600 dark:text-zinc-300">
+                      Example:
+                    </span>{" "}
+                    {NUMERIC_MEASURE_COPY[performanceMeasure].example}
+                  </p>
+                </div>
+              )}
             {performanceMeasure === "division" && rulesExpanded && (
               <div className="mb-4 space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
                 <p className="text-sm font-medium text-slate-800 dark:text-zinc-200">
@@ -2223,6 +2092,14 @@ export function StudentStreamingClient({
                 {rulesOverlapWarning}
               </div>
             )}
+            {streamsWithoutRules.length > 0 &&
+              rulesExpanded &&
+              activeRulesForMode.length > 0 && (
+                <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-100">
+                  Some streams have no rule yet:{" "}
+                  {streamsWithoutRules.map((stream) => stream.name).join(", ")}.
+                </div>
+              )}
             {activeRulesForMode.length === 0 ? (
               rulesExpanded ? (
                 <p className="text-sm text-slate-500 dark:text-zinc-400">
@@ -2256,7 +2133,11 @@ export function StudentStreamingClient({
                         key={`summary-${index}`}
                         className="text-sm font-medium text-slate-800 dark:text-zinc-100"
                       >
-                        {formatRuleSummary(rule, streamNameById)}
+                        {formatRuleSummary(
+                          rule,
+                          streamNameById,
+                          performanceMeasure
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -2497,11 +2378,22 @@ export function StudentStreamingClient({
                       </div>
                       <label>
                         <span className="mb-1 block text-xs font-medium text-slate-500">
-                          Min
+                          {performanceMeasure === "average_score"
+                            ? NUMERIC_MEASURE_COPY.average_score.minLabel
+                            : performanceMeasure === "total_marks"
+                              ? NUMERIC_MEASURE_COPY.total_marks.minLabel
+                              : "Minimum"}
                         </span>
                         <input
                           type="number"
                           value={rule.min}
+                          placeholder={
+                            performanceMeasure === "average_score"
+                              ? NUMERIC_MEASURE_COPY.average_score.minPlaceholder
+                              : performanceMeasure === "total_marks"
+                                ? NUMERIC_MEASURE_COPY.total_marks.minPlaceholder
+                                : undefined
+                          }
                           onChange={(e) =>
                             updateNumericRule(index, {
                               min: Number(e.target.value),
@@ -2512,11 +2404,22 @@ export function StudentStreamingClient({
                       </label>
                       <label>
                         <span className="mb-1 block text-xs font-medium text-slate-500">
-                          Max
+                          {performanceMeasure === "average_score"
+                            ? NUMERIC_MEASURE_COPY.average_score.maxLabel
+                            : performanceMeasure === "total_marks"
+                              ? NUMERIC_MEASURE_COPY.total_marks.maxLabel
+                              : "Maximum"}
                         </span>
                         <input
                           type="number"
                           value={rule.max}
+                          placeholder={
+                            performanceMeasure === "average_score"
+                              ? NUMERIC_MEASURE_COPY.average_score.maxPlaceholder
+                              : performanceMeasure === "total_marks"
+                                ? NUMERIC_MEASURE_COPY.total_marks.maxPlaceholder
+                                : undefined
+                          }
                           onChange={(e) =>
                             updateNumericRule(index, {
                               max: Number(e.target.value),

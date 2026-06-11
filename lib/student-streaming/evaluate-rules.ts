@@ -14,7 +14,11 @@ import type {
   StreamingSummaryCounts,
   StudentStreamingPerformance,
 } from "@/lib/student-streaming/types";
-import { NECTA_DIVISION_POINT_RANGES } from "@/lib/student-streaming/types";
+import {
+  DIVISION_ONLY_RULE_DIVISIONS,
+  DIVISION_POINTS_RULE_DIVISIONS,
+  NECTA_DIVISION_POINT_RANGES,
+} from "@/lib/student-streaming/types";
 
 export function isDivisionRule(
   rule: StreamingRuleEntry
@@ -357,9 +361,24 @@ export function formatNumericRange(min: number, max: number): string {
   return `${minLabel}–${maxLabel}`;
 }
 
+/** Human-readable numeric range for placement summaries (%, Marks, etc.). */
+export function formatNumericRuleRangeForMeasure(
+  measure: StreamingPerformanceMeasure,
+  min: number,
+  max: number
+): string {
+  const lo = Math.min(min, max);
+  const hi = Math.max(min, max);
+  const range = formatNumericRange(lo, hi);
+  if (measure === "average_score") return `${range}%`;
+  if (measure === "total_marks") return `${range} Marks`;
+  return range;
+}
+
 export function formatRuleSummary(
   rule: StreamingRuleEntry,
-  streamNameById: Map<string, string>
+  streamNameById: Map<string, string>,
+  performanceMeasure?: StreamingPerformanceMeasure
 ): string {
   const target = streamNameById.get(rule.targetClassId) ?? "Unknown stream";
   if (isDivisionPointsRule(rule)) {
@@ -374,7 +393,16 @@ export function formatRuleSummary(
     return `${label || "—"} → ${target}`;
   }
   if (isNumericRule(rule)) {
-    return `${formatNumericRange(rule.min, rule.max)} → ${target}`;
+    const rangeLabel =
+      performanceMeasure === "average_score" ||
+      performanceMeasure === "total_marks"
+        ? formatNumericRuleRangeForMeasure(
+            performanceMeasure,
+            rule.min,
+            rule.max
+          )
+        : formatNumericRange(rule.min, rule.max);
+    return `${rangeLabel} → ${target}`;
   }
   return `→ ${target}`;
 }
@@ -1081,4 +1109,258 @@ export function buildCapacityWarnings(
   }
 
   return warnings;
+}
+
+const PRIMARY_DIVISIONS = ["I", "II", "III", "IV", "0"] as const;
+const TAIL_DIVISIONS = ["INC", "ABS"] as const;
+
+export function compareStreamClassNames(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+export function sortStreamClassesByName<T extends { name: string }>(
+  streams: T[]
+): T[] {
+  return [...streams].sort((a, b) => compareStreamClassNames(a.name, b.name));
+}
+
+function roundNumericBound(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Split a numeric range into equal bands (index 0 = highest band). */
+function buildEvenNumericBands(
+  count: number,
+  overallMin: number,
+  overallMax: number
+): { min: number; max: number }[] {
+  if (count <= 0) return [];
+  if (count === 1) {
+    return [{ min: overallMin, max: overallMax }];
+  }
+
+  const span = overallMax - overallMin;
+  const step = span / count;
+  const bands: { min: number; max: number }[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const bandIndex = count - 1 - i;
+    const min = roundNumericBound(overallMin + bandIndex * step);
+    const max =
+      bandIndex === count - 1
+        ? roundNumericBound(overallMax)
+        : roundNumericBound(overallMin + (bandIndex + 1) * step - 0.01);
+    bands.push({ min, max });
+  }
+
+  return bands;
+}
+
+export function inferTotalMarksCeilingFromPerformance(
+  performances: Pick<StudentStreamingPerformance, "totalMarks">[],
+  fallback = 1000
+): number {
+  let max = 0;
+  for (const performance of performances) {
+    const total = performance.totalMarks;
+    if (total != null && Number.isFinite(total) && total > max) {
+      max = total;
+    }
+  }
+  if (max <= 0) return fallback;
+  return Math.ceil(max / 100) * 100;
+}
+
+export function buildExampleNumericRules(
+  streamClasses: StreamingStreamClass[],
+  measure: "average_score" | "total_marks",
+  options?: { totalMarksCeiling?: number | null }
+): NumericStreamingRule[] {
+  if (streamClasses.length === 0) return [];
+
+  const [overallMin, overallMax] =
+    measure === "average_score"
+      ? [0, 100]
+      : [0, options?.totalMarksCeiling ?? 1000];
+
+  const bands = buildEvenNumericBands(
+    streamClasses.length,
+    overallMin,
+    overallMax
+  );
+
+  return bands.map((band, index) => ({
+    targetClassId: streamClasses[index]!.id,
+    min: band.min,
+    max: band.max,
+  }));
+}
+
+export function buildExampleDivisionRules(
+  streamClasses: StreamingStreamClass[]
+): DivisionStreamingRule[] {
+  const count = streamClasses.length;
+  if (count === 0) return [];
+
+  if (count === 1) {
+    return [
+      {
+        targetClassId: streamClasses[0]!.id,
+        divisions: [...DIVISION_ONLY_RULE_DIVISIONS],
+      },
+    ];
+  }
+
+  const groups: string[][] = Array.from({ length: count }, () => []);
+  let primaryIndex = 0;
+
+  for (
+    let streamIndex = 0;
+    streamIndex < count - 1 && primaryIndex < PRIMARY_DIVISIONS.length;
+    streamIndex += 1
+  ) {
+    groups[streamIndex]!.push(PRIMARY_DIVISIONS[primaryIndex]!);
+    primaryIndex += 1;
+  }
+
+  while (primaryIndex < PRIMARY_DIVISIONS.length) {
+    groups[count - 1]!.push(PRIMARY_DIVISIONS[primaryIndex]!);
+    primaryIndex += 1;
+  }
+  groups[count - 1]!.push(...TAIL_DIVISIONS);
+
+  return groups
+    .map((divisions, index) => ({
+      targetClassId: streamClasses[index]!.id,
+      divisions,
+    }))
+    .filter((rule) => rule.divisions.length > 0);
+}
+
+function subdivideInclusiveRange(
+  min: number,
+  max: number,
+  parts: number
+): { min: number; max: number }[] {
+  if (parts <= 0) return [];
+  if (parts === 1) return [{ min, max }];
+
+  const total = max - min + 1;
+  const size = Math.max(1, Math.floor(total / parts));
+  const bands: { min: number; max: number }[] = [];
+  let cursor = min;
+
+  for (let part = 0; part < parts; part += 1) {
+    const end = part === parts - 1 ? max : Math.min(max, cursor + size - 1);
+    bands.push({ min: cursor, max: end });
+    cursor = end + 1;
+  }
+
+  return bands;
+}
+
+function buildExampleDivisionPointsRules(
+  streamClasses: StreamingStreamClass[],
+  mode: "necta_points" | "custom_points"
+): StreamingRuleEntry[] {
+  const count = streamClasses.length;
+  if (count === 0) return [];
+
+  if (count === 1) {
+    const streamId = streamClasses[0]!.id;
+    return [
+      {
+        mode,
+        targetClassId: streamId,
+        division: "I",
+        minPoints: 7,
+        maxPoints: mode === "necta_points" ? 17 : 10,
+      },
+      {
+        mode: "division_only",
+        targetClassId: streamId,
+        divisions: ["II", "III", "IV", "0", "INC", "ABS"],
+      },
+    ];
+  }
+
+  const rules: StreamingRuleEntry[] = [];
+  const pointSlots = count - 1;
+  let streamIndex = 0;
+
+  for (
+    let divisionIndex = 0;
+    divisionIndex < DIVISION_POINTS_RULE_DIVISIONS.length &&
+    streamIndex < pointSlots;
+    divisionIndex += 1
+  ) {
+    const division = DIVISION_POINTS_RULE_DIVISIONS[divisionIndex]!;
+    const range = NECTA_DIVISION_POINT_RANGES[division];
+    const streamsLeft = pointSlots - streamIndex;
+    const divisionsLeft =
+      DIVISION_POINTS_RULE_DIVISIONS.length - divisionIndex;
+    const allocation = Math.max(1, Math.ceil(streamsLeft / divisionsLeft));
+    const bands = subdivideInclusiveRange(range.min, range.max, allocation);
+
+    for (const band of bands) {
+      if (streamIndex >= pointSlots) break;
+      rules.push({
+        mode,
+        targetClassId: streamClasses[streamIndex]!.id,
+        division,
+        minPoints: band.min,
+        maxPoints: band.max,
+      });
+      streamIndex += 1;
+    }
+  }
+
+  while (streamIndex < pointSlots) {
+    const range = NECTA_DIVISION_POINT_RANGES["0"];
+    rules.push({
+      mode,
+      targetClassId: streamClasses[streamIndex]!.id,
+      division: "0",
+      minPoints: range.min,
+      maxPoints: range.max,
+    });
+    streamIndex += 1;
+  }
+
+  rules.push({
+    mode: "division_only",
+    targetClassId: streamClasses[count - 1]!.id,
+    divisions: [...TAIL_DIVISIONS],
+  });
+
+  return rules;
+}
+
+export function buildExampleNectaPointsRules(
+  streamClasses: StreamingStreamClass[]
+): StreamingRuleEntry[] {
+  return buildExampleDivisionPointsRules(streamClasses, "necta_points");
+}
+
+export function buildExampleCustomPointsRules(
+  streamClasses: StreamingStreamClass[]
+): StreamingRuleEntry[] {
+  return buildExampleDivisionPointsRules(streamClasses, "custom_points");
+}
+
+export function findStreamsWithoutRules(
+  streamClasses: StreamingStreamClass[],
+  rules: StreamingRuleEntry[],
+  performanceMeasure: StreamingPerformanceMeasure,
+  divisionRuleMode: DivisionRuleMode
+): StreamingStreamClass[] {
+  const activeRules =
+    performanceMeasure === "division"
+      ? filterRulesForDivisionMode(rules, divisionRuleMode)
+      : rules;
+  const coveredStreamIds = new Set(
+    activeRules.map((rule) => rule.targetClassId).filter(Boolean)
+  );
+
+  return streamClasses.filter((stream) => !coveredStreamIds.has(stream.id));
 }

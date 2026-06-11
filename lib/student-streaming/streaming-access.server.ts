@@ -4,10 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveClassCluster } from "@/lib/class-cluster";
 import { collectParentClassIds } from "@/lib/class-options";
-import type {
-  StreamingParentClassOption,
-  StreamingStreamClass,
-} from "@/lib/student-streaming/types";
+import { resolveStreamClassesForParent } from "@/lib/student-streaming/resolve-stream-classes.server";
+import type { StreamingParentClassOption } from "@/lib/student-streaming/types";
 
 export async function getCoordinatorSchoolIdsForUser(
   userId: string
@@ -44,34 +42,27 @@ async function loadEligibleParentClassesForSchool(
   }[];
 
   const parentIds = collectParentClassIds(classRows);
-  const streamsByParent = new Map<string, StreamingStreamClass[]>();
+  const parentRows = classRows.filter((row) => parentIds.has(row.id));
 
-  for (const row of classRows) {
-    const parentId = row.parent_class_id;
-    if (!parentId || !parentIds.has(parentId)) continue;
-    const list = streamsByParent.get(parentId) ?? [];
-    list.push({ id: row.id, name: row.name, capacity: null });
-    streamsByParent.set(parentId, list);
-  }
-
-  for (const list of streamsByParent.values()) {
-    list.sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-    );
-  }
-
-  return classRows
-    .filter((row) => parentIds.has(row.id))
-    .filter((row) => (streamsByParent.get(row.id)?.length ?? 0) > 0)
-    .map((row) => ({
+  const options: StreamingParentClassOption[] = [];
+  for (const row of parentRows) {
+    const streamClasses = await resolveStreamClassesForParent(admin, {
+      rootClassId: row.id,
+      schoolId,
+      parentName: row.name,
+    });
+    if (streamClasses.length === 0) continue;
+    options.push({
       id: row.id,
       name: row.name,
       schoolId: row.school_id,
-      streamClasses: streamsByParent.get(row.id) ?? [],
-    }))
-    .sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-    );
+      streamClasses,
+    });
+  }
+
+  return options.sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+  );
 }
 
 /**

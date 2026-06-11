@@ -16,6 +16,7 @@ import {
   recommendStreamClassId,
   resolveDivisionRuleMode,
   serializeStreamingRulesPayload,
+  sortStreamClassesByName,
   validateDivisionPointsRule,
 } from "@/lib/student-streaming/evaluate-rules";
 import type { DivisionRuleMode } from "@/lib/student-streaming/types";
@@ -393,17 +394,19 @@ export async function applyStudentStreamingAction(input: {
   }
 
   const parent = parentRow as { id: string; name: string; school_id: string };
-  const streamClasses = await resolveStreamClassesForParent(admin, {
-    rootClassId: cluster.rootClassId,
-    schoolId: parent.school_id,
-    parentName: parent.name,
-  });
+  const streamClasses = sortStreamClassesByName(
+    await resolveStreamClassesForParent(admin, {
+      rootClassId: cluster.rootClassId,
+      schoolId: parent.school_id,
+      parentName: parent.name,
+    })
+  );
 
   if (streamClasses.length === 0) {
     return {
       ok: false,
       error:
-        "No stream classes found. Add stream sections (e.g. FORM ONE A, B, C) under Classes.",
+        "No stream classes found for this level. Please create streams/classes first.",
     };
   }
 

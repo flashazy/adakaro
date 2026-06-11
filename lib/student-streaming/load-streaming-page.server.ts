@@ -12,6 +12,7 @@ import {
   parseStreamingRulesPayload,
   recommendStreamClassId,
   resolveDivisionRuleMode,
+  sortStreamClassesByName,
 } from "@/lib/student-streaming/evaluate-rules";
 import type {
   DivisionRuleMode,
@@ -82,11 +83,13 @@ export async function loadStreamingWorkspaceData(params: {
     ])
   );
 
-  const streamClasses = await resolveStreamClassesForParent(admin, {
-    rootClassId: cluster.rootClassId,
-    schoolId,
-    parentName: parent.name,
-  });
+  const streamClasses = sortStreamClassesByName(
+    await resolveStreamClassesForParent(admin, {
+      rootClassId: cluster.rootClassId,
+      schoolId,
+      parentName: parent.name,
+    })
+  );
 
   const streamNameById = new Map(streamClasses.map((s) => [s.id, s.name]));
   const streamIdSet = new Set(streamClasses.map((s) => s.id));
