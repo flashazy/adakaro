@@ -3,7 +3,7 @@ import type {
   SyllabusSubtopicStatus,
 } from "@/lib/syllabus-coverage/types";
 
-export type CoverageColorState = "complete" | "progress" | "neutral";
+export type CoverageColorState = "high" | "medium" | "low" | "neutral";
 
 export type SyllabusTopicStatus = "not_started" | "in_progress" | "complete";
 
@@ -15,20 +15,23 @@ export function coveragePercent(
   return Math.round((completed / total) * 100);
 }
 
-/** 0% neutral, 1–99% in progress (purple), 100% complete (green). */
+/** 0% gray, 1–49% amber, 50–79% blue, 80–100% green. */
 export function coverageColorState(percent: number): CoverageColorState {
-  if (percent >= 100) return "complete";
-  if (percent > 0) return "progress";
+  if (percent >= 80) return "high";
+  if (percent >= 50) return "medium";
+  if (percent > 0) return "low";
   return "neutral";
 }
 
 export function coverageBarClass(percent: number): string {
   const state = coverageColorState(percent);
   switch (state) {
-    case "complete":
+    case "high":
       return "bg-emerald-500";
-    case "progress":
-      return "bg-school-primary";
+    case "medium":
+      return "bg-blue-500";
+    case "low":
+      return "bg-amber-500";
     default:
       return "bg-slate-300 dark:bg-zinc-600";
   }
@@ -37,10 +40,12 @@ export function coverageBarClass(percent: number): string {
 export function coverageTextClass(percent: number): string {
   const state = coverageColorState(percent);
   switch (state) {
-    case "complete":
+    case "high":
       return "text-emerald-700 dark:text-emerald-400";
-    case "progress":
-      return "text-school-primary dark:text-school-primary";
+    case "medium":
+      return "text-blue-700 dark:text-blue-400";
+    case "low":
+      return "text-amber-700 dark:text-amber-400";
     default:
       return "text-slate-500 dark:text-zinc-400";
   }
@@ -60,7 +65,7 @@ export function topicStatusBadgeClass(status: SyllabusTopicStatus): string {
     case "complete":
       return "bg-emerald-600 text-white";
     case "in_progress":
-      return "bg-school-primary text-white";
+      return "bg-amber-500 text-white";
     default:
       return "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300";
   }
@@ -69,7 +74,7 @@ export function topicStatusBadgeClass(status: SyllabusTopicStatus): string {
 export function topicStatusLabel(status: SyllabusTopicStatus): string {
   switch (status) {
     case "complete":
-      return "Complete";
+      return "Completed";
     case "in_progress":
       return "In Progress";
     default:
@@ -83,7 +88,7 @@ export function topicStatusAccentClass(status: SyllabusTopicStatus): string {
     case "complete":
       return "border-l-[5px] border-l-emerald-500";
     case "in_progress":
-      return "border-l-[5px] border-l-school-primary";
+      return "border-l-[5px] border-l-amber-500";
     default:
       return "border-l-[5px] border-l-slate-300 dark:border-l-zinc-600";
   }

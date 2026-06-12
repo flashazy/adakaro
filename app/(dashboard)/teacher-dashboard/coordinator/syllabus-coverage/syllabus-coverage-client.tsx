@@ -7,8 +7,10 @@ import { AsyncLoadingShell } from "@/components/dashboard/async-loading-shell";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { BulkSyllabusImportModal } from "@/components/syllabus-coverage/bulk-syllabus-import-modal";
 import { CoordinatorTopicList } from "@/components/syllabus-coverage/coordinator-topic-list";
-import { SyllabusSummaryCards } from "@/components/syllabus-coverage/syllabus-coverage-ui";
-import { coverageTextClass } from "@/lib/syllabus-coverage/coverage-stats";
+import {
+  SyllabusSummaryCards,
+  TeacherCoverageOverviewSection,
+} from "@/components/syllabus-coverage/syllabus-coverage-ui";
 import { currentAcademicYear } from "@/lib/student-subject-enrollment";
 import type {
   SyllabusClassOption,
@@ -401,47 +403,12 @@ export function CoordinatorSyllabusCoverageClient() {
           <SyllabusSummaryCards summary={summary} />
 
           {overview.length > 0 ? (
-            <section className="rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-zinc-700/80 dark:bg-zinc-900">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                Teacher coverage overview
-              </h3>
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-zinc-700">
-                      <th className="px-2 py-2">Subject</th>
-                      <th className="px-2 py-2">Teacher</th>
-                      <th className="px-2 py-2">Completed</th>
-                      <th className="px-2 py-2">Coverage</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {overview.map((row) => (
-                      <tr
-                        key={`${row.teacherId}-${row.subjectId}-${row.classId}`}
-                        className="border-b border-slate-100 dark:border-zinc-800"
-                      >
-                        <td className="px-2 py-2">{row.subjectName}</td>
-                        <td className="px-2 py-2">{row.teacherName}</td>
-                        <td className="px-2 py-2 tabular-nums">
-                          {row.completedSubtopics}/{row.totalSubtopics}
-                        </td>
-                        <td
-                          className={`px-2 py-2 font-medium tabular-nums ${coverageTextClass(row.coveragePercent)}`}
-                        >
-                          {row.coveragePercent}%
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <TeacherCoverageOverviewSection rows={overview} />
           ) : null}
 
           <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-zinc-700/80 dark:bg-zinc-900">
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+              <label className="flex w-full min-w-0 flex-col gap-1 text-sm sm:min-w-[12rem] sm:flex-1">
                 <span className="font-medium">New topic</span>
                 <input
                   value={newTopicTitle}
@@ -450,24 +417,26 @@ export function CoordinatorSyllabusCoverageClient() {
                   className="rounded-lg border border-slate-200 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950"
                 />
               </label>
-              <button
-                type="button"
-                onClick={() => void handleAddTopic()}
-                disabled={saving || importing}
-                className="inline-flex items-center gap-2 rounded-lg bg-school-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Add topic
-              </button>
-              <button
-                type="button"
-                onClick={() => setBulkModalOpen(true)}
-                disabled={saving || importing || !selectedSubject}
-                className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-60 dark:border-violet-800/50 dark:bg-violet-950/30 dark:text-violet-200 dark:hover:bg-violet-950/50"
-              >
-                <FileStack className="h-4 w-4" aria-hidden />
-                Bulk add syllabus
-              </button>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => void handleAddTopic()}
+                  disabled={saving || importing}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60 sm:w-auto sm:py-2"
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Add topic
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkModalOpen(true)}
+                  disabled={saving || importing || !selectedSubject}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-60 dark:border-violet-800/50 dark:bg-violet-950/30 dark:text-violet-200 dark:hover:bg-violet-950/50 sm:w-auto sm:py-2"
+                >
+                  <FileStack className="h-4 w-4" aria-hidden />
+                  Bulk add syllabus
+                </button>
+              </div>
             </div>
 
             <CoordinatorTopicList
@@ -518,6 +487,7 @@ export function CoordinatorSyllabusCoverageClient() {
         isDeleting={deleting}
         showWarningIcon
       />
+
     </div>
   );
 }

@@ -15,7 +15,10 @@ import {
   formatStickyProgressLabel,
   formatTopicProgressLabel,
 } from "@/lib/syllabus-coverage/syllabus-progress-display";
-import type { SyllabusCoverageSummary } from "@/lib/syllabus-coverage/types";
+import type {
+  SyllabusCoverageOverviewRow,
+  SyllabusCoverageSummary,
+} from "@/lib/syllabus-coverage/types";
 
 const MICRO_TRANSITION = "transition-all duration-200 ease-out";
 
@@ -55,9 +58,114 @@ export function SyllabusSummaryCards({
           >
             {card.value}
           </p>
+          {card.highlight ? (
+            <SyllabusProgressBar
+              percent={summary.coveragePercent}
+              className="mt-2.5"
+              size="compact"
+            />
+          ) : null}
         </div>
       ))}
     </div>
+  );
+}
+
+export function TeacherCoverageOverviewSection({
+  rows,
+}: {
+  rows: SyllabusCoverageOverviewRow[];
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-zinc-700/80 dark:bg-zinc-900">
+      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+        Teacher coverage overview
+      </h3>
+
+      <div className="mt-3 space-y-3 md:hidden">
+        {rows.map((row) => (
+          <article
+            key={`${row.teacherId}-${row.subjectId}-${row.classId}-mobile`}
+            className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 dark:border-zinc-700/80 dark:bg-zinc-800/30"
+          >
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+              {row.subjectName}
+            </p>
+            <dl className="mt-3 space-y-2.5 text-sm">
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                  Teacher
+                </dt>
+                <dd className="mt-0.5 font-medium text-slate-800 dark:text-zinc-200">
+                  {row.teacherName}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                  Completed
+                </dt>
+                <dd className="mt-0.5 tabular-nums text-slate-800 dark:text-zinc-200">
+                  {row.completedSubtopics} / {row.totalSubtopics}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                  Coverage
+                </dt>
+                <dd
+                  className={cn(
+                    "mt-0.5 text-lg font-semibold tabular-nums",
+                    coverageTextClass(row.coveragePercent)
+                  )}
+                >
+                  {row.coveragePercent}%
+                </dd>
+              </div>
+            </dl>
+            <SyllabusProgressBar
+              percent={row.coveragePercent}
+              className="mt-3"
+              size="compact"
+            />
+          </article>
+        ))}
+      </div>
+
+      <div className="mt-3 hidden overflow-x-auto md:block">
+        <table className="min-w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-zinc-700">
+              <th className="px-2 py-2">Subject</th>
+              <th className="px-2 py-2">Teacher</th>
+              <th className="px-2 py-2">Completed</th>
+              <th className="px-2 py-2">Coverage</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                key={`${row.teacherId}-${row.subjectId}-${row.classId}`}
+                className="border-b border-slate-100 dark:border-zinc-800"
+              >
+                <td className="px-2 py-2">{row.subjectName}</td>
+                <td className="px-2 py-2">{row.teacherName}</td>
+                <td className="px-2 py-2 tabular-nums">
+                  {row.completedSubtopics}/{row.totalSubtopics}
+                </td>
+                <td
+                  className={cn(
+                    "px-2 py-2 font-medium tabular-nums",
+                    coverageTextClass(row.coveragePercent)
+                  )}
+                >
+                  {row.coveragePercent}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

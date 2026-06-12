@@ -1,3 +1,4 @@
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -15,5 +16,12 @@ export default async function CoordinatorSyllabusCoveragePage() {
   const isTeacher = await checkIsTeacher(supabase, user.id);
   if (!isTeacher) redirect("/dashboard");
 
-  return <CoordinatorSyllabusCoverageClient />;
+  return (
+    <>
+      <CoordinatorSyllabusCoverageClient />
+      <div className="print:hidden">
+        <SmartFloatingScrollButton sectionIds={[]} />
+      </div>
+    </>
+  );
 }

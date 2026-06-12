@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { createClient } from "@/lib/supabase/server";
 import { checkIsTeacher } from "@/lib/teacher-auth";
 import { defaultCoordinatorAcademicYear } from "../data";
@@ -32,8 +33,13 @@ export default async function StudentStreamingPage({
   const academicYear = parseYearParam(params.year);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 px-0 pb-8 sm:px-1">
-      <StudentStreamingClient initialAcademicYear={academicYear} />
-    </div>
+    <>
+      <div className="mx-auto max-w-6xl space-y-8 px-0 pb-8 sm:px-1">
+        <StudentStreamingClient initialAcademicYear={academicYear} />
+      </div>
+      <div className="print:hidden">
+        <SmartFloatingScrollButton sectionIds={[]} />
+      </div>
+    </>
   );
 }

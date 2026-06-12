@@ -1,26 +1,39 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { History, Loader2 } from "lucide-react";
+import { Eye, History, Loader2 } from "lucide-react";
 import { AsyncLoadingShell } from "@/components/dashboard/async-loading-shell";
 import {
   type StreamingHistoryRow,
   type StreamingParentClassOption,
 } from "@/lib/student-streaming/types";
 import { currentAcademicYear } from "@/lib/student-subject-enrollment";
+import { cn } from "@/lib/utils";
 import { loadStreamingHistoryAction } from "../actions";
+import {
+  buildBulkRowIds,
+  MovementCell,
+  PlacementTypeBadge,
+  placementTypeRowLeadingClass,
+  resolvePlacementType,
+  StreamingHistoryRecordCard,
+  type PlacementType,
+} from "./history-ui";
+import { StreamingHistoryDetailPanel } from "./streaming-history-detail-panel";
 
 const TABLE_HEADER_CLASS =
   "px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400";
-
-const STREAM_BADGE_CLASS =
-  "inline-flex max-w-[7.5rem] truncate rounded-md border border-slate-200/90 bg-slate-50 px-2 py-0.5 text-[11px] font-medium leading-tight text-slate-700 dark:border-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-200";
 
 const PAGINATION_BUTTON_CLASS =
   "inline-flex h-7 min-w-[4.5rem] items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors duration-150 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 25, 50, 100] as const;
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
+
+const VIEW_DETAILS_BUTTON_CLASS =
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50 hover:shadow dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/90 dark:hover:shadow-sm";
+
+const TABLE_CELL_CLASS = "px-4 py-3 align-middle";
 
 function academicYearOptions(): string[] {
   const current = currentAcademicYear();
@@ -50,85 +63,6 @@ function formatCoordinatorName(name: string): string {
   return name.replace(/\s+/g, " ").trim();
 }
 
-function resolveActionType(
-  row: StreamingHistoryRow,
-  bulkRowIds: Set<string>
-): "Manual Placement" | "Recommended" | "Bulk Placement" {
-  if (bulkRowIds.has(row.id)) {
-    return "Bulk Placement";
-  }
-  return row.isManualChange ? "Manual Placement" : "Recommended";
-}
-
-function buildBulkRowIds(rows: StreamingHistoryRow[]): Set<string> {
-  const groups = new Map<string, string[]>();
-  for (const row of rows) {
-    const key = [
-      row.createdAt,
-      row.coordinatorName,
-      row.newClassName,
-      row.parentClassName,
-    ].join("|");
-    const ids = groups.get(key) ?? [];
-    ids.push(row.id);
-    groups.set(key, ids);
-  }
-  const bulkRowIds = new Set<string>();
-  for (const ids of groups.values()) {
-    if (ids.length >= 2) {
-      for (const id of ids) bulkRowIds.add(id);
-    }
-  }
-  return bulkRowIds;
-}
-
-function ActionTypeBadge({
-  type,
-}: {
-  type: "Manual Placement" | "Recommended" | "Bulk Placement";
-}) {
-  const classes =
-    type === "Manual Placement"
-      ? "border-violet-200/80 bg-violet-50/90 text-violet-800 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-200"
-      : type === "Bulk Placement"
-        ? "border-slate-200/90 bg-slate-100/90 text-slate-700 dark:border-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-200"
-        : "border-emerald-200/80 bg-emerald-50/90 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200";
-
-  return (
-    <span
-      className={`inline-flex whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium leading-tight ${classes}`}
-    >
-      {type}
-    </span>
-  );
-}
-
-function StreamBadge({ name }: { name: string }) {
-  return (
-    <span className={STREAM_BADGE_CLASS} title={name}>
-      {name}
-    </span>
-  );
-}
-
-function MovementCell({
-  previous,
-  next,
-}: {
-  previous: string;
-  next: string;
-}) {
-  return (
-    <div className="flex min-w-[10rem] flex-wrap items-center gap-1.5">
-      <StreamBadge name={previous} />
-      <span className="shrink-0 text-slate-400 dark:text-zinc-500" aria-hidden>
-        →
-      </span>
-      <StreamBadge name={next} />
-    </div>
-  );
-}
-
 export function StreamingHistoryClient({
   initialAcademicYear,
 }: {
@@ -149,6 +83,9 @@ export function StreamingHistoryClient({
   const [dateTo, setDateTo] = useState("");
   const [pageSize, setPageSize] = useState<PageSizeOption>(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [detailRow, setDetailRow] = useState<StreamingHistoryRow | null>(null);
+  const [detailPlacementType, setDetailPlacementType] =
+    useState<PlacementType | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -212,6 +149,16 @@ export function StreamingHistoryClient({
     }
   }, [currentPage, totalPages]);
 
+  const openDetail = (row: StreamingHistoryRow) => {
+    setDetailRow(row);
+    setDetailPlacementType(resolvePlacementType(row, bulkRowIds));
+  };
+
+  const closeDetail = () => {
+    setDetailRow(null);
+    setDetailPlacementType(null);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -221,6 +168,12 @@ export function StreamingHistoryClient({
         <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
           Audit trail of student stream placements performed by coordinators.
         </p>
+        {!loading && (
+          <p className="mt-2 text-sm tabular-nums text-slate-500 dark:text-zinc-500">
+            {totalRecords.toLocaleString()} placement{" "}
+            {totalRecords === 1 ? "record" : "records"}
+          </p>
+        )}
       </div>
 
       <section className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 dark:border-zinc-700/80 dark:bg-zinc-900/30">
@@ -324,7 +277,28 @@ export function StreamingHistoryClient({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/80">
+        <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/80">
+          <div className="space-y-3 p-3 md:hidden">
+            {paginatedRows.map((row) => {
+              const { dateLine, timeLine } = formatHistoryDateTime(row.createdAt);
+              const coordinator = formatCoordinatorName(row.coordinatorName);
+              const placementType = resolvePlacementType(row, bulkRowIds);
+
+              return (
+                <StreamingHistoryRecordCard
+                  key={row.id}
+                  row={row}
+                  placementType={placementType}
+                  dateLine={dateLine}
+                  timeLine={timeLine}
+                  coordinatorName={coordinator}
+                  onViewDetails={() => openDetail(row)}
+                />
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full text-sm">
             <thead className="sticky top-0 z-10 border-b border-slate-200/80 bg-slate-50/98 text-left backdrop-blur-sm dark:border-zinc-700/80 dark:bg-zinc-900/98">
               <tr>
@@ -335,7 +309,10 @@ export function StreamingHistoryClient({
                 <th className={TABLE_HEADER_CLASS}>Score</th>
                 <th className={TABLE_HEADER_CLASS}>Assessment</th>
                 <th className={TABLE_HEADER_CLASS}>Coordinator</th>
-                <th className={TABLE_HEADER_CLASS}>Action</th>
+                <th className={TABLE_HEADER_CLASS}>Placement Type</th>
+                <th className={TABLE_HEADER_CLASS}>
+                  <span className="sr-only">Details</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -344,14 +321,20 @@ export function StreamingHistoryClient({
                   row.createdAt
                 );
                 const coordinator = formatCoordinatorName(row.coordinatorName);
-                const actionType = resolveActionType(row, bulkRowIds);
+                const placementType = resolvePlacementType(row, bulkRowIds);
 
                 return (
                   <tr
                     key={row.id}
-                    className="border-t border-slate-100 transition-colors hover:bg-slate-50/80 dark:border-zinc-800 dark:hover:bg-zinc-800/30"
+                    className="border-t border-slate-100 transition-colors duration-150 hover:bg-slate-50/90 dark:border-zinc-800 dark:hover:bg-zinc-800/40"
                   >
-                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                    <td
+                      className={cn(
+                        TABLE_CELL_CLASS,
+                        "whitespace-nowrap",
+                        placementTypeRowLeadingClass(placementType)
+                      )}
+                    >
                       <p className="font-medium text-slate-900 dark:text-zinc-100">
                         {dateLine}
                       </p>
@@ -359,7 +342,7 @@ export function StreamingHistoryClient({
                         {timeLine}
                       </p>
                     </td>
-                    <td className="px-4 py-3 align-top">
+                    <td className={TABLE_CELL_CLASS}>
                       <p className="font-medium text-slate-900 dark:text-zinc-50">
                         {row.studentName}
                       </p>
@@ -369,19 +352,24 @@ export function StreamingHistoryClient({
                         </p>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 align-top text-slate-700 dark:text-zinc-300">
+                    <td
+                      className={`${TABLE_CELL_CLASS} text-slate-700 dark:text-zinc-300`}
+                    >
                       {row.parentClassName}
                     </td>
-                    <td className="px-4 py-3 align-top">
+                    <td className={`${TABLE_CELL_CLASS} whitespace-nowrap`}>
                       <MovementCell
                         previous={row.previousClassName}
                         next={row.newClassName}
+                        spacious
                       />
                     </td>
-                    <td className="px-4 py-3 align-top tabular-nums font-medium text-slate-900 dark:text-zinc-100">
+                    <td
+                      className={`${TABLE_CELL_CLASS} tabular-nums font-medium text-slate-900 dark:text-zinc-100`}
+                    >
                       {row.performanceValue}
                     </td>
-                    <td className="px-4 py-3 align-top">
+                    <td className={TABLE_CELL_CLASS}>
                       <p className="text-slate-900 dark:text-zinc-100">
                         {row.examLabel}
                       </p>
@@ -389,7 +377,7 @@ export function StreamingHistoryClient({
                         {row.academicYear}
                       </p>
                     </td>
-                    <td className="max-w-[9rem] px-4 py-3 align-top">
+                    <td className={`max-w-[9rem] ${TABLE_CELL_CLASS}`}>
                       <p
                         className="truncate text-slate-700 dark:text-zinc-300"
                         title={coordinator}
@@ -397,14 +385,26 @@ export function StreamingHistoryClient({
                         {coordinator}
                       </p>
                     </td>
-                    <td className="px-4 py-3 align-top">
-                      <ActionTypeBadge type={actionType} />
+                    <td className={TABLE_CELL_CLASS}>
+                      <PlacementTypeBadge type={placementType} />
+                    </td>
+                    <td className={TABLE_CELL_CLASS}>
+                      <button
+                        type="button"
+                        onClick={() => openDetail(row)}
+                        className={VIEW_DETAILS_BUTTON_CLASS}
+                        aria-label={`View details for ${row.studentName}`}
+                      >
+                        <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        <span className="hidden sm:inline">View</span>
+                      </button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
 
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-slate-200/70 bg-slate-50/30 px-4 py-2.5 dark:border-zinc-700/60 dark:bg-zinc-900/20">
             <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
@@ -468,6 +468,14 @@ export function StreamingHistoryClient({
           </div>
         </div>
       )}
+
+      <StreamingHistoryDetailPanel
+        open={detailRow != null}
+        row={detailRow}
+        placementType={detailPlacementType}
+        onClose={closeDetail}
+      />
+
     </div>
   );
 }

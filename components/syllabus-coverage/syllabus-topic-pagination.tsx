@@ -24,6 +24,19 @@ export function SyllabusTopicPagination({
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const from = page * pageSize + 1;
   const to = Math.min((page + 1) * pageSize, total);
+  const paginationUnnecessary = total <= pageSize;
+
+  if (paginationUnnecessary) {
+    return (
+      <p className="text-xs text-slate-600 dark:text-zinc-400 sm:text-sm">
+        Showing{" "}
+        <span className="font-medium tabular-nums text-slate-800 dark:text-zinc-200">
+          {total}
+        </span>{" "}
+        topic{total === 1 ? "" : "s"}
+      </p>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">

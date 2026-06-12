@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { AsyncLoadingShell } from "@/components/dashboard/async-loading-shell";
 import {
   assignStudentRanks,
@@ -319,10 +320,14 @@ function StreamPill({
   if (variant === "recommended") {
     return (
       <span
-        className={`${STREAM_CHIP_CLASS} border-violet-200/90 bg-violet-50/90 text-violet-800 dark:border-violet-900/40 dark:bg-violet-950/35 dark:text-violet-200`}
-        title={name}
+        className={`${STREAM_CHIP_CLASS} max-w-[9.5rem] justify-start gap-0.5 truncate-none border-violet-200/90 bg-violet-50/90 text-violet-800 dark:border-violet-900/40 dark:bg-violet-950/35 dark:text-violet-200`}
+        title={`Recommended stream: ${name}`}
+        aria-label={`Recommended stream: ${name}`}
       >
-        {name}
+        <span className="shrink-0 font-semibold text-violet-700/90 dark:text-violet-300/90" aria-hidden>
+          →
+        </span>
+        <span className="min-w-0 truncate">{name}</span>
       </span>
     );
   }
@@ -382,6 +387,312 @@ function PlacementStatusBadge({
   );
 }
 
+const MOBILE_PLACEMENT_TARGET_SELECT_CLASS =
+  "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors duration-150 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300";
+
+function MobilePerformanceValue({
+  performanceMeasure,
+  performance,
+  effectiveDivisionRuleMode,
+}: {
+  performanceMeasure: StreamingPerformanceMeasure;
+  performance: StudentStreamingPerformance;
+  effectiveDivisionRuleMode: DivisionRuleMode;
+}) {
+  if (performanceMeasure === "average_score") {
+    return (
+      <p className="text-lg font-bold tabular-nums leading-none text-slate-900 dark:text-zinc-50">
+        {performance.averageScorePercent != null ? (
+          `${performance.averageScorePercent}%`
+        ) : (
+          <span className={MUTED_CELL_CLASS}>—</span>
+        )}
+      </p>
+    );
+  }
+  if (performanceMeasure === "total_marks") {
+    return (
+      <p className="text-lg font-bold tabular-nums leading-none text-slate-900 dark:text-zinc-50">
+        {performance.totalMarks != null ? (
+          Math.round(performance.totalMarks)
+        ) : (
+          <span className={MUTED_CELL_CLASS}>—</span>
+        )}
+      </p>
+    );
+  }
+  const display = getDivisionTableDisplay(performance, effectiveDivisionRuleMode);
+  if (!display) {
+    return <span className={MUTED_CELL_CLASS}>—</span>;
+  }
+  if (
+    display.points == null &&
+    (display.label === "INC" || display.label === "ABS")
+  ) {
+    return (
+      <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-bold uppercase tracking-wide text-slate-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200">
+        {display.label}
+      </span>
+    );
+  }
+  return (
+    <div className="leading-tight">
+      <div className="text-base font-bold text-slate-900 dark:text-zinc-50">
+        {display.label}
+      </div>
+      {display.points != null && (
+        <div className="text-sm tabular-nums text-slate-500 dark:text-zinc-400">
+          {display.points} pts
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StreamingStudentRowAction({
+  student,
+  streamIds,
+  savingStudentIds,
+  overrides,
+  placementTargetId,
+  canPlace,
+  variant = "table",
+  onApply,
+}: {
+  student: EnrichedStreamingStudent;
+  streamIds: Set<string>;
+  savingStudentIds: Set<string>;
+  overrides: Record<string, string>;
+  placementTargetId: string | null;
+  canPlace: boolean;
+  variant?: "table" | "mobile";
+  onApply: (studentId: string, targetId: string | null) => void;
+}) {
+  const action = rowActionType(
+    student,
+    streamIds,
+    savingStudentIds,
+    overrides
+  );
+  const isMobile = variant === "mobile";
+
+  if (action === "saving") {
+    return (
+      <span
+        className={cn(
+          isMobile
+            ? "inline-flex h-9 shrink-0 items-center justify-center rounded-lg px-2.5 text-xs text-slate-500 dark:text-zinc-400"
+            : `${ACTION_CELL} text-slate-500 dark:text-zinc-400`
+        )}
+      >
+        Saving…
+      </span>
+    );
+  }
+  if (action === "already_correct") {
+    return (
+      <span
+        className={cn(
+          isMobile
+            ? "inline-flex h-9 shrink-0 items-center justify-center rounded-lg px-2.5 text-xs font-medium text-slate-500 dark:text-zinc-400"
+            : `${ACTION_CELL} text-slate-500 dark:text-zinc-400`
+        )}
+      >
+        Placed
+      </span>
+    );
+  }
+  if (action === "none") {
+    return (
+      <span
+        className={cn(
+          isMobile
+            ? "inline-flex h-9 shrink-0 items-center justify-center rounded-lg px-2 text-xs text-slate-400 dark:text-zinc-500"
+            : `${ACTION_CELL} ${MUTED_CELL_CLASS}`
+        )}
+      >
+        —
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onApply(student.id, placementTargetId)}
+      disabled={!canPlace || savingStudentIds.has(student.id)}
+      className={cn(
+        "border border-slate-300 bg-white font-medium text-slate-700 transition-colors duration-150 hover:border-slate-400 hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800",
+        isMobile
+          ? "inline-flex h-9 min-w-[4.5rem] shrink-0 items-center justify-center rounded-lg px-3 text-xs"
+          : ACTION_CELL
+      )}
+    >
+      Apply
+    </button>
+  );
+}
+
+function StreamingStudentMobileCard({
+  student,
+  performanceMeasure,
+  effectiveDivisionRuleMode,
+  streamClasses,
+  streamIds,
+  canPlace,
+  savingStudentIds,
+  overrides,
+  selected,
+  onToggleSelect,
+  onSetPlacementTarget,
+  onApply,
+}: {
+  student: EnrichedStreamingStudent;
+  performanceMeasure: StreamingPerformanceMeasure;
+  effectiveDivisionRuleMode: DivisionRuleMode;
+  streamClasses: StreamingStreamClass[];
+  streamIds: Set<string>;
+  canPlace: boolean;
+  savingStudentIds: Set<string>;
+  overrides: Record<string, string>;
+  selected: boolean;
+  onToggleSelect: (checked: boolean) => void;
+  onSetPlacementTarget: (studentId: string, targetId: string) => void;
+  onApply: (studentId: string, targetId: string | null) => void;
+}) {
+  const placementTargetId = getRowPlacementTargetId(student, overrides);
+  const performanceLabel =
+    performanceMeasure === "average_score"
+      ? "Average Score"
+      : performanceMeasure === "total_marks"
+        ? "Total Marks"
+        : "Division";
+
+  return (
+    <article className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/60">
+      <div className="flex items-start gap-2.5">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={(e) => onToggleSelect(e.target.checked)}
+          aria-label={`Select ${student.fullName}`}
+          className="mt-0.5 shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-[15px] font-bold leading-snug text-slate-900 dark:text-zinc-50">
+                {student.fullName}
+              </p>
+              <p className="mt-0.5 text-[11px] tabular-nums text-slate-500 dark:text-zinc-400">
+                {student.admissionNumber ?? "—"}
+              </p>
+            </div>
+            {hasPendingPlacementChange(student, overrides) && (
+              <span className="shrink-0 rounded border border-amber-200/80 bg-amber-50/80 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                Pending
+              </span>
+            )}
+          </div>
+
+          <div className="mt-2.5 grid grid-cols-2 gap-2.5 border-t border-slate-100 pt-2.5 dark:border-zinc-800">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Current Stream
+              </p>
+              <div className="mt-1">
+                {student.currentStreamName === "Unassigned" ? (
+                  <span className={MUTED_CELL_CLASS}>Unassigned</span>
+                ) : (
+                  <StreamPill name={student.currentStreamName} />
+                )}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Recommended
+              </p>
+              <div className="mt-1">
+                {!student.hasExamResult ? (
+                  <span className={MUTED_CELL_CLASS}>Not Available</span>
+                ) : student.ruleRecommendedName ? (
+                  <StreamPill
+                    name={student.ruleRecommendedName}
+                    variant="recommended"
+                  />
+                ) : (
+                  <span className={MUTED_CELL_CLASS}>—</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2.5 border-t border-slate-100 pt-2.5 dark:border-zinc-800">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+              {performanceLabel}
+            </p>
+            <div className="mt-1">
+              <MobilePerformanceValue
+                performanceMeasure={performanceMeasure}
+                performance={student.performance}
+                effectiveDivisionRuleMode={effectiveDivisionRuleMode}
+              />
+            </div>
+          </div>
+
+          <div className="mt-2.5">
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+              Placement Target
+            </label>
+            <select
+              value={placementTargetId ?? ""}
+              disabled={
+                !canPlace ||
+                streamClasses.length === 0 ||
+                savingStudentIds.has(student.id)
+              }
+              onChange={(e) => {
+                const value = e.target.value;
+                if (!value) return;
+                onSetPlacementTarget(student.id, value);
+              }}
+              className={MOBILE_PLACEMENT_TARGET_SELECT_CLASS}
+              aria-label={`Placement target for ${student.fullName}`}
+            >
+              {!student.effectivePlacementTargetId && (
+                <option value="">Select stream…</option>
+              )}
+              {streamClasses.map((stream) => (
+                <option key={stream.id} value={stream.id}>
+                  {stream.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-2.5 flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <PlacementStatusBadge
+                status={displayPlacementStatus(student, overrides)}
+              />
+            </div>
+            <StreamingStudentRowAction
+              student={student}
+              streamIds={streamIds}
+              savingStudentIds={savingStudentIds}
+              overrides={overrides}
+              placementTargetId={placementTargetId}
+              canPlace={canPlace}
+              variant="mobile"
+              onApply={onApply}
+            />
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function SummaryKpiCard({
   label,
   value,
@@ -393,7 +704,7 @@ function SummaryKpiCard({
   isActive?: boolean;
   onClick?: () => void;
 }) {
-  const className = `flex min-h-[3rem] flex-col justify-center rounded-md border bg-slate-50/40 px-2.5 py-2.5 text-left transition-[border-color,background-color] duration-150 dark:bg-zinc-900/25 ${
+  const className = `flex h-full min-h-[4.25rem] flex-col justify-center rounded-lg border bg-slate-50/40 px-3 py-2.5 text-left transition-[border-color,background-color] duration-150 dark:bg-zinc-900/25 md:min-h-[3rem] md:rounded-md md:px-2.5 ${
     isActive
       ? "border-slate-300 bg-white ring-1 ring-slate-200/70 dark:border-zinc-600 dark:bg-zinc-900/50 dark:ring-zinc-700/80"
       : "border-slate-200/60 hover:border-slate-300/80 hover:bg-white dark:border-zinc-700/50 dark:hover:border-zinc-600/80"
@@ -401,10 +712,10 @@ function SummaryKpiCard({
 
   const content = (
     <>
-      <p className="text-xl font-semibold leading-none tabular-nums text-slate-800 dark:text-zinc-100">
+      <p className="text-2xl font-semibold leading-none tabular-nums text-slate-800 dark:text-zinc-100 md:text-xl">
         {value}
       </p>
-      <p className="mt-1.5 truncate text-xs font-medium leading-snug text-slate-600 dark:text-zinc-400">
+      <p className="mt-1.5 text-[11px] font-medium leading-snug text-slate-600 dark:text-zinc-400 md:truncate md:text-xs">
         {label}
       </p>
     </>
@@ -1943,13 +2254,13 @@ export function StudentStreamingClient({
                 </h2>
               </button>
               {rulesExpanded && (
-                <div className="flex flex-col items-end gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                  <div className="flex flex-wrap gap-2">
+                <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                  <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
                     <button
                       type="button"
                       onClick={addRule}
                       disabled={streamClasses.length === 0}
-                      className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                      className="flex h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-medium hover:bg-slate-50 disabled:opacity-60 sm:h-auto sm:px-4 sm:py-2 dark:border-zinc-700 dark:hover:bg-zinc-800"
                     >
                       Add rule
                     </button>
@@ -1957,7 +2268,7 @@ export function StudentStreamingClient({
                       type="button"
                       onClick={() => void handleSaveRules()}
                       disabled={savingRules || !examType}
-                      className="inline-flex items-center gap-2 rounded-xl bg-school-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-school-primary px-3 text-sm font-medium text-white disabled:opacity-60 sm:h-auto sm:px-4 sm:py-2"
                     >
                       {savingRules ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1969,7 +2280,7 @@ export function StudentStreamingClient({
                     type="button"
                     onClick={applyExampleRules}
                     disabled={streamClasses.length === 0}
-                    className="text-xs font-medium text-school-primary hover:underline disabled:opacity-50"
+                    className="w-full text-center text-xs font-medium text-school-primary hover:underline disabled:opacity-50 sm:w-auto sm:text-right"
                   >
                     Load example rules
                   </button>
@@ -2504,7 +2815,7 @@ export function StudentStreamingClient({
               <h2 className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
                 Streaming Summary
               </h2>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <div className="mt-2 grid auto-rows-fr grid-cols-2 gap-2.5 max-sm:[&>*:nth-child(5)]:col-span-2 sm:grid-cols-3 sm:gap-2 lg:grid-cols-5 sm:[&>*:nth-child(5)]:col-span-1">
                 <SummaryKpiCard
                   label="Reviewed"
                   value={streamingSummary.reviewed}
@@ -2540,11 +2851,26 @@ export function StudentStreamingClient({
                 />
               </div>
             </div>
+
+            <div className="border-b border-slate-200/60 px-4 py-3 dark:border-zinc-700/60 md:hidden">
+              <button
+                type="button"
+                onClick={handleApplyRecommended}
+                disabled={!canPlace || selectedIds.size === 0}
+                className="flex h-10 w-full items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+              >
+                Apply recommended
+              </button>
+              <p className="mt-1.5 text-center text-[10px] leading-snug text-slate-500 dark:text-zinc-400">
+                Places each student into their recommended stream.
+              </p>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/60 px-4 py-2 dark:border-zinc-700/60">
               <h2 className="text-sm font-medium text-slate-900 dark:text-zinc-50">
                 Students
               </h2>
-              <div className="flex flex-col items-end gap-0.5">
+              <div className="hidden flex-col items-end gap-0.5 md:flex">
                 <button
                   type="button"
                   onClick={handleApplyRecommended}
@@ -2559,25 +2885,25 @@ export function StudentStreamingClient({
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 border-b border-slate-200/60 px-4 py-2.5 dark:border-zinc-700/60 sm:flex-row sm:items-center sm:justify-between">
-              <label className="block min-w-0 flex-1 sm:max-w-sm">
+            <div className="flex flex-col gap-2.5 border-b border-slate-200/60 px-4 py-3 dark:border-zinc-700/60 md:flex-row md:items-center md:justify-between md:gap-2 md:py-2.5">
+              <label className="block min-w-0 w-full md:max-w-sm md:flex-1">
                 <span className="sr-only">Search students</span>
                 <input
                   type="search"
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
                   placeholder="Search by name or admission number…"
-                  className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 md:h-auto md:rounded-md md:px-2.5 md:py-1.5 md:text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                 />
               </label>
-              <label className="flex shrink-0 items-center gap-2 text-xs text-slate-600 dark:text-zinc-400">
+              <label className="flex w-full items-center gap-2 text-xs text-slate-600 dark:text-zinc-400 md:w-auto md:shrink-0">
                 <span>Show</span>
                 <select
                   value={pageSize}
                   onChange={(e) =>
                     setPageSize(Number(e.target.value) as PageSizeOption)
                   }
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+                  className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-700 md:h-auto md:flex-none md:rounded-md md:px-2 md:py-1 md:text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
                   aria-label="Students per page"
                 >
                   {PAGE_SIZE_OPTIONS.map((size) => (
@@ -2611,7 +2937,46 @@ export function StudentStreamingClient({
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            <div className="space-y-2.5 p-3 md:hidden">
+              {filteredStudents.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-400 dark:border-zinc-700 dark:text-zinc-500">
+                  {studentSearch.trim() || statusFilter
+                    ? "No students match your search or filter."
+                    : previewStreamFilter
+                      ? "No students linked to this stream."
+                      : "No students to display."}
+                </p>
+              ) : (
+                paginatedStudents.map((student) => (
+                  <StreamingStudentMobileCard
+                    key={student.id}
+                    student={student}
+                    performanceMeasure={performanceMeasure}
+                    effectiveDivisionRuleMode={effectiveDivisionRuleMode}
+                    streamClasses={streamClasses}
+                    streamIds={streamIds}
+                    canPlace={canPlace}
+                    savingStudentIds={savingStudentIds}
+                    overrides={overrides}
+                    selected={selectedIds.has(student.id)}
+                    onToggleSelect={(checked) => {
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (checked) next.add(student.id);
+                        else next.delete(student.id);
+                        return next;
+                      });
+                    }}
+                    onSetPlacementTarget={setPlacementTarget}
+                    onApply={(studentId, targetId) =>
+                      handleIndividualAssign(studentId, targetId)
+                    }
+                  />
+                ))
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full table-fixed text-xs lg:table-auto">
                 <thead className="sticky top-0 z-10 border-b border-slate-200/80 bg-slate-50/98 text-left backdrop-blur-sm dark:border-zinc-700/80 dark:bg-zinc-900/98">
                   <tr>
@@ -3217,6 +3582,7 @@ export function StudentStreamingClient({
         onContinue={() => void executePlacement(true)}
         isContinuing={applying}
       />
+
     </div>
   );
 }

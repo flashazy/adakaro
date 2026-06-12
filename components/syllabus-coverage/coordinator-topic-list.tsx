@@ -5,9 +5,13 @@ import { ChevronDown, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import {
   SyllabusInlineEdit,
   SyllabusProgressBar,
+  SyllabusTopicStatusBadge,
 } from "@/components/syllabus-coverage/syllabus-coverage-ui";
 import { SyllabusTopicPagination } from "@/components/syllabus-coverage/syllabus-topic-pagination";
-import { coverageTextClass } from "@/lib/syllabus-coverage/coverage-stats";
+import {
+  coverageTextClass,
+  deriveTopicStatus,
+} from "@/lib/syllabus-coverage/coverage-stats";
 import type { SyllabusTopicRow } from "@/lib/syllabus-coverage/types";
 import { cn } from "@/lib/utils";
 
@@ -245,6 +249,9 @@ export function CoordinatorTopicList({
             {paginatedTopics.map((topic) => {
               const expanded = expandedIds.has(topic.id);
               const isEditingTopic = editingTopicId === topic.id;
+              const topicStatus = deriveTopicStatus(
+                topic.subtopics.map((s) => s.status)
+              );
               return (
                 <article
                   key={topic.id}
@@ -255,7 +262,7 @@ export function CoordinatorTopicList({
                       type="button"
                       onClick={() => toggleTopic(topic.id)}
                       disabled={isEditingTopic}
-                      className="shrink-0 self-start px-3 py-3 text-slate-400 transition-colors hover:bg-slate-50/80 disabled:opacity-50 dark:hover:bg-zinc-800/40"
+                      className="shrink-0 self-start px-3 py-3 text-slate-400 transition-colors hover:bg-slate-50/80 disabled:opacity-50 dark:hover:bg-zinc-800/40 md:self-center"
                       aria-expanded={expanded}
                       aria-label={expanded ? "Collapse topic" : "Expand topic"}
                     >
@@ -280,40 +287,39 @@ export function CoordinatorTopicList({
                         />
                       </div>
                     ) : (
-                      <>
+                      <div className="flex min-w-0 flex-1 flex-col py-2 pr-2 md:flex-row md:items-center md:justify-between md:gap-6 md:py-3 md:pr-4">
                         <button
                           type="button"
                           onClick={() => toggleTopic(topic.id)}
-                          className="flex min-w-0 flex-1 items-start px-1 py-3 text-left transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/40"
+                          className="w-full px-1 text-left transition-colors hover:bg-slate-50/80 dark:hover:bg-zinc-800/40 md:min-w-0 md:flex-1"
                         >
-                          <div className="min-w-0 flex-1">
-                            <h4 className="font-semibold text-slate-900 dark:text-white">
-                              {topic.title}
-                            </h4>
-                            <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-                              {topic.totalSubtopics} subtopic
-                              {topic.totalSubtopics === 1 ? "" : "s"} ·{" "}
-                              {topic.completedSubtopics} completed ·{" "}
-                              <span
-                                className={coverageTextClass(
-                                  topic.coveragePercent
-                                )}
-                              >
-                                {topic.coveragePercent}%
-                              </span>
-                            </p>
-                            <SyllabusProgressBar
-                              percent={topic.coveragePercent}
-                              className="mt-2 max-w-xs"
-                            />
-                          </div>
+                          <h4 className="font-semibold text-slate-900 dark:text-white">
+                            {topic.title}
+                          </h4>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                            {topic.totalSubtopics} subtopic
+                            {topic.totalSubtopics === 1 ? "" : "s"} ·{" "}
+                            {topic.completedSubtopics} completed ·{" "}
+                            <span
+                              className={coverageTextClass(
+                                topic.coveragePercent
+                              )}
+                            >
+                              {topic.coveragePercent}%
+                            </span>
+                          </p>
+                          <SyllabusProgressBar
+                            percent={topic.coveragePercent}
+                            className="mt-2 max-w-xs"
+                          />
                         </button>
-                        <div className="flex shrink-0 items-center self-center">
+                        <div className="mt-2 flex items-center gap-1 px-1 md:mt-0 md:shrink-0 md:items-center md:gap-2 md:self-center md:px-0">
+                          <SyllabusTopicStatusBadge status={topicStatus} />
                           <button
                             type="button"
                             onClick={() => startTopicEdit(topic)}
                             disabled={actionsDisabled}
-                            className="px-2 py-2 text-slate-500 hover:bg-slate-50 hover:text-school-primary disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-300"
+                            className="rounded-lg px-2.5 py-2 text-slate-500 hover:bg-slate-50 hover:text-school-primary disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-300"
                             aria-label={`Edit topic ${topic.title}`}
                           >
                             <Pencil className="h-3.5 w-3.5" />
@@ -324,13 +330,13 @@ export function CoordinatorTopicList({
                               onDeleteTopic(topic.id, topic.title)
                             }
                             disabled={actionsDisabled}
-                            className="px-2 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                            className="rounded-lg px-2.5 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
                             aria-label={`Delete topic ${topic.title}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
-                      </>
+                      </div>
                     )}
                   </div>
 
@@ -407,20 +413,20 @@ export function CoordinatorTopicList({
                         </ul>
                       )}
 
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <input
                           value={newSubtopicByTopic[topic.id] ?? ""}
                           onChange={(e) =>
                             onNewSubtopicChange(topic.id, e.target.value)
                           }
                           placeholder="New subtopic title"
-                          className="min-w-[12rem] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 sm:min-w-[12rem] sm:flex-1"
                         />
                         <button
                           type="button"
                           onClick={() => onAddSubtopic(topic.id)}
                           disabled={actionsDisabled}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-zinc-600 dark:hover:bg-zinc-800"
+                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-medium hover:bg-slate-50 dark:border-zinc-600 dark:hover:bg-zinc-800 sm:w-auto sm:py-2"
                         >
                           <Plus className="h-3.5 w-3.5" aria-hidden />
                           Add subtopic
