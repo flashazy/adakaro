@@ -10,7 +10,7 @@ import {
   useTransition,
 } from "react";
 import { AsyncLoadingShell } from "@/components/dashboard/async-loading-shell";
-import { Loader2, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { SubjectCompatibilityModal } from "@/components/students/subject-compatibility-modal";
 import { checkSubjectCompatibilityAction } from "@/lib/student-subject-enrollment/subject-compatibility-actions";
@@ -29,10 +29,16 @@ const DECISION_LABELS: Record<PromotionDecision, string> = {
 };
 
 const INFO_PANEL_CLASS =
-  "rounded-lg border border-amber-100/90 bg-amber-50/50 px-2.5 py-1 text-xs leading-relaxed text-amber-800/90 dark:border-amber-900/25 dark:bg-amber-950/15 dark:text-amber-100/85";
+  "rounded-lg border border-amber-100/90 bg-amber-50/50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-800/90 dark:border-amber-900/25 dark:bg-amber-950/15 dark:text-amber-100/85 sm:py-1 sm:text-xs sm:leading-relaxed";
 
 const SECTION_HEADING_CLASS =
   "text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-zinc-300";
+
+const MOBILE_STUDENT_CARD_CLASS =
+  "rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm dark:border-zinc-700/90 dark:bg-zinc-900";
+
+const MOBILE_STUDENT_CARD_SELECTED_CLASS =
+  "border-[rgb(var(--school-primary-rgb)/0.35)] bg-[rgb(var(--school-primary-rgb)/0.06)] shadow-md";
 
 type SummaryPillFilter =
   | "all"
@@ -97,7 +103,7 @@ function SummaryPillButton({
       disabled={disabled}
       aria-label={ariaLabel}
       aria-pressed={active}
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium tabular-nums transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-school-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`inline-flex max-w-full shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium tabular-nums transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-school-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
         active ? toneClass.active : toneClass.idle
       }`}
     >
@@ -227,6 +233,70 @@ function StudentPromotionStatus({
   );
 }
 
+const ELIGIBILITY_BADGE_CLASS: Record<string, string> = {
+  Eligible:
+    "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200",
+  "Below Requirement":
+    "bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
+  "Awaiting Results":
+    "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300",
+};
+
+function MobileEligibilityBadge({
+  reviewStatus,
+}: {
+  reviewStatus: ReturnType<typeof promotionReviewStatus>;
+}) {
+  if (!reviewStatus) return null;
+  const tone =
+    ELIGIBILITY_BADGE_CLASS[reviewStatus.label] ??
+    "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${tone}`}
+    >
+      {reviewStatus.label}
+    </span>
+  );
+}
+
+const MOBILE_SUMMARY_CHIP_CLASS =
+  "inline-flex max-w-full shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-medium tabular-nums";
+
+function MobilePromotionOutcomeSummary({
+  promoted,
+  repeated,
+  graduated,
+}: {
+  promoted: number;
+  repeated: number;
+  graduated: number;
+}) {
+  return (
+    <div
+      className="flex w-full min-w-0 max-w-full flex-wrap items-center justify-center gap-1.5"
+      role="status"
+      aria-label={`Promotion outcome: ${promoted} promoted, ${repeated} repeating, ${graduated} graduating`}
+    >
+      <span
+        className={`${MOBILE_SUMMARY_CHIP_CLASS} bg-emerald-100/90 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200`}
+      >
+        {promoted} Promoted
+      </span>
+      <span
+        className={`${MOBILE_SUMMARY_CHIP_CLASS} bg-amber-100/90 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200`}
+      >
+        {repeated} Repeating
+      </span>
+      <span
+        className={`${MOBILE_SUMMARY_CHIP_CLASS} bg-violet-100/90 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200`}
+      >
+        {graduated} Graduating
+      </span>
+    </div>
+  );
+}
+
 interface PromotionModalProps {
   open: boolean;
   onClose: () => void;
@@ -236,7 +306,7 @@ interface PromotionModalProps {
 }
 
 const DECISION_SELECT_CLASS =
-  "block w-full max-w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-9 text-sm text-slate-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100";
+  "block w-full max-w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-3 pr-9 text-base text-slate-900 touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 sm:py-2 sm:text-sm";
 
 function PromotionDecisionSelect({
   student,
@@ -654,57 +724,92 @@ export function PromotionModal({
         if (ev.target === ev.currentTarget && !isPending) onClose();
       }}
     >
-      <div className="flex max-h-[min(92vh,800px)] w-full max-w-3xl flex-col rounded-t-2xl bg-white shadow-xl dark:bg-zinc-900 sm:rounded-2xl">
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-4 dark:border-zinc-800 sm:px-6">
-          <div className="min-w-0">
-            <h2
-              id={titleId}
-              className="text-lg font-semibold text-slate-900 dark:text-white"
-            >
-              Promote {classRow.name}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-              Academic year {academicYear}
-              {nextClassName ? (
-                <>
-                  {" "}
-                  · Next class:{" "}
-                  <span className="font-medium text-slate-700 dark:text-zinc-200">
-                    {nextClassName}
-                  </span>
-                </>
-              ) : (
-                <span className="text-amber-700 dark:text-amber-300">
-                  {" "}
-                  · No next class configured
+      <div className="flex h-dvh max-h-dvh w-full max-w-3xl flex-col overflow-hidden rounded-t-[20px] bg-white shadow-xl dark:bg-zinc-900 sm:h-auto sm:max-h-[min(92vh,800px)] sm:rounded-2xl">
+        <header className="sticky top-0 z-20 shrink-0 border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/95 sm:static sm:px-6 sm:py-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h2
+                id={titleId}
+                className="text-base font-semibold leading-tight text-slate-900 dark:text-white sm:text-lg"
+              >
+                Promote {classRow.name}
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400 sm:mt-1 sm:text-sm">
+                <span className="sm:hidden">
+                  {academicYear}
+                  {nextClassName ? (
+                    <>
+                      {" "}
+                      · Next:{" "}
+                      <span className="font-medium text-slate-700 dark:text-zinc-200">
+                        {nextClassName}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-amber-700 dark:text-amber-300">
+                      {" "}
+                      · No next class
+                    </span>
+                  )}
                 </span>
+                <span className="hidden sm:inline">
+                  Academic year {academicYear}
+                  {nextClassName ? (
+                    <>
+                      {" "}
+                      · Next class:{" "}
+                      <span className="font-medium text-slate-700 dark:text-zinc-200">
+                        {nextClassName}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-amber-700 dark:text-amber-300">
+                      {" "}
+                      · No next class configured
+                    </span>
+                  )}
+                </span>
+              </p>
+              {rulesMode === "auto" && minAverageGrade != null ? (
+                <p className="mt-1 text-[10px] leading-snug text-emerald-800 dark:text-emerald-200 sm:text-xs sm:leading-relaxed">
+                  <span className="sm:hidden">
+                    Term 2 avg ≥{minAverageGrade}% may promote. Parent access is
+                    separate.
+                  </span>
+                  <span className="hidden sm:inline">
+                    Promotion uses Term 2 results. Students with an average of ≥
+                    {minAverageGrade}% may be promoted. Parent report access is
+                    separate from promotion decisions.
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-zinc-400 sm:text-xs">
+                  <span className="sm:hidden">
+                    Uses Term 2 results. Choose each student&apos;s next class.
+                  </span>
+                  <span className="hidden sm:inline">
+                    Promotion uses Term 2 results. Choose each student’s class
+                    for next year.
+                  </span>
+                </p>
               )}
-            </p>
-            {rulesMode === "auto" && minAverageGrade != null ? (
-              <p className="mt-1 text-xs text-emerald-800 dark:text-emerald-200">
-                Promotion uses Term 2 results. Students with an average of ≥
-                {minAverageGrade}% may be promoted. Parent report access is
-                separate from promotion decisions.
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                Promotion uses Term 2 results. Choose each student’s class for
-                next year.
-              </p>
-            )}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="-mr-1 shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        </header>
 
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
           {loading ? (
             <AsyncLoadingShell
               className="mx-4 my-6 border-0 shadow-none sm:mx-6"
@@ -736,7 +841,8 @@ export function PromotionModal({
             </div>
           ) : (
             <>
-              <div className="sticky top-0 z-10 shrink-0 space-y-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900 sm:px-6">
+              <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+                <div className="space-y-3 px-4 py-3 sm:sticky sm:top-0 sm:z-10 sm:border-b sm:border-slate-200 sm:bg-white sm:px-6 sm:dark:border-zinc-800 sm:dark:bg-zinc-900">
                 {showIncompleteWarning ? (
                   <div className={INFO_PANEL_CLASS}>
                     Some students are missing marks in one or more subjects.
@@ -773,7 +879,7 @@ export function PromotionModal({
                       }}
                       placeholder="Search by name or admission number"
                       autoComplete="off"
-                      className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+                      className="w-full min-w-0 rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 sm:py-2 sm:text-sm"
                     />
                   </div>
                   <label className="flex shrink-0 items-center gap-2 text-sm text-slate-600 dark:text-zinc-400">
@@ -787,7 +893,7 @@ export function PromotionModal({
                         setPage(1);
                       }}
                       disabled={isPending}
-                      className="w-full min-w-[12.5rem] rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 sm:w-auto"
+                      className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2.5 text-sm touch-manipulation dark:border-zinc-600 dark:bg-zinc-800 sm:min-w-[12.5rem] sm:w-auto sm:py-2"
                       aria-label="Show students by Term 2 results"
                     >
                       <option value="all">All Students</option>
@@ -802,7 +908,7 @@ export function PromotionModal({
                   role="status"
                   aria-label="Promotion summary"
                 >
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                  <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1.5">
                     <span className={SECTION_HEADING_CLASS}>Promotion Summary</span>
                     <span
                       className="hidden text-slate-300 sm:inline dark:text-zinc-600"
@@ -914,7 +1020,7 @@ export function PromotionModal({
                         >
                           |
                         </span>
-                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
+                        <span className="inline-flex max-w-full shrink-0 items-center whitespace-nowrap rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium tabular-nums text-slate-600 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
                           {filteredStudents.length} Shown
                         </span>
                       </>
@@ -938,7 +1044,7 @@ export function PromotionModal({
                         type="button"
                         onClick={() => setDecisionForAll(d)}
                         disabled={isPending}
-                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                        className="min-h-[36px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 sm:min-h-0 sm:px-2.5 sm:py-1"
                       >
                         {DECISION_LABELS[d]}
                       </button>
@@ -963,16 +1069,16 @@ export function PromotionModal({
                         type="button"
                         onClick={() => setDecisionForIds(selectedIds, d)}
                         disabled={isPending}
-                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                        className="min-h-[36px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 sm:min-h-0 sm:px-2.5 sm:py-1"
                       >
                         {DECISION_LABELS[d]}
                       </button>
                     ))}
                   </div>
                 ) : null}
-              </div>
+                </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
+                <div className="space-y-3 px-4 pb-4 pt-1 sm:px-6 sm:pb-6">
                 {filteredStudents.length === 0 ? (
                   <p className="py-8 text-center text-sm text-slate-500 dark:text-zinc-400">
                     No students found for the selected view.
@@ -985,7 +1091,7 @@ export function PromotionModal({
                       </p>
                     ) : null}
 
-                    <div className="mb-2 flex items-center gap-2 sm:hidden">
+                    <div className="mb-3 flex items-center gap-3 sm:hidden">
                       <input
                         ref={selectAllMobileRef}
                         type="checkbox"
@@ -997,9 +1103,11 @@ export function PromotionModal({
                         }
                         disabled={isPending || pageStudents.length === 0}
                         aria-label="Select all students on this page"
-                        className="h-4 w-4 rounded border-slate-300 text-school-primary focus:ring-school-primary"
+                        className="h-5 w-5 shrink-0 rounded border-slate-300 text-school-primary focus:ring-school-primary"
                       />
-                      <span className="sr-only">Select all on this page</span>
+                      <span className="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                        Select all on this page
+                      </span>
                     </div>
 
                     <div className="space-y-3 sm:hidden">
@@ -1030,40 +1138,51 @@ export function PromotionModal({
                         return (
                           <div
                             key={s.id}
-                            className={`rounded-xl border border-slate-200 p-3 dark:border-zinc-700 ${
+                            className={`${MOBILE_STUDENT_CARD_CLASS} ${
                               selectedIds.has(s.id)
-                                ? "bg-[rgb(var(--school-primary-rgb)/0.06)]"
-                                : "bg-white dark:bg-zinc-900"
+                                ? MOBILE_STUDENT_CARD_SELECTED_CLASS
+                                : ""
                             }`}
                           >
-                            <div className="flex items-start gap-2">
+                            <div className="flex items-start gap-3">
                               <input
                                 type="checkbox"
                                 checked={selectedIds.has(s.id)}
                                 onChange={() => toggleSelected(s.id)}
                                 disabled={isPending}
                                 aria-label={`Select ${s.full_name}`}
-                                className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-school-primary focus:ring-school-primary"
+                                className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-school-primary focus:ring-school-primary"
                               />
                               <div className="min-w-0 flex-1">
-                                <p className="font-medium text-slate-900 dark:text-white">
+                                <p className="font-semibold leading-snug text-slate-900 dark:text-white">
                                   {s.full_name}
                                 </p>
-                                <p className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400">
-                                  {s.admission_number?.trim() || "—"}
+                                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                                  Adm: {s.admission_number?.trim() || "—"}
                                 </p>
-                                <StudentPromotionStatus
-                                  parentLabel={parentLabel}
-                                  reviewStatus={reviewStatus}
-                                />
+                                <div className="mt-2">
+                                  <MobileEligibilityBadge
+                                    reviewStatus={reviewStatus}
+                                  />
+                                </div>
+                                {parentLabel ? (
+                                  <p
+                                    className={`mt-1.5 ${PARENT_ACCESS_STATUS_CLASS}`}
+                                  >
+                                    {parentLabel}
+                                  </p>
+                                ) : null}
                                 <p
-                                  className={`mt-2 text-sm font-medium tabular-nums ${avgTone}`}
+                                  className={`mt-2 text-sm font-semibold tabular-nums ${avgTone}`}
                                 >
                                   Term 2 avg: {avgLabel}
                                 </p>
                               </div>
                             </div>
-                            <div className="mt-3">
+                            <div className="mt-4 border-t border-slate-100 pt-3 dark:border-zinc-800">
+                              <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-zinc-400">
+                                Decision
+                              </label>
                               <PromotionDecisionSelect
                                 student={s}
                                 value={s.decision}
@@ -1233,10 +1352,96 @@ export function PromotionModal({
                     {submitError}
                   </p>
                 ) : null}
+                </div>
               </div>
 
+              {students.length > 0 ? (
+                <footer className="shrink-0 border-t border-slate-200 bg-white px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 dark:border-zinc-800 dark:bg-zinc-900 sm:hidden">
+                  <div className="flex flex-col">
+                    {filteredStudents.length > 0 ? (
+                      <div className="mb-1.5 flex items-center gap-1.5">
+                        <p className="min-w-0 flex-1 truncate text-[10px] font-normal leading-none text-slate-400 dark:text-zinc-500">
+                          Showing {showingFrom}–{showingTo} of{" "}
+                          {filteredStudents.length}
+                        </p>
+                        <select
+                          value={rowsPerPage}
+                          onChange={(e) => {
+                            setRowsPerPage(
+                              Number(e.target.value) as PageSizeOption
+                            );
+                            setPage(1);
+                          }}
+                          disabled={isPending}
+                          className="h-11 shrink-0 rounded-md border border-slate-300 bg-white px-1.5 text-xs tabular-nums text-slate-700 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
+                          aria-label="Students per page"
+                        >
+                          {PAGE_SIZE_OPTIONS.map((n) => (
+                            <option key={n} value={n}>
+                              {n}/page
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          disabled={isPending || safePage <= 1}
+                          aria-label="Previous page"
+                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          <ChevronLeft className="h-5 w-5" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPage((p) => Math.min(totalPages, p + 1))
+                          }
+                          disabled={isPending || safePage >= totalPages}
+                          aria-label="Next page"
+                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          <ChevronRight className="h-5 w-5" aria-hidden />
+                        </button>
+                      </div>
+                    ) : null}
+                    <div className="flex w-full min-w-0 max-w-full flex-col items-center overflow-x-hidden rounded-xl bg-slate-50/50 px-2.5 pb-2 pt-2.5 dark:bg-zinc-800/30">
+                      <MobilePromotionOutcomeSummary
+                        promoted={summary.promoted}
+                        repeated={summary.repeated}
+                        graduated={summary.graduated}
+                      />
+                      <button
+                        type="submit"
+                        disabled={isPending || loading || students.length === 0}
+                        className="mt-0 inline-flex min-h-[36px] w-full items-center justify-center gap-2 self-stretch rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-60"
+                      >
+                        {isPending ? (
+                          <>
+                            <Loader2
+                              className="h-4 w-4 animate-spin"
+                              aria-hidden
+                            />
+                            Saving…
+                          </>
+                        ) : (
+                          "Confirm promotion"
+                        )}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      disabled={isPending}
+                      className="mt-2.5 w-full py-1 text-center text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </footer>
+              ) : null}
+
               {filteredStudents.length > 0 ? (
-                <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 px-4 py-3 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="hidden shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900 sm:flex sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-slate-600 dark:text-zinc-400">
                     Showing {showingFrom}–{showingTo} of {filteredStudents.length}{" "}
                     student{filteredStudents.length === 1 ? "" : "s"}
@@ -1246,9 +1451,7 @@ export function PromotionModal({
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-zinc-400">
-                      <span className="sr-only sm:not-sr-only sm:inline">
-                        Per page
-                      </span>
+                      <span>Per page</span>
                       <select
                         value={rowsPerPage}
                         onChange={(e) => {
@@ -1290,54 +1493,62 @@ export function PromotionModal({
                 </div>
               ) : null}
 
-              <div
-                className="shrink-0 border-t border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/40 sm:px-6"
-                role="status"
-                aria-label="Promotion outcome summary"
-              >
-                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm leading-snug">
-                  <span className="font-semibold text-slate-800 dark:text-zinc-200">
-                    Promotion Outcome:
-                  </span>
-                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                    {summary.promoted} Promoted
-                  </span>
-                  <span
-                    className="text-slate-300 dark:text-zinc-600"
-                    aria-hidden
-                  >
-                    •
-                  </span>
-                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                    {summary.repeated} Repeating
-                  </span>
-                  <span
-                    className="text-slate-300 dark:text-zinc-600"
-                    aria-hidden
-                  >
-                    •
-                  </span>
-                  <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-violet-800 dark:bg-violet-950/40 dark:text-violet-200">
-                    {summary.graduated} Graduating
-                  </span>
-                </p>
-              </div>
+              {filteredStudents.length > 0 ? (
+                <div
+                  className="hidden shrink-0 border-t border-slate-200 bg-slate-50/90 px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900/40 sm:block"
+                  role="status"
+                  aria-label="Promotion outcome summary"
+                >
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm leading-snug">
+                    <span className="font-semibold text-slate-800 dark:text-zinc-200">
+                      Promotion Outcome:
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                      {summary.promoted} Promoted
+                    </span>
+                    <span
+                      className="text-slate-300 dark:text-zinc-600"
+                      aria-hidden
+                    >
+                      •
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                      {summary.repeated} Repeating
+                    </span>
+                    <span
+                      className="text-slate-300 dark:text-zinc-600"
+                      aria-hidden
+                    >
+                      •
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-violet-800 dark:bg-violet-950/40 dark:text-violet-200">
+                      {summary.graduated} Graduating
+                    </span>
+                  </p>
+                </div>
+              ) : null}
             </>
           )}
 
-          <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 px-4 py-4 dark:border-zinc-800 sm:flex-row sm:justify-end sm:px-6">
+          <div
+            className={`shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-white px-4 py-4 dark:border-zinc-800 dark:bg-zinc-900 sm:flex sm:flex-row sm:justify-end sm:px-6 ${
+              !loading && !loadError && students.length > 0
+                ? "hidden sm:flex"
+                : "flex pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-4"
+            }`}
+          >
             <button
               type="button"
               onClick={onClose}
               disabled={isPending}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 sm:min-h-0 sm:py-2"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isPending || loading || students.length === 0}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-60"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white hover:brightness-105 disabled:opacity-60 sm:min-h-0 sm:py-2"
             >
               {isPending ? (
                 <>

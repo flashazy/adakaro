@@ -29,7 +29,7 @@ export function AcademicReportsInsights({ data }: AcademicReportsInsightsProps) 
           . Use these summaries to track outcomes and subject-level performance.
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 max-lg:auto-rows-fr max-lg:[&>*]:h-full lg:grid-cols-4">
         <AcademicStatCard
           label="Total Reports"
           value={data.totalReports.toLocaleString()}
@@ -50,7 +50,7 @@ export function AcademicReportsInsights({ data }: AcademicReportsInsightsProps) 
           icon={Sparkles}
           accent="purple"
           valueSize="compact"
-          className="col-span-2 lg:col-span-1"
+          className="max-lg:[&>div:last-child]:mt-2"
         />
         <AcademicStatCard
           label="Classes Covered"
