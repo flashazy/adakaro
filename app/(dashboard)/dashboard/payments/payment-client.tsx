@@ -322,9 +322,9 @@ export function PaymentClient({
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* ─── Student selector ─── */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-150 dark:border-zinc-800 dark:bg-zinc-900 sm:p-5">
         <label
           htmlFor="finance-record-payment-search"
           className="text-sm text-slate-600 dark:text-zinc-400"
@@ -393,21 +393,23 @@ export function PaymentClient({
                 key={s.id}
                 type="button"
                 onClick={() => setSelectedStudentId(s.id)}
-                className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm transition-colors ${
+                className={`flex w-full items-start justify-between gap-2 px-3 py-2.5 text-left text-sm transition-all duration-150 ${
                   selectedStudentId === s.id
                     ? "bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:text-school-primary"
                     : "text-slate-900 hover:bg-slate-50 dark:text-white dark:hover:bg-zinc-800"
                 }`}
               >
-                <span>
-                  {s.full_name}
-                  {s.admission_number ? ` (${s.admission_number})` : ""}
-                </span>
-                {s.class && (
-                  <span className="ml-2 shrink-0 text-xs text-slate-500 dark:text-zinc-400">
-                    {s.class.name}
+                <span className="min-w-0">
+                  <span className="block font-medium leading-snug">
+                    {s.full_name}
+                    {s.admission_number ? ` (${s.admission_number})` : ""}
                   </span>
-                )}
+                  {s.class ? (
+                    <span className="mt-0.5 block text-[11px] font-normal text-slate-500 dark:text-zinc-400">
+                      {s.class.name}
+                    </span>
+                  ) : null}
+                </span>
               </button>
             ))
           ) : (
@@ -447,8 +449,8 @@ export function PaymentClient({
                   onClick={() => setStudentListPage(item)}
                   aria-current={item === studentSafePage ? "page" : undefined}
                   className={
-                    item === studentSafePage
-                      ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                      item === studentSafePage
+                        ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-school-primary/25 transition-all duration-150"
                       : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   }
                 >
@@ -474,8 +476,8 @@ export function PaymentClient({
 
       {/* ─── Outstanding fees ─── */}
       {selectedStudentId && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="border-b border-slate-200 px-6 py-4 dark:border-zinc-800">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-150 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800 sm:px-5">
             <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
               Outstanding fees for {selectedStudent?.full_name}
             </h2>
@@ -488,27 +490,32 @@ export function PaymentClient({
                   key={b.fee_structure_id}
                   type="button"
                   onClick={() => setSelectedFeeId(b.fee_structure_id)}
-                  className={`flex w-full items-center justify-between px-6 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800 ${
+                  className={`flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-all duration-150 hover:bg-slate-50 dark:hover:bg-zinc-800 sm:px-5 ${
                     selectedFeeId === b.fee_structure_id
                       ? "bg-[rgb(var(--school-primary-rgb)/0.10)] dark:bg-[rgb(var(--school-primary-rgb)/0.12)]"
                       : ""
                   }`}
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-900 dark:text-white">
                       {b.fee_name}
                     </p>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400">
-                      Total: {money(Number(b.total_fee))} · Paid:{" "}
+                    <p className="mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
+                      Fees: {money(Number(b.total_fee))} · Paid:{" "}
                       {money(Number(b.total_paid))}
                       {b.due_date ? ` · Due: ${b.due_date}` : ""}
                     </p>
                   </div>
-                  <span
-                    className={`shrink-0 text-sm ${getBalanceAmountClassName(getBalanceUrgency(b.total_fee, b.balance))}`}
-                  >
-                    {money(Number(b.balance))}
-                  </span>
+                  <div className="shrink-0 text-right">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                      Balance
+                    </p>
+                    <span
+                      className={`text-base font-bold tabular-nums ${getBalanceAmountClassName(getBalanceUrgency(b.total_fee, b.balance))}`}
+                    >
+                      {money(Number(b.balance))}
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>

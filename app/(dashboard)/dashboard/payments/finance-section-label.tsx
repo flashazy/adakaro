@@ -6,7 +6,7 @@ export function FinanceSectionLabel({ children }: { children: string }) {
         {children}
       </p>
       <div
-        className="h-px min-w-0 flex-1 bg-gradient-to-r from-slate-300/90 via-slate-200/50 to-transparent dark:from-zinc-600/90 dark:via-zinc-700/40 dark:to-transparent"
+        className="h-px min-w-0 flex-1 bg-gradient-to-r from-slate-400/80 via-slate-300/60 to-transparent dark:from-zinc-500/80 dark:via-zinc-600/50 dark:to-transparent"
         aria-hidden
       />
     </div>

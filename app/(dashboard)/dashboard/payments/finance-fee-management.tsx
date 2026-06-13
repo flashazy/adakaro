@@ -30,7 +30,7 @@ function FeeManagementCard({
   icon: ReactNode;
 }) {
   return (
-    <div className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-5">
+    <div className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-150 dark:border-zinc-800 dark:bg-zinc-900 sm:p-5">
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.14)]">
           {icon}
@@ -54,7 +54,7 @@ function FeeManagementCard({
       </div>
       <Link
         href={href}
-        className="mt-4 inline-flex min-h-[44px] w-full cursor-pointer items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:scale-[1.01] hover:shadow-md hover:brightness-105 focus-visible:outline focus-visible:ring-2 focus-visible:ring-school-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
+        className="mt-4 inline-flex min-h-[44px] w-full cursor-pointer items-center justify-center rounded-lg bg-school-primary px-4 py-2.5 text-sm font-semibold text-white transition-all duration-150 hover:shadow-md hover:brightness-105 focus-visible:outline focus-visible:ring-2 focus-visible:ring-school-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900"
       >
         {buttonLabel}
       </Link>

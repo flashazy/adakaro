@@ -30,7 +30,7 @@ import {
   getOutstandingRiskLevel,
 } from "@/lib/finance/finance-dashboard-summaries";
 const QUICK_ACTION_CLASS =
-  "inline-flex min-h-[44px] min-w-0 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-800 transition-all duration-200 hover:scale-[1.01] hover:border-school-primary/45 hover:bg-[rgb(var(--school-primary-rgb)/0.08)] hover:shadow-md hover:ring-2 hover:ring-school-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-school-primary focus-visible:ring-offset-2 dark:border-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-100 dark:hover:border-school-primary/50 dark:hover:ring-school-primary/20 dark:focus-visible:ring-offset-zinc-900";
+  "inline-flex min-h-[48px] min-w-0 w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-800 transition-all duration-150 hover:border-school-primary/45 hover:bg-[rgb(var(--school-primary-rgb)/0.08)] hover:shadow-md hover:ring-2 hover:ring-school-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-school-primary focus-visible:ring-offset-2 dark:border-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-100 dark:hover:border-school-primary/50 dark:hover:ring-school-primary/20 dark:focus-visible:ring-offset-zinc-900 lg:w-auto lg:min-h-[44px] lg:justify-start lg:px-3.5 lg:py-2";
 
 const HEALTH_STYLES: Record<
   CollectionHealth["level"],
@@ -113,19 +113,19 @@ function SummaryCard({
   const styles = SUMMARY_CARD_VARIANTS[variant];
   return (
     <div
-      className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${styles.wrap}`}
+      className={`rounded-2xl border p-3 shadow-sm transition-all duration-150 sm:p-4 ${styles.wrap}`}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
         {label}
       </p>
       <p
-        className={`mt-2 text-lg font-bold tabular-nums sm:text-xl ${styles.value}`}
+        className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl ${styles.value}`}
       >
         {value}
       </p>
       {hint ? (
         <p
-          className={`mt-1.5 text-[11px] font-medium leading-snug ${TREND_HINT_CLASS[hintTone]}`}
+          className={`mt-1 text-[10px] font-medium leading-snug ${TREND_HINT_CLASS[hintTone]}`}
         >
           {hint}
         </p>
@@ -141,14 +141,14 @@ function CollectionRateCard({ ratePercent }: { ratePercent: number }) {
   const barColor = getCollectionTargetBarColor(ratePercent);
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900 sm:p-5">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+    <div className="rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm transition-all duration-150 dark:border-zinc-700/80 dark:bg-zinc-900 sm:p-4">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
         Collection Rate
       </p>
-      <p className="mt-2 text-lg font-bold tabular-nums text-slate-900 dark:text-white sm:text-xl">
+      <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 dark:text-white sm:text-2xl">
         {rateDisplay}
       </p>
-      <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-zinc-400">
+      <p className="mt-0.5 text-[10px] font-medium text-slate-500 dark:text-zinc-400">
         Target: {COLLECTION_RATE_TARGET_PERCENT}%
       </p>
       <p className="mt-2 text-[11px] text-slate-500 dark:text-zinc-400">
@@ -198,18 +198,18 @@ function InsightMetric({
   badge?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 px-5 py-4 dark:border-zinc-700/60 dark:bg-zinc-900/40 sm:px-6 sm:py-5">
+    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 px-4 py-3 transition-all duration-150 dark:border-zinc-700/60 dark:bg-zinc-900/40 sm:px-5 sm:py-3.5">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
           {label}
         </p>
         {badge}
       </div>
-      <p className="mt-2 text-xl font-bold tabular-nums text-slate-900 dark:text-white sm:text-2xl">
+      <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 dark:text-white sm:text-2xl">
         {value}
       </p>
       {subtext ? (
-        <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
+        <p className="mt-1.5 text-[11px] leading-relaxed text-slate-600 dark:text-zinc-400">
           {subtext}
         </p>
       ) : null}
@@ -282,7 +282,7 @@ export function FinanceCommandCenter({
     <section
       id="finance-command-center"
       aria-labelledby="finance-command-center-heading"
-      className="space-y-5"
+      className="space-y-4 max-md:space-y-3.5"
     >
       <div className="sr-only">
         <h2 id="finance-command-center-heading">Finance overview</h2>
@@ -290,11 +290,11 @@ export function FinanceCommandCenter({
 
       {/* Quick actions — sticky on desktop only */}
       <div className="lg:sticky lg:top-0 lg:z-20 lg:-mx-1 lg:rounded-2xl lg:border lg:border-transparent lg:bg-white/95 lg:px-1 lg:py-2 lg:backdrop-blur-sm lg:dark:bg-zinc-950/95">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900 sm:p-5 lg:border-slate-200/60 lg:shadow-md">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm transition-all duration-150 dark:border-zinc-700/80 dark:bg-zinc-900 sm:p-4 lg:border-slate-200/60 lg:shadow-md">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
             Quick Finance Actions
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-2.5 grid grid-cols-2 gap-2 lg:flex lg:flex-wrap">
             {quickActions.map((action) => {
               const Icon = action.icon;
 
@@ -306,7 +306,8 @@ export function FinanceCommandCenter({
                     className={QUICK_ACTION_CLASS}
                   >
                     <Icon
-                      className="h-4 w-4 shrink-0 text-school-primary"
+                      className="h-[18px] w-[18px] shrink-0 text-school-primary"
+                      strokeWidth={2.25}
                       aria-hidden
                     />
                     {action.label}
@@ -321,7 +322,8 @@ export function FinanceCommandCenter({
                   className={QUICK_ACTION_CLASS}
                 >
                   <Icon
-                    className="h-4 w-4 shrink-0 text-school-primary"
+                    className="h-[18px] w-[18px] shrink-0 text-school-primary"
+                    strokeWidth={2.25}
                     aria-hidden
                   />
                   {action.label}
@@ -358,17 +360,17 @@ export function FinanceCommandCenter({
 
       {/* Collection health */}
       <div
-        className={`flex flex-col gap-2.5 rounded-2xl border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 ${healthStyle.wrap}`}
+        className={`flex flex-col gap-3 rounded-2xl border px-4 py-3 transition-all duration-150 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4 ${healthStyle.wrap}`}
         role="status"
         aria-live="polite"
       >
         <div className="flex items-center gap-3">
           {healthStyle.icon ? (
             <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 shadow-sm dark:bg-amber-900/50 dark:text-amber-300"
               aria-hidden
             >
-              <AlertTriangle className="h-5 w-5" />
+              <AlertTriangle className="h-5 w-5" strokeWidth={2.25} />
             </span>
           ) : (
             <span
@@ -386,7 +388,7 @@ export function FinanceCommandCenter({
           </div>
         </div>
         <div className={`text-sm ${healthStyle.detail}`}>
-          <p>{health.detail}</p>
+          <p className="leading-snug">{health.detail}</p>
           {health.subdetail ? (
             <p className="mt-0.5 text-xs opacity-90">{health.subdetail}</p>
           ) : null}
@@ -394,7 +396,7 @@ export function FinanceCommandCenter({
       </div>
 
       {/* Finance insight */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900 sm:p-7">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm transition-all duration-150 dark:border-zinc-700/80 dark:bg-zinc-900 sm:p-5">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--school-primary-rgb)/0.12)] text-school-primary">
             <ArrowDownCircle className="h-5 w-5" aria-hidden />
@@ -404,12 +406,12 @@ export function FinanceCommandCenter({
               Finance Insight
             </h3>
             {!insight.hasData ? (
-              <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
                 Finance insight will appear when fee and payment data is
                 available.
               </p>
             ) : insight.studentsWithOutstanding === 0 ? (
-              <div className="mt-4 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-4 py-5 dark:border-emerald-900/40 dark:bg-emerald-950/25 sm:px-5">
+              <div className="mt-3 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-4 py-4 dark:border-emerald-900/40 dark:bg-emerald-950/25 sm:px-5">
                 <div className="flex items-start gap-3">
                   <CheckCircle2
                     className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
@@ -428,11 +430,11 @@ export function FinanceCommandCenter({
             ) : (
               <>
                 {focusMessage ? (
-                  <p className="mt-3 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3.5 py-2.5 text-sm leading-relaxed text-slate-700 dark:border-zinc-700/60 dark:bg-zinc-800/40 dark:text-zinc-300">
+                  <p className="mt-2 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3.5 py-2 text-sm leading-relaxed text-slate-700 dark:border-zinc-700/60 dark:bg-zinc-800/40 dark:text-zinc-300">
                     {focusMessage}
                   </p>
                 ) : null}
-                <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
                   <InsightMetric
                     label="Students needing follow-up"
                     value={insight.studentsWithOutstanding}

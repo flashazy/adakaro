@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { useRouter } from "next/navigation";
 import { Check, Eye, Loader2, Printer, RefreshCw, Send, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
 import {
@@ -109,7 +110,7 @@ function CoordinatorReportCardStatusBadge({
 
   if (label === "sent") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/50 dark:text-emerald-100">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-900 transition-all duration-150 dark:border-emerald-900/50 dark:bg-emerald-950/50 dark:text-emerald-100">
         <span aria-hidden>✓</span>
         Sent
       </span>
@@ -118,7 +119,7 @@ function CoordinatorReportCardStatusBadge({
 
   if (label === "ready") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-100">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-900 transition-all duration-150 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-100">
         <span aria-hidden>📄</span>
         Ready
       </span>
@@ -126,7 +127,7 @@ function CoordinatorReportCardStatusBadge({
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-100">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 transition-all duration-150 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-100">
       <span aria-hidden>⏳</span>
       Pending
     </span>
@@ -220,13 +221,16 @@ function StatsCardRow({
   );
 }
 
-function SubmitForApprovalButton() {
+function SubmitForApprovalButton({ stacked }: { stacked?: boolean } = {}) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
       disabled={pending}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800/50 dark:bg-amber-950/50 dark:text-amber-100 dark:hover:bg-amber-900/40"
+      className={cn(
+        "inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800/50 dark:bg-amber-950/50 dark:text-amber-100 dark:hover:bg-amber-900/40",
+        stacked && "w-full py-2"
+      )}
     >
       {pending ? (
         <>
@@ -434,6 +438,172 @@ export function CoordinatorDashboardClient({
   );
 }
 
+const reportCardActionButtonClass =
+  "inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-[background-color,border-color,box-shadow] duration-150 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200";
+
+const reportCardPreviewButtonClass = cn(
+  reportCardActionButtonClass,
+  "hover:border-sky-200/80 hover:bg-sky-50/90 active:bg-sky-50 dark:hover:border-sky-800/50 dark:hover:bg-sky-950/40"
+);
+
+const reportCardDownloadButtonClass = cn(
+  reportCardActionButtonClass,
+  "hover:border-slate-300 hover:bg-slate-100/90 active:bg-slate-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-800/90"
+);
+
+function CoordinatorReportCardRosterActions({
+  row,
+  className,
+  academicYear,
+  onOpenGenerate,
+  onPreview,
+  pdfLoadingId,
+  setPdfLoadingId,
+  submitReviewAction,
+  layout = "inline",
+}: {
+  row: CoordinatorClassRosterRow;
+  className: string;
+  academicYear: string;
+  onOpenGenerate: () => void;
+  onPreview: (item: CoordinatorReportCardItem) => void;
+  pdfLoadingId: string | null;
+  setPdfLoadingId: (id: string | null) => void;
+  submitReviewAction: (formData: FormData) => void;
+  layout?: "inline" | "stacked";
+}) {
+  const stacked = layout === "stacked";
+
+  if (!row.item) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenGenerate}
+        className={cn(reportCardDownloadButtonClass, stacked && "w-full py-2")}
+      >
+        Generate to create a card
+      </button>
+    );
+  }
+
+  const item = row.item;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2",
+        stacked && "w-full flex-col"
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => onPreview(item)}
+        className={cn(reportCardPreviewButtonClass, stacked && "w-full py-2")}
+      >
+        <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        Preview
+      </button>
+      <button
+        type="button"
+        disabled={pdfLoadingId === item.reportCardId}
+        onClick={() => {
+          const id = item.reportCardId;
+          setPdfLoadingId(id);
+          void (async () => {
+            try {
+              await downloadReportCardPdf(
+                item.preview,
+                safeFileName(`${item.studentName}-${className}-${academicYear}`)
+              );
+            } catch {
+              toast.error("Could not generate PDF.");
+            } finally {
+              setPdfLoadingId(null);
+            }
+          })();
+        }}
+        className={cn(
+          reportCardDownloadButtonClass,
+          "disabled:cursor-wait disabled:opacity-80",
+          stacked && "w-full py-2"
+        )}
+      >
+        {pdfLoadingId === item.reportCardId ? (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+        ) : (
+          <Printer className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        )}
+        Download PDF
+      </button>
+      {item.status === "draft" || item.status === "changes_requested" ? (
+        <form
+          action={submitReviewAction}
+          className={cn(stacked && "w-full")}
+        >
+          <input type="hidden" name="report_card_id" value={item.reportCardId} />
+          <SubmitForApprovalButton stacked={stacked} />
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+function CoordinatorReportCardsMobileList({
+  rows,
+  className,
+  academicYear,
+  onOpenGenerate,
+  onPreview,
+  pdfLoadingId,
+  setPdfLoadingId,
+  submitReviewAction,
+}: {
+  rows: CoordinatorClassRosterRow[];
+  className: string;
+  academicYear: string;
+  onOpenGenerate: () => void;
+  onPreview: (item: CoordinatorReportCardItem) => void;
+  pdfLoadingId: string | null;
+  setPdfLoadingId: (id: string | null) => void;
+  submitReviewAction: (formData: FormData) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3.5 md:hidden">
+      {rows.map((row) => (
+        <article
+          key={row.studentId}
+          className="rounded-xl border border-slate-200/90 bg-slate-50/60 p-3 shadow-sm transition-[transform,box-shadow] duration-150 hover:-translate-y-px hover:shadow-md active:-translate-y-px active:shadow-md motion-reduce:transform-none dark:border-zinc-700/80 dark:bg-zinc-800/35"
+        >
+          <p className="break-words text-sm font-semibold leading-tight text-slate-900 dark:text-white">
+            {row.fullName}
+          </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {row.item ? (
+              <CoordinatorReportCardStatusBadge status={row.item.status} />
+            ) : (
+              <CoordinatorReportCardStatusBadge status="none" />
+            )}
+            <ParentAccessBadge canOpen={row.parentCanOpen} />
+          </div>
+          <div className="mt-2">
+            <CoordinatorReportCardRosterActions
+              row={row}
+              className={className}
+              academicYear={academicYear}
+              onOpenGenerate={onOpenGenerate}
+              onPreview={onPreview}
+              pdfLoadingId={pdfLoadingId}
+              setPdfLoadingId={setPdfLoadingId}
+              submitReviewAction={submitReviewAction}
+              layout="stacked"
+            />
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function CoordinatorReportCardsRosterTable({
   classRoster,
   parentAccess,
@@ -600,8 +770,18 @@ function CoordinatorReportCardsRosterTable({
 
       {totalFiltered > 0 ? (
         <>
-          <div className="overflow-x-auto rounded-b-2xl border border-slate-200 dark:border-zinc-700">
-            <table className="w-full min-w-[42rem] border-collapse text-left text-sm sm:min-w-[48rem]">
+          <div className="max-md:overflow-x-hidden md:overflow-x-auto md:rounded-b-2xl md:border md:border-slate-200 dark:md:border-zinc-700">
+            <CoordinatorReportCardsMobileList
+              rows={pageSlice}
+              className={className}
+              academicYear={academicYear}
+              onOpenGenerate={onOpenGenerate}
+              onPreview={onPreview}
+              pdfLoadingId={pdfLoadingId}
+              setPdfLoadingId={setPdfLoadingId}
+              submitReviewAction={submitReviewAction}
+            />
+            <table className="hidden w-full min-w-[42rem] border-collapse text-left text-sm sm:min-w-[48rem] md:table">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 dark:border-zinc-600 dark:bg-zinc-800/80">
                   <th className="px-4 py-3.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
@@ -638,75 +818,16 @@ function CoordinatorReportCardsRosterTable({
                       <ParentAccessBadge canOpen={row.parentCanOpen} />
                     </td>
                     <td className="px-4 py-3 align-middle">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {row.item ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => onPreview(row.item!)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
-                            >
-                              <Eye className="h-3.5 w-3.5" aria-hidden />
-                              Preview
-                            </button>
-                            <button
-                              type="button"
-                              disabled={pdfLoadingId === row.item!.reportCardId}
-                              onClick={() => {
-                                const id = row.item!.reportCardId;
-                                setPdfLoadingId(id);
-                                void (async () => {
-                                  try {
-                                    await downloadReportCardPdf(
-                                      row.item!.preview,
-                                      safeFileName(
-                                        `${row.item!.studentName}-${className}-${academicYear}`
-                                      )
-                                    );
-                                  } catch {
-                                    toast.error("Could not generate PDF.");
-                                  } finally {
-                                    setPdfLoadingId(null);
-                                  }
-                                })();
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-80 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
-                            >
-                              {pdfLoadingId === row.item!.reportCardId ? (
-                                <Loader2
-                                  className="h-3.5 w-3.5 shrink-0 animate-spin"
-                                  aria-hidden
-                                />
-                              ) : (
-                                <Printer className="h-3.5 w-3.5" aria-hidden />
-                              )}
-                              Download PDF
-                            </button>
-                            {row.item.status === "draft" ||
-                            row.item.status === "changes_requested" ? (
-                              <form
-                                action={submitReviewAction}
-                                className="inline"
-                              >
-                                <input
-                                  type="hidden"
-                                  name="report_card_id"
-                                  value={row.item.reportCardId}
-                                />
-                                <SubmitForApprovalButton />
-                              </form>
-                            ) : null}
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={onOpenGenerate}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
-                          >
-                            Generate to create a card
-                          </button>
-                        )}
-                      </div>
+                      <CoordinatorReportCardRosterActions
+                        row={row}
+                        className={className}
+                        academicYear={academicYear}
+                        onOpenGenerate={onOpenGenerate}
+                        onPreview={onPreview}
+                        pdfLoadingId={pdfLoadingId}
+                        setPdfLoadingId={setPdfLoadingId}
+                        submitReviewAction={submitReviewAction}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -738,9 +859,9 @@ function CoordinatorReportCardsRosterTable({
                       key={item}
                       type="button"
                       onClick={() => setCurrentPage(item)}
-                      className={`min-w-[2.25rem] rounded-md border px-3 py-1 text-sm dark:border-zinc-600 ${
+                      className={`min-w-[2.25rem] rounded-md border px-3 py-1 text-sm transition-shadow duration-150 dark:border-zinc-600 ${
                         currentPage === item
-                          ? "border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-600"
+                          ? "border-blue-600 bg-blue-600 text-white shadow-sm shadow-blue-600/30 dark:border-blue-500 dark:bg-blue-600"
                           : "border-slate-300 bg-white text-slate-700 hover:bg-gray-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
                       }`}
                     >

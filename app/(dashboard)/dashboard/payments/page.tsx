@@ -285,7 +285,7 @@ export default async function PaymentsPage() {
       </header>
 
       <main
-        className={`mx-auto space-y-8 py-8 sm:space-y-10 sm:py-10 ${showFinanceTools ? "max-w-6xl px-4 sm:px-0" : "max-w-3xl px-4 sm:px-0"}`}
+        className={`mx-auto space-y-6 py-6 max-md:space-y-5 sm:space-y-8 sm:py-8 ${showFinanceTools ? "max-w-6xl px-4 sm:px-0" : "max-w-3xl px-4 sm:px-0"}`}
       >
         {fetchError ? (
           <QueryErrorBanner
@@ -315,7 +315,7 @@ export default async function PaymentsPage() {
               paymentsForTrend={reportPaymentsForTrend}
             />
 
-            <div className="space-y-5">
+            <div className="space-y-4 max-md:space-y-3.5">
               <FinanceSectionLabel>Operations</FinanceSectionLabel>
               <FinanceFeeManagement
                 feeTypesCount={feeTypesCount}
@@ -338,7 +338,7 @@ export default async function PaymentsPage() {
             </FinanceHubSection>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-4 max-md:space-y-3.5">
               <FinanceSectionLabel>Access control</FinanceSectionLabel>
               <FinanceHubSection
               id="finance-report-access"
@@ -349,7 +349,7 @@ export default async function PaymentsPage() {
             </FinanceHubSection>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-4 max-md:space-y-3.5">
               <FinanceSectionLabel>Reporting</FinanceSectionLabel>
               <FinanceHubSection
               id="finance-reports"

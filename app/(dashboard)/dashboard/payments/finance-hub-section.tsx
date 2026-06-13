@@ -17,7 +17,7 @@ export function FinanceHubSection({
   const headingId = id ?? `finance-section-${title.replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <section aria-labelledby={headingId} className={className}>
-      <div className="mb-4 sm:mb-5">
+      <div className="mb-3 sm:mb-4">
         <h2
           id={headingId}
           className="text-base font-semibold text-slate-900 dark:text-white sm:text-lg"
