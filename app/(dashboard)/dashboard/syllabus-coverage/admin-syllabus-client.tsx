@@ -1,41 +1,118 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { SyllabusProgressBar } from "@/components/syllabus-coverage/syllabus-coverage-ui";
-import { coverageTextClass } from "@/lib/syllabus-coverage/coverage-stats";
+import {
+  AdminSyllabusAttentionPanel,
+  AdminSyllabusClassHealthSummary,
+  AdminSyllabusCoverageTable,
+  AdminSyllabusDistributionChart,
+  AdminSyllabusFiltersBar,
+  AdminSyllabusKpiCards,
+  AdminSyllabusPaceFilterChips,
+  AdminSyllabusPerformanceCard,
+  AdminSyllabusSchoolHealthCard,
+  AdminSyllabusTableSearch,
+  AdminSyllabusTeacherLeaderboard,
+} from "@/components/syllabus-coverage/admin-syllabus-dashboard-ui";
+import {
+  resolveFilteredDashboard,
+  paginateAdminSyllabusTableRows,
+  applyAdminSyllabusTableSearch,
+} from "@/lib/syllabus-coverage/admin-dashboard-utils";
+import type {
+  AdminSyllabusDashboardFilters,
+  AdminSyllabusDashboardPayload,
+  AdminSyllabusTablePageSize,
+} from "@/lib/syllabus-coverage/admin-dashboard-types";
 import { currentAcademicYear } from "@/lib/student-subject-enrollment";
-import type { SyllabusCoverageOverviewRow } from "@/lib/syllabus-coverage/types";
-import { loadAdminSyllabusOverviewAction } from "./actions";
+import { loadAdminSyllabusDashboardAction } from "./actions";
 
-function yearOptions(): string[] {
-  const current = currentAcademicYear();
-  const years: string[] = [];
-  for (let y = current - 2; y <= current + 1; y += 1) years.push(String(y));
-  return years;
+function defaultFilters(academicYear: string): AdminSyllabusDashboardFilters {
+  return {
+    academicYear,
+    term: "All Terms",
+    classId: "all",
+    subjectKey: "all",
+    teacherId: "all",
+    paceChip: "all",
+  };
 }
 
 export function AdminSyllabusCoverageClient() {
-  const [academicYear, setAcademicYear] = useState(String(currentAcademicYear()));
-  const [rows, setRows] = useState<SyllabusCoverageOverviewRow[]>([]);
+  const [payload, setPayload] = useState<AdminSyllabusDashboardPayload | null>(
+    null
+  );
+  const [filters, setFilters] = useState<AdminSyllabusDashboardFilters>(() =>
+    defaultFilters(String(currentAcademicYear()))
+  );
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState<AdminSyllabusTablePageSize>(10);
+  const [tableSearch, setTableSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (year: string) => {
     setLoading(true);
-    const res = await loadAdminSyllabusOverviewAction(academicYear);
+    const res = await loadAdminSyllabusDashboardAction(year);
     setLoading(false);
     if (!res.ok) {
       toast.error(res.error);
-      setRows([]);
+      setPayload(null);
       return;
     }
-    setRows(res.rows);
-  }, [academicYear]);
+    setPayload(res.payload);
+    setFilters((prev) => ({
+      ...prev,
+      academicYear: res.payload.academicYear,
+      term: res.payload.filterOptions.terms.includes(prev.term)
+        ? prev.term
+        : "All Terms",
+    }));
+  }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load(filters.academicYear);
+  }, [filters.academicYear, load]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters, tableSearch]);
+
+  const resolved = useMemo(() => {
+    if (!payload) {
+      return null;
+    }
+    return resolveFilteredDashboard(payload, filters);
+  }, [payload, filters]);
+
+  const searchedTableRows = useMemo(() => {
+    if (!resolved) {
+      return [];
+    }
+    return applyAdminSyllabusTableSearch(resolved.tableRows, tableSearch);
+  }, [resolved, tableSearch]);
+
+  const tablePagination = useMemo(() => {
+    return paginateAdminSyllabusTableRows(searchedTableRows, page, rowsPerPage);
+  }, [searchedTableRows, page, rowsPerPage]);
+
+  const updateFilters = (next: Partial<AdminSyllabusDashboardFilters>) => {
+    setFilters((prev) => {
+      const merged = { ...prev, ...next };
+      if (next.academicYear && next.academicYear !== prev.academicYear) {
+        void load(next.academicYear);
+      }
+      return merged;
+    });
+  };
+
+  const filterOptions = payload?.filterOptions ?? {
+    academicYears: [String(currentAcademicYear())],
+    terms: ["All Terms"],
+    classes: [],
+    subjects: [],
+    teachers: [],
+  };
 
   return (
     <div className="space-y-6">
@@ -44,75 +121,73 @@ export function AdminSyllabusCoverageClient() {
           Syllabus Coverage
         </h1>
         <p className="text-sm text-slate-600 dark:text-zinc-400">
-          School-wide view of subject teaching progress by class and teacher.
+          Academic management dashboard for school-wide teaching progress,
+          expected pace, and performance insights.
         </p>
       </header>
 
-      <label className="flex max-w-xs flex-col gap-1 text-sm">
-        <span className="font-medium text-slate-700 dark:text-zinc-300">
-          Academic year
-        </span>
-        <select
-          value={academicYear}
-          onChange={(e) => setAcademicYear(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950"
-        >
-          {yearOptions().map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-      </label>
+      <AdminSyllabusFiltersBar
+        filterOptions={filterOptions}
+        filters={filters}
+        onChange={updateFilters}
+      />
 
-      {loading ? (
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Loading overview…
-        </div>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-slate-500 dark:text-zinc-400">
-          No syllabus coverage data for this year yet. Coordinators create
-          topics; teachers update progress.
-        </p>
+      {resolved ? (
+        <>
+          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-stretch">
+            <AdminSyllabusKpiCards kpis={resolved.kpis} />
+            <AdminSyllabusSchoolHealthCard schoolHealth={resolved.schoolHealth} />
+          </div>
+
+          <AdminSyllabusDistributionChart distribution={resolved.distribution} />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <AdminSyllabusAttentionPanel items={resolved.attention} />
+            <AdminSyllabusTeacherLeaderboard teachers={resolved.teachers} />
+          </div>
+
+          <AdminSyllabusPerformanceCard rows={resolved.performance} />
+
+          <AdminSyllabusClassHealthSummary classes={resolved.classHealth} />
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-zinc-300">
+              Coverage by class & subject
+            </h2>
+            <AdminSyllabusTableSearch
+              value={tableSearch}
+              onChange={setTableSearch}
+            />
+            <AdminSyllabusPaceFilterChips
+              value={filters.paceChip}
+              onChange={(paceChip) => updateFilters({ paceChip })}
+            />
+            <AdminSyllabusCoverageTable
+              rows={resolved ? tablePagination.slice : []}
+              allRows={resolved?.rows}
+              loading={loading}
+              pagination={
+                resolved && tablePagination.totalRecords > 0
+                  ? {
+                      page: tablePagination.page,
+                      rowsPerPage: tablePagination.rowsPerPage,
+                      totalRecords: tablePagination.totalRecords,
+                      startRecord: tablePagination.startRecord,
+                      endRecord: tablePagination.endRecord,
+                      totalPages: tablePagination.totalPages,
+                      onPageChange: setPage,
+                      onRowsPerPageChange: (nextRowsPerPage) => {
+                        setRowsPerPage(nextRowsPerPage);
+                        setPage(1);
+                      },
+                    }
+                  : undefined
+              }
+            />
+          </section>
+        </>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white dark:border-zinc-700/80 dark:bg-zinc-900">
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:border-zinc-700 dark:bg-zinc-800/50">
-                <th className="px-4 py-3">Class</th>
-                <th className="px-4 py-3">Subject</th>
-                <th className="px-4 py-3">Teacher</th>
-                <th className="px-4 py-3">Completed</th>
-                <th className="px-4 py-3">Coverage</th>
-                <th className="px-4 py-3 min-w-[8rem]">Progress</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr
-                  key={`${row.classId}-${row.subjectId}-${row.teacherId}`}
-                  className="border-b border-slate-100 dark:border-zinc-800"
-                >
-                  <td className="px-4 py-3">{row.className}</td>
-                  <td className="px-4 py-3">{row.subjectName}</td>
-                  <td className="px-4 py-3">{row.teacherName}</td>
-                  <td className="px-4 py-3 tabular-nums">
-                    {row.completedSubtopics}/{row.totalSubtopics}
-                  </td>
-                  <td
-                    className={`px-4 py-3 font-semibold tabular-nums ${coverageTextClass(row.coveragePercent)}`}
-                  >
-                    {row.coveragePercent}%
-                  </td>
-                  <td className="px-4 py-3">
-                    <SyllabusProgressBar percent={row.coveragePercent} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <AdminSyllabusCoverageTable rows={[]} loading={loading} />
       )}
     </div>
   );
