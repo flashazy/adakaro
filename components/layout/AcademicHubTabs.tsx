@@ -77,7 +77,7 @@ export function AcademicHubTabs({
     <div
       ref={scrollRef}
       className={cn(
-        "max-w-full min-w-0 overscroll-x-contain [-webkit-overflow-scrolling:touch]",
+        "max-w-full min-w-0 overscroll-x-contain scroll-smooth [-webkit-overflow-scrolling:touch]",
         "max-md:-mx-4 max-md:overflow-x-auto max-md:scroll-px-4 max-md:px-4 max-md:touch-pan-x",
         "max-md:[-ms-overflow-style:none] max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden",
         "md:overflow-visible"

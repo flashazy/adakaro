@@ -13,16 +13,19 @@ import {
   curriculumHealthLabel,
 } from "@/lib/curriculum-coverage/health-score";
 import type {
+  CurriculumCoverageRow,
   CurriculumCoverageStatus,
   CurriculumCoverageDistribution,
   CurriculumHealth,
   CurriculumStatusSummary,
   CurriculumAttentionSubject,
   CurriculumActiveTeacher,
+  CurriculumTeacherSummaryRow,
+  CurriculumClassSummaryRow,
 } from "@/lib/curriculum-coverage/types";
 import type { CurriculumTrendDirection } from "@/lib/curriculum-coverage/trends";
 import { coverageTextClass } from "@/lib/syllabus-coverage/coverage-stats";
-import { formatCurriculumLastUpdate } from "@/lib/curriculum-coverage/insights";
+import { formatCurriculumLastUpdate, formatCurriculumLastUpdateTable } from "@/lib/curriculum-coverage/insights";
 import { formatStaleWarning } from "@/lib/curriculum-coverage/stale";
 import {
   academicCardBaseClass,
@@ -276,10 +279,10 @@ export function CurriculumHealthCard({
         <p className="text-[11px] font-medium text-slate-500">Curriculum health</p>
         <Activity className="h-4 w-4 text-violet-600" aria-hidden />
       </div>
-      <p className={cn("mt-2 text-lg font-bold uppercase tracking-wide", accent)}>
+      <p className={cn("mt-2 text-lg font-bold uppercase tracking-wide max-md:mt-1.5 max-md:text-base", accent)}>
         {label}
       </p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 max-md:text-xl dark:text-white">
         {health.score}
         <span className="text-sm font-medium text-slate-400">/100</span>
       </p>
@@ -287,7 +290,7 @@ export function CurriculumHealthCard({
   );
 
   const cardClass = cn(
-    "flex min-h-[88px] flex-col justify-between p-4",
+    "flex min-h-[88px] flex-col justify-between p-4 max-md:min-h-[72px] max-md:p-3",
     academicCardBaseClass,
     "border-l-[3px] border-l-violet-400/60",
     onClick && academicCardInteractiveClass,
@@ -314,7 +317,7 @@ export function CurriculumExecutiveSummary({
   return (
     <div
       className={cn(
-        "space-y-2 border-l-[3px] border-l-violet-400/60 p-4",
+        "space-y-2 border-l-[3px] border-l-violet-400/60 p-4 max-md:space-y-1.5 max-md:p-3",
         academicCardBaseClass
       )}
     >
@@ -443,6 +446,38 @@ export function formatCurriculumActivityByTeacher(
   };
 }
 
+export function CurriculumActivityStatusChip({ status }: { status: string }) {
+  const chip =
+    status === "completed"
+      ? {
+          label: "Completed",
+          className:
+            "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400",
+        }
+      : status === "in_progress"
+        ? {
+            label: "Updated",
+            className:
+              "bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-400",
+          }
+        : {
+            label: "Attention",
+            className:
+              "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+          };
+
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        chip.className
+      )}
+    >
+      {chip.label}
+    </span>
+  );
+}
+
 export function CurriculumStaleBadge({
   staleDays,
   className,
@@ -518,7 +553,7 @@ export function CurriculumStatusSummaryBar({
   return (
     <div
       className={cn(
-        "flex flex-wrap gap-2 p-3",
+        "grid grid-cols-2 gap-1.5 p-2.5 max-md:auto-rows-fr md:flex md:flex-wrap md:gap-2 md:p-3",
         academicCardBaseClass
       )}
     >
@@ -526,12 +561,14 @@ export function CurriculumStatusSummaryBar({
         <span
           key={item.label}
           className={cn(
-            "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ring-1",
+            "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-semibold ring-1 max-md:w-full md:gap-2 md:px-3 md:text-xs",
             item.badge
           )}
         >
-          <span className={cn("h-2 w-2 rounded-full", item.dot)} aria-hidden />
-          {item.label}: {item.count}
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", item.dot)} aria-hidden />
+          <span className="truncate tabular-nums">
+            {item.label}: {item.count}
+          </span>
         </span>
       ))}
     </div>
@@ -546,7 +583,7 @@ export function SubjectsRequiringAttentionCard({
   onSelect?: (subject: CurriculumAttentionSubject) => void;
 }) {
   return (
-    <div className={cn("flex h-full flex-col p-4", academicCardBaseClass)}>
+    <div className={cn("flex h-full flex-col p-4 max-md:p-3", academicCardBaseClass)}>
       <div className="flex items-center gap-2">
         <TrendingDown className="h-4 w-4 text-red-600" aria-hidden />
         <p className={academicSectionHeadingClass}>Subjects requiring attention</p>
@@ -606,7 +643,7 @@ export function MostActiveTeachersCard({
   teachers: CurriculumActiveTeacher[];
 }) {
   return (
-    <div className={cn("flex h-full flex-col p-4", academicCardBaseClass)}>
+    <div className={cn("flex h-full flex-col p-4 max-md:p-3", academicCardBaseClass)}>
       <div className="flex items-center gap-2">
         <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
         <p className={academicSectionHeadingClass}>Most active teachers</p>
@@ -655,7 +692,7 @@ export function CoverageDistributionChart({
   const total = segments.reduce((s, seg) => s + seg.count, 0);
 
   return (
-    <div className={cn("flex h-full flex-col p-4", academicCardBaseClass)}>
+    <div className={cn("flex h-full flex-col p-4 max-md:p-3", academicCardBaseClass)}>
       <p className={academicSectionHeadingClass}>Coverage distribution</p>
       {total === 0 ? (
         <p className="mt-3 text-sm text-slate-500">No coverage data yet.</p>
@@ -695,6 +732,305 @@ export function CoverageDistributionChart({
           </ul>
         </>
       )}
+    </div>
+  );
+}
+
+function CurriculumOverviewMobileTrend({
+  trendPercent,
+  trendDirection,
+}: {
+  trendPercent: number | null;
+  trendDirection: CurriculumTrendDirection | null;
+}) {
+  if (trendPercent === null || trendDirection === null) return null;
+
+  const Icon =
+    trendDirection === "up"
+      ? TrendingUp
+      : trendDirection === "down"
+        ? TrendingDown
+        : Minus;
+  const color =
+    trendDirection === "up"
+      ? "text-emerald-600 dark:text-emerald-400"
+      : trendDirection === "down"
+        ? "text-red-600 dark:text-red-400"
+        : "text-slate-400";
+
+  return (
+    <Icon
+      className={cn("ml-0.5 inline h-3 w-3 shrink-0", color)}
+      aria-hidden
+    />
+  );
+}
+
+export function CurriculumOverviewMobileList({
+  rows,
+  onView,
+  onOpenTeacher,
+  onOpenClass,
+  onOpenSubject,
+}: {
+  rows: CurriculumCoverageRow[];
+  onView: (row: CurriculumCoverageRow) => void;
+  onOpenTeacher: (teacherId: string) => void;
+  onOpenClass: (classId: string) => void;
+  onOpenSubject: (row: CurriculumCoverageRow) => void;
+}) {
+  return (
+    <div className="divide-y divide-slate-100 md:hidden dark:divide-zinc-800">
+      {rows.map((row) => (
+        <article key={row.rowKey} className="p-3">
+          <div className="flex items-start justify-between gap-2">
+            <p className="min-w-0 flex-1 break-words text-sm font-semibold leading-tight text-slate-900 dark:text-white">
+              {row.subjectName}
+            </p>
+            <CurriculumStatusBadge status={row.status} compact />
+          </div>
+          <p className="mt-0.5 break-words text-[11px] leading-snug text-slate-500 dark:text-zinc-400">
+            {row.className} · {row.teacherName}
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 rounded-md bg-slate-50/80 px-2 py-1.5 dark:bg-zinc-800/40">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Coverage
+              </p>
+              <p
+                className={cn(
+                  "inline-flex items-center text-xs font-semibold tabular-nums leading-tight",
+                  coverageTextClass(row.coveragePercent)
+                )}
+              >
+                {row.coveragePercent}%
+                <CurriculumOverviewMobileTrend
+                  trendPercent={row.trendPercent}
+                  trendDirection={row.trendDirection}
+                />
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Expected
+              </p>
+              <p className="text-xs font-semibold tabular-nums leading-tight text-slate-700 dark:text-zinc-300">
+                {row.expectedProgressPercent}%
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Topics
+              </p>
+              <p className="text-xs font-semibold tabular-nums leading-tight text-slate-700 dark:text-zinc-300">
+                {row.completedTopics}/{row.totalTopics}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Variance
+              </p>
+              <p
+                className={cn(
+                  "text-xs font-semibold tabular-nums leading-tight",
+                  row.progressVariance >= 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-600 dark:text-red-400"
+                )}
+              >
+                {row.progressVariance >= 0 ? "+" : ""}
+                {row.progressVariance}%
+              </p>
+            </div>
+          </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1 text-[10px] text-slate-500 dark:text-zinc-400">
+              <span className="truncate">
+                {formatCurriculumLastUpdateTable(row.lastUpdateAt)}
+              </span>
+              <CurriculumStaleBadge staleDays={row.staleDays} compact />
+            </div>
+            <CurriculumOverviewActionsMenu
+              onView={() => onView(row)}
+              onOpenTeacher={() => onOpenTeacher(row.teacherId)}
+              onOpenClass={() => onOpenClass(row.classId)}
+              onOpenSubject={() => onOpenSubject(row)}
+            />
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+export function CurriculumTeachersMobileList({
+  rows,
+}: {
+  rows: CurriculumTeacherSummaryRow[];
+}) {
+  return (
+    <div className="divide-y divide-slate-100 md:hidden dark:divide-zinc-800">
+      {rows.map((row) => (
+        <article key={row.teacherId} className="p-3">
+          <div className="min-w-0">
+            <p className="break-words text-sm font-semibold leading-tight text-slate-900 dark:text-white">
+              {row.teacherName}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-zinc-400">
+              Subjects:{" "}
+              <span className="font-medium tabular-nums text-slate-700 dark:text-zinc-300">
+                {row.subjectsAssigned}
+              </span>
+            </p>
+            <div className="mt-1">
+              <CurriculumStatusBadge status={row.status} compact />
+            </div>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 rounded-md bg-slate-50/80 px-2 py-1.5 dark:bg-zinc-800/40">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Coverage
+              </p>
+              <p
+                className={cn(
+                  "text-xs font-semibold tabular-nums leading-tight",
+                  coverageTextClass(row.averageCoverage)
+                )}
+              >
+                {row.averageCoverage}%
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Subjects at risk
+              </p>
+              <p
+                className={cn(
+                  "text-xs font-semibold tabular-nums leading-tight",
+                  row.subjectsAtRisk > 0
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-slate-400 dark:text-zinc-500"
+                )}
+              >
+                {row.subjectsAtRisk}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Last updated
+              </p>
+              {row.lastActivityAt ? (
+                <p className="text-xs font-semibold leading-tight text-slate-700 dark:text-zinc-300">
+                  {formatCurriculumLastUpdate(row.lastActivityAt)}
+                </p>
+              ) : (
+                <p className="text-xs font-medium leading-tight text-slate-400 dark:text-zinc-500">
+                  No updates yet
+                </p>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Trend
+              </p>
+              {row.trendPercent === null || row.trendDirection === null ? (
+                <p className="text-xs font-medium leading-tight text-slate-400 dark:text-zinc-500">
+                  No activity
+                </p>
+              ) : (
+                <CurriculumTrendIndicator
+                  trendPercent={row.trendPercent}
+                  trendDirection={row.trendDirection}
+                  className="text-[10px] leading-tight"
+                />
+              )}
+            </div>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+export function CurriculumClassesMobileList({
+  rows,
+}: {
+  rows: CurriculumClassSummaryRow[];
+}) {
+  return (
+    <div className="divide-y divide-slate-100 md:hidden dark:divide-zinc-800">
+      {rows.map((row) => (
+        <article key={row.classId} className="p-3">
+          <div className="min-w-0">
+            <p className="break-words text-sm font-semibold leading-tight text-slate-900 dark:text-white">
+              {row.className}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-zinc-400">
+              Subjects:{" "}
+              <span className="font-medium tabular-nums text-slate-700 dark:text-zinc-300">
+                {row.subjectsCount}
+              </span>
+            </p>
+            <div className="mt-1">
+              <CurriculumStatusBadge status={row.status} compact />
+            </div>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 rounded-md bg-slate-50/80 px-2 py-1.5 dark:bg-zinc-800/40">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Coverage
+              </p>
+              <p
+                className={cn(
+                  "text-xs font-semibold tabular-nums leading-tight",
+                  coverageTextClass(row.averageCoverage)
+                )}
+              >
+                {row.averageCoverage}%
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Completed
+              </p>
+              <p className="text-xs font-semibold tabular-nums leading-tight text-slate-700 dark:text-zinc-300">
+                {row.completedSubjects}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                At risk
+              </p>
+              <p
+                className={cn(
+                  "text-xs font-semibold tabular-nums leading-tight",
+                  row.atRiskSubjects > 0
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-slate-400 dark:text-zinc-500"
+                )}
+              >
+                {row.atRiskSubjects}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Trend
+              </p>
+              {row.trendPercent === null || row.trendDirection === null ? (
+                <p className="text-xs font-medium leading-tight text-slate-400 dark:text-zinc-500">
+                  No activity
+                </p>
+              ) : (
+                <CurriculumTrendIndicator
+                  trendPercent={row.trendPercent}
+                  trendDirection={row.trendDirection}
+                  className="text-[10px] leading-tight"
+                />
+              )}
+            </div>
+          </div>
+        </article>
+      ))}
     </div>
   );
 }
@@ -753,7 +1089,7 @@ export function CurriculumEmptyState() {
   return (
     <div
       className={cn(
-        "space-y-4 p-8 text-center sm:p-12",
+        "flex flex-col items-center justify-center space-y-3 p-6 text-center max-md:px-4 max-md:py-8 sm:space-y-4 sm:p-12",
         academicCardBaseClass
       )}
     >

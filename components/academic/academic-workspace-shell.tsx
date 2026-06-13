@@ -60,7 +60,7 @@ export function AcademicWorkspaceShell({
       </div>
 
       <div
-        className={`sticky top-14 z-30 -mx-4 bg-slate-50/95 px-4 pb-0 pt-2.5 backdrop-blur-md supports-[backdrop-filter]:bg-slate-50/85 dark:bg-zinc-950/90 sm:-mx-6 sm:px-6 md:top-[4.5rem] ${academicSectionStackClass} ${academicSectionDividerClass}`}
+        className={`sticky top-14 z-30 -mx-4 min-w-0 bg-slate-50/95 px-4 pb-0 pt-2.5 backdrop-blur-md supports-[backdrop-filter]:bg-slate-50/85 dark:bg-zinc-950/90 sm:-mx-6 sm:px-6 md:top-[4.5rem] ${academicSectionStackClass} ${academicSectionDividerClass}`}
         data-academic-sticky-tabs
       >
         <AcademicHubTabs showPromotions={showPromotions} />

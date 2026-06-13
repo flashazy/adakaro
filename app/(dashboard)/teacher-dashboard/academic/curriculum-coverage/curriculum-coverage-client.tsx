@@ -27,15 +27,20 @@ import {
   CurriculumExpectedActualInline,
   CurriculumHealthCard,
   CurriculumOverviewActionsMenu,
+  CurriculumActivityStatusChip,
+  CurriculumOverviewMobileList,
   CurriculumPaginationBar,
   CurriculumStaleBadge,
   CurriculumStatusBadge,
   CurriculumStatusSummaryBar,
+  CurriculumClassesMobileList,
+  CurriculumTeachersMobileList,
   CurriculumTrendIndicator,
   formatCurriculumActivityByTeacher,
   MostActiveTeachersCard,
   SubjectsRequiringAttentionCard,
 } from "@/components/curriculum-coverage/curriculum-coverage-ui";
+import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { SyllabusProgressBar } from "@/components/syllabus-coverage/syllabus-coverage-ui";
 import { coverageTextClass } from "@/lib/syllabus-coverage/coverage-stats";
 import {
@@ -76,6 +81,9 @@ type KpiFilter =
   | null;
 
 const PAGE_SIZE = 10;
+
+const CURRICULUM_KPI_CARD_MOBILE =
+  "max-md:min-h-[72px] max-md:p-3 max-md:[&>div:last-child]:mt-1.5 max-md:[&>div:last-child>p:first-child]:text-2xl";
 
 export function CurriculumCoverageClient() {
   const [data, setData] = useState<CurriculumCoveragePageResult | null>(null);
@@ -255,27 +263,27 @@ export function CurriculumCoverageClient() {
   }
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+    <div className="min-w-0 space-y-4 overflow-x-hidden max-md:space-y-3 max-md:pb-28">
+      <header className="flex flex-col gap-2 max-md:gap-1.5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0 space-y-0.5">
+          <h2 className="text-base font-semibold leading-tight text-slate-900 dark:text-white sm:text-lg">
             Curriculum Coverage
           </h2>
-          <p className="text-sm text-slate-600 dark:text-zinc-400">
+          <p className="text-xs leading-snug text-slate-600 dark:text-zinc-400 sm:text-sm">
             School-wide syllabus progress monitoring. Read-only — teachers update
             coverage from their dashboard.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full min-w-0 flex-row flex-wrap items-center justify-between gap-x-2 gap-y-1 max-[300px]:flex-col max-[300px]:items-stretch sm:w-auto sm:justify-start sm:gap-2">
           {data?.refreshedAt ? (
-            <p className="text-xs text-slate-500 dark:text-zinc-400">
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400">
               Last updated:{" "}
               <span className="font-medium text-slate-700 dark:text-zinc-300">
                 {formatCurriculumRefreshTime(data.refreshedAt)}
               </span>
             </p>
           ) : null}
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               type="button"
               disabled={!!exporting || !data}
@@ -321,11 +329,11 @@ export function CurriculumCoverageClient() {
             <CurriculumEmptyState />
           ) : (
             <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 max-md:auto-rows-fr sm:gap-3 lg:grid-cols-3 2xl:grid-cols-6">
             <CurriculumHealthCard health={data.health} />
             <div
               className={cn(
-                "flex min-h-[88px] flex-col justify-between p-4 lg:col-span-1",
+                "flex min-h-[88px] flex-col justify-between p-4 max-md:min-h-[72px] max-md:p-3 lg:col-span-1",
                 academicCardBaseClass,
                 "border-l-[3px] border-l-violet-400/60"
               )}
@@ -337,15 +345,15 @@ export function CurriculumCoverageClient() {
                 <TrendingUp className="h-4 w-4 text-violet-600" aria-hidden />
               </div>
               <p
-                className={`mt-2 text-3xl font-bold tabular-nums ${coverageTextClass(data.kpis.overallCoveragePercent)}`}
+                className={`mt-1.5 text-2xl font-bold tabular-nums max-md:mt-1 sm:mt-2 sm:text-3xl ${coverageTextClass(data.kpis.overallCoveragePercent)}`}
               >
                 {data.kpis.overallCoveragePercent}%
               </p>
               <SyllabusProgressBar
                 percent={data.kpis.overallCoveragePercent}
-                className="mt-3"
+                className="mt-2 max-md:mt-1.5 sm:mt-3"
               />
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[10px] text-slate-500 max-md:leading-snug sm:text-[11px]">
                 Average across active subjects
               </p>
             </div>
@@ -356,6 +364,7 @@ export function CurriculumCoverageClient() {
               accent="green"
               onClick={() => applyKpiFilter("on_track")}
               isActive={activeKpiFilter === "on_track"}
+              className={CURRICULUM_KPI_CARD_MOBILE}
             />
             <AcademicStatCard
               label="Needing attention"
@@ -364,6 +373,7 @@ export function CurriculumCoverageClient() {
               accent="amber"
               onClick={() => applyKpiFilter("needs_attention")}
               isActive={activeKpiFilter === "needs_attention"}
+              className={CURRICULUM_KPI_CARD_MOBILE}
             />
             <AcademicStatCard
               label="Completed subjects"
@@ -372,6 +382,7 @@ export function CurriculumCoverageClient() {
               accent="green"
               onClick={() => applyKpiFilter("completed")}
               isActive={activeKpiFilter === "completed"}
+              className={CURRICULUM_KPI_CARD_MOBILE}
             />
             <AcademicStatCard
               label="Teachers behind schedule"
@@ -380,12 +391,13 @@ export function CurriculumCoverageClient() {
               accent="amber"
               onClick={() => applyKpiFilter("behind_teachers")}
               isActive={activeKpiFilter === "behind_teachers"}
+              className={CURRICULUM_KPI_CARD_MOBILE}
             />
           </div>
 
           <CurriculumStatusSummaryBar summary={data.statusSummary} />
 
-          <div className="grid gap-3 lg:grid-cols-3">
+          <div className="grid gap-2 max-md:gap-2 lg:grid-cols-3 lg:gap-3">
             <SubjectsRequiringAttentionCard
               subjects={data.subjectsRequiringAttention}
               onSelect={openSubjectFilter}
@@ -398,13 +410,13 @@ export function CurriculumCoverageClient() {
 
           <div
             className={cn(
-              "space-y-3 p-4",
+              "space-y-2 p-3 max-md:overflow-x-hidden sm:space-y-3 sm:p-4",
               academicCardBaseClass
             )}
           >
             <p className={academicSectionHeadingClass}>Filters</p>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-              <label className="flex flex-col gap-1 text-xs xl:col-span-2">
+            <div className="grid min-w-0 gap-2 sm:gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <label className="flex min-w-0 flex-col gap-0.5 text-[11px] sm:gap-1 sm:text-xs xl:col-span-2">
                 <span className="font-medium text-slate-600 dark:text-zinc-400">
                   Search
                 </span>
@@ -415,7 +427,7 @@ export function CurriculumCoverageClient() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search teacher, class, or subject…"
-                    className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                    className="w-full min-w-0 rounded-lg border border-slate-200 py-1.5 pl-8 pr-3 text-sm max-md:py-2 dark:border-zinc-600 dark:bg-zinc-950"
                   />
                 </div>
               </label>
@@ -505,7 +517,7 @@ export function CurriculumCoverageClient() {
 
           {!hasNoData ? (
           <>
-          <div className="flex gap-1 overflow-x-auto pb-1">
+          <div className="-mx-4 flex min-w-0 gap-1 overflow-x-auto scroll-smooth px-4 pb-1 max-md:[-ms-overflow-style:none] max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:mx-0 md:overflow-visible md:px-0">
             {(
               [
                 ["overview", "Overview"],
@@ -518,7 +530,7 @@ export function CurriculumCoverageClient() {
                 type="button"
                 onClick={() => setViewTab(key)}
                 className={cn(
-                  "shrink-0 rounded-lg border px-4 py-2 text-sm font-medium transition-colors duration-200",
+                  "shrink-0 whitespace-nowrap rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors duration-200 max-md:min-h-[40px] sm:px-4",
                   viewTab === key
                     ? "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/25 dark:bg-violet-950/40 dark:text-violet-300"
                     : "border-transparent text-slate-600 hover:bg-slate-50 dark:text-zinc-400 dark:hover:bg-zinc-800"
@@ -537,17 +549,24 @@ export function CurriculumCoverageClient() {
                 </h3>
               </div>
               {data.overviewRows.length === 0 ? (
-                <div className="p-6">
+                <div className="flex flex-col items-center justify-center px-4 py-8 text-center max-md:py-10 sm:p-6">
                   <p className="text-sm font-medium text-slate-700 dark:text-zinc-300">
                     {overviewEmptyCopy().title}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                  <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-slate-500 dark:text-zinc-400">
                     {overviewEmptyCopy().hint}
                   </p>
                 </div>
               ) : (
                 <>
-                  <table className="w-full table-fixed text-left text-xs">
+                  <CurriculumOverviewMobileList
+                    rows={data.overviewRows}
+                    onView={setDrawerRow}
+                    onOpenTeacher={openTeacherFilter}
+                    onOpenClass={openClassFilter}
+                    onOpenSubject={openSubjectFilter}
+                  />
+                  <table className="hidden w-full table-fixed text-left text-xs md:table">
                     <colgroup>
                       <col className="w-[15%]" />
                       <col className="w-[10%]" />
@@ -655,8 +674,8 @@ export function CurriculumCoverageClient() {
           ) : null}
 
           {viewTab === "teachers" ? (
-            <div className={cn("overflow-x-auto", academicCardBaseClass)}>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
+            <div className={cn("max-md:overflow-x-hidden md:overflow-x-auto", academicCardBaseClass)}>
+              <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 dark:border-zinc-800 md:flex-row md:flex-wrap md:items-center md:justify-between">
                 <h3 className="text-sm font-semibold">Teachers</h3>
                 <select
                   value={teacherSort}
@@ -665,7 +684,7 @@ export function CurriculumCoverageClient() {
                       e.target.value as "coverage" | "teacher" | "activity"
                     )
                   }
-                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-950"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 md:w-auto md:py-1 md:text-xs"
                 >
                   <option value="teacher">Sort: Teacher</option>
                   <option value="coverage">Sort: Coverage</option>
@@ -673,7 +692,7 @@ export function CurriculumCoverageClient() {
                 </select>
               </div>
               {data.teacherRows.length === 0 ? (
-                <div className="p-6">
+                <div className="flex flex-col items-center justify-center px-4 py-8 text-center max-md:py-10 sm:p-6">
                   <p className="text-sm font-medium text-slate-700 dark:text-zinc-300">
                     {overviewEmptyCopy().title}
                   </p>
@@ -683,7 +702,8 @@ export function CurriculumCoverageClient() {
                 </div>
               ) : (
               <>
-              <table className="min-w-full text-left text-sm">
+              <CurriculumTeachersMobileList rows={data.teacherRows} />
+              <table className="hidden min-w-full text-left text-sm md:table">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 dark:border-zinc-800 dark:bg-zinc-800/50">
                     <th className="px-4 py-3">Teacher</th>
@@ -750,12 +770,12 @@ export function CurriculumCoverageClient() {
           ) : null}
 
           {viewTab === "classes" ? (
-            <div className={cn("overflow-x-auto", academicCardBaseClass)}>
+            <div className={cn("max-md:overflow-x-hidden md:overflow-x-auto", academicCardBaseClass)}>
               <div className="border-b border-slate-200 px-4 py-3 dark:border-zinc-800">
                 <h3 className="text-sm font-semibold">Classes</h3>
               </div>
               {data.classRows.length === 0 ? (
-                <div className="p-6">
+                <div className="flex flex-col items-center justify-center px-4 py-8 text-center max-md:py-10 sm:p-6">
                   <p className="text-sm font-medium text-slate-700 dark:text-zinc-300">
                     {overviewEmptyCopy().title}
                   </p>
@@ -765,7 +785,8 @@ export function CurriculumCoverageClient() {
                 </div>
               ) : (
               <>
-              <table className="min-w-full text-left text-sm">
+              <CurriculumClassesMobileList rows={data.classRows} />
+              <table className="hidden min-w-full text-left text-sm md:table">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 dark:border-zinc-800 dark:bg-zinc-800/50">
                     <th className="px-4 py-3">Class</th>
@@ -831,16 +852,16 @@ export function CurriculumCoverageClient() {
             </div>
           ) : null}
 
-          <div className={cn("space-y-3 p-4", academicCardBaseClass)}>
+          <div className={cn("space-y-2.5 p-3 max-md:overflow-x-hidden sm:space-y-3 sm:p-4", academicCardBaseClass)}>
             <p className={academicSectionHeadingClass}>
               Recent curriculum activity
             </p>
             {data.activity.length === 0 ? (
-              <p className="text-sm text-slate-500">
+              <p className="text-center text-sm text-slate-500 max-md:py-2 sm:text-left">
                 No recent syllabus updates recorded.
               </p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-1.5">
                 {data.activity.map((item) => {
                   const activity = formatCurriculumActivityByTeacher(
                     item.teacherName,
@@ -850,20 +871,24 @@ export function CurriculumCoverageClient() {
                   return (
                     <li
                       key={item.id}
-                      className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-zinc-800/50"
+                      className="rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 dark:border-zinc-700/60 dark:bg-zinc-800/50"
                     >
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                      <div>
-                        <p className="text-slate-800 dark:text-zinc-200">
-                          <span className="font-medium">{activity.headline}</span>{" "}
-                          {activity.detail}
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 break-words text-sm leading-snug text-slate-800 dark:text-zinc-200">
+                          <span className="font-medium text-slate-900 dark:text-white">
+                            {activity.headline}
+                          </span>{" "}
+                          <span className="text-slate-600 dark:text-zinc-400">
+                            {activity.detail}
+                          </span>
                         </p>
-                        <p className="text-xs text-slate-500">
-                          {item.subjectName} · {item.className} ·{" "}
-                          {formatActivityDate(item.updatedAt)} ·{" "}
-                          {formatActivityTime(item.updatedAt)}
-                        </p>
+                        <CurriculumActivityStatusChip status={item.status} />
                       </div>
+                      <p className="mt-1 break-words text-[11px] leading-snug text-slate-500 dark:text-zinc-500">
+                        {item.subjectName} · {item.className} ·{" "}
+                        {formatActivityDate(item.updatedAt)} ·{" "}
+                        {formatActivityTime(item.updatedAt)}
+                      </p>
                     </li>
                   );
                 })}
@@ -879,6 +904,12 @@ export function CurriculumCoverageClient() {
         row={drawerRow}
         academicYear={academicYear}
         onClose={() => setDrawerRow(null)}
+      />
+
+      <SmartFloatingScrollButton
+        sectionIds={[]}
+        hideWhileScrolling
+        className="max-md:bottom-28 max-md:right-5 max-md:z-40 max-md:h-14 max-md:w-14 max-md:shadow-md max-md:shadow-slate-900/5 md:bottom-6 md:right-6"
       />
     </div>
   );
@@ -896,14 +927,14 @@ function FilterSelect({
   options: { value: string; label: string }[];
 }) {
   return (
-    <label className="flex flex-col gap-1 text-xs">
+    <label className="flex min-w-0 flex-col gap-0.5 text-[11px] sm:gap-1 sm:text-xs">
       <span className="font-medium text-slate-600 dark:text-zinc-400">
         {label}
       </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+        className="w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm max-md:py-2 dark:border-zinc-600 dark:bg-zinc-950"
       >
         {options.map((o) => (
           <option key={o.value || "all"} value={o.value}>

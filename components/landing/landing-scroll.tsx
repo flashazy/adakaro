@@ -2,6 +2,7 @@
 
 import { ArrowUp, ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 /** Order matches landing page sections top-to-bottom */
 const LANDING_SECTION_IDS = [
@@ -79,21 +80,35 @@ function isNearBottomOfPage(): boolean {
   return scrollBottom >= doc.scrollHeight - NEAR_BOTTOM_PX;
 }
 
+const SCROLL_IDLE_MS = 180;
+
+function isMobileViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
 export interface SmartFloatingScrollButtonProps {
   /**
    * Section IDs in document order (e.g. landing). Omit to use the default landing list.
    * Pass `[]` for long pages without sections — scrolls down in steps, then to top near bottom.
    */
   sectionIds?: readonly string[];
+  /** Optional class names merged onto the fixed button (e.g. page-specific mobile offset). */
+  className?: string;
+  /** Hide the button while the user is scrolling (mobile viewport only). */
+  hideWhileScrolling?: boolean;
 }
 
 export function SmartFloatingScrollButton({
   sectionIds: sectionIdsProp,
+  className,
+  hideWhileScrolling = false,
 }: SmartFloatingScrollButtonProps = {}) {
   const sectionIds = sectionIdsProp ?? LANDING_SECTION_IDS;
 
   const [nearBottom, setNearBottom] = useState(false);
   const [scrollY, setScrollY] = useState(0);
+  const [isScrolling, setIsScrolling] = useState(false);
 
   const update = useCallback(() => {
     setScrollY(window.scrollY);
@@ -109,6 +124,30 @@ export function SmartFloatingScrollButton({
       window.removeEventListener("resize", update);
     };
   }, [update]);
+
+  useEffect(() => {
+    if (!hideWhileScrolling) return;
+
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const handleScroll = () => {
+      if (!isMobileViewport()) {
+        setIsScrolling(false);
+        return;
+      }
+      setIsScrolling(true);
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => setIsScrolling(false), SCROLL_IDLE_MS);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+      if (idleTimer) clearTimeout(idleTimer);
+    };
+  }, [hideWhileScrolling]);
 
   const showScrollUp = nearBottom;
 
@@ -135,13 +174,20 @@ export function SmartFloatingScrollButton({
   };
 
   const topFadeOpacity = scrollY < 56 ? 0.85 + (scrollY / 56) * 0.15 : 1;
+  const hiddenWhileScrolling =
+    hideWhileScrolling && isMobileViewport() && isScrolling;
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      style={{ opacity: topFadeOpacity }}
-      className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg shadow-slate-900/10 transition-[opacity,transform] duration-200 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-black/30 dark:hover:bg-zinc-700"
+      style={{ opacity: hiddenWhileScrolling ? 0 : topFadeOpacity }}
+      className={cn(
+        "fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg shadow-slate-900/10 transition-[opacity,transform] duration-200 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-black/30 dark:hover:bg-zinc-700",
+        hiddenWhileScrolling &&
+          "pointer-events-none max-md:translate-y-1 max-md:scale-95",
+        className
+      )}
       aria-label={
         showScrollUp
           ? "Scroll to top"
