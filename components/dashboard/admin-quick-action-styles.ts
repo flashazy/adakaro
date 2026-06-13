@@ -2,6 +2,18 @@
 export const adminQuickActionCardClass =
   "h-full min-h-[5.25rem] rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
 
+/** Purple accent bar for Quick Actions subsection headers. */
+export const dashboardSectionAccentClass =
+  "h-3.5 w-0.5 shrink-0 rounded-full bg-[rgb(var(--school-primary-rgb)/0.4)] dark:bg-[rgb(var(--school-primary-rgb)/0.5)]";
+
+/** School Setup, People, Academics, Administration labels. */
+export const dashboardSubsectionLabelClass =
+  "text-[11px] font-bold uppercase tracking-[0.06em] text-slate-800 dark:text-zinc-100";
+
+/** Top-level Quick Actions heading on the dashboard page. */
+export const dashboardQuickActionsHeadingClass =
+  "text-sm font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-300";
+
 export const adminQuickActionIconWrapClass =
   "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--school-primary-rgb)/0.10)] text-school-primary dark:bg-[rgb(var(--school-primary-rgb)/0.14)]";
 

@@ -58,12 +58,17 @@ export function AdminQuickActionHub({
       className={cn(
         adminQuickActionCardClass,
         adminQuickActionSizeClass,
-        "flex items-center gap-3 p-3.5",
+        "group flex touch-manipulation items-center gap-3 p-3.5 active:scale-[0.99] lg:gap-2.5 lg:p-3",
         adminQuickActionHoverClass,
         className
       )}
     >
-      <div className={cn(adminQuickActionIconWrapClass, "shrink-0")}>
+      <div
+        className={cn(
+          adminQuickActionIconWrapClass,
+          "shrink-0 transition-colors duration-200 group-hover:bg-[rgb(var(--school-primary-rgb)/0.18)] dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.22)]"
+        )}
+      >
         {icon}
       </div>
       <div className="min-w-0 flex-1">
@@ -82,7 +87,7 @@ export function AdminQuickActionHub({
               href={action.href}
               className={cn(
                 adminQuickActionHubChipClass,
-                "touch-manipulation active:scale-[0.98]"
+                "touch-manipulation active:scale-[0.99]"
               )}
             >
               {action.label}

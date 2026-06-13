@@ -22,6 +22,7 @@ import { SchoolBrandingForm } from "./school-branding-form";
 import { SchoolAdminAccountForm } from "./school-admin-account-form";
 import { SchoolPromotionRulesForm } from "./school-promotion-rules-form";
 import { SchoolSettingsCollapsibleSection } from "./school-settings-collapsible-section";
+import { SchoolSettingsVisitMarker } from "@/components/dashboard/school-settings-visit-marker";
 import type { TermStructureValue } from "./school-settings-shared";
 
 export const dynamic = "force-dynamic";
@@ -196,6 +197,7 @@ export default async function SchoolSettingsPage() {
 
   return (
     <>
+      <SchoolSettingsVisitMarker schoolId={schoolId} />
       <header className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mx-auto flex max-w-3xl items-center justify-between py-4">
           <div>

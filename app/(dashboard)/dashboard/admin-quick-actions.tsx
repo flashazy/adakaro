@@ -1,7 +1,19 @@
+import type { ReactNode } from "react";
 import { AdminQuickActionCard } from "@/components/dashboard/admin-quick-action-card";
 import { AdminQuickActionHub } from "@/components/dashboard/admin-quick-action-hub";
+import { SchoolSettingsOnboardingCard } from "@/components/dashboard/school-settings-onboarding-card";
 import { RequestUpgradeQuickAction } from "./request-upgrade-quick-action";
-import { isPaidPlanId } from "@/lib/plans";
+import {
+  formatRemainingSlotsLabel,
+  getFreePlanCapacityState,
+  getPlanStatusCardTitle,
+  getRemainingStudentSlots,
+  type SchoolPlanStatus,
+} from "@/lib/dashboard/subscription-banner";
+import {
+  dashboardSectionAccentClass,
+  dashboardSubsectionLabelClass,
+} from "@/components/dashboard/admin-quick-action-styles";
 import { cn } from "@/lib/utils";
 
 const ICON_CLASS = "h-5 w-5";
@@ -67,55 +79,239 @@ const icons = {
 interface AdminQuickActionsProps {
   pendingParentLinkCount: number;
   schoolId: string;
-  currentPlan: string;
+  planStatus: SchoolPlanStatus;
+  schoolProfileComplete: boolean;
+  studentCount: number;
 }
 
-function UpgradeSubscriptionBanner({
+function QuickActionSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section>
+      <div className="flex items-center gap-2">
+        <span
+          className={dashboardSectionAccentClass}
+          aria-hidden
+        />
+        <h3 className={dashboardSubsectionLabelClass}>
+          {title}
+        </h3>
+      </div>
+      <div className="mt-1.5 grid grid-cols-1 items-stretch gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function UpgradePlanButton({
   schoolId,
   currentPlan,
 }: {
   schoolId: string;
   currentPlan: string;
 }) {
-  const onPaid = isPaidPlanId(currentPlan);
+  return (
+    <div className="shrink-0 sm:self-center">
+      <RequestUpgradeQuickAction
+        schoolId={schoolId}
+        currentPlan={currentPlan}
+        appearance="filled-button"
+      />
+    </div>
+  );
+}
+
+const planStatusCardClass = cn(
+  "mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm",
+  "dark:border-zinc-800 dark:bg-zinc-900"
+);
+
+const planStatusRowClass =
+  "flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4";
+
+const planStatusLeftClass =
+  "shrink-0 sm:w-40 sm:border-r sm:border-slate-100 sm:pr-4 dark:sm:border-zinc-800";
+
+const statusBadgeBaseClass =
+  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1";
+
+function StatusBadge({
+  label,
+  variant,
+}: {
+  label: string;
+  variant: "active" | "free" | "paid";
+}) {
+  const styles = {
+    active:
+      "bg-emerald-50 text-emerald-700 ring-emerald-200/70 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50",
+    free: "bg-slate-100 text-slate-600 ring-slate-200/80 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700",
+    paid: "bg-[rgb(var(--school-primary-rgb)/0.08)] text-school-primary ring-[rgb(var(--school-primary-rgb)/0.18)] dark:bg-[rgb(var(--school-primary-rgb)/0.14)] dark:ring-[rgb(var(--school-primary-rgb)/0.28)]",
+  } as const;
+
+  const dotStyles = {
+    active: "bg-emerald-500",
+    free: "bg-slate-400 dark:bg-zinc-500",
+    paid: "bg-school-primary",
+  } as const;
+
+  return (
+    <span className={cn(statusBadgeBaseClass, styles[variant])}>
+      {variant !== "active" ? (
+        <span
+          className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotStyles[variant])}
+          aria-hidden
+        />
+      ) : null}
+      {label}
+    </span>
+  );
+}
+
+function PlanStatusLeftColumn({ planTitle }: { planTitle: string }) {
+  return (
+    <div className={planStatusLeftClass}>
+      <p className="text-sm font-semibold leading-tight text-slate-900 dark:text-zinc-100">
+        {planTitle}
+      </p>
+      <div className="mt-1 sm:mt-1.5">
+        <StatusBadge label="🟢 Active" variant="active" />
+      </div>
+    </div>
+  );
+}
+
+function SubscriptionActiveButton() {
+  return (
+    <button
+      type="button"
+      disabled
+      aria-disabled="true"
+      className="inline-flex h-9 w-full shrink-0 cursor-default items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-5 text-sm font-medium text-slate-500 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-400 sm:w-auto sm:min-w-[9.5rem] sm:self-center"
+    >
+      Subscription Active
+    </button>
+  );
+}
+
+function UnavailablePlanButton() {
+  return (
+    <button
+      type="button"
+      disabled
+      aria-disabled="true"
+      className="inline-flex h-9 w-full shrink-0 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-5 text-sm font-medium text-slate-400 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-500 sm:w-auto sm:min-w-[7.5rem] sm:self-center"
+    >
+      Unavailable
+    </button>
+  );
+}
+
+function PlanStatusCard({
+  schoolId,
+  planStatus,
+  studentCount,
+}: {
+  schoolId: string;
+  planStatus: SchoolPlanStatus;
+  studentCount: number;
+}) {
+  if (planStatus.availability === "unavailable" || !planStatus.planId) {
+    return (
+      <div className={planStatusCardClass}>
+        <div className={planStatusRowClass}>
+          <div className={planStatusLeftClass}>
+            <p className="text-sm font-semibold leading-tight text-slate-900 dark:text-zinc-100">
+              Plan status unavailable
+            </p>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="text-xs leading-snug text-slate-500 dark:text-zinc-400">
+              We could not load your school&apos;s subscription details. Please
+              refresh the page or contact support if this continues.
+            </p>
+          </div>
+
+          <UnavailablePlanButton />
+        </div>
+      </div>
+    );
+  }
+
+  const { planId, isPaid, studentLimit } = planStatus;
+
+  if (isPaid) {
+    return (
+      <div className={planStatusCardClass}>
+        <div className={planStatusRowClass}>
+          <PlanStatusLeftColumn planTitle={getPlanStatusCardTitle(true)} />
+
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-slate-400 dark:text-zinc-500">
+              Student Capacity
+            </p>
+            <p className="mt-1 text-sm font-semibold leading-snug text-slate-900 dark:text-zinc-100">
+              {studentCount} Students Enrolled
+            </p>
+            <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-zinc-400">
+              Unlimited student capacity included.
+            </p>
+          </div>
+
+          <SubscriptionActiveButton />
+        </div>
+      </div>
+    );
+  }
+
+  const freeLimit = studentLimit ?? 20;
+  const capacityState = getFreePlanCapacityState(studentCount, freeLimit);
+  const remainingSlots = getRemainingStudentSlots(studentCount, freeLimit);
+  const isLimitReached = capacityState === "limit_reached";
 
   return (
     <div
       className={cn(
-        "mt-4 flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
-        "border-[rgb(var(--school-primary-rgb)/0.14)] bg-[rgb(var(--school-primary-rgb)/0.05)]",
-        "dark:border-[rgb(var(--school-primary-rgb)/0.2)] dark:bg-[rgb(var(--school-primary-rgb)/0.08)]"
+        planStatusCardClass,
+        isLimitReached && "border-slate-300 dark:border-zinc-700"
       )}
     >
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold text-slate-700 dark:text-zinc-200">
-          {onPaid ? "Paid plan active" : "Free Plan • 20 Student Limit"}
-        </p>
-        <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-zinc-400">
-          {onPaid
-            ? "Unlimited students and admins are unlocked."
-            : "Upgrade to unlock unlimited students and premium features."}
-        </p>
-      </div>
-      {!onPaid ? (
-        <div
-          className={cn(
-            "shrink-0 [&>button]:!flex [&>button]:!h-8 [&>button]:!min-h-0 [&>button]:!max-h-8 [&>button]:!w-auto",
-            "[&>button]:!items-center [&>button]:!justify-center [&>button]:!gap-0 [&>button]:!rounded-lg",
-            "[&>button]:!border [&>button]:!border-[rgb(var(--school-primary-rgb)/0.22)] [&>button]:!bg-white/80 [&>button]:!px-3 [&>button]:!py-0 [&>button]:!shadow-none",
-            "dark:[&>button]:!border-[rgb(var(--school-primary-rgb)/0.28)] dark:[&>button]:!bg-zinc-900/60",
-            "[&>button]:!text-transparent [&>button]:after:!block [&>button]:after:!text-xs",
-            "[&>button]:after:!font-medium [&>button]:after:!text-school-primary [&>button]:after:content-['Upgrade_Plan']",
-            "dark:[&>button]:after:!text-school-primary",
-            "[&>button>*]:!hidden"
+      <div className={planStatusRowClass}>
+        <PlanStatusLeftColumn planTitle={getPlanStatusCardTitle(false)} />
+
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-slate-400 dark:text-zinc-500">
+            Student Capacity
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-snug text-slate-900 dark:text-zinc-100">
+            {studentCount} of {freeLimit} Students Used
+          </p>
+
+          {isLimitReached ? (
+            <>
+              <p className="mt-1 text-xs font-medium text-slate-700 dark:text-zinc-300">
+                Student limit reached.
+              </p>
+              <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-zinc-400">
+                Upgrade your plan to continue enrolling additional students.
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-xs leading-snug text-slate-500 dark:text-zinc-400">
+              {formatRemainingSlotsLabel(remainingSlots)}
+            </p>
           )}
-        >
-          <RequestUpgradeQuickAction
-            schoolId={schoolId}
-            currentPlan={currentPlan}
-          />
         </div>
-      ) : null}
+
+        <UpgradePlanButton schoolId={schoolId} currentPlan={planId} />
+      </div>
     </div>
   );
 }
@@ -123,104 +319,123 @@ function UpgradeSubscriptionBanner({
 export function AdminQuickActions({
   pendingParentLinkCount,
   schoolId,
-  currentPlan,
+  planStatus,
+  schoolProfileComplete,
+  studentCount,
 }: AdminQuickActionsProps) {
   return (
     <>
-      <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <AdminQuickActionCard
-          href="/dashboard/classes"
-          title="Manage Classes"
-          description="Add, edit, or remove classes."
-          icon={icons.classes}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/subjects"
-          title="Manage Subjects"
-          description="Add, edit, or remove subjects."
-          icon={icons.subjects}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/students"
-          title="Manage Students"
-          description="Enrol, edit, or remove students."
-          icon={icons.students}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/teachers"
-          title="Teachers"
-          description="Create and manage teacher accounts."
-          icon={icons.teachers}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/assignments"
-          title="Assignments"
-          description="View and manage teacher class assignments."
-          icon={icons.assignments}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/syllabus-coverage"
-          title="Syllabus Coverage"
-          description="View teaching progress across classes and subjects."
-          icon={icons.subjects}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/payments"
-          title="Finance"
-          description="Payments, fee setup, access rules & reports."
-          icon={icons.finance}
-        />
-        <AdminQuickActionHub
-          title="Parent Access"
-          description="Manage parent requests and links."
-          icon={icons.parentAccess}
-          actions={[
-            {
-              href: "/dashboard/parent-links/pending",
-              label: "Requests",
-              badgeCount: pendingParentLinkCount,
-            },
-            {
-              href: "/dashboard/parent-links/approved",
-              label: "Approved",
-            },
-          ]}
-        />
-        <AdminQuickActionHub
-          title="Enrollment Desk"
-          description="Manage desk users and student intake."
-          icon={icons.enrollmentDesk}
-          actions={[
-            {
-              href: "/dashboard/pending-approvals",
-              label: "Students",
-            },
-            {
-              href: "/dashboard/capture-card-users",
-              label: "Desk Users",
-            },
-          ]}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/team"
-          title="Team"
-          description="Manage school administrators."
-          icon={icons.team}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/promotions"
-          title="Year-end promotions"
-          description="Move students to the next class or graduate."
-          icon={icons.students}
-        />
-        <AdminQuickActionCard
-          href="/dashboard/school-settings"
-          title="School settings"
-          description="Manage currency, school profile and preferences."
-          icon={icons.settings}
-        />
+      <div className="space-y-4">
+        <QuickActionSection title="School Setup">
+          <SchoolSettingsOnboardingCard
+            schoolId={schoolId}
+            schoolProfileComplete={schoolProfileComplete}
+            href="/dashboard/school-settings"
+            title="School Settings"
+            description="Configure school profile, logo, currency, academic year and preferences."
+            icon={icons.settings}
+          />
+          <AdminQuickActionCard
+            href="/dashboard/classes"
+            title="Manage Classes"
+            description="Create and organize classes, grades and streams."
+            icon={icons.classes}
+          />
+          <AdminQuickActionCard
+            href="/dashboard/subjects"
+            title="Manage Subjects"
+            description="Create and manage subjects offered by the school."
+            icon={icons.subjects}
+          />
+        </QuickActionSection>
+
+        <QuickActionSection title="People">
+          <AdminQuickActionCard
+            href="/dashboard/teachers"
+            title="Teachers"
+            description="Create and manage teacher accounts."
+            icon={icons.teachers}
+          />
+          <AdminQuickActionCard
+            href="/dashboard/students"
+            title="Manage Students"
+            description="Enrol and manage students."
+            icon={icons.students}
+          />
+          <AdminQuickActionCard
+            href="/dashboard/team"
+            title="Team"
+            description="Manage school administrators and staff accounts."
+            icon={icons.team}
+          />
+        </QuickActionSection>
+
+        <QuickActionSection title="Academics">
+          <AdminQuickActionCard
+            href="/dashboard/assignments"
+            title="Assignments"
+            description="Create and manage teacher class assignments."
+            icon={icons.assignments}
+          />
+          <AdminQuickActionCard
+            href="/dashboard/syllabus-coverage"
+            title="Syllabus Coverage"
+            description="Track teaching progress across classes and subjects."
+            icon={icons.subjects}
+          />
+          <AdminQuickActionCard
+            href="/dashboard/promotions"
+            title="Year-end Promotions"
+            description="Move students to the next class or graduate."
+            icon={icons.students}
+          />
+        </QuickActionSection>
+
+        <QuickActionSection title="Administration">
+          <AdminQuickActionCard
+            href="/dashboard/payments"
+            title="Finance"
+            description="Manage fees, payments, collections and reports."
+            icon={icons.finance}
+          />
+          <AdminQuickActionHub
+            title="Parent Access"
+            description="Manage parent requests, links and access."
+            icon={icons.parentAccess}
+            actions={[
+              {
+                href: "/dashboard/parent-links/pending",
+                label: "Requests",
+                badgeCount: pendingParentLinkCount,
+              },
+              {
+                href: "/dashboard/parent-links/approved",
+                label: "Approved",
+              },
+            ]}
+          />
+          <AdminQuickActionHub
+            title="Enrollment Desk"
+            description="Manage admission desk users and student intake."
+            icon={icons.enrollmentDesk}
+            actions={[
+              {
+                href: "/dashboard/pending-approvals",
+                label: "Students",
+              },
+              {
+                href: "/dashboard/capture-card-users",
+                label: "Desk Users",
+              },
+            ]}
+          />
+        </QuickActionSection>
       </div>
-      <UpgradeSubscriptionBanner schoolId={schoolId} currentPlan={currentPlan} />
+      <PlanStatusCard
+        schoolId={schoolId}
+        planStatus={planStatus}
+        studentCount={studentCount}
+      />
     </>
   );
 }

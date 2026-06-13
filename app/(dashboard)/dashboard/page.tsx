@@ -2,18 +2,24 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { resolveSchoolDisplay } from "@/lib/dashboard/resolve-school-display";
+import {
+  resolveSchoolPlanStatus,
+  type SchoolPlanStatus,
+} from "@/lib/dashboard/subscription-banner";
 import { getDisplayName } from "@/lib/display-name";
-import { normalizePlanId } from "@/lib/plans";
 import { FloatingScrollButton } from "@/components/ui/floating-scroll-button";
 import { CreateSchoolModal } from "./create-school-modal";
 import { DashboardCharts } from "./dashboard-charts";
 import { AdminQuickActions } from "./admin-quick-actions";
+import { dashboardQuickActionsHeadingClass } from "@/components/dashboard/admin-quick-action-styles";
+import { isSchoolProfileComplete } from "@/lib/dashboard/school-setup-onboarding";
 import {
   DEFAULT_SCHOOL_CURRENCY,
   formatCurrency,
   normalizeSchoolCurrency,
 } from "@/lib/currency";
 import { orderStudentsByGenderThenName } from "@/lib/student-list-order";
+import { cn } from "@/lib/utils";
 
 /** Always refetch membership after creating a school (router.refresh / navigation). */
 export const dynamic = "force-dynamic";
@@ -92,16 +98,43 @@ export default async function AdminDashboard() {
 
   const hasSchool = Boolean(schoolId);
 
-  let currentSchoolPlan = "free";
+  let planStatus: SchoolPlanStatus = {
+    availability: "unavailable",
+    planId: null,
+    planRaw: null,
+    isPaid: false,
+    studentLimit: null,
+    schoolStatus: null,
+  };
+  let schoolProfileComplete = false;
   if (schoolId) {
-    const { data: schoolPlanRow } = await supabase
-      .from("schools")
-      .select("plan")
-      .eq("id", schoolId)
-      .maybeSingle();
-    currentSchoolPlan = normalizePlanId(
-      (schoolPlanRow as { plan?: string | null } | null)?.plan ?? "free"
+    const [{ data: schoolPlanRow }, resolvedPlanStatus] = await Promise.all([
+      supabase
+        .from("schools")
+        .select(
+          "current_academic_year, phone, email, address, logo_url"
+        )
+        .eq("id", schoolId)
+        .maybeSingle(),
+      resolveSchoolPlanStatus(supabase, schoolId),
+    ]);
+    planStatus = resolvedPlanStatus;
+    schoolProfileComplete = isSchoolProfileComplete(
+      (schoolPlanRow as {
+        current_academic_year?: string | null;
+        phone?: string | null;
+        email?: string | null;
+        address?: string | null;
+        logo_url?: string | null;
+      } | null) ?? {}
     );
+
+    if (process.env.NODE_ENV === "development") {
+      console.log("[dashboard] planStatus", {
+        schoolId,
+        planStatus,
+      });
+    }
   }
 
   if (!hasSchool) {
@@ -183,7 +216,7 @@ export default async function AdminDashboard() {
           </div>
 
           <div className="mt-8">
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+            <h2 className={cn(dashboardQuickActionsHeadingClass, "mb-4")}>
               Quick Actions
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -360,13 +393,15 @@ export default async function AdminDashboard() {
 
         {/* Quick links */}
         <div className="mt-8">
-          <h2 className="mb-2.5 text-sm font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+          <h2 className={cn(dashboardQuickActionsHeadingClass, "mb-2.5")}>
             Quick Actions
           </h2>
           <AdminQuickActions
             pendingParentLinkCount={pendingParentLinkCount}
             schoolId={schoolId!}
-            currentPlan={currentSchoolPlan}
+            planStatus={planStatus}
+            schoolProfileComplete={schoolProfileComplete}
+            studentCount={totalStudents}
           />
         </div>
     </main>

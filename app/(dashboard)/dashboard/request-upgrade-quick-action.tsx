@@ -37,6 +37,8 @@ const plansIcon = (
 interface RequestUpgradeQuickActionProps {
   schoolId: string | null | undefined;
   currentPlan: string;
+  /** Card = quick-action tile; filled-button = purple Plan Status CTA. */
+  appearance?: "card" | "filled-button";
 }
 
 function parsePlanFromDashboardRpc(
@@ -73,6 +75,7 @@ function parsePlanFromDashboardRpc(
 export function RequestUpgradeQuickAction({
   schoolId,
   currentPlan,
+  appearance = "card",
 }: RequestUpgradeQuickActionProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -107,45 +110,67 @@ export function RequestUpgradeQuickAction({
 
   const onPaid = isPaidPlanId(livePlanRaw ?? currentPlan);
 
+  const openUpgradeModal = () => {
+    setMsg(null);
+    setSuccess(false);
+    setOpen(true);
+  };
+
+  const filledButtonClass = cn(
+    "inline-flex h-9 w-full shrink-0 items-center justify-center rounded-lg border-0",
+    "bg-school-primary px-5 text-sm font-semibold text-white shadow-md",
+    "ring-1 ring-white/20 transition-all",
+    "hover:brightness-105 hover:shadow-lg active:scale-[0.98]",
+    "disabled:cursor-not-allowed disabled:opacity-50",
+    "sm:w-auto sm:min-w-[7.5rem] sm:self-center"
+  );
+
   return (
     <>
-      <button
-        type="button"
-        disabled={onPaid}
-        onClick={() => {
-          setMsg(null);
-          setSuccess(false);
-          setOpen(true);
-        }}
-        className={cn(
-          adminQuickActionCardClass,
-          "group flex w-full touch-manipulation items-start gap-3 p-4 text-left transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
-        )}
-      >
-        <div
+      {appearance === "filled-button" ? (
+        <button
+          type="button"
+          disabled={onPaid}
+          onClick={openUpgradeModal}
+          className={filledButtonClass}
+        >
+          Upgrade Plan
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={onPaid}
+          onClick={openUpgradeModal}
           className={cn(
-            adminQuickActionIconWrapClass,
-            "transition-colors group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)] group-disabled:opacity-50 dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)]"
+            adminQuickActionCardClass,
+            "group flex w-full touch-manipulation items-start gap-3 p-4 text-left transition-all hover:border-[rgb(var(--school-primary-rgb)/0.35)] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:border-[rgb(var(--school-primary-rgb)/0.45)]"
           )}
         >
-          {plansIcon}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p
+          <div
             className={cn(
-              adminQuickActionTitleClass,
-              "group-hover:text-school-primary dark:group-hover:text-school-primary"
+              adminQuickActionIconWrapClass,
+              "transition-colors group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)] group-disabled:opacity-50 dark:group-hover:bg-[rgb(var(--school-primary-rgb)/0.16)]"
             )}
           >
-            {onPaid ? "You are on the paid plan" : "Upgrade to Paid"}
-          </p>
-          <p className={adminQuickActionDescClass}>
-            {onPaid
-              ? "Unlimited students and admins are unlocked."
-              : "Free tier is capped at 20 students. Request an upgrade to go unlimited."}
-          </p>
-        </div>
-      </button>
+            {plansIcon}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p
+              className={cn(
+                adminQuickActionTitleClass,
+                "group-hover:text-school-primary dark:group-hover:text-school-primary"
+              )}
+            >
+              {onPaid ? "You are on the paid plan" : "Upgrade to Paid"}
+            </p>
+            <p className={adminQuickActionDescClass}>
+              {onPaid
+                ? "Unlimited students and admins are unlocked."
+                : "Free tier is capped at 20 students. Request an upgrade to go unlimited."}
+            </p>
+          </div>
+        </button>
+      )}
 
       {open ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">

@@ -15,6 +15,10 @@ export interface SchoolPlanRow {
   admin_limit: number | null;
 }
 
+export interface SchoolSubscriptionRow extends SchoolPlanRow {
+  status: string | null;
+}
+
 /** Prefer paid = unlimited; then DB columns; then derive from plan name. */
 export function effectiveStudentLimit(row: SchoolPlanRow): number | null {
   if (isPaidPlanId(row.plan)) return null;
@@ -71,6 +75,63 @@ export async function getSchoolPlanRow(
           plan: string | null;
           student_limit: number | null;
           admin_limit: number | null;
+        }
+      );
+    }
+  } catch {
+    /* service role unavailable */
+  }
+
+  return null;
+}
+
+export async function getSchoolSubscriptionRow(
+  supabase: SupabaseClient<Database>,
+  schoolId: string
+): Promise<SchoolSubscriptionRow | null> {
+  const mapRow = (data: {
+    plan: string | null;
+    student_limit: number | null;
+    admin_limit: number | null;
+    status: string | null;
+  }): SchoolSubscriptionRow => ({
+    plan: data.plan ?? "free",
+    student_limit: data.student_limit ?? null,
+    admin_limit: data.admin_limit ?? null,
+    status: data.status ?? null,
+  });
+
+  const { data, error } = await supabase
+    .from("schools")
+    .select("plan, student_limit, admin_limit, status")
+    .eq("id", schoolId)
+    .maybeSingle();
+
+  if (!error && data) {
+    return mapRow(
+      data as {
+        plan: string | null;
+        student_limit: number | null;
+        admin_limit: number | null;
+        status: string | null;
+      }
+    );
+  }
+
+  try {
+    const admin = createAdminClient();
+    const { data: adminData, error: adminErr } = await admin
+      .from("schools")
+      .select("plan, student_limit, admin_limit, status")
+      .eq("id", schoolId)
+      .maybeSingle();
+    if (!adminErr && adminData) {
+      return mapRow(
+        adminData as {
+          plan: string | null;
+          student_limit: number | null;
+          admin_limit: number | null;
+          status: string | null;
         }
       );
     }

@@ -6,6 +6,7 @@ export function parseSchoolDashboardRpc(raw: unknown): {
   school_id: string;
   name: string;
   currency: string | null;
+  plan: string | null;
 } | null {
   if (raw == null) return null;
 
@@ -28,6 +29,7 @@ export function parseSchoolDashboardRpc(raw: unknown): {
   const schoolIdRaw = o.school_id;
   const nameRaw = o.name;
   const currencyRaw = o.currency;
+  const planRaw = o.plan;
 
   const school_id =
     typeof schoolIdRaw === "string"
@@ -45,5 +47,10 @@ export function parseSchoolDashboardRpc(raw: unknown): {
     currency = String(currencyRaw).trim();
   }
 
-  return { school_id, name, currency };
+  let plan: string | null = null;
+  if (planRaw != null && String(planRaw).trim() !== "") {
+    plan = String(planRaw).trim();
+  }
+
+  return { school_id, name, currency, plan };
 }
