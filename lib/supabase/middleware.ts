@@ -647,17 +647,23 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    // Finance department teachers: receipts (read-only) and report card access rules.
+    // Finance department teachers: payments hub, fee setup, fee rules, receipts.
     let isTeacherFinanceReceiptRoute = false;
     let isTeacherFinancePaymentsRoute = false;
     let isTeacherFinanceFeeRulesRoute = false;
+    let isTeacherFinanceFeeTypesRoute = false;
+    let isTeacherFinanceFeeStructuresRoute = false;
     if (role === "teacher") {
       const needsFinanceDeptCheck =
         /^\/dashboard\/receipts\/[^/]+(?:\/|$)/.test(pathname) ||
         pathname === "/dashboard/payments" ||
         pathname.startsWith("/dashboard/payments/") ||
         pathname === "/dashboard/fee-rules" ||
-        pathname.startsWith("/dashboard/fee-rules/");
+        pathname.startsWith("/dashboard/fee-rules/") ||
+        pathname === "/dashboard/fee-types" ||
+        pathname.startsWith("/dashboard/fee-types/") ||
+        pathname === "/dashboard/fee-structures" ||
+        pathname.startsWith("/dashboard/fee-structures/");
 
       if (needsFinanceDeptCheck) {
         const { data: financeDeptRow, error: financeDeptErr } = await supabase
@@ -684,6 +690,18 @@ export async function updateSession(request: NextRequest) {
         ) {
           isTeacherFinanceFeeRulesRoute = hasFinanceDept;
         }
+        if (
+          pathname === "/dashboard/fee-types" ||
+          pathname.startsWith("/dashboard/fee-types/")
+        ) {
+          isTeacherFinanceFeeTypesRoute = hasFinanceDept;
+        }
+        if (
+          pathname === "/dashboard/fee-structures" ||
+          pathname.startsWith("/dashboard/fee-structures/")
+        ) {
+          isTeacherFinanceFeeStructuresRoute = hasFinanceDept;
+        }
       }
     }
 
@@ -692,6 +710,8 @@ export async function updateSession(request: NextRequest) {
       isTeacherFinanceReceiptRoute ||
       isTeacherFinancePaymentsRoute ||
       isTeacherFinanceFeeRulesRoute ||
+      isTeacherFinanceFeeTypesRoute ||
+      isTeacherFinanceFeeStructuresRoute ||
       isTeacherDutyBookRoute ||
       isTeacherPromotionsRoute;
 
@@ -724,6 +744,8 @@ export async function updateSession(request: NextRequest) {
           isTeacherFinanceReceiptRoute,
           isTeacherFinancePaymentsRoute,
           isTeacherFinanceFeeRulesRoute,
+          isTeacherFinanceFeeTypesRoute,
+          isTeacherFinanceFeeStructuresRoute,
           isTeacherDutyBookRoute,
           isTeacherPromotionsRoute,
           schoolDashboardMode:

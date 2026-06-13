@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { cn } from "@/lib/utils";
 import {
   updateFeeType,
   deleteFeeType,
@@ -17,6 +18,58 @@ interface FeeTypeData {
 interface FeeTypeRowProps {
   feeType: FeeTypeData;
 }
+
+function FeeTypeDescription({
+  description,
+  className,
+}: {
+  description: string | null;
+  className?: string;
+}) {
+  if (description) {
+    return (
+      <p className={cn("text-xs leading-snug text-slate-500 dark:text-zinc-400", className)}>
+        {description}
+      </p>
+    );
+  }
+
+  return (
+    <p
+      className={cn(
+        "text-[11px] italic leading-snug text-slate-400 dark:text-zinc-500",
+        className
+      )}
+    >
+      No description
+    </p>
+  );
+}
+
+function FeeTypeStatusBadge({ isRecurring }: { isRecurring: boolean }) {
+  if (isRecurring) {
+    return (
+      <span className="inline-flex shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+        Recurring
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-zinc-800 dark:text-zinc-400">
+      One-time
+    </span>
+  );
+}
+
+const mobileCardClass =
+  "rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm transition-all duration-150 hover:shadow-md active:scale-[1.01] active:shadow-md motion-reduce:transform-none dark:border-zinc-700/80 dark:bg-zinc-900 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:hover:shadow-none sm:active:scale-100";
+
+const editButtonClass =
+  "inline-flex h-9 w-full items-center justify-center rounded-lg border border-school-primary bg-white px-3 text-sm font-semibold text-school-primary transition-all duration-150 hover:bg-[rgb(var(--school-primary-rgb)/0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-school-primary/30 active:scale-[0.99] active:bg-[rgb(var(--school-primary-rgb)/0.12)] dark:border-school-primary dark:bg-zinc-900 dark:text-school-primary dark:hover:bg-[rgb(var(--school-primary-rgb)/0.12)] sm:h-auto sm:w-auto sm:min-h-0 sm:px-3 sm:py-1.5 sm:font-medium";
+
+const deleteButtonClass =
+  "inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-all duration-150 hover:border-red-200 hover:text-red-600 hover:bg-red-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200/60 active:scale-[0.99] active:border-red-200 active:bg-red-50 active:text-red-600 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-red-900/50 dark:hover:bg-red-950/30 dark:hover:text-red-400 dark:active:bg-red-950/40 sm:h-auto sm:w-auto sm:min-h-0 sm:border-red-200 sm:px-3 sm:py-1.5 sm:text-red-600";
 
 export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
   const [editing, setEditing] = useState(false);
@@ -51,7 +104,10 @@ export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
 
   if (editing) {
     return (
-      <form action={handleUpdate} className="px-6 py-4">
+      <form
+        action={handleUpdate}
+        className={cn(mobileCardClass, "sm:px-6 sm:py-4")}
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <input
             name="name"
@@ -74,11 +130,11 @@ export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
             />
             Recurring
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:gap-2">
             <button
               type="submit"
               disabled={isPending}
-              className="rounded-lg bg-school-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:brightness-105 disabled:opacity-50"
+              className="inline-flex min-h-[40px] w-full items-center justify-center rounded-lg bg-school-primary px-3 py-2 text-sm font-semibold text-white transition-all duration-150 hover:brightness-105 disabled:opacity-50 sm:min-h-0 sm:w-auto sm:py-1.5"
             >
               {isPending ? "Saving…" : "Save"}
             </button>
@@ -88,63 +144,88 @@ export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
                 setEditing(false);
                 setError(null);
               }}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              className="inline-flex min-h-[40px] w-full items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-150 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 sm:min-h-0 sm:w-auto sm:py-1.5"
             >
               Cancel
             </button>
           </div>
         </div>
-        {error && (
-          <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-            {error}
-          </p>
-        )}
+        {error ? (
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
+        ) : null}
       </form>
     );
   }
 
   return (
-    <div className="relative px-6 py-4 sm:grid sm:grid-cols-[1fr_1fr_80px_auto] sm:items-center sm:gap-4">
-      <p className="text-sm font-medium text-slate-900 dark:text-white">
-        {feeType.name}
-      </p>
-      <p className="mt-1 text-sm text-slate-500 sm:mt-0 dark:text-zinc-400">
-        {feeType.description || "—"}
-      </p>
-      <div className="mt-1 sm:mt-0">
-        {feeType.is_recurring ? (
-          <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-            Recurring
-          </span>
-        ) : (
-          <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-zinc-800 dark:text-zinc-400">
-            One-time
-          </span>
-        )}
+    <div
+      className={cn(
+        "relative sm:transition-all sm:duration-150 sm:hover:bg-slate-50/70 dark:sm:hover:bg-zinc-800/25",
+        mobileCardClass
+      )}
+    >
+      {/* Mobile card */}
+      <div className="flex flex-col sm:hidden">
+        <div className="flex items-start justify-between gap-2">
+          <p className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-semibold leading-snug text-slate-900 dark:text-white">
+            {feeType.name}
+          </p>
+          <FeeTypeStatusBadge isRecurring={feeType.is_recurring} />
+        </div>
+        <div className="mt-0.5">
+          <FeeTypeDescription description={feeType.description} />
+        </div>
+        <div className="mt-1.5 flex flex-col gap-1">
+          <button type="button" onClick={() => setEditing(true)} className={editButtonClass}>
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className={deleteButtonClass}
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
-      <div className="mt-3 flex gap-2 sm:mt-0">
-        <button
-          onClick={() => setEditing(true)}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          Edit
-        </button>
-        <button
-          onClick={() => setShowDeleteConfirm(true)}
-          className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
-        >
-          Delete
-        </button>
+      {/* Desktop table row */}
+      <div className="hidden px-6 py-4 sm:grid sm:grid-cols-[1fr_1fr_80px_auto] sm:items-center sm:gap-4">
+        <p className="text-sm font-medium text-slate-900 dark:text-white">
+          {feeType.name}
+        </p>
+        <FeeTypeDescription
+          description={feeType.description}
+          className="text-sm not-italic"
+        />
+        <div>
+          <FeeTypeStatusBadge isRecurring={feeType.is_recurring} />
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
-      {error && (
-        <p className="col-span-full mt-2 text-sm text-red-600 dark:text-red-400">
+      {error ? (
+        <p className="mt-2 text-sm text-red-600 sm:col-span-full dark:text-red-400">
           {error}
         </p>
-      )}
+      ) : null}
 
-      {showDeleteConfirm && (
+      {showDeleteConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
             <h3 className="text-base font-semibold text-slate-900 dark:text-white">
@@ -156,6 +237,7 @@ export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
             </p>
             <div className="mt-5 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={isPending}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -163,6 +245,7 @@ export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleDelete}
                 disabled={isPending}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
@@ -172,7 +255,7 @@ export function FeeTypeRow({ feeType }: FeeTypeRowProps) {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

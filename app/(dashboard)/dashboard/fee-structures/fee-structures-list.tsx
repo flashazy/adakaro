@@ -225,14 +225,14 @@ export function FeeStructuresList({
 
           {totalPages > 1 ? (
             <nav
-              className="flex flex-wrap items-center justify-center gap-2"
+              className="flex flex-nowrap items-center justify-center gap-1.5 overflow-x-auto px-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:gap-2 sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
               aria-label="Fee structures pagination"
             >
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={safePage <= 1}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                className="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
                 Previous
               </button>
@@ -240,7 +240,7 @@ export function FeeStructuresList({
                 item === "ellipsis" ? (
                   <span
                     key={`fs-ellipsis-${idx}`}
-                    className="px-2 text-sm text-slate-400 dark:text-zinc-500"
+                    className="inline-flex min-h-9 shrink-0 items-center px-1.5 text-sm text-slate-400 dark:text-zinc-500"
                     aria-hidden
                   >
                     …
@@ -253,8 +253,8 @@ export function FeeStructuresList({
                     aria-current={item === safePage ? "page" : undefined}
                     className={
                       item === safePage
-                        ? "rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
-                        : "rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        ? "inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-lg border border-school-primary bg-school-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                        : "inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                     }
                   >
                     {item}
@@ -265,7 +265,7 @@ export function FeeStructuresList({
                 type="button"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage >= totalPages}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                className="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
                 Next
               </button>

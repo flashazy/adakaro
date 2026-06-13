@@ -37,7 +37,7 @@ export function AddFeeTypeForm() {
       <form
         ref={formRef}
         action={formAction}
-        className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end"
+        className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4"
       >
         <div className="flex-1">
           <label
@@ -51,7 +51,7 @@ export function AddFeeTypeForm() {
             name="name"
             type="text"
             required
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            className="mt-1 block min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
             placeholder="e.g. Tuition"
           />
         </div>
@@ -67,16 +67,16 @@ export function AddFeeTypeForm() {
             id="description"
             name="description"
             type="text"
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            className="mt-1 block min-h-[40px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
             placeholder="Optional description"
           />
         </div>
 
-        <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-zinc-700 dark:text-zinc-300">
+        <label className="flex min-h-[40px] shrink-0 cursor-pointer items-center gap-2 self-end rounded-lg border border-slate-300 px-3 text-sm text-slate-700 dark:border-zinc-700 dark:text-zinc-300">
           <input
             name="is_recurring"
             type="checkbox"
-            className="h-4 w-4 rounded border-slate-300 text-school-primary focus:ring-school-primary dark:border-zinc-600 dark:bg-zinc-800"
+            className="h-4 w-4 shrink-0 rounded border-slate-300 text-school-primary focus:ring-2 focus:ring-school-primary/30 dark:border-zinc-600 dark:bg-zinc-800"
           />
           Recurring
         </label>

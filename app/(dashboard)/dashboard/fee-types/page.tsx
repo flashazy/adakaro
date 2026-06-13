@@ -5,6 +5,7 @@ import { describeSupabaseError } from "@/lib/dashboard/supabase-error";
 import { QueryErrorBanner } from "../query-error-banner";
 import { AddFeeTypeForm } from "./add-fee-type-form";
 import { FeeTypesList } from "./fee-types-list";
+import { Layers } from "lucide-react";
 import { BackButton } from "@/components/dashboard/back-button";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 
@@ -87,9 +88,19 @@ export default async function FeeTypesPage() {
         {!fetchError && typedFeeTypes.length > 0 ? (
           <FeeTypesList feeTypes={typedFeeTypes} />
         ) : !fetchError ? (
-          <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-900">
-            <p className="text-sm text-slate-500 dark:text-zinc-400">
-              No fee types yet. Add your first fee type above.
+          <div className="mt-6 rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800">
+              <Layers
+                className="h-5 w-5 text-slate-400 dark:text-zinc-500"
+                strokeWidth={1.75}
+                aria-hidden
+              />
+            </div>
+            <p className="mt-3 text-sm font-medium text-slate-900 dark:text-white">
+              No fee types created yet
+            </p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+              Create your first fee type above to start building fee structures.
             </p>
           </div>
         ) : null}

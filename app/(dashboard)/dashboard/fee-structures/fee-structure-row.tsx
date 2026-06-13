@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   updateFeeStructure,
   deleteFeeStructure,
@@ -14,6 +16,7 @@ import {
   isValidNumericAmountInput,
   onlyNumericAmount,
 } from "@/lib/validation";
+import { FeeStructureTargetPicker } from "./fee-structure-target-picker";
 
 interface Option {
   id: string;
@@ -46,6 +49,51 @@ interface Props {
   currencyCode: string;
 }
 
+function formatAmountDisplay(value: string): string {
+  const clean = onlyNumericAmount(value);
+  if (!clean) return "";
+
+  const dotIndex = clean.indexOf(".");
+  const intPart = dotIndex === -1 ? clean : clean.slice(0, dotIndex);
+  const decPart = dotIndex === -1 ? undefined : clean.slice(dotIndex + 1);
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+  if (decPart === undefined) return formattedInt;
+  return `${formattedInt}.${decPart}`;
+}
+
+const editFieldClass =
+  "w-full min-h-[40px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white sm:min-h-0 sm:py-1.5 sm:shadow-none sm:focus:ring-1 sm:focus:ring-school-primary";
+
+const editDateFieldClass =
+  "w-full min-h-[40px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-school-primary focus:outline-none focus:ring-2 focus:ring-school-primary/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white [color-scheme:light] dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:cursor-pointer sm:min-h-0 sm:py-1.5 sm:shadow-none sm:focus:ring-1 sm:focus:ring-school-primary";
+
+const editLabelClass =
+  "mb-1.5 block text-xs font-medium text-slate-500 dark:text-zinc-400";
+
+function FeeStructureAmount({
+  amount,
+  currencyCode,
+}: {
+  amount: number;
+  currencyCode: string;
+}) {
+  const isLargeAmount = amount >= 100_000;
+
+  return (
+    <p
+      className={cn(
+        "text-base tabular-nums leading-tight",
+        isLargeAmount
+          ? "font-semibold text-slate-900 dark:text-white"
+          : "font-medium text-slate-600 dark:text-zinc-400"
+      )}
+    >
+      {formatMoney(amount, currencyCode)}
+    </p>
+  );
+}
+
 export function FeeStructureRow({
   structure,
   feeTypes,
@@ -60,7 +108,16 @@ export function FeeStructureRow({
   );
   const [error, setError] = useState<string | null>(null);
   const [amountCharHint, setAmountCharHint] = useState<string | null>(null);
+  const [amountDisplay, setAmountDisplay] = useState(() =>
+    formatAmountDisplay(String(structure.amount))
+  );
   const [isPending, startTransition] = useTransition();
+
+  function startEditing() {
+    setAmountDisplay(formatAmountDisplay(String(structure.amount)));
+    setAmountCharHint(null);
+    setEditing(true);
+  }
 
   function handleUpdate(formData: FormData) {
     startTransition(async () => {
@@ -96,7 +153,7 @@ export function FeeStructureRow({
   if (editing) {
     return (
       <form
-        className="px-6 py-4"
+        className="px-3 py-3 sm:px-6 sm:py-4"
         onSubmit={(e) => {
           e.preventDefault();
           const fd = new FormData(e.currentTarget);
@@ -111,17 +168,24 @@ export function FeeStructureRow({
           handleUpdate(fd);
         }}
       >
+        <div className="mb-3.5 sm:hidden">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Edit Fee Structure
+          </h3>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+            Update fee amount, target and due date.
+          </p>
+        </div>
+
         <input type="hidden" name="target_type" value={targetType} />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-zinc-400">
-              Fee type
-            </label>
+            <label className={editLabelClass}>Fee type</label>
             <select
               name="fee_type_id"
               defaultValue={structure.fee_type_id ?? ""}
               required
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className={editFieldClass}
             >
               <option value="">Select</option>
               {feeTypes.map((ft) => (
@@ -132,31 +196,28 @@ export function FeeStructureRow({
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-zinc-400">
-              Amount ({currencyCode})
-            </label>
+            <label className={editLabelClass}>Amount ({currencyCode})</label>
             <input
               name="amount"
               type="text"
               inputMode="decimal"
               autoComplete="off"
-              defaultValue={String(structure.amount)}
+              value={amountDisplay}
               required
               onChange={(e) => {
-                const el = e.currentTarget;
-                const raw = el.value;
-                const v = onlyNumericAmount(raw);
+                const raw = e.currentTarget.value;
+                const clean = onlyNumericAmount(raw);
                 setAmountCharHint(
                   hasInvalidAmountInput(raw) ? HINT_ONLY_NUMBERS : null
                 );
-                if (v !== raw) el.value = v;
+                setAmountDisplay(formatAmountDisplay(clean));
               }}
               onKeyDown={blockInvalidKeyDownAmount}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className={cn(editFieldClass, "tabular-nums")}
             />
             {amountCharHint ? (
               <p
-                className="mt-0.5 text-[10px] leading-tight text-red-500"
+                className="mt-1 text-[10px] leading-tight text-red-500"
                 role="alert"
               >
                 {amountCharHint}
@@ -164,83 +225,77 @@ export function FeeStructureRow({
             ) : null}
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-zinc-400">
-              Target
-            </label>
+            <label className={editLabelClass}>Target</label>
             <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-zinc-800">
               <button
                 type="button"
                 onClick={() => setTargetType("class")}
-                className={`flex-1 rounded-md px-2 py-1 text-xs font-medium ${
+                className={cn(
+                  "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all duration-150",
                   targetType === "class"
-                    ? "bg-white text-slate-900 shadow-sm dark:bg-zinc-700 dark:text-white"
-                    : "text-slate-500 dark:text-zinc-400"
-                }`}
+                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90 dark:bg-zinc-600 dark:text-white dark:ring-zinc-500/60"
+                    : "text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                )}
               >
                 Class
               </button>
               <button
                 type="button"
                 onClick={() => setTargetType("student")}
-                className={`flex-1 rounded-md px-2 py-1 text-xs font-medium ${
+                className={cn(
+                  "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all duration-150",
                   targetType === "student"
-                    ? "bg-white text-slate-900 shadow-sm dark:bg-zinc-700 dark:text-white"
-                    : "text-slate-500 dark:text-zinc-400"
-                }`}
+                    ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90 dark:bg-zinc-600 dark:text-white dark:ring-zinc-500/60"
+                    : "text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                )}
               >
                 Student
               </button>
             </div>
             {targetType === "class" ? (
-              <select
+              <FeeStructureTargetPicker
+                kind="class"
                 name="class_id"
+                options={classes}
                 defaultValue={structure.class_id ?? ""}
                 required
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-              >
-                <option value="">Select</option>
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                className="mt-1.5"
+              />
             ) : (
-              <select
+              <FeeStructureTargetPicker
+                kind="student"
                 name="student_id"
+                options={students}
                 defaultValue={structure.student_id ?? ""}
                 required
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-              >
-                <option value="">Select</option>
-                {students.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.full_name}
-                    {s.admission_number ? ` (${s.admission_number})` : ""}
-                  </option>
-                ))}
-              </select>
+                className="mt-1.5"
+              />
             )}
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-zinc-400">
-              Due date
-            </label>
+            <label className={editLabelClass}>Due date</label>
             <input
               name="due_date"
               type="date"
               defaultValue={structure.due_date ?? ""}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-school-primary focus:outline-none focus:ring-1 focus:ring-school-primary dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+              className={editDateFieldClass}
             />
           </div>
         </div>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3.5 flex flex-col gap-2 sm:mt-3 sm:flex-row">
           <button
             type="submit"
             disabled={isPending}
-            className="rounded-lg bg-school-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:brightness-105 disabled:opacity-50"
+            className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-lg bg-school-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:flex-none sm:px-3 sm:py-1.5 sm:font-medium sm:shadow-none"
           >
-            {isPending ? "Saving…" : "Save"}
+            {isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                Saving...
+              </>
+            ) : (
+              "Save"
+            )}
           </button>
           <button
             type="button"
@@ -249,7 +304,7 @@ export function FeeStructureRow({
               setError(null);
               setAmountCharHint(null);
             }}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="inline-flex min-h-[40px] flex-1 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 sm:min-h-0 sm:flex-none sm:px-3 sm:py-1.5"
           >
             Cancel
           </button>
@@ -262,7 +317,7 @@ export function FeeStructureRow({
   }
 
   return (
-    <div className="relative px-6 py-4">
+    <div className="relative px-3 py-3 sm:px-6 sm:py-4">
       {/* Desktop */}
       <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_100px_100px_auto] sm:items-center sm:gap-4">
         <p className="text-sm font-medium text-slate-900 dark:text-white">
@@ -279,10 +334,7 @@ export function FeeStructureRow({
         </p>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              setAmountCharHint(null);
-              setEditing(true);
-            }}
+            onClick={startEditing}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Edit
@@ -297,38 +349,54 @@ export function FeeStructureRow({
       </div>
 
       {/* Mobile */}
-      <div className="space-y-2 sm:hidden">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-sm font-medium text-slate-900 dark:text-white">
+      <div className="sm:hidden">
+        <div className="space-y-1.5">
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-900 dark:text-white">
               {feeTypeName}
             </p>
-            <p className="text-xs text-slate-500 dark:text-zinc-400">
-              {targetName}
+            <div className="shrink-0 text-right">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                Amount
+              </p>
+              <FeeStructureAmount
+                amount={Number(structure.amount)}
+                currencyCode={currencyCode}
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+              Target
+            </p>
+            <p className="text-xs text-slate-600 dark:text-zinc-400">{targetName}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium text-slate-400 dark:text-zinc-500">
+              Due
+            </p>
+            <p
+              className={cn(
+                "text-xs",
+                structure.due_date
+                  ? "text-slate-600 dark:text-zinc-400"
+                  : "italic text-slate-400 dark:text-zinc-500"
+              )}
+            >
+              {structure.due_date ?? "No due date provided"}
             </p>
           </div>
-          <p className="shrink-0 text-sm font-semibold text-slate-900 dark:text-white">
-            {formatMoney(Number(structure.amount), currencyCode)}
-          </p>
         </div>
-        {structure.due_date && (
-          <p className="text-xs text-slate-500 dark:text-zinc-400">
-            Due: {structure.due_date}
-          </p>
-        )}
-        <div className="flex gap-2 pt-1">
+        <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2 dark:border-zinc-800">
           <button
-            onClick={() => {
-              setAmountCharHint(null);
-              setEditing(true);
-            }}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            onClick={startEditing}
+            className="inline-flex min-h-8 flex-1 items-center justify-center rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Edit
           </button>
           <button
             onClick={() => setShowDeleteConfirm(true)}
-            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+            className="inline-flex min-h-8 flex-1 items-center justify-center rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
           >
             Delete
           </button>
