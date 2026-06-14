@@ -8,10 +8,9 @@ import {
   AdminSyllabusCoverageTable,
   AdminSyllabusDistributionChart,
   AdminSyllabusFiltersBar,
-  AdminSyllabusKpiCards,
+  AdminSyllabusKpiSection,
   AdminSyllabusPaceFilterChips,
   AdminSyllabusPerformanceCard,
-  AdminSyllabusSchoolHealthCard,
   AdminSyllabusTableSearch,
   AdminSyllabusTeacherLeaderboard,
 } from "@/components/syllabus-coverage/admin-syllabus-dashboard-ui";
@@ -19,10 +18,12 @@ import {
   resolveFilteredDashboard,
   paginateAdminSyllabusTableRows,
   applyAdminSyllabusTableSearch,
+  subjectFilterKey,
 } from "@/lib/syllabus-coverage/admin-dashboard-utils";
 import type {
   AdminSyllabusDashboardFilters,
   AdminSyllabusDashboardPayload,
+  AdminSyllabusDashboardRow,
   AdminSyllabusTablePageSize,
 } from "@/lib/syllabus-coverage/admin-dashboard-types";
 import { currentAcademicYear } from "@/lib/student-subject-enrollment";
@@ -106,6 +107,19 @@ export function AdminSyllabusCoverageClient() {
     });
   };
 
+  const focusSubjectRow = (row: AdminSyllabusDashboardRow) => {
+    updateFilters({
+      classId: row.classId,
+      subjectKey: subjectFilterKey(row.subjectId, row.subjectName),
+      teacherId: row.teacherId,
+      paceChip: "all",
+    });
+    setTableSearch("");
+    document
+      .getElementById("coverage-by-class-subject")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const filterOptions = payload?.filterOptions ?? {
     academicYears: [String(currentAcademicYear())],
     terms: ["All Terms"],
@@ -134,10 +148,11 @@ export function AdminSyllabusCoverageClient() {
 
       {resolved ? (
         <>
-          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-stretch">
-            <AdminSyllabusKpiCards kpis={resolved.kpis} />
-            <AdminSyllabusSchoolHealthCard schoolHealth={resolved.schoolHealth} />
-          </div>
+          <AdminSyllabusKpiSection
+            kpis={resolved.kpis}
+            schoolHealth={resolved.schoolHealth}
+            expectedCoveragePercent={resolved.expectedCoveragePercent}
+          />
 
           <AdminSyllabusDistributionChart distribution={resolved.distribution} />
 
@@ -150,7 +165,7 @@ export function AdminSyllabusCoverageClient() {
 
           <AdminSyllabusClassHealthSummary classes={resolved.classHealth} />
 
-          <section className="space-y-3">
+          <section id="coverage-by-class-subject" className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-zinc-300">
               Coverage by class & subject
             </h2>
@@ -166,6 +181,7 @@ export function AdminSyllabusCoverageClient() {
               rows={resolved ? tablePagination.slice : []}
               allRows={resolved?.rows}
               loading={loading}
+              onFocusSubject={focusSubjectRow}
               pagination={
                 resolved && tablePagination.totalRecords > 0
                   ? {

@@ -192,6 +192,130 @@ export function buildAdminSyllabusKpis(rows: AdminSyllabusDashboardRow[]): Admin
   };
 }
 
+export type AdminKpiContextTone = "default" | "positive" | "warning" | "critical";
+
+export function adminKpiOverallCoverageHelper(
+  overallCoverage: number,
+  expectedCoveragePercent: number
+): { label: string; tone: AdminKpiContextTone } {
+  const status = deriveAdminPaceStatus(overallCoverage, expectedCoveragePercent);
+  switch (status) {
+    case "ahead":
+      return { label: "Ahead of target", tone: "positive" };
+    case "on_track":
+      return { label: "On track", tone: "positive" };
+    case "slightly_behind":
+      return { label: "Below target", tone: "warning" };
+    case "critical":
+      return { label: "Below target", tone: "critical" };
+  }
+}
+
+export function adminKpiOnTrackSubjectsHelper(
+  count: number
+): { label: string; tone: AdminKpiContextTone } {
+  if (count === 0) {
+    return { label: "No subjects on track", tone: "warning" };
+  }
+  if (count === 1) {
+    return { label: "1 subject on track", tone: "positive" };
+  }
+  return { label: `${count} subjects on track`, tone: "positive" };
+}
+
+export function adminKpiBehindScheduleHelper(
+  count: number
+): { label: string; tone: AdminKpiContextTone } {
+  if (count === 0) {
+    return { label: "All subjects on pace", tone: "positive" };
+  }
+  return { label: "Needs attention", tone: count > 0 ? "warning" : "default" };
+}
+
+export function adminKpiCompletedSubjectsHelper(
+  count: number
+): { label: string; tone: AdminKpiContextTone } {
+  if (count === 0) {
+    return { label: "No completed subjects", tone: "default" };
+  }
+  if (count === 1) {
+    return { label: "1 subject complete", tone: "positive" };
+  }
+  return { label: `${count} subjects complete`, tone: "positive" };
+}
+
+export function adminKpiActiveTeachersHelper(
+  count: number
+): { label: string; tone: AdminKpiContextTone } {
+  if (count === 0) {
+    return { label: "No teachers reporting", tone: "warning" };
+  }
+  return { label: "Reporting this term", tone: "default" };
+}
+
+export function adminKpiSchoolHealthHelper(
+  paceStatus: AdminSyllabusPaceStatus
+): { label: string; tone: AdminKpiContextTone } {
+  return {
+    label: adminHealthStatusLabel(paceStatus),
+    tone:
+      paceStatus === "ahead" || paceStatus === "on_track"
+        ? "positive"
+        : paceStatus === "slightly_behind"
+          ? "warning"
+          : "critical",
+  };
+}
+
+export function adminKpiContextToneClass(tone: AdminKpiContextTone): string {
+  switch (tone) {
+    case "positive":
+      return "text-emerald-700 dark:text-emerald-400";
+    case "warning":
+      return "text-amber-700 dark:text-amber-400";
+    case "critical":
+      return "text-red-700 dark:text-red-400";
+    case "default":
+      return "text-slate-500 dark:text-zinc-400";
+  }
+}
+
+export function formatAdminCoveragePaceLabel(
+  coveragePercent: number,
+  expectedCoveragePercent: number
+): {
+  label: string;
+  tone: "neutral" | "behind" | "ahead";
+} {
+  const difference = coveragePercent - expectedCoveragePercent;
+  if (difference === 0) {
+    return { label: "On target", tone: "neutral" };
+  }
+  if (difference < 0) {
+    return {
+      label: `${Math.abs(difference)}% behind target`,
+      tone: "behind",
+    };
+  }
+  return {
+    label: `${difference}% ahead of target`,
+    tone: "ahead",
+  };
+}
+
+export function adminCoveragePaceLabelClass(
+  tone: "neutral" | "behind" | "ahead"
+): string {
+  switch (tone) {
+    case "behind":
+      return "text-amber-700 dark:text-amber-400";
+    case "ahead":
+      return "text-emerald-700 dark:text-emerald-400";
+    case "neutral":
+      return "text-slate-500 dark:text-zinc-400";
+  }
+}
+
 export function applyPaceChipFilter(
   rows: AdminSyllabusDashboardRow[],
   chip: AdminSyllabusPaceChipFilter
