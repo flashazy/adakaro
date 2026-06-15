@@ -1,3 +1,11 @@
+/**
+ * Expected syllabus pace for the school admin dashboard.
+ *
+ * Formula: round(days elapsed in period ÷ total days in period × 100)
+ *
+ * Period = selected term dates from `schools` (or academic year Jan 1–Dec 31
+ * when "All Terms" is selected). See ADMIN_COVERAGE_CALCULATIONS.md.
+ */
 import type { AdminSyllabusSchoolTermDates } from "@/lib/syllabus-coverage/admin-dashboard-types";
 
 function elapsedPercentInRange(start: Date, end: Date, now: Date): number {
@@ -54,6 +62,7 @@ export function computeAcademicYearExpectedPercent(academicYear: string): number
 /**
  * Expected coverage from academic year, optional term, and school term dates.
  * Uses planned lesson timeline (elapsed time in term or year).
+ * Formula: round(days elapsed ÷ total days in period × 100).
  */
 export function computeAdminExpectedCoveragePercent(
   academicYear: string,

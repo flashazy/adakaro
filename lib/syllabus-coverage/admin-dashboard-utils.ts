@@ -21,6 +21,10 @@ export function subjectFilterKey(subjectId: string | null, subjectName: string):
   return subjectId ?? `name:${subjectName.trim().toLowerCase()}`;
 }
 
+/**
+ * Pace status from actual vs expected coverage (variance bands).
+ * variance = actual − expected. See ADMIN_COVERAGE_CALCULATIONS.md §4.
+ */
 export function deriveAdminPaceStatus(
   actualPercent: number,
   expectedPercent: number
@@ -280,6 +284,11 @@ export function adminKpiContextToneClass(tone: AdminKpiContextTone): string {
   }
 }
 
+/**
+ * Plain-language behind/ahead label for subject cards.
+ * difference = actual − expected; behind shows abs(difference).
+ * See ADMIN_COVERAGE_CALCULATIONS.md §3.
+ */
 export function formatAdminCoveragePaceLabel(
   coveragePercent: number,
   expectedCoveragePercent: number
@@ -390,6 +399,10 @@ export function buildCoverageDistribution(
   };
 }
 
+/**
+ * Composite school health score (0–100): 50% avg coverage, 25% recent activity,
+ * 25% on-track schedule adherence. See ADMIN_COVERAGE_CALCULATIONS.md §6.
+ */
 export function buildSchoolHealth(
   rows: AdminSyllabusDashboardRow[],
   expectedCoveragePercent: number

@@ -7,6 +7,7 @@ export type CoverageColorState = "high" | "medium" | "low" | "neutral";
 
 export type SyllabusTopicStatus = "not_started" | "in_progress" | "complete";
 
+/** Actual syllabus coverage: round(completed ÷ total × 100). See ADMIN_COVERAGE_CALCULATIONS.md. */
 export function coveragePercent(
   completed: number,
   total: number

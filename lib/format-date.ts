@@ -1,3 +1,5 @@
+import { format } from "date-fns";
+
 export function formatDate(date: string | Date) {
   const d = new Date(date);
   const year = d.getFullYear();
@@ -46,4 +48,12 @@ export function formatLocaleDateTime(
     second: "2-digit",
     hour12: true,
   });
+}
+
+/** Fixed format for Super Admin executive header — identical on server and client. */
+export function formatExecutiveDashboardDate(date: Date = new Date()): string {
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return format(date, "EEE, dd MMM yyyy");
 }

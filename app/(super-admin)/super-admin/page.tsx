@@ -160,16 +160,9 @@ export default async function SuperAdminHomePage() {
       students: loaded.stats.totalStudents,
       admins: loaded.stats.totalAdmins,
       payments: loaded.stats.totalPayments,
+      lifecycle: loaded.stats.lifecycle,
     },
-    schools: loaded.schools.map((s) => ({
-      id: s.id,
-      name: s.name,
-      currency: s.currency,
-      plan: s.plan,
-      created_at: s.created_at,
-      admin_count: s.admin_count,
-      student_count: s.student_count,
-    })),
+    schools: loaded.schools,
   };
 
   let initialPendingUpgrades = await loadPendingUpgradeRows(supabase);
@@ -188,7 +181,7 @@ export default async function SuperAdminHomePage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 px-6 py-8 dark:bg-zinc-950">
+    <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
       <SuperAdminDashboardClient
         initialData={dashboardData}
         initialPendingUpgrades={initialPendingUpgrades}

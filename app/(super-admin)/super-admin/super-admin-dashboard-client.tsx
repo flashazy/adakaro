@@ -1,20 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { formatDate } from "@/lib/format-date";
-import { binaryPlanLabel, isPaidPlanId } from "@/lib/plans";
+import { formatDate, formatExecutiveDashboardDate } from "@/lib/format-date";
+import { binaryPlanLabel } from "@/lib/plans";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-
-interface School {
-  id: string;
-  name: string;
-  currency: string;
-  plan: string;
-  created_at: string;
-  admin_count: number;
-  student_count: number;
-}
+import { useEffect, useMemo, useState } from "react";
+import { SchoolsLifecycleDashboard } from "@/components/super-admin/schools-lifecycle-dashboard";
+import {
+  saBtnPrimary,
+  saBtnPrimarySm,
+  saBtnSecondarySm,
+  saTableRowHover,
+  SaExecutiveHeader,
+  SaKpiCard,
+  SaKpiCardHighlighted,
+} from "@/components/super-admin/super-admin-dashboard-ui";
+import { highlightedKpiTrend } from "@/lib/super-admin/dashboard-presentation";
+import { computeBusinessSnapshot } from "@/lib/super-admin/dashboard-insights";
+import type { SuperAdminSchoolRow } from "@/lib/super-admin/types";
+import { cn } from "@/lib/utils";
 
 export interface PendingUpgradeRow {
   id: string;
@@ -32,8 +36,22 @@ interface DashboardData {
     students: number;
     admins: number;
     payments: number;
+    lifecycle: {
+      setupSchools: number;
+      activeSchools: number;
+      inactiveSchools: number;
+      archivedSchools: number;
+      healthExcellent: number;
+      healthHealthy: number;
+      healthAtRisk: number;
+      healthInactive: number;
+      newSetupSchoolsLast30Days: number;
+      setupSchoolsOlderThan14Days: number;
+      activeSchoolsThisMonth: number;
+      schoolsAtRisk: number;
+    };
   };
-  schools: School[];
+  schools: SuperAdminSchoolRow[];
 }
 
 interface SuperAdminDashboardClientProps {
@@ -47,27 +65,19 @@ export function SuperAdminDashboardClient({
   initialPendingUpgrades = [],
 }: SuperAdminDashboardClientProps) {
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [planFilter, setPlanFilter] = useState("all");
   const [pendingUpgrades, setPendingUpgrades] = useState(initialPendingUpgrades);
   const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
+
+  const businessSnapshot = useMemo(
+    () => computeBusinessSnapshot(initialData.schools),
+    [initialData.schools]
+  );
+
+  const todayLabel = useMemo(() => formatExecutiveDashboardDate(new Date()), []);
 
   useEffect(() => {
     setPendingUpgrades(initialPendingUpgrades);
   }, [initialPendingUpgrades]);
-
-  const filteredSchools = initialData.schools.filter((school) => {
-    const matchesSearch = school.name.toLowerCase().includes(search.toLowerCase());
-    // Two-state filter: "free" matches the free plan; "paid" matches any
-    // non-free plan (basic / pro / enterprise) under the new tier model.
-    const matchesPlan =
-      planFilter === "all"
-        ? true
-        : planFilter === "paid"
-          ? isPaidPlanId(school.plan)
-          : !isPaidPlanId(school.plan);
-    return matchesSearch && matchesPlan;
-  });
 
   async function reviewRequest(requestId: string, approve: boolean) {
     setReviewBusyId(requestId);
@@ -91,109 +101,128 @@ export function SuperAdminDashboardClient({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-4">
-          <h1 className="text-2xl font-bold">Super Admin Dashboard</h1>
-          <Link
-            href="/super-admin/analytics"
-            className="text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+    <div className="mx-auto max-w-7xl space-y-6">
+      <SaExecutiveHeader
+        title="Super Admin Dashboard"
+        subtitle="Monitor school growth, engagement, health, and platform performance."
+        dateLabel={todayLabel}
+        totalSchools={initialData.stats.schools}
+        paidSchools={businessSnapshot.paidSchools}
+      >
+        <Link
+          href="/super-admin/analytics"
+          className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700"
+        >
+          Analytics
+        </Link>
+        <Link
+          href="/super-admin/activity-logs"
+          className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700"
+        >
+          Activity logs
+        </Link>
+        {pendingUpgrades.length > 0 ? (
+          <span
+            className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-medium text-amber-800"
+            title="Pending plan upgrade requests"
           >
-            Analytics
-          </Link>
-          <Link
-            href="/super-admin/activity-logs"
-            className="text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
-          >
-            Activity logs
-          </Link>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {pendingUpgrades.length > 0 ? (
-            <span
-              className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
-              title="Pending plan upgrade requests"
-            >
-              {pendingUpgrades.length} pending upgrade
-              {pendingUpgrades.length === 1 ? "" : "s"}
-            </span>
-          ) : null}
-          <a
-            href="/super-admin/create"
-            className="rounded bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
-          >
-            Create School
-          </a>
-        </div>
+            {pendingUpgrades.length} pending upgrade
+            {pendingUpgrades.length === 1 ? "" : "s"}
+          </span>
+        ) : null}
+        <a href="/super-admin/create" className={saBtnPrimary}>
+          Create School
+        </a>
+      </SaExecutiveHeader>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <SaKpiCardHighlighted
+          label="Total Schools"
+          value={initialData.stats.schools}
+          caption={highlightedKpiTrend("Total Schools")}
+        />
+        <SaKpiCardHighlighted
+          label="Paid Schools"
+          value={businessSnapshot.paidSchools}
+          caption={highlightedKpiTrend("Paid Schools")}
+        />
+        <SaKpiCardHighlighted
+          label="Average Health Score"
+          value={businessSnapshot.averageHealthScore}
+          caption={highlightedKpiTrend(
+            "Average Health Score",
+            businessSnapshot.averageHealthScore
+          )}
+        />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border bg-white p-4 shadow dark:bg-zinc-900">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total Schools</p>
-          <p className="text-2xl font-bold">{initialData.stats.schools}</p>
-        </div>
-        <div className="rounded-lg border bg-white p-4 shadow dark:bg-zinc-900">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total Students</p>
-          <p className="text-2xl font-bold">{initialData.stats.students}</p>
-        </div>
-        <div className="rounded-lg border bg-white p-4 shadow dark:bg-zinc-900">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Admin Memberships</p>
-          <p className="text-2xl font-bold">{initialData.stats.admins}</p>
-        </div>
-        <div className="rounded-lg border bg-white p-4 shadow dark:bg-zinc-900">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total Payments</p>
-          <p className="text-2xl font-bold">{initialData.stats.payments}</p>
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <SaKpiCard label="Total Students" value={initialData.stats.students} />
+        <SaKpiCard label="Admin Memberships" value={initialData.stats.admins} />
+        <SaKpiCard label="Total Payments" value={initialData.stats.payments} />
+        <SaKpiCard label="Free Schools" value={businessSnapshot.freeSchools} />
+        <SaKpiCard
+          label="Average Students Per School"
+          value={businessSnapshot.averageStudentsPerSchool}
+        />
       </div>
 
       {pendingUpgrades.length > 0 ? (
-        <section className="rounded-lg border border-amber-200 bg-amber-50/80 p-4 shadow dark:border-amber-900/40 dark:bg-amber-950/20">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/50 px-5 py-5 shadow-sm">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900">
             Pending upgrades
           </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-slate-500">
             School admins requested a plan change. Approve to update the school plan, or deny to
             close the request.
           </p>
-          <div className="mt-4 overflow-x-auto rounded-lg border border-amber-200/80 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-gray-50 dark:bg-zinc-800">
-                  <th className="px-3 py-2 text-left">School</th>
-                  <th className="px-3 py-2 text-left">Requested by</th>
-                  <th className="px-3 py-2 text-left">From → To</th>
-                  <th className="px-3 py-2 text-left">Requested</th>
-                  <th className="px-3 py-2 text-left">Actions</th>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="px-4 py-3 text-left font-medium text-slate-600">School</th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-600">Requested by</th>
+                  <th className="hidden px-4 py-3 text-left font-medium text-slate-600 sm:table-cell">
+                    From → To
+                  </th>
+                  <th className="hidden px-4 py-3 text-left font-medium text-slate-600 md:table-cell">
+                    Requested
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-600">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {pendingUpgrades.map((row) => (
-                  <tr key={row.id} className="border-b last:border-0">
-                    <td className="px-3 py-2">
+                  <tr
+                    key={row.id}
+                    className={cn(
+                      "border-b border-slate-100 last:border-0",
+                      saTableRowHover
+                    )}
+                  >
+                    <td className="px-4 py-3">
                       <a
                         href={`/super-admin/schools/${row.school_id}`}
-                        className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                        className="font-medium text-indigo-600 hover:text-indigo-700"
                       >
                         {row.school_name}
                       </a>
                     </td>
-                    <td className="px-3 py-2 text-slate-700 dark:text-zinc-300">
-                      {row.requester_display}
-                    </td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3 text-slate-700">{row.requester_display}</td>
+                    <td className="hidden px-4 py-3 text-slate-700 sm:table-cell">
                       {binaryPlanLabel(row.current_plan)} →{" "}
                       {binaryPlanLabel(row.requested_plan)}
                     </td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-zinc-400">
+                    <td className="hidden px-4 py-3 text-slate-500 md:table-cell">
                       {formatDate(row.created_at)}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           disabled={reviewBusyId === row.id}
                           onClick={() => reviewRequest(row.id, true)}
-                          className="rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                          className={saBtnPrimarySm}
                         >
                           Approve
                         </button>
@@ -201,7 +230,7 @@ export function SuperAdminDashboardClient({
                           type="button"
                           disabled={reviewBusyId === row.id}
                           onClick={() => reviewRequest(row.id, false)}
-                          className="rounded border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-50 dark:border-zinc-600 dark:hover:bg-zinc-800"
+                          className={saBtnSecondarySm}
                         >
                           Deny
                         </button>
@@ -215,72 +244,16 @@ export function SuperAdminDashboardClient({
         </section>
       ) : null}
 
-      <div className="flex gap-4">
-        <input
-          type="text"
-          placeholder="Search schools..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="rounded border px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800"
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+          Schools Management
+        </h2>
+        <SchoolsLifecycleDashboard
+          schools={initialData.schools}
+          lifecycleStats={initialData.stats.lifecycle}
+          averageHealthScore={businessSnapshot.averageHealthScore}
         />
-        <select
-          value={planFilter}
-          onChange={(e) => setPlanFilter(e.target.value)}
-          className="rounded border px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800"
-        >
-          <option value="all">All plans</option>
-          <option value="free">Free</option>
-          <option value="paid">Paid</option>
-        </select>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b bg-gray-50 dark:bg-zinc-800">
-              <th className="px-4 py-3 text-left">School</th>
-              <th className="px-4 py-3 text-left">Plan</th>
-              <th className="px-4 py-3 text-left">Admins</th>
-              <th className="px-4 py-3 text-left">Students</th>
-              <th className="px-4 py-3 text-left">Created</th>
-              <th className="px-4 py-3 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredSchools.map((school) => (
-              <tr key={school.id} className="border-b">
-                <td className="px-4 py-3">{school.name}</td>
-                <td className="px-4 py-3">{binaryPlanLabel(school.plan)}</td>
-                <td className="px-4 py-3">{school.admin_count}</td>
-                <td className="px-4 py-3">{school.student_count}</td>
-                <td className="px-4 py-3">{formatDate(school.created_at)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    <a
-                      href={`/super-admin/schools/${school.id}`}
-                      className="rounded border px-3 py-1 text-sm hover:bg-gray-100 dark:hover:bg-zinc-800"
-                    >
-                      View
-                    </a>
-                    <a
-                      href={`/super-admin/schools/${school.id}?upgrade=1`}
-                      className="rounded border px-3 py-1 text-sm hover:bg-gray-100 dark:hover:bg-zinc-800"
-                    >
-                      Upgrade plan
-                    </a>
-                    <a
-                      href={`/super-admin/schools/${school.id}?edit=1`}
-                      className="rounded border px-3 py-1 text-sm hover:bg-gray-100 dark:hover:bg-zinc-800"
-                    >
-                      Edit
-                    </a>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      </section>
     </div>
   );
 }

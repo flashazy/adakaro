@@ -549,6 +549,8 @@ export interface Database {
           currency: string;
           plan: string;
           status: SchoolStatus;
+          school_status: string;
+          last_activity_at: string | null;
           suspension_reason: string | null;
           plan_expires_at: string | null;
           student_limit: number | null;
@@ -586,6 +588,8 @@ export interface Database {
           currency?: string;
           plan?: string;
           status?: SchoolStatus;
+          school_status?: string;
+          last_activity_at?: string | null;
           suspension_reason?: string | null;
           plan_expires_at?: string | null;
           student_limit?: number | null;
@@ -622,6 +626,8 @@ export interface Database {
           currency?: string;
           plan?: string;
           status?: SchoolStatus;
+          school_status?: string;
+          last_activity_at?: string | null;
           suspension_reason?: string | null;
           plan_expires_at?: string | null;
           student_limit?: number | null;

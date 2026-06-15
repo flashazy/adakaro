@@ -117,6 +117,13 @@ function buildTermOptions(termDates: AdminSyllabusSchoolTermDates): string[] {
   return terms;
 }
 
+/**
+ * Loads school admin syllabus dashboard rows from Supabase.
+ *
+ * Actual coverage: completed subtopics ÷ total subtopics (syllabus_subtopic_progress).
+ * Expected coverage: elapsed calendar time in term/year (computeAdminExpectedCoveragePercent).
+ * See lib/syllabus-coverage/ADMIN_COVERAGE_CALCULATIONS.md.
+ */
 export async function loadAdminSyllabusDashboard(
   schoolId: string,
   academicYear: string
