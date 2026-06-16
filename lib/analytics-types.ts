@@ -18,6 +18,8 @@ export interface TopSchoolRow {
   name: string;
   studentCount: number;
   totalRevenue: number;
+  studentGrowthPercent: number | null;
+  revenueGrowthPercent: number | null;
 }
 
 export interface RevenueBySchoolRow {
@@ -42,6 +44,41 @@ export interface GrowthPercent {
   revenue: number | null;
 }
 
+export interface PeriodComparison {
+  schoolsDelta: number;
+  studentsDelta: number;
+  revenueDelta: number;
+}
+
+export interface PlatformSnapshot {
+  schools: number;
+  students: number;
+  teachers: number;
+  parents: number;
+  admins: number;
+  revenue: number;
+}
+
+export type PlatformHealthStatus = "Excellent" | "Good" | "Warning" | "Critical";
+
+export interface PlatformHealth {
+  score: number;
+  status: PlatformHealthStatus;
+}
+
+export interface InsightSchoolRef {
+  schoolId: string;
+  name: string;
+}
+
+export interface ExecutiveInsights {
+  fastestGrowingSchool: (InsightSchoolRef & { growthPercent: number }) | null;
+  highestRevenueSchool: (InsightSchoolRef & { revenue: number }) | null;
+  largestSchool: (InsightSchoolRef & { studentCount: number }) | null;
+  newestSchool: (InsightSchoolRef & { daysSinceJoined: number }) | null;
+  highestGrowthRateSchool: (InsightSchoolRef & { growthPercent: number }) | null;
+}
+
 export interface SuperAdminAnalyticsPayload {
   meta: {
     preset: AnalyticsPreset | string;
@@ -55,10 +92,17 @@ export interface SuperAdminAnalyticsPayload {
     totalRevenue: number;
     activeSchools: number;
     suspendedSchools: number;
+    setupSchools: number;
     totalSchoolsPlatform: number;
     totalStudentsPlatform: number;
     growthPercent: GrowthPercent;
+    periodComparison: PeriodComparison;
+    activeRatePercent: number;
   };
+  platformSnapshot: PlatformSnapshot;
+  platformHealth: PlatformHealth;
+  executiveInsights: ExecutiveInsights;
+  executiveSummary: string;
   monthlyTrends: MonthlyTrendRow[];
   topSchoolsByStudents: TopSchoolRow[];
   topSchoolsByRevenue: TopSchoolRow[];

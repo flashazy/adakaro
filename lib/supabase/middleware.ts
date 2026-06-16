@@ -15,6 +15,10 @@ import {
 } from "@/lib/fetch-profile-password-gate-row";
 import { TEACHER_TEMP_EXPIRED_ERROR } from "@/lib/teacher-temp-password-constants";
 import type { Database } from "@/types/supabase";
+import {
+  parseWorkspaceSchoolId,
+  SUPER_ADMIN_WORKSPACE_SCHOOL_COOKIE,
+} from "@/lib/super-admin/workspace-school.constants";
 
 const CAPTURE_SESSION_COOKIE = "cc_session";
 
@@ -564,6 +568,19 @@ export async function updateSession(request: NextRequest) {
       } else {
         url.pathname = "/parent-dashboard";
       }
+      return NextResponse.redirect(url);
+    }
+
+    // Super admins must explicitly choose a school workspace before /dashboard.
+    if (
+      role === "super_admin" &&
+      isAdminRoute &&
+      !parseWorkspaceSchoolId(
+        request.cookies.get(SUPER_ADMIN_WORKSPACE_SCHOOL_COOKIE)?.value
+      )
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/super-admin";
       return NextResponse.redirect(url);
     }
 

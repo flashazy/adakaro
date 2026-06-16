@@ -1,5 +1,6 @@
 "use client";
 
+import { SuperAdminLoadingButton } from "@/components/super-admin/super-admin-loading-action";
 import { useEffect, useState } from "react";
 
 function normalizeTargetIds(
@@ -155,13 +156,15 @@ export function SendBroadcastForm({
       ) : null}
 
       <div className="mt-6">
-        <button
+        <SuperAdminLoadingButton
           type="submit"
           disabled={sending}
-          className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-60 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+          loading={sending}
+          loadingLabel="Sending…"
+          className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-80 dark:bg-indigo-500 dark:hover:bg-indigo-400"
         >
-          {sending ? "Sending…" : "Send broadcast"}
-        </button>
+          Send broadcast
+        </SuperAdminLoadingButton>
       </div>
     </form>
   );

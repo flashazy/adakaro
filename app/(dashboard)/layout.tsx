@@ -20,6 +20,8 @@ import { getDashboardBlockState } from "@/lib/dashboard/dashboard-block";
 import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
 import { BlockedDashboard } from "@/components/dashboard/blocked-dashboard";
 import { SyncProvider } from "@/lib/offline/sync-provider";
+import { SuperAdminWorkspaceBanner } from "@/components/super-admin/super-admin-workspace-banner";
+import { resolveSuperAdminWorkspaceMode } from "@/lib/super-admin/resolve-workspace-mode";
 
 export default async function DashboardGroupLayout({
   children,
@@ -212,6 +214,20 @@ export default async function DashboardGroupLayout({
     ? null
     : await getDashboardBlockState(supabase, schoolDisplay?.schoolId ?? null);
 
+  let superAdminWorkspaceMode: { schoolId: string; schoolName: string } | null =
+    null;
+  if (isSuperAdmin) {
+    const workspaceResult = await resolveSuperAdminWorkspaceMode(
+      supabase,
+      user.id
+    );
+    if (workspaceResult.ok) {
+      superAdminWorkspaceMode = workspaceResult.mode;
+    } else if (workspaceResult.reason === "school_unavailable") {
+      redirect("/api/super-admin/schools/workspace/exit?reason=unavailable");
+    }
+  }
+
   return (
     <>
       <SchoolPrimaryCssVars primaryColor={schoolDisplay?.primary_color} />
@@ -235,6 +251,13 @@ export default async function DashboardGroupLayout({
           }
         />
       </div>
+      {superAdminWorkspaceMode ? (
+        <div className="print:hidden mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6 lg:px-8">
+          <SuperAdminWorkspaceBanner
+            schoolName={superAdminWorkspaceMode.schoolName}
+          />
+        </div>
+      ) : null}
       <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 print:min-h-0 print:bg-white">
         <div
           id="page-content"

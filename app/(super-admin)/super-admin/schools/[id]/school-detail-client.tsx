@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { SuperAdminNavLink } from "@/components/super-admin/super-admin-loading-action";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatLocaleDateTime, formatShortLocaleDate } from "@/lib/format-date";
@@ -367,12 +367,13 @@ export function SchoolDetailClient({
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
       <div className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-          <Link
+          <SuperAdminNavLink
             href="/super-admin"
+            loadingLabel="Loading…"
             className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
           >
             ← Back to dashboard
-          </Link>
+          </SuperAdminNavLink>
           <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
             {school.name}
           </h1>

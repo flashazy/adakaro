@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { SuperAdminNavLink } from "@/components/super-admin/super-admin-loading-action";
 import { formatDate } from "@/lib/format-date";
 import { binaryPlanLabel } from "@/lib/plans";
 import {
@@ -131,12 +131,13 @@ export function SchoolSummaryDrawer({ school, onClose }: SchoolSummaryDrawerProp
         </div>
 
         <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4">
-          <Link
+          <SuperAdminNavLink
             href={`/super-admin/schools/${school.id}`}
+            loadingLabel="Opening…"
             className={cn(saBtnPrimary, "w-full")}
           >
             Open full school page
-          </Link>
+          </SuperAdminNavLink>
         </div>
       </aside>
     </>

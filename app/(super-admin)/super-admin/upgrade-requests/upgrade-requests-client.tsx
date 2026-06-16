@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { SuperAdminLoadingButton } from "@/components/super-admin/super-admin-loading-action";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -46,13 +46,14 @@ const STATUS_PILL: Record<UpgradeRequestRow["status"], string> = {
 export function UpgradeRequestsClient({ initialRows }: UpgradeRequestsClientProps) {
   const router = useRouter();
   const [rows, setRows] = useState<UpgradeRequestRow[]>(initialRows);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const pending = rows.filter((r) => r.status === "pending");
   const resolved = rows.filter((r) => r.status !== "pending");
 
   async function review(requestId: string, approve: boolean) {
-    setBusyId(requestId);
+    const key = `${requestId}:${approve ? "approve" : "reject"}`;
+    setBusyKey(key);
     try {
       const res = await fetch("/api/super-admin/upgrade-requests/review", {
         method: "POST",
@@ -88,7 +89,7 @@ export function UpgradeRequestsClient({ initialRows }: UpgradeRequestsClientProp
           : "Network error — could not reach the server."
       );
     } finally {
-      setBusyId(null);
+      setBusyKey(null);
     }
   }
 
@@ -98,7 +99,7 @@ export function UpgradeRequestsClient({ initialRows }: UpgradeRequestsClientProp
         title={`Pending (${pending.length})`}
         empty="No pending upgrade requests."
         rows={pending}
-        busyId={busyId}
+        busyKey={busyKey}
         showActions
         onReview={review}
       />
@@ -106,7 +107,7 @@ export function UpgradeRequestsClient({ initialRows }: UpgradeRequestsClientProp
         title={`Resolved (${resolved.length})`}
         empty="No previously reviewed requests yet."
         rows={resolved}
-        busyId={busyId}
+        busyKey={busyKey}
         showActions={false}
         onReview={review}
       />
@@ -118,14 +119,14 @@ function Section({
   title,
   empty,
   rows,
-  busyId,
+  busyKey,
   showActions,
   onReview,
 }: {
   title: string;
   empty: string;
   rows: UpgradeRequestRow[];
-  busyId: string | null;
+  busyKey: string | null;
   showActions: boolean;
   onReview: (id: string, approve: boolean) => void;
 }) {
@@ -198,7 +199,7 @@ function Section({
                 {showActions ? (
                   <ActionButtons
                     requestId={row.id}
-                    busy={busyId === row.id}
+                    busyKey={busyKey}
                     onReview={onReview}
                     fullWidth
                   />
@@ -254,7 +255,7 @@ function Section({
                       <td className="px-4 py-3 text-right">
                         <ActionButtons
                           requestId={row.id}
-                          busy={busyId === row.id}
+                          busyKey={busyKey}
                           onReview={onReview}
                         />
                       </td>
@@ -291,38 +292,43 @@ function Td({ children }: { children: React.ReactNode }) {
 
 function ActionButtons({
   requestId,
-  busy,
+  busyKey,
   onReview,
   fullWidth = false,
 }: {
   requestId: string;
-  busy: boolean;
+  busyKey: string | null;
   onReview: (id: string, approve: boolean) => void;
   fullWidth?: boolean;
 }) {
+  const approveBusy = busyKey === `${requestId}:approve`;
+  const rejectBusy = busyKey === `${requestId}:reject`;
+  const rowBusy = busyKey?.startsWith(`${requestId}:`) ?? false;
+
   return (
     <div
       className={`mt-4 flex gap-2 md:mt-0 md:justify-end ${fullWidth ? "" : ""}`}
     >
-      <button
+      <SuperAdminLoadingButton
         type="button"
         onClick={() => onReview(requestId, true)}
-        disabled={busy}
+        disabled={rowBusy}
+        loading={approveBusy}
+        loadingLabel="Approving…"
         className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 ${fullWidth ? "flex-1" : ""}`}
       >
-        {busy ? (
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-        ) : null}
         Approve
-      </button>
-      <button
+      </SuperAdminLoadingButton>
+      <SuperAdminLoadingButton
         type="button"
         onClick={() => onReview(requestId, false)}
-        disabled={busy}
+        disabled={rowBusy}
+        loading={rejectBusy}
+        loadingLabel="Rejecting…"
         className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:bg-zinc-900 dark:text-red-400 dark:hover:bg-red-950/30 ${fullWidth ? "flex-1" : ""}`}
       >
         Reject
-      </button>
+      </SuperAdminLoadingButton>
     </div>
   );
 }

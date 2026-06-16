@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
 import { parseSchoolDashboardRpc } from "@/lib/dashboard/parse-school-dashboard-rpc";
 import { resolveSchoolPrimaryHex } from "@/lib/school-primary-color";
+import { checkIsSuperAdmin } from "@/lib/super-admin";
+import { readSuperAdminWorkspaceSchoolId } from "@/lib/super-admin/workspace-school";
 
 export interface ResolvedSchoolDisplay {
   schoolId: string;
@@ -79,6 +81,22 @@ async function fetchSchoolDisplayViaAdmin(
 
   if (!schoolId) return null;
 
+  return fetchSchoolDisplayById(schoolId);
+}
+
+async function fetchSchoolDisplayById(
+  schoolId: string
+): Promise<ResolvedSchoolDisplay | null> {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!key) return null;
+
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch {
+    return null;
+  }
+
   const { data: school } = await admin
     .from("schools")
     .select("name, currency, logo_url, updated_at, primary_color")
@@ -92,14 +110,19 @@ async function fetchSchoolDisplayViaAdmin(
     updated_at: string;
     primary_color: string | null;
   } | null;
-  const name = row?.name?.trim() ?? "";
+
+  if (!row) return null;
+
+  const name = row.name?.trim() ?? "";
+  if (!name) return null;
+
   return {
     schoolId,
     name,
-    currency: row?.currency ?? null,
-    logo_url: row?.logo_url ?? null,
-    logo_version: logoVersionFromRow(row?.updated_at),
-    primary_color: resolveSchoolPrimaryHex(row?.primary_color),
+    currency: row.currency ?? null,
+    logo_url: row.logo_url ?? null,
+    logo_version: logoVersionFromRow(row.updated_at),
+    primary_color: resolveSchoolPrimaryHex(row.primary_color),
   };
 }
 
@@ -111,6 +134,12 @@ export async function resolveSchoolDisplay(
   userId: string,
   supabase: SupabaseClient<Database>
 ): Promise<ResolvedSchoolDisplay | null> {
+  if (await checkIsSuperAdmin(supabase, userId)) {
+    const workspaceSchoolId = await readSuperAdminWorkspaceSchoolId();
+    if (!workspaceSchoolId) return null;
+    return fetchSchoolDisplayById(workspaceSchoolId);
+  }
+
   const adminFirst = await fetchSchoolDisplayViaAdmin(userId);
   if (adminFirst && adminFirst.name.length > 0) {
     return adminFirst;

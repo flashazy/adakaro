@@ -19,11 +19,15 @@ export default async function SuperAdminGroupLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, role")
+    .select("full_name, role, avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
-  const row = profile as { full_name: string; role: string } | null;
+  const row = profile as {
+    full_name: string;
+    role: string;
+    avatar_url: string | null;
+  } | null;
   if (!(await checkIsSuperAdmin(supabase, user.id))) {
     redirect("/dashboard");
   }
@@ -38,7 +42,11 @@ export default async function SuperAdminGroupLayout({
       >
         Skip to content
       </a>
-      <DashboardHeader fullName={fullName} isSuperAdmin />
+      <DashboardHeader
+        fullName={fullName}
+        isSuperAdmin
+        avatarUrl={row?.avatar_url ?? null}
+      />
       <div id="page-content">{children}</div>
     </>
   );

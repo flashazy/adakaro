@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import { SuperAdminNavLink } from "@/components/super-admin/super-admin-loading-action";
 
 interface HealthStats {
   open: number;
@@ -45,12 +45,13 @@ export default function SuperAdminHealthCenterPage() {
               health.
             </p>
           </div>
-          <Link
+          <SuperAdminNavLink
             href="/super-admin"
+            loadingLabel="Loading…"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             Back to Super Admin
-          </Link>
+          </SuperAdminNavLink>
         </div>
       </header>
 

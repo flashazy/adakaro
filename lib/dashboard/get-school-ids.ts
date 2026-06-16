@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { getSchoolIdForUser } from "@/lib/dashboard/get-school-id";
+import { checkIsSuperAdmin } from "@/lib/super-admin";
+import { readSuperAdminWorkspaceSchoolId } from "@/lib/super-admin/workspace-school";
 
 /**
  * All school IDs the current user can access (memberships + schools they created).
@@ -10,6 +12,11 @@ export async function getSchoolIdsForAdminUser(
   supabase: SupabaseClient<Database>,
   userId: string
 ): Promise<string[]> {
+  if (await checkIsSuperAdmin(supabase, userId)) {
+    const workspaceId = await readSuperAdminWorkspaceSchoolId();
+    return workspaceId ? [workspaceId] : [];
+  }
+
   const { data, error } = await supabase.rpc("user_school_ids");
 
   if (!error && data != null) {

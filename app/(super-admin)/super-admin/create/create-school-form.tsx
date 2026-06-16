@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { SuperAdminLoadingButton, SuperAdminNavLink } from "@/components/super-admin/super-admin-loading-action";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SchoolCurrencySelect } from "@/components/SchoolCurrencySelect";
@@ -194,19 +194,22 @@ export function CreateSchoolForm() {
       ) : null}
 
       <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-center dark:border-zinc-800">
-        <Link
+        <SuperAdminNavLink
           href="/super-admin"
+          loadingLabel="Loading…"
           className="inline-flex justify-center rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
           Cancel
-        </Link>
-        <button
+        </SuperAdminNavLink>
+        <SuperAdminLoadingButton
           type="submit"
           disabled={pending}
-          className="inline-flex justify-center rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          loading={pending}
+          loadingLabel="Creating…"
+          className="inline-flex justify-center rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-80"
         >
-          {pending ? "Creating…" : "Create school"}
-        </button>
+          Create school
+        </SuperAdminLoadingButton>
       </div>
     </form>
   );

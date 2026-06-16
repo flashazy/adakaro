@@ -4,6 +4,7 @@ import type { Database } from "@/types/supabase";
 
 const CAPTURE_SESSION_COOKIE = "cc_session";
 const SCHOOL_DASHBOARD_MODE_COOKIE = "school_dashboard_mode";
+const SUPER_ADMIN_WORKSPACE_SCHOOL_COOKIE = "super_admin_workspace_school_id";
 
 function isSupabaseAuthCookieName(name: string): boolean {
   return (
@@ -38,6 +39,11 @@ function purgeSessionCookies(
   });
   response.cookies.set(
     SCHOOL_DASHBOARD_MODE_COOKIE,
+    "",
+    expiredCookieOptions()
+  );
+  response.cookies.set(
+    SUPER_ADMIN_WORKSPACE_SCHOOL_COOKIE,
     "",
     expiredCookieOptions()
   );

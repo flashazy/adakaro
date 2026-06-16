@@ -37,9 +37,10 @@ export function NavLinkWithLoading({
   href,
   className,
   children,
+  loadingLabel,
   onClick,
   ...rest
-}: ComponentProps<typeof Link>) {
+}: ComponentProps<typeof Link> & { loadingLabel?: React.ReactNode }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -67,12 +68,16 @@ export function NavLinkWithLoading({
       }}
     >
       {isPending ? (
-        <Loader2
-          className="mr-1.5 inline-block h-3.5 w-3.5 shrink-0 animate-spin align-middle text-current"
-          aria-hidden
-        />
-      ) : null}
-      {children}
+        <>
+          <Loader2
+            className="h-3.5 w-3.5 shrink-0 animate-spin align-middle text-current"
+            aria-hidden
+          />
+          <span>{loadingLabel ?? children}</span>
+        </>
+      ) : (
+        children
+      )}
     </Link>
   );
 }

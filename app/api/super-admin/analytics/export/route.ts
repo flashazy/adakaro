@@ -9,6 +9,7 @@ import {
   loadSuperAdminAnalytics,
   parsePresetToRange,
 } from "@/lib/analytics";
+import { formatAnalyticsCurrency } from "@/lib/analytics-format";
 
 export const dynamic = "force-dynamic";
 
@@ -112,11 +113,13 @@ export async function POST(request: NextRequest) {
     body: [
       ["New schools (range)", String(s.totalSchools)],
       ["New students (range)", String(s.totalStudents)],
-      ["Revenue (range)", String(s.totalRevenue)],
+      ["Revenue (range)", formatAnalyticsCurrency(s.totalRevenue)],
       ["Active schools (platform)", String(s.activeSchools)],
+      ["Setup schools (platform)", String(s.setupSchools)],
       ["Suspended schools (platform)", String(s.suspendedSchools)],
       ["Total schools (platform)", String(s.totalSchoolsPlatform)],
       ["Total students (platform)", String(s.totalStudentsPlatform)],
+      ["Platform health", `${payload.platformHealth.score}/100 (${payload.platformHealth.status})`],
       [
         "Growth % vs prior (schools / students / revenue)",
         `${s.growthPercent.schools ?? "—"} / ${s.growthPercent.students ?? "—"} / ${s.growthPercent.revenue ?? "—"}`,
@@ -136,7 +139,7 @@ export async function POST(request: NextRequest) {
       t.monthLabel,
       String(t.newSchools),
       String(t.newStudents),
-      String(t.revenue),
+      formatAnalyticsCurrency(t.revenue),
     ]),
     styles: { fontSize: 8 },
     headStyles: { fillColor: [79, 70, 229] },
@@ -153,7 +156,10 @@ export async function POST(request: NextRequest) {
   autoTable(doc, {
     startY: y,
     head: [["School (revenue in range)", "Amount"]],
-    body: payload.revenueBySchoolTop10.map((r) => [r.name, String(r.revenue)]),
+    body: payload.revenueBySchoolTop10.map((r) => [
+      r.name,
+      formatAnalyticsCurrency(r.revenue),
+    ]),
     styles: { fontSize: 9 },
     headStyles: { fillColor: [79, 70, 229] },
   });

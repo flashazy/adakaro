@@ -23,6 +23,7 @@ import {
   healthDistributionRows,
 } from "@/lib/super-admin/dashboard-insights";
 import { SchoolSummaryDrawer } from "@/components/super-admin/school-summary-drawer";
+import { SuperAdminLoadingButton } from "@/components/super-admin/super-admin-loading-action";
 import {
   growthOpportunityBadge,
   healthOverviewCallout,
@@ -60,6 +61,7 @@ import {
   SaTooltip,
   SaTopSchoolBadge,
 } from "@/components/super-admin/super-admin-dashboard-ui";
+import { enterSuperAdminSchoolWorkspace } from "@/lib/super-admin/open-school-workspace.client";
 import type { SuperAdminSchoolRow } from "@/lib/super-admin/types";
 import { cn } from "@/lib/utils";
 
@@ -160,6 +162,14 @@ function SchoolActionsMenu({
     onClick: () => {
       setOpen(false);
       onView();
+    },
+  });
+
+  items.push({
+    label: "Open school workspace",
+    onClick: () => {
+      setOpen(false);
+      void enterSuperAdminSchoolWorkspace(school.id);
     },
   });
 
@@ -1000,9 +1010,11 @@ export function SchoolsLifecycleDashboard({
               >
                 Cancel
               </button>
-              <button
+              <SuperAdminLoadingButton
                 type="button"
                 disabled={busyId === archiveTarget.id}
+                loading={busyId === archiveTarget.id}
+                loadingLabel="Archiving…"
                 onClick={async () => {
                   await runLifecycle(archiveTarget.id, "archive");
                   setArchiveTarget(null);
@@ -1010,7 +1022,7 @@ export function SchoolsLifecycleDashboard({
                 className={cn(saBtnArchiveOutline, "flex-1 px-4 py-2 text-sm")}
               >
                 Archive
-              </button>
+              </SuperAdminLoadingButton>
             </div>
           </div>
         </div>
@@ -1032,9 +1044,11 @@ export function SchoolsLifecycleDashboard({
               >
                 Cancel
               </button>
-              <button
+              <SuperAdminLoadingButton
                 type="button"
                 disabled={busyId === restoreTarget.id}
+                loading={busyId === restoreTarget.id}
+                loadingLabel="Restoring…"
                 onClick={async () => {
                   await runLifecycle(restoreTarget.id, "restore");
                   setRestoreTarget(null);
@@ -1042,7 +1056,7 @@ export function SchoolsLifecycleDashboard({
                 className={cn(saBtnPrimary, "flex-1")}
               >
                 Restore
-              </button>
+              </SuperAdminLoadingButton>
             </div>
           </div>
         </div>
@@ -1114,9 +1128,11 @@ export function SchoolsLifecycleDashboard({
                   >
                     Go back
                   </button>
-                  <button
+                  <SuperAdminLoadingButton
                     type="button"
                     disabled={busyId === deleteTarget.id}
+                    loading={busyId === deleteTarget.id}
+                    loadingLabel="Deleting…"
                     onClick={async () => {
                       await runLifecycle(deleteTarget.id, "delete", "DELETE");
                       setDeleteTarget(null);
@@ -1125,7 +1141,7 @@ export function SchoolsLifecycleDashboard({
                     className={cn(saBtnDangerOutline, "flex-1")}
                   >
                     Delete permanently
-                  </button>
+                  </SuperAdminLoadingButton>
                 </div>
               </>
             )}

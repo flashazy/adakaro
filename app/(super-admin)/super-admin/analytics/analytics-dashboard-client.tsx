@@ -1,38 +1,72 @@
 'use client';
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
 import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-  BarChart,
-  Bar,
-  AreaChart,
-  Area,
-} from "recharts";
+  SuperAdminLoadingButton,
+  SuperAdminNavLink,
+} from "@/components/super-admin/super-admin-loading-action";
+import { formatAnalyticsCurrency } from "@/lib/analytics-format";
+import {
+  buildCumulativeGrowthInsight,
+  buildRevenueBySchoolInsight,
+  buildRevenueChartInsight,
+  buildSchoolChartInsight,
+  buildSchoolStatusInsight,
+  buildStudentDistributionInsight,
+  buildStudentPeriodInsight,
+  formatAnalyticsUpdatedAt,
+} from "@/lib/analytics-chart-insights";
 import type {
   AnalyticsPreset,
   MonthlyTrendRow,
   SuperAdminAnalyticsPayload,
-  TopSchoolRow,
 } from "@/lib/analytics-types";
-import { DEFAULT_SCHOOL_CURRENCY, formatCurrency } from "@/lib/currency";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  AnalyticsEmptyState,
+  AnalyticsSkeleton,
+  ChartCard,
+  CountTooltip,
+  DataConfidenceFooter,
+  EmailReportsCard,
+  ExecutiveInsightsBar,
+  ExecutiveSummaryCard,
+  KpiCard,
+  PlatformHealthCard,
+  PlatformSnapshotCard,
+  RevenueTooltip,
+  TopSchoolsTable,
+} from "./analytics-dashboard-ui";
 
 const PIE_ACTIVE = "#10b981";
 const PIE_SUSPENDED = "#f97316";
 const CHART_SCHOOLS = "#6366f1";
 const CHART_STUDENTS = "#0ea5e9";
 const CHART_REVENUE = "#a855f7";
-const DIST_COLORS = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#94a3b8"];
+const DIST_COLORS = [
+  "#6366f1",
+  "#0ea5e9",
+  "#10b981",
+  "#f59e0b",
+  "#ec4899",
+  "#94a3b8",
+];
 
 function utcStartOfDay(d: Date): Date {
   return new Date(
@@ -114,7 +148,11 @@ function parsePresetToRange(
   };
 }
 
-type ChartView = "overview" | "revenueBySchool" | "studentDistribution" | "growthArea";
+type ChartView =
+  | "overview"
+  | "revenueBySchool"
+  | "studentDistribution"
+  | "growthArea";
 
 interface ReportPrefs {
   id: string | null;
@@ -132,182 +170,21 @@ function formatAxisShort(n: number) {
   return String(Math.round(n));
 }
 
-function SummaryCardSkeleton() {
+function hasAnalyticsData(data: SuperAdminAnalyticsPayload): boolean {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-zinc-700" />
-      <div className="mt-3 h-8 w-20 animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
-    </div>
+    data.summary.totalSchoolsPlatform > 0 ||
+    data.summary.totalStudentsPlatform > 0 ||
+    data.summary.totalRevenue > 0 ||
+    data.monthlyTrends.some(
+      (t) => t.newSchools > 0 || t.newStudents > 0 || t.revenue > 0
+    )
   );
-}
-
-function ChartSkeleton({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h3>
-      <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">{subtitle}</p>
-      <div
-        className="mt-4 h-64 animate-pulse rounded-lg bg-slate-100 dark:bg-zinc-800/80"
-        aria-hidden
-      />
-    </div>
-  );
-}
-
-function AnalyticsSkeleton() {
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-2">
-          <div className="h-8 w-48 animate-pulse rounded bg-slate-200 dark:bg-zinc-700" />
-          <div className="h-4 w-72 max-w-full animate-pulse rounded bg-slate-100 dark:bg-zinc-800" />
-        </div>
-        <div className="h-9 w-28 animate-pulse rounded-lg bg-slate-200 dark:bg-zinc-700" />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCardSkeleton />
-        <SummaryCardSkeleton />
-        <SummaryCardSkeleton />
-        <SummaryCardSkeleton />
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ChartSkeleton title="School status" subtitle="…" />
-        <ChartSkeleton title="Trends" subtitle="…" />
-      </div>
-    </div>
-  );
-}
-
-function RevenueTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: { value: number; name?: string; color?: string }[];
-  label?: string;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
-      {label && (
-        <p className="mb-1 text-xs font-medium text-slate-500 dark:text-zinc-400">{label}</p>
-      )}
-      {payload.map((entry, i) => (
-        <p key={i} className="font-semibold" style={{ color: entry.color }}>
-          {entry.name}: {formatCurrency(entry.value, DEFAULT_SCHOOL_CURRENCY)}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function CountTooltip({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: { value: number; name?: string; color?: string }[];
-  label?: string;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
-      {label && (
-        <p className="mb-1 text-xs font-medium text-slate-500 dark:text-zinc-400">{label}</p>
-      )}
-      {payload.map((entry, i) => (
-        <p key={i} className="font-semibold" style={{ color: entry.color }}>
-          {entry.name}: {entry.value}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function TopSchoolsTable({
-  title,
-  rows,
-  emphasize,
-  subtitle,
-}: {
-  title: string;
-  rows: TopSchoolRow[];
-  emphasize: "students" | "revenue";
-  subtitle?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h3>
-      <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
-        {subtitle ?? "Top 5 across the platform"}
-      </p>
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
-              <th className="py-2 pr-3">School</th>
-              <th className="py-2 pr-3">Students</th>
-              <th className="py-2">Revenue</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="py-6 text-center text-slate-500 dark:text-zinc-500">
-                  No data yet
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.schoolId}>
-                  <td className="max-w-[12rem] truncate py-2 pr-3 font-medium text-slate-900 dark:text-white">
-                    <Link
-                      href={`/super-admin/schools/${row.schoolId}`}
-                      className="text-indigo-600 hover:underline dark:text-indigo-400"
-                    >
-                      {row.name}
-                    </Link>
-                  </td>
-                  <td
-                    className={`py-2 pr-3 tabular-nums text-slate-700 dark:text-zinc-300 ${
-                      emphasize === "students"
-                        ? "font-semibold text-indigo-600 dark:text-indigo-400"
-                        : ""
-                    }`}
-                  >
-                    {row.studentCount}
-                  </td>
-                  <td
-                    className={`py-2 tabular-nums text-slate-700 dark:text-zinc-300 ${
-                      emphasize === "revenue"
-                        ? "font-semibold text-indigo-600 dark:text-indigo-400"
-                        : ""
-                    }`}
-                  >
-                    {formatCurrency(row.totalRevenue, DEFAULT_SCHOOL_CURRENCY)}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function growthLabel(v: number | null): string {
-  if (v === null) return "—";
-  const sign = v > 0 ? "+" : "";
-  return `${sign}${v}%`;
 }
 
 export function AnalyticsDashboardClient() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"csv" | "pdf" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SuperAdminAnalyticsPayload | null>(null);
 
@@ -329,6 +206,7 @@ export function AnalyticsDashboardClient() {
     export_to_email_enabled: false,
   });
   const [recipientInput, setRecipientInput] = useState("");
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
 
   const range = parsePresetToRange(
     preset,
@@ -350,11 +228,14 @@ export function AnalyticsDashboardClient() {
       const res = await fetch(`/api/super-admin/analytics?${params}`, {
         credentials: "same-origin",
       });
-      const body = (await res.json()) as SuperAdminAnalyticsPayload & { error?: string };
+      const body = (await res.json()) as SuperAdminAnalyticsPayload & {
+        error?: string;
+      };
       if (!res.ok) {
         throw new Error(body.error || "Failed to load analytics.");
       }
       setData(body as SuperAdminAnalyticsPayload);
+      setLastRefreshedAt(new Date().toISOString());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load.");
       setData(null);
@@ -455,7 +336,8 @@ export function AnalyticsDashboardClient() {
   }
 
   async function runExport(format: "csv" | "pdf") {
-    setExporting(true);
+    if (exportFormat) return;
+    setExportFormat(format);
     try {
       const res = await fetch("/api/super-admin/analytics/export", {
         method: "POST",
@@ -475,7 +357,8 @@ export function AnalyticsDashboardClient() {
       const blob = await res.blob();
       const cd = res.headers.get("Content-Disposition");
       const nameMatch = cd?.match(/filename="([^"]+)"/);
-      const filename = nameMatch?.[1] ?? `analytics.${format === "pdf" ? "pdf" : "csv"}`;
+      const filename =
+        nameMatch?.[1] ?? `analytics.${format === "pdf" ? "pdf" : "csv"}`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -485,7 +368,7 @@ export function AnalyticsDashboardClient() {
     } catch (e) {
       alert(e instanceof Error ? e.message : "Export failed.");
     } finally {
-      setExporting(false);
+      setExportFormat(null);
     }
   }
 
@@ -499,6 +382,26 @@ export function AnalyticsDashboardClient() {
     setRecipientInput("");
   }
 
+  const trendPrevMaps = useMemo(() => {
+    if (!data) {
+      return {
+        schools: new Map<string, number>(),
+        students: new Map<string, number>(),
+        revenue: new Map<string, number>(),
+      };
+    }
+    const schools = new Map<string, number>();
+    const students = new Map<string, number>();
+    const revenue = new Map<string, number>();
+    data.monthlyTrends.forEach((row, i) => {
+      const prev = data.monthlyTrends[i - 1];
+      schools.set(row.monthLabel, prev?.newSchools ?? 0);
+      students.set(row.monthLabel, prev?.newStudents ?? 0);
+      revenue.set(row.monthLabel, prev?.revenue ?? 0);
+    });
+    return { schools, students, revenue };
+  }, [data]);
+
   if (!mounted || loading) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -510,7 +413,9 @@ export function AnalyticsDashboardClient() {
   if (error || !data) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <p className="text-sm text-red-600 dark:text-red-400">{error || "Something went wrong."}</p>
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {error || "Something went wrong."}
+        </p>
         <button
           type="button"
           onClick={() => void load()}
@@ -522,7 +427,17 @@ export function AnalyticsDashboardClient() {
     );
   }
 
-  const { summary, monthlyTrends, topSchoolsByStudents, topSchoolsByRevenue } = data;
+  const showEmpty = !hasAnalyticsData(data);
+  const {
+    summary,
+    monthlyTrends,
+    topSchoolsByStudents,
+    topSchoolsByRevenue,
+    platformSnapshot,
+    platformHealth,
+    executiveInsights,
+  } = data;
+
   const statusPie = [
     { name: "Active", value: summary.activeSchools, fill: PIE_ACTIVE },
     { name: "Suspended", value: summary.suspendedSchools, fill: PIE_SUSPENDED },
@@ -563,17 +478,20 @@ export function AnalyticsDashboardClient() {
     <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Analytics</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            Analytics
+          </h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-            Platform metrics and trends for the selected period.
+            Executive platform metrics and trends for the selected period.
           </p>
         </div>
-        <Link
+        <SuperAdminNavLink
           href="/super-admin"
+          loadingLabel="Loading…"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
           ← Dashboard
-        </Link>
+        </SuperAdminNavLink>
       </div>
 
       <div className="sticky top-0 z-20 flex flex-wrap items-end gap-3 border-b border-slate-200 bg-slate-50/95 pb-4 pt-1 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
@@ -634,22 +552,26 @@ export function AnalyticsDashboardClient() {
           </select>
         </label>
         <div className="ml-auto flex flex-wrap gap-2">
-          <button
+          <SuperAdminLoadingButton
             type="button"
-            disabled={exporting}
+            disabled={exportFormat != null}
+            loading={exportFormat === "csv"}
+            loadingLabel="Exporting…"
             onClick={() => void runExport("csv")}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 disabled:cursor-not-allowed disabled:opacity-80 dark:border-zinc-600 dark:text-zinc-200"
           >
-            {exporting ? "…" : "Export CSV"}
-          </button>
-          <button
+            Export CSV
+          </SuperAdminLoadingButton>
+          <SuperAdminLoadingButton
             type="button"
-            disabled={exporting}
+            disabled={exportFormat != null}
+            loading={exportFormat === "pdf"}
+            loadingLabel="Exporting…"
             onClick={() => void runExport("pdf")}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 disabled:cursor-not-allowed disabled:opacity-80 dark:border-zinc-600 dark:text-zinc-200"
           >
             Export PDF
-          </button>
+          </SuperAdminLoadingButton>
         </div>
       </div>
 
@@ -657,473 +579,483 @@ export function AnalyticsDashboardClient() {
         Period: {rangeLabel} · Buckets: {data.meta.bucketGranularity}
       </p>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-            New schools
-          </p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900 dark:text-white">
-            {summary.totalSchools}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            vs prior: {growthLabel(summary.growthPercent.schools)}
-          </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-            New students
-          </p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900 dark:text-white">
-            {summary.totalStudents}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            vs prior: {growthLabel(summary.growthPercent.students)}
-          </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-            Revenue (range)
-          </p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900 dark:text-white">
-            {formatCurrency(summary.totalRevenue, DEFAULT_SCHOOL_CURRENCY)}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            vs prior: {growthLabel(summary.growthPercent.revenue)}
-          </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-            Active schools
-          </p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-            {summary.activeSchools}
-          </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-500">
-            {summary.suspendedSchools} suspended · {summary.totalSchoolsPlatform} total schools ·{" "}
-            {summary.totalStudentsPlatform} students (platform)
-          </p>
-        </div>
+      <ExecutiveSummaryCard
+        payload={data}
+        generatedAtIso={lastRefreshedAt}
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <KpiCard
+          label="New schools"
+          value={summary.totalSchools.toLocaleString("en-US")}
+          growthPercent={summary.growthPercent.schools}
+          periodDelta={summary.periodComparison.schoolsDelta}
+        />
+        <KpiCard
+          label="New students"
+          value={summary.totalStudents.toLocaleString("en-US")}
+          growthPercent={summary.growthPercent.students}
+          periodDelta={summary.periodComparison.studentsDelta}
+        />
+        <KpiCard
+          label="Revenue"
+          value={formatAnalyticsCurrency(summary.totalRevenue)}
+          growthPercent={summary.growthPercent.revenue}
+          periodDelta={summary.periodComparison.revenueDelta}
+          deltaKind="currency"
+        />
+        <KpiCard
+          label="Active schools"
+          value={summary.activeSchools.toLocaleString("en-US")}
+          growthPercent={summary.growthPercent.schools}
+          footer={`${summary.activeRatePercent}% active · ${summary.suspendedSchools} suspended · ${summary.totalSchoolsPlatform} total schools`}
+        />
+        <PlatformHealthCard health={platformHealth} />
       </div>
 
-      {chartView === "overview" ? (
+      <ExecutiveInsightsBar insights={executiveInsights} />
+
+      {showEmpty ? (
+        <AnalyticsEmptyState />
+      ) : (
         <>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">School status</h3>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">Active vs suspended (platform)</p>
-              <div className="mt-4 h-64">
-                {statusTotal > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={statusPie}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={52}
-                        outerRadius={88}
-                        paddingAngle={2}
-                        strokeWidth={0}
-                      >
-                        {statusPie.map((entry) => (
-                          <Cell key={entry.name} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.length) return null;
-                          const row = payload[0];
-                          const v = typeof row?.value === "number" ? row.value : 0;
-                          const n = typeof row?.name === "string" ? row.name : "";
-                          return (
-                            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-md dark:border-zinc-700 dark:bg-zinc-800">
-                              <p className="font-medium text-slate-900 dark:text-white">{n}</p>
-                              <p className="tabular-nums text-slate-600 dark:text-zinc-300">{v} schools</p>
-                            </div>
-                          );
-                        }}
-                      />
-                      <Legend
-                        verticalAlign="bottom"
-                        height={28}
-                        formatter={(value: string) => (
-                          <span className="text-xs text-slate-600 dark:text-zinc-400">{value}</span>
-                        )}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-slate-400 dark:text-zinc-500">
-                    No schools yet
+          <PlatformSnapshotCard snapshot={platformSnapshot} />
+
+          {chartView === "overview" ? (
+            <>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <ChartCard
+                  title="School status"
+                  subtitle="Active vs suspended (platform)"
+                  exportSlug="school-status"
+                  isEmpty={statusTotal === 0}
+                  emptyMessage="No schools yet"
+                  insightFooter={buildSchoolStatusInsight(
+                    summary.activeSchools,
+                    summary.suspendedSchools
+                  )}
+                >
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={statusPie}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={52}
+                          outerRadius={88}
+                          paddingAngle={2}
+                          strokeWidth={0}
+                        >
+                          {statusPie.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const row = payload[0];
+                            const v =
+                              typeof row?.value === "number" ? row.value : 0;
+                            const n =
+                              typeof row?.name === "string" ? row.name : "";
+                            return (
+                              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-md dark:border-zinc-700 dark:bg-zinc-800">
+                                <p className="font-medium text-slate-900 dark:text-white">
+                                  {n}
+                                </p>
+                                <p className="tabular-nums text-slate-600 dark:text-zinc-300">
+                                  {v} schools
+                                </p>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Legend
+                          verticalAlign="bottom"
+                          height={28}
+                          formatter={(value: string) => (
+                            <span className="text-xs text-slate-600 dark:text-zinc-400">
+                              {value}
+                            </span>
+                          )}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
                   </div>
-                )}
-              </div>
-            </div>
+                </ChartCard>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">New schools</h3>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">In selected period</p>
-              <div className="mt-4 h-64">
+                <ChartCard
+                  title="New schools"
+                  subtitle="In selected period"
+                  exportSlug="new-schools-trend"
+                  isEmpty={schoolsChartData.every((d) => d.newSchools === 0)}
+                  insightFooter={buildSchoolChartInsight(monthlyTrends)}
+                >
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={schoolsChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 10, fill: "#94a3b8" }}
+                          tickLine={false}
+                          interval={0}
+                          angle={-35}
+                          textAnchor="end"
+                          height={56}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          tick={{ fontSize: 11, fill: "#94a3b8" }}
+                          tickLine={false}
+                          width={36}
+                        />
+                        <Tooltip
+                          content={({ active, payload, label }) => (
+                            <CountTooltip
+                              active={active}
+                              payload={payload}
+                              label={label}
+                              prevValue={
+                                typeof label === "string"
+                                  ? trendPrevMaps.schools.get(label)
+                                  : typeof label === "number"
+                                    ? undefined
+                                    : undefined
+                              }
+                            />
+                          )}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="newSchools"
+                          name="New schools"
+                          stroke={CHART_SCHOOLS}
+                          strokeWidth={2}
+                          dot={{ r: 3 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+              </div>
+
+              <div className="grid gap-6 lg:grid-cols-1">
+                <ChartCard
+                  title="New students"
+                  subtitle="In selected period"
+                  exportSlug="new-students-trend"
+                  isEmpty={studentsChartData.every((d) => d.newStudents === 0)}
+                  insightFooter={buildStudentPeriodInsight(summary.totalStudents)}
+                >
+                  <div className="h-64 w-full min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={studentsChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 10, fill: "#94a3b8" }}
+                          tickLine={false}
+                          interval={0}
+                          angle={-35}
+                          textAnchor="end"
+                          height={56}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          tickFormatter={formatAxisShort}
+                          tick={{ fontSize: 11, fill: "#94a3b8" }}
+                          tickLine={false}
+                          width={44}
+                        />
+                        <Tooltip
+                          content={({ active, payload, label }) => (
+                            <CountTooltip
+                              active={active}
+                              payload={payload}
+                              label={label}
+                              prevValue={
+                                typeof label === "string"
+                                  ? trendPrevMaps.students.get(label)
+                                  : undefined
+                              }
+                            />
+                          )}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="newStudents"
+                          name="New students"
+                          stroke={CHART_STUDENTS}
+                          strokeWidth={2}
+                          dot={{ r: 3 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+
+                <ChartCard
+                  title="Revenue"
+                  subtitle="Completed payments in period (TSh)"
+                  exportSlug="revenue-trend"
+                  isEmpty={revenueChartData.every((d) => d.revenue === 0)}
+                  insightFooter={buildRevenueChartInsight(monthlyTrends)}
+                >
+                  <div className="h-64 w-full min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={revenueChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 10, fill: "#94a3b8" }}
+                          tickLine={false}
+                          interval={0}
+                          angle={-35}
+                          textAnchor="end"
+                          height={56}
+                        />
+                        <YAxis
+                          tickFormatter={formatAxisShort}
+                          tick={{ fontSize: 11, fill: "#94a3b8" }}
+                          tickLine={false}
+                          width={48}
+                        />
+                        <Tooltip
+                          content={({ active, payload, label }) => (
+                            <RevenueTooltip
+                              active={active}
+                              payload={payload}
+                              label={label}
+                              prevValue={
+                                typeof label === "string"
+                                  ? trendPrevMaps.revenue.get(label)
+                                  : undefined
+                              }
+                            />
+                          )}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="revenue"
+                          name="Revenue"
+                          stroke={CHART_REVENUE}
+                          strokeWidth={2}
+                          dot={{ r: 3 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+              </div>
+            </>
+          ) : null}
+
+          {chartView === "revenueBySchool" ? (
+            <ChartCard
+              title="Top 10 schools by revenue"
+              subtitle="In selected date range (TSh)"
+              exportSlug="revenue-by-school"
+              isEmpty={barData.length === 0}
+              emptyMessage="No revenue in this range."
+              insightFooter={buildRevenueBySchoolInsight(
+                data.revenueBySchoolTop10
+              )}
+            >
+              <div className="h-80 w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={schoolsChartData}>
+                  <BarChart data={barData} layout="vertical" margin={{ left: 8, right: 16 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis type="number" tickFormatter={formatAxisShort} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={120}
+                      tick={{ fontSize: 10 }}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const v = payload[0]?.value;
+                        const n = typeof v === "number" ? v : Number(v);
+                        return (
+                          <div className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm shadow-md dark:border-zinc-700 dark:bg-zinc-800">
+                            {formatAnalyticsCurrency(
+                              Number.isFinite(n) ? n : 0
+                            )}
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar dataKey="revenue" fill={CHART_REVENUE} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+          ) : null}
+
+          {chartView === "studentDistribution" ? (
+            <ChartCard
+              title="Student distribution"
+              subtitle="Top 5 schools + Other (platform-wide)"
+              exportSlug="student-distribution"
+              isEmpty={distData.length === 0}
+              emptyMessage="No students yet."
+              insightFooter={buildStudentDistributionInsight(
+                data.studentDistributionPie
+              )}
+            >
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={distData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={({ name, percent }) =>
+                        `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`
+                      }
+                    >
+                      {distData.map((e, i) => (
+                        <Cell
+                          key={e.name}
+                          fill={e.fill ?? DIST_COLORS[i % DIST_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload[0];
+                        const v =
+                          typeof row?.value === "number" ? row.value : 0;
+                        const n =
+                          typeof row?.name === "string" ? row.name : "";
+                        return (
+                          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-md dark:border-zinc-700 dark:bg-zinc-800">
+                            <p className="font-medium text-slate-900 dark:text-white">
+                              {n}
+                            </p>
+                            <p className="tabular-nums text-slate-600 dark:text-zinc-300">
+                              {v.toLocaleString("en-US")} students
+                            </p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+          ) : null}
+
+          {chartView === "growthArea" ? (
+            <ChartCard
+              title="Cumulative new schools"
+              subtitle="Running total in selected period"
+              exportSlug="cumulative-school-growth"
+              isEmpty={growthData.every((d) => d.cumulative === 0)}
+              insightFooter={buildCumulativeGrowthInsight(monthlyTrends)}
+            >
+              <div className="h-80 w-full min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={growthData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis
                       dataKey="label"
                       tick={{ fontSize: 10, fill: "#94a3b8" }}
-                      tickLine={false}
-                      interval={0}
                       angle={-35}
                       textAnchor="end"
                       height={56}
                     />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} width={36} />
-                    <Tooltip content={<CountTooltip />} />
-                    <Line
+                    <YAxis allowDecimals={false} />
+                    <Tooltip
+                      content={({ active, payload, label }) => (
+                        <CountTooltip
+                          active={active}
+                          payload={payload}
+                          label={label}
+                        />
+                      )}
+                    />
+                    <Area
                       type="monotone"
-                      dataKey="newSchools"
-                      name="New schools"
+                      dataKey="cumulative"
+                      name="Cumulative schools"
                       stroke={CHART_SCHOOLS}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
+                      fill="#c7d2fe"
                     />
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-          </div>
+            </ChartCard>
+          ) : null}
 
-          <div className="grid gap-6 lg:grid-cols-1">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">New students</h3>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">In selected period</p>
-              <div className="mt-4 h-64 w-full min-w-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={studentsChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fontSize: 10, fill: "#94a3b8" }}
-                      tickLine={false}
-                      interval={0}
-                      angle={-35}
-                      textAnchor="end"
-                      height={56}
-                    />
-                    <YAxis
-                      allowDecimals={false}
-                      tickFormatter={formatAxisShort}
-                      tick={{ fontSize: 11, fill: "#94a3b8" }}
-                      tickLine={false}
-                      width={44}
-                    />
-                    <Tooltip content={<CountTooltip />} />
-                    <Line
-                      type="monotone"
-                      dataKey="newStudents"
-                      name="New students"
-                      stroke={CHART_STUDENTS}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Revenue</h3>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">Completed payments in period</p>
-              <div className="mt-4 h-64 w-full min-w-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={revenueChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fontSize: 10, fill: "#94a3b8" }}
-                      tickLine={false}
-                      interval={0}
-                      angle={-35}
-                      textAnchor="end"
-                      height={56}
-                    />
-                    <YAxis
-                      tickFormatter={formatAxisShort}
-                      tick={{ fontSize: 11, fill: "#94a3b8" }}
-                      tickLine={false}
-                      width={48}
-                    />
-                    <Tooltip content={<RevenueTooltip />} />
-                    <Line
-                      type="monotone"
-                      dataKey="revenue"
-                      name="Revenue"
-                      stroke={CHART_REVENUE}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <TopSchoolsTable
+              title="Top schools by students"
+              subtitle="Platform-wide totals · growth vs prior period"
+              rows={topSchoolsByStudents}
+              emphasize="students"
+              insights={executiveInsights}
+            />
+            <TopSchoolsTable
+              title="Top schools by revenue"
+              subtitle="Platform-wide totals · growth vs prior period"
+              rows={topSchoolsByRevenue}
+              emphasize="revenue"
+              insights={executiveInsights}
+            />
           </div>
         </>
-      ) : null}
+      )}
 
-      {chartView === "revenueBySchool" ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Top 10 schools by revenue</h3>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">In selected date range</p>
-          <div className="mt-4 h-80 w-full min-w-0">
-            {barData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData} layout="vertical" margin={{ left: 8, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis type="number" tickFormatter={formatAxisShort} />
-                  <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const v = payload[0]?.value;
-                      const n = typeof v === "number" ? v : Number(v);
-                      return (
-                        <div className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm shadow-md dark:border-zinc-700 dark:bg-zinc-800">
-                          {formatCurrency(Number.isFinite(n) ? n : 0, DEFAULT_SCHOOL_CURRENCY)}
-                        </div>
-                      );
-                    }}
-                  />
-                  <Bar dataKey="revenue" fill={CHART_REVENUE} radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-slate-500">No revenue in this range.</p>
-            )}
-          </div>
-        </div>
-      ) : null}
+      <EmailReportsCard
+        prefs={prefs}
+        prefsLoading={prefsLoading}
+        prefsSaving={prefsSaving}
+        sendBusy={sendBusy}
+        recipientInput={recipientInput}
+        onRecipientInputChange={setRecipientInput}
+        onToggleEnabled={(enabled) =>
+          setPrefs((p) => ({ ...p, enabled }))
+        }
+        onToggleExportFlag={(export_to_email_enabled) =>
+          setPrefs((p) => ({ ...p, export_to_email_enabled }))
+        }
+        onFrequencyChange={(frequency) =>
+          setPrefs((p) => ({ ...p, frequency }))
+        }
+        onDayOfWeekChange={(day_of_week) =>
+          setPrefs((p) => ({ ...p, day_of_week }))
+        }
+        onDayOfMonthChange={(day_of_month) =>
+          setPrefs((p) => ({ ...p, day_of_month }))
+        }
+        onRemoveRecipient={(email) =>
+          setPrefs((p) => ({
+            ...p,
+            recipients: p.recipients.filter((x) => x !== email),
+          }))
+        }
+        onAddRecipient={addRecipient}
+        onSave={() => void savePrefs()}
+        onSendNow={() => void sendSummaryNow()}
+      />
 
-      {chartView === "studentDistribution" ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Student distribution</h3>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">Top 5 schools + Other (platform-wide)</p>
-          <div className="mt-4 h-80">
-            {distData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={distData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label={({ name, percent }) =>
-                      `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`
-                    }
-                  >
-                    {distData.map((e, i) => (
-                      <Cell key={e.name} fill={e.fill ?? DIST_COLORS[i % DIST_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-slate-500">No students yet.</p>
-            )}
-          </div>
-        </div>
-      ) : null}
-
-      {chartView === "growthArea" ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Cumulative new schools</h3>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">Running total in selected period</p>
-          <div className="mt-4 h-80 w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={growthData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  angle={-35}
-                  textAnchor="end"
-                  height={56}
-                />
-                <YAxis allowDecimals={false} />
-                <Tooltip content={<CountTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="cumulative"
-                  name="Cumulative schools"
-                  stroke={CHART_SCHOOLS}
-                  fill="#c7d2fe"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <TopSchoolsTable
-          title="Top schools by students"
-          subtitle="Platform-wide totals"
-          rows={topSchoolsByStudents}
-          emphasize="students"
-        />
-        <TopSchoolsTable
-          title="Top schools by revenue"
-          subtitle="Platform-wide totals"
-          rows={topSchoolsByRevenue}
-          emphasize="revenue"
-        />
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Email reports</h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-          Schedule weekly or monthly summary emails. Set{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-zinc-800">CRON_SECRET</code> and call{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-zinc-800">GET /api/super-admin/reports/cron</code>{" "}
-          from Vercel Cron (daily).
-        </p>
-        {prefsLoading ? (
-          <p className="mt-4 text-sm text-slate-500">Loading preferences…</p>
-        ) : (
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-zinc-300">
-              <input
-                type="checkbox"
-                checked={prefs.enabled}
-                onChange={(e) => setPrefs((p) => ({ ...p, enabled: e.target.checked }))}
-              />
-              Enable scheduled summaries
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-zinc-300">
-              <input
-                type="checkbox"
-                checked={prefs.export_to_email_enabled}
-                onChange={(e) =>
-                  setPrefs((p) => ({ ...p, export_to_email_enabled: e.target.checked }))
-                }
-              />
-              Flag: scheduled export to email (future automation)
-            </label>
-            <label className="text-xs font-medium text-slate-600 dark:text-zinc-400">
-              Frequency
-              <select
-                value={prefs.frequency ?? "weekly"}
-                onChange={(e) =>
-                  setPrefs((p) => ({
-                    ...p,
-                    frequency: e.target.value as "weekly" | "monthly",
-                  }))
-                }
-                className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-white"
-              >
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            </label>
-            <label className="text-xs font-medium text-slate-600 dark:text-zinc-400">
-              Day of week (1=Mon … 7=Sun)
-              <input
-                type="number"
-                min={1}
-                max={7}
-                value={prefs.day_of_week ?? 1}
-                onChange={(e) =>
-                  setPrefs((p) => ({ ...p, day_of_week: Number(e.target.value) }))
-                }
-                className="mt-1 block w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-white"
-              />
-            </label>
-            <label className="text-xs font-medium text-slate-600 dark:text-zinc-400 md:col-span-2">
-              Day of month (monthly)
-              <input
-                type="number"
-                min={1}
-                max={31}
-                value={prefs.day_of_month ?? 1}
-                onChange={(e) =>
-                  setPrefs((p) => ({ ...p, day_of_month: Number(e.target.value) }))
-                }
-                className="mt-1 block w-full max-w-xs rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-white"
-              />
-            </label>
-            <div className="md:col-span-2">
-              <p className="text-xs font-medium text-slate-600 dark:text-zinc-400">Extra recipients</p>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {prefs.recipients.map((r) => (
-                  <span
-                    key={r}
-                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs dark:bg-zinc-800"
-                  >
-                    {r}
-                    <button
-                      type="button"
-                      className="text-red-600"
-                      onClick={() =>
-                        setPrefs((p) => ({
-                          ...p,
-                          recipients: p.recipients.filter((x) => x !== r),
-                        }))
-                      }
-                      aria-label={`Remove ${r}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <input
-                  type="email"
-                  value={recipientInput}
-                  onChange={(e) => setRecipientInput(e.target.value)}
-                  placeholder="email@example.com"
-                  className="min-w-[12rem] flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-white"
-                />
-                <button
-                  type="button"
-                  onClick={addRecipient}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm dark:border-zinc-600"
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 md:col-span-2">
-              <button
-                type="button"
-                disabled={prefsSaving}
-                onClick={() => void savePrefs()}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
-              >
-                {prefsSaving ? "Saving…" : "Save schedule"}
-              </button>
-              <button
-                type="button"
-                disabled={sendBusy}
-                onClick={() => void sendSummaryNow()}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium dark:border-zinc-600"
-              >
-                {sendBusy ? "Sending…" : "Send summary now"}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-        <p className="font-medium">Note on revenue</p>
-        <p className="mt-1 text-amber-900/90 dark:text-amber-200/90">
-          Schools may use different currencies. Sums are raw amounts; use as directional unless you normalize.
-        </p>
-      </div>
+      <DataConfidenceFooter
+        updatedAtLabel={
+          lastRefreshedAt ? formatAnalyticsUpdatedAt(lastRefreshedAt) : null
+        }
+        updatedAtIso={lastRefreshedAt}
+      />
     </div>
   );
 }

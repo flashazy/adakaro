@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  SuperAdminExportLink,
+  SuperAdminNavLink,
+} from "@/components/super-admin/super-admin-loading-action";
 import type { Database } from "@/types/supabase";
 
 type LogRow = Database["public"]["Tables"]["admin_activity_logs"]["Row"];
@@ -107,7 +110,7 @@ export function ActivityLogsClient() {
     });
   }
 
-  function exportCsv() {
+  const exportCsvUrl = useMemo(() => {
     const params = new URLSearchParams();
     params.set("export", "csv");
     if (user.trim()) params.set("user", user.trim());
@@ -115,8 +118,8 @@ export function ActivityLogsClient() {
     if (action.trim()) params.set("action", action.trim());
     if (from.trim()) params.set("from", from.trim());
     if (to.trim()) params.set("to", to.trim());
-    window.location.href = `/api/super-admin/activity-logs?${params}`;
-  }
+    return `/api/super-admin/activity-logs?${params.toString()}`;
+  }, [user, school, action, from, to]);
 
   const pageSize = data?.pageSize ?? limit;
   const total = data?.total ?? 0;
@@ -144,19 +147,19 @@ export function ActivityLogsClient() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
+          <SuperAdminNavLink
             href="/super-admin"
+            loadingLabel="Loading…"
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
             ← Dashboard
-          </Link>
-          <button
-            type="button"
-            onClick={exportCsv}
+          </SuperAdminNavLink>
+          <SuperAdminExportLink
+            href={exportCsvUrl}
             className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
           >
             Export CSV
-          </button>
+          </SuperAdminExportLink>
         </div>
       </div>
 

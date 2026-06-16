@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { SuperAdminLoadingButton, SuperAdminNavLink } from "@/components/super-admin/super-admin-loading-action";
 import { formatDate, formatExecutiveDashboardDate } from "@/lib/format-date";
 import { binaryPlanLabel } from "@/lib/plans";
 import { useRouter } from "next/navigation";
@@ -66,7 +66,7 @@ export function SuperAdminDashboardClient({
 }: SuperAdminDashboardClientProps) {
   const router = useRouter();
   const [pendingUpgrades, setPendingUpgrades] = useState(initialPendingUpgrades);
-  const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
+  const [reviewBusyKey, setReviewBusyKey] = useState<string | null>(null);
 
   const businessSnapshot = useMemo(
     () => computeBusinessSnapshot(initialData.schools),
@@ -80,7 +80,8 @@ export function SuperAdminDashboardClient({
   }, [initialPendingUpgrades]);
 
   async function reviewRequest(requestId: string, approve: boolean) {
-    setReviewBusyId(requestId);
+    const key = `${requestId}:${approve ? "approve" : "deny"}`;
+    setReviewBusyKey(key);
     try {
       const res = await fetch("/api/super-admin/upgrade-requests/review", {
         method: "POST",
@@ -96,7 +97,7 @@ export function SuperAdminDashboardClient({
       setPendingUpgrades((rows) => rows.filter((r) => r.id !== requestId));
       router.refresh();
     } finally {
-      setReviewBusyId(null);
+      setReviewBusyKey(null);
     }
   }
 
@@ -109,18 +110,20 @@ export function SuperAdminDashboardClient({
         totalSchools={initialData.stats.schools}
         paidSchools={businessSnapshot.paidSchools}
       >
-        <Link
+        <SuperAdminNavLink
           href="/super-admin/analytics"
+          loadingLabel="Loading…"
           className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700"
         >
           Analytics
-        </Link>
-        <Link
+        </SuperAdminNavLink>
+        <SuperAdminNavLink
           href="/super-admin/activity-logs"
+          loadingLabel="Loading…"
           className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700"
         >
           Activity logs
-        </Link>
+        </SuperAdminNavLink>
         {pendingUpgrades.length > 0 ? (
           <span
             className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-medium text-amber-800"
@@ -130,9 +133,9 @@ export function SuperAdminDashboardClient({
             {pendingUpgrades.length === 1 ? "" : "s"}
           </span>
         ) : null}
-        <a href="/super-admin/create" className={saBtnPrimary}>
+        <SuperAdminNavLink href="/super-admin/create" loadingLabel="Loading…" className={saBtnPrimary}>
           Create School
-        </a>
+        </SuperAdminNavLink>
       </SaExecutiveHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -201,12 +204,13 @@ export function SuperAdminDashboardClient({
                     )}
                   >
                     <td className="px-4 py-3">
-                      <a
+                      <SuperAdminNavLink
                         href={`/super-admin/schools/${row.school_id}`}
+                        loadingLabel="Opening…"
                         className="font-medium text-indigo-600 hover:text-indigo-700"
                       >
                         {row.school_name}
-                      </a>
+                      </SuperAdminNavLink>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{row.requester_display}</td>
                     <td className="hidden px-4 py-3 text-slate-700 sm:table-cell">
@@ -218,22 +222,26 @@ export function SuperAdminDashboardClient({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
-                        <button
+                        <SuperAdminLoadingButton
                           type="button"
-                          disabled={reviewBusyId === row.id}
+                          disabled={reviewBusyKey?.startsWith(`${row.id}:`) ?? false}
+                          loading={reviewBusyKey === `${row.id}:approve`}
+                          loadingLabel="Approving…"
                           onClick={() => reviewRequest(row.id, true)}
                           className={saBtnPrimarySm}
                         >
                           Approve
-                        </button>
-                        <button
+                        </SuperAdminLoadingButton>
+                        <SuperAdminLoadingButton
                           type="button"
-                          disabled={reviewBusyId === row.id}
+                          disabled={reviewBusyKey?.startsWith(`${row.id}:`) ?? false}
+                          loading={reviewBusyKey === `${row.id}:deny`}
+                          loadingLabel="Denying…"
                           onClick={() => reviewRequest(row.id, false)}
                           className={saBtnSecondarySm}
                         >
                           Deny
-                        </button>
+                        </SuperAdminLoadingButton>
                       </div>
                     </td>
                   </tr>

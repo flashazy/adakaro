@@ -3,6 +3,8 @@ import "server-only";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { clearCaptureCardSessionCookie } from "@/lib/capture-card/session";
+import { SUPER_ADMIN_WORKSPACE_SCHOOL_COOKIE } from "@/lib/super-admin/workspace-school.constants";
+import { clearWorkspaceSchoolCookieOptions } from "@/lib/super-admin/workspace-school";
 
 const SCHOOL_DASHBOARD_MODE_COOKIE = "school_dashboard_mode";
 
@@ -67,6 +69,18 @@ export async function performSignOut(): Promise<SignOutResult> {
     } catch (err) {
       logSignOut(`school_dashboard_mode failed ${trace}`, err);
       warnings.push("Dashboard mode cookie could not be cleared.");
+    }
+
+    try {
+      jar.set(
+        SUPER_ADMIN_WORKSPACE_SCHOOL_COOKIE,
+        "",
+        clearWorkspaceSchoolCookieOptions()
+      );
+      logSignOut(`super_admin_workspace_school ok ${trace}`);
+    } catch (err) {
+      logSignOut(`super_admin_workspace_school failed ${trace}`, err);
+      warnings.push("Super Admin workspace cookie could not be cleared.");
     }
 
     let clearedAuthCookies = 0;

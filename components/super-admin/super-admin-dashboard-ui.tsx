@@ -300,6 +300,19 @@ export function SaHealthScoreCell({
   );
 }
 
+export {
+  SuperAdminCopyButton,
+  SuperAdminExportLink,
+  SuperAdminLoadingAnchor,
+  SuperAdminLoadingButton,
+  SuperAdminNavLink,
+  SuperAdminSpinner,
+  useCopyWithFeedback,
+  useExportDownload,
+} from "@/components/super-admin/super-admin-loading-action";
+
+export { SuperAdminBackLink } from "@/components/super-admin/super-admin-back-link";
+
 export function SaTopSchoolBadge() {
   return (
     <span className="inline-flex h-5 items-center rounded-full border border-amber-300/90 bg-gradient-to-r from-amber-50 to-yellow-50 px-2 text-[11px] font-bold text-amber-900 ring-1 ring-amber-200/80">

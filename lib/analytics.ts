@@ -5,13 +5,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchSuperAdminNotificationEmails } from "@/lib/notifications/super-admin-email";
 import type { Database } from "@/types/supabase";
+import {
+  buildExecutiveSummaryText,
+  formatAnalyticsCurrency,
+} from "./analytics-format";
 import type {
   ActivityHighlightRow,
   AnalyticsPreset,
   CumulativeSchoolPoint,
+  ExecutiveInsights,
   GrowthPercent,
   LoadSuperAdminAnalyticsResult,
   MonthlyTrendRow,
+  PlatformHealth,
+  PlatformSnapshot,
   RevenueBySchoolRow,
   StudentDistributionSlice,
   SuperAdminAnalyticsPayload,
@@ -225,6 +232,159 @@ function pctPrev(cur: number, prev: number): number | null {
   return Math.round(((cur - prev) / prev) * 1000) / 10;
 }
 
+function platformHealthStatus(score: number): PlatformHealth["status"] {
+  if (score >= 90) return "Excellent";
+  if (score >= 75) return "Good";
+  if (score >= 50) return "Warning";
+  return "Critical";
+}
+
+function computePlatformHealthScore(input: {
+  activeSchools: number;
+  totalSchools: number;
+  setupSchools: number;
+  studentGrowthPercent: number | null;
+  revenueGrowthPercent: number | null;
+  paymentsInPeriod: number;
+}): PlatformHealth {
+  const activeRatio =
+    input.totalSchools > 0 ? input.activeSchools / input.totalSchools : 0;
+  const setupDenom = input.activeSchools + input.setupSchools;
+  const setupCompletion =
+    setupDenom > 0 ? input.activeSchools / setupDenom : activeRatio;
+
+  let score = 0;
+  score += Math.round(activeRatio * 30);
+  score += Math.round(setupCompletion * 20);
+
+  if (input.paymentsInPeriod > 0) {
+    score += 15;
+    if (input.revenueGrowthPercent !== null && input.revenueGrowthPercent > 0) {
+      score += Math.min(10, Math.round(input.revenueGrowthPercent / 5));
+    }
+  }
+
+  if (input.studentGrowthPercent !== null) {
+    if (input.studentGrowthPercent > 0) {
+      score += Math.min(25, 10 + Math.round(input.studentGrowthPercent / 4));
+    } else if (input.studentGrowthPercent === 0) {
+      score += 8;
+    } else {
+      score += Math.max(0, 8 + Math.round(input.studentGrowthPercent / 5));
+    }
+  } else if (input.paymentsInPeriod > 0) {
+    score += 10;
+  }
+
+  const clamped = Math.max(0, Math.min(100, score));
+  return {
+    score: clamped,
+    status: platformHealthStatus(clamped),
+  };
+}
+
+function buildExecutiveInsights(params: {
+  schoolMeta: { id: string; name: string; created_at: string }[];
+  studentCountBySchool: Map<string, number>;
+  revenueBySchool: Map<string, number>;
+  studentGrowthBySchool: Map<string, number | null>;
+  revenueGrowthBySchool: Map<string, number | null>;
+}): ExecutiveInsights {
+  const {
+    schoolMeta,
+    studentCountBySchool,
+    revenueBySchool,
+    studentGrowthBySchool,
+    revenueGrowthBySchool,
+  } = params;
+
+  let fastestGrowingSchool: ExecutiveInsights["fastestGrowingSchool"] = null;
+  let highestGrowthRateSchool: ExecutiveInsights["highestGrowthRateSchool"] =
+    null;
+  let bestStudentGrowth = -Infinity;
+  let bestAnyGrowth = -Infinity;
+
+  for (const school of schoolMeta) {
+    const studentGrowth = studentGrowthBySchool.get(school.id) ?? null;
+    if (studentGrowth !== null && studentGrowth > bestStudentGrowth) {
+      bestStudentGrowth = studentGrowth;
+      fastestGrowingSchool = {
+        schoolId: school.id,
+        name: school.name,
+        growthPercent: studentGrowth,
+      };
+    }
+
+    const revenueGrowth = revenueGrowthBySchool.get(school.id) ?? null;
+    const candidateGrowth = Math.max(
+      studentGrowth ?? -Infinity,
+      revenueGrowth ?? -Infinity
+    );
+    if (candidateGrowth > bestAnyGrowth) {
+      bestAnyGrowth = candidateGrowth;
+      highestGrowthRateSchool = {
+        schoolId: school.id,
+        name: school.name,
+        growthPercent: candidateGrowth,
+      };
+    }
+  }
+
+  let largestSchool: ExecutiveInsights["largestSchool"] = null;
+  let maxStudents = -1;
+  for (const [schoolId, count] of studentCountBySchool) {
+    if (count > maxStudents) {
+      maxStudents = count;
+      largestSchool = {
+        schoolId,
+        name:
+          schoolMeta.find((s) => s.id === schoolId)?.name ?? "Unknown school",
+        studentCount: count,
+      };
+    }
+  }
+
+  let highestRevenueSchool: ExecutiveInsights["highestRevenueSchool"] = null;
+  let maxRevenue = -1;
+  for (const [schoolId, revenue] of revenueBySchool) {
+    if (revenue > maxRevenue) {
+      maxRevenue = revenue;
+      highestRevenueSchool = {
+        schoolId,
+        name:
+          schoolMeta.find((s) => s.id === schoolId)?.name ?? "Unknown school",
+        revenue,
+      };
+    }
+  }
+
+  let newestSchool: ExecutiveInsights["newestSchool"] = null;
+  const now = Date.now();
+  const sortedByCreated = [...schoolMeta].sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  const newest = sortedByCreated[0];
+  if (newest) {
+    const created = new Date(newest.created_at).getTime();
+    newestSchool = {
+      schoolId: newest.id,
+      name: newest.name,
+      daysSinceJoined: Number.isNaN(created)
+        ? 0
+        : Math.max(0, Math.floor((now - created) / 86_400_000)),
+    };
+  }
+
+  return {
+    fastestGrowingSchool,
+    highestRevenueSchool,
+    largestSchool,
+    newestSchool,
+    highestGrowthRateSchool,
+  };
+}
+
 async function paginateSelect<T>(
   admin: SupabaseClient<Database>,
   fetchPage: (
@@ -313,7 +473,11 @@ export async function loadSuperAdminAnalytics(
     totalSchoolsRes,
     activeSchoolsRes,
     suspendedSchoolsRes,
+    setupSchoolsRes,
     studentsPlatformRes,
+    teachersRes,
+    adminsRes,
+    parentsRes,
     schoolsInPeriodRes,
     studentsInPeriodRes,
     prevSchoolsRes,
@@ -328,7 +492,20 @@ export async function loadSuperAdminAnalytics(
       .from("schools")
       .select("*", { count: "exact", head: true })
       .eq("status", "suspended"),
+    admin
+      .from("schools")
+      .select("*", { count: "exact", head: true })
+      .eq("school_status", "setup"),
     admin.from("students").select("*", { count: "exact", head: true }),
+    admin
+      .from("school_members")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "teacher"),
+    admin
+      .from("school_members")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "admin"),
+    admin.from("parent_students").select("*", { count: "exact", head: true }),
     admin
       .from("schools")
       .select("*", { count: "exact", head: true })
@@ -355,7 +532,11 @@ export async function loadSuperAdminAnalytics(
     totalSchoolsRes.error?.message ||
     activeSchoolsRes.error?.message ||
     suspendedSchoolsRes.error?.message ||
+    setupSchoolsRes.error?.message ||
     studentsPlatformRes.error?.message ||
+    teachersRes.error?.message ||
+    adminsRes.error?.message ||
+    parentsRes.error?.message ||
     schoolsInPeriodRes.error?.message ||
     studentsInPeriodRes.error?.message ||
     prevSchoolsRes.error?.message ||
@@ -430,6 +611,52 @@ export async function loadSuperAdminAnalytics(
     return paymentsForTop10;
   }
 
+  const paymentsPrevPeriod = await paginateSelect<{
+    amount: number;
+    student_id: string;
+  }>(admin, async (from, to) =>
+    admin
+      .from("payments")
+      .select("amount, student_id")
+      .eq("status", "completed")
+      .gte("payment_date", prevFromStr)
+      .lte("payment_date", prevToStr)
+      .range(from, to)
+  );
+  if (!paymentsPrevPeriod.ok) {
+    return paymentsPrevPeriod;
+  }
+
+  const studentsInPeriodRows = await paginateSelect<{
+    school_id: string;
+    created_at: string;
+  }>(admin, async (from, to) =>
+    admin
+      .from("students")
+      .select("school_id, created_at")
+      .gte("created_at", fromIso)
+      .lte("created_at", toIso)
+      .range(from, to)
+  );
+  if (!studentsInPeriodRows.ok) {
+    return studentsInPeriodRows;
+  }
+
+  const studentsPrevPeriodRows = await paginateSelect<{
+    school_id: string;
+    created_at: string;
+  }>(admin, async (from, to) =>
+    admin
+      .from("students")
+      .select("school_id, created_at")
+      .gte("created_at", prevFromIso)
+      .lte("created_at", prevToIso)
+      .range(from, to)
+  );
+  if (!studentsPrevPeriodRows.ok) {
+    return studentsPrevPeriodRows;
+  }
+
   const allStudentsRows = await paginateSelect<{ id: string; school_id: string }>(
     admin,
     async (from, to) =>
@@ -453,9 +680,12 @@ export async function loadSuperAdminAnalytics(
     return allPaymentsForRevenue;
   }
 
-  const allSchoolsMeta = await paginateSelect<{ id: string; name: string }>(
-    admin,
-    async (from, to) => admin.from("schools").select("id, name").range(from, to)
+  const allSchoolsMeta = await paginateSelect<{
+    id: string;
+    name: string;
+    created_at: string;
+  }>(admin, async (from, to) =>
+    admin.from("schools").select("id, name, created_at").range(from, to)
   );
   if (!allSchoolsMeta.ok) {
     return allSchoolsMeta;
@@ -525,6 +755,57 @@ export async function loadSuperAdminAnalytics(
     );
   }
 
+  const revenueBySchoolPrevRange = new Map<string, number>();
+  for (const p of paymentsPrevPeriod.rows) {
+    const schoolId = studentIdToSchoolId.get(p.student_id);
+    if (!schoolId) continue;
+    revenueBySchoolPrevRange.set(
+      schoolId,
+      (revenueBySchoolPrevRange.get(schoolId) ?? 0) + Number(p.amount ?? 0)
+    );
+  }
+
+  const studentsAddedBySchool = new Map<string, number>();
+  for (const s of studentsInPeriodRows.rows) {
+    studentsAddedBySchool.set(
+      s.school_id,
+      (studentsAddedBySchool.get(s.school_id) ?? 0) + 1
+    );
+  }
+
+  const studentsAddedPrevBySchool = new Map<string, number>();
+  for (const s of studentsPrevPeriodRows.rows) {
+    studentsAddedPrevBySchool.set(
+      s.school_id,
+      (studentsAddedPrevBySchool.get(s.school_id) ?? 0) + 1
+    );
+  }
+
+  const studentGrowthBySchool = new Map<string, number | null>();
+  const revenueGrowthBySchool = new Map<string, number | null>();
+  const allSchoolIds = new Set([
+    ...studentCountBySchool.keys(),
+    ...revenueBySchool.keys(),
+    ...studentsAddedBySchool.keys(),
+    ...revenueBySchoolInRange.keys(),
+  ]);
+  for (const schoolId of allSchoolIds) {
+    studentGrowthBySchool.set(
+      schoolId,
+      pctPrev(
+        studentsAddedBySchool.get(schoolId) ?? 0,
+        studentsAddedPrevBySchool.get(schoolId) ?? 0
+      )
+    );
+    revenueGrowthBySchool.set(
+      schoolId,
+      pctPrev(
+        revenueBySchoolInRange.get(schoolId) ?? 0,
+        revenueBySchoolPrevRange.get(schoolId) ?? 0
+      )
+    );
+  }
+
   const schoolNameById = new Map<string, string>();
   for (const s of allSchoolsMeta.rows) {
     schoolNameById.set(s.id, s.name);
@@ -536,6 +817,8 @@ export async function loadSuperAdminAnalytics(
       name: schoolNameById.get(schoolId) ?? "Unknown school",
       studentCount: studentCountBySchool.get(schoolId) ?? 0,
       totalRevenue: revenueBySchool.get(schoolId) ?? 0,
+      studentGrowthPercent: studentGrowthBySchool.get(schoolId) ?? null,
+      revenueGrowthPercent: revenueGrowthBySchool.get(schoolId) ?? null,
     };
   }
 
@@ -581,6 +864,45 @@ export async function loadSuperAdminAnalytics(
   const studentsInPeriod = studentsInPeriodRes.count ?? 0;
   const prevSchools = prevSchoolsRes.count ?? 0;
   const prevStudents = prevStudentsRes.count ?? 0;
+  const totalSchoolsPlatform = totalSchoolsRes.count ?? 0;
+  const activeSchools = activeSchoolsRes.count ?? 0;
+  const setupSchools = setupSchoolsRes.count ?? 0;
+  const growthPercent: GrowthPercent = {
+    schools: pctPrev(schoolsInPeriod, prevSchools),
+    students: pctPrev(studentsInPeriod, prevStudents),
+    revenue: pctPrev(revenueThis.sum, revenuePrev.sum),
+  };
+
+  const platformTotalRevenue = allPaymentsForRevenue.rows.reduce(
+    (s, p) => s + Number(p.amount ?? 0),
+    0
+  );
+
+  const platformSnapshot: PlatformSnapshot = {
+    schools: totalSchoolsPlatform,
+    students: studentsPlatformRes.count ?? 0,
+    teachers: teachersRes.count ?? 0,
+    parents: parentsRes.count ?? 0,
+    admins: adminsRes.count ?? 0,
+    revenue: platformTotalRevenue,
+  };
+
+  const platformHealth = computePlatformHealthScore({
+    activeSchools,
+    totalSchools: totalSchoolsPlatform,
+    setupSchools,
+    studentGrowthPercent: growthPercent.students,
+    revenueGrowthPercent: growthPercent.revenue,
+    paymentsInPeriod: revenueThis.sum,
+  });
+
+  const executiveInsights = buildExecutiveInsights({
+    schoolMeta: allSchoolsMeta.rows,
+    studentCountBySchool,
+    revenueBySchool,
+    studentGrowthBySchool,
+    revenueGrowthBySchool,
+  });
 
   const data: SuperAdminAnalyticsPayload = {
     meta: {
@@ -593,16 +915,26 @@ export async function loadSuperAdminAnalytics(
       totalSchools: schoolsInPeriod,
       totalStudents: studentsInPeriod,
       totalRevenue: revenueThis.sum,
-      activeSchools: activeSchoolsRes.count ?? 0,
+      activeSchools,
       suspendedSchools: suspendedSchoolsRes.count ?? 0,
-      totalSchoolsPlatform: totalSchoolsRes.count ?? 0,
+      setupSchools,
+      totalSchoolsPlatform,
       totalStudentsPlatform: studentsPlatformRes.count ?? 0,
-      growthPercent: {
-        schools: pctPrev(schoolsInPeriod, prevSchools),
-        students: pctPrev(studentsInPeriod, prevStudents),
-        revenue: pctPrev(revenueThis.sum, revenuePrev.sum),
+      growthPercent,
+      periodComparison: {
+        schoolsDelta: schoolsInPeriod - prevSchools,
+        studentsDelta: studentsInPeriod - prevStudents,
+        revenueDelta: revenueThis.sum - revenuePrev.sum,
       },
+      activeRatePercent:
+        totalSchoolsPlatform > 0
+          ? Math.round((activeSchools / totalSchoolsPlatform) * 1000) / 10
+          : 0,
     },
+    platformSnapshot,
+    platformHealth,
+    executiveInsights,
+    executiveSummary: "",
     monthlyTrends: trends,
     topSchoolsByStudents: topByStudents,
     topSchoolsByRevenue: topByRevenue,
@@ -610,6 +942,8 @@ export async function loadSuperAdminAnalytics(
     studentDistributionPie,
     cumulativeSchoolGrowth,
   };
+
+  data.executiveSummary = buildExecutiveSummaryText(data);
 
   return { ok: true, data };
 }
@@ -657,14 +991,30 @@ export function buildAnalyticsCsv(payload: SuperAdminAnalyticsPayload): string {
   lines.push(
     `summary,new_schools_in_range,${summary.totalSchools}`,
     `summary,new_students_in_range,${summary.totalStudents}`,
-    `summary,revenue_in_range,${summary.totalRevenue}`,
+    `summary,revenue_in_range_tsh,${formatAnalyticsCurrency(summary.totalRevenue)}`,
+    `summary,revenue_in_range_raw,${summary.totalRevenue}`,
     `summary,active_schools_platform,${summary.activeSchools}`,
+    `summary,setup_schools_platform,${summary.setupSchools}`,
     `summary,suspended_schools_platform,${summary.suspendedSchools}`,
     `summary,total_schools_platform,${summary.totalSchoolsPlatform}`,
     `summary,total_students_platform,${summary.totalStudentsPlatform}`,
+    `summary,platform_health_score,${payload.platformHealth.score}`,
+    `summary,platform_health_status,${csvEscape(payload.platformHealth.status)}`,
     `summary,growth_schools_pct,${summary.growthPercent.schools ?? ""}`,
     `summary,growth_students_pct,${summary.growthPercent.students ?? ""}`,
-    `summary,growth_revenue_pct,${summary.growthPercent.revenue ?? ""}`
+    `summary,growth_revenue_pct,${summary.growthPercent.revenue ?? ""}`,
+    `summary,schools_delta_vs_prior,${summary.periodComparison.schoolsDelta}`,
+    `summary,students_delta_vs_prior,${summary.periodComparison.studentsDelta}`,
+    `summary,revenue_delta_vs_prior_tsh,${formatAnalyticsCurrency(summary.periodComparison.revenueDelta)}`
+  );
+  lines.push("snapshot,metric,value");
+  lines.push(
+    `snapshot,schools,${payload.platformSnapshot.schools}`,
+    `snapshot,students,${payload.platformSnapshot.students}`,
+    `snapshot,teachers,${payload.platformSnapshot.teachers}`,
+    `snapshot,parents,${payload.platformSnapshot.parents}`,
+    `snapshot,admins,${payload.platformSnapshot.admins}`,
+    `snapshot,revenue_tsh,${formatAnalyticsCurrency(payload.platformSnapshot.revenue)}`
   );
   lines.push("trends,bucket,new_schools,new_students,revenue");
   for (const t of payload.monthlyTrends) {
@@ -672,22 +1022,22 @@ export function buildAnalyticsCsv(payload: SuperAdminAnalyticsPayload): string {
       `trend,${csvEscape(t.monthKey)},${t.newSchools},${t.newStudents},${t.revenue}`
     );
   }
-  lines.push("top_schools,student_rank,name,school_id,students,revenue");
+  lines.push("top_schools,student_rank,name,school_id,students,revenue_tsh,student_growth_pct,revenue_growth_pct");
   payload.topSchoolsByStudents.forEach((r, i) => {
     lines.push(
-      `top_students,${i + 1},${csvEscape(r.name)},${r.schoolId},${r.studentCount},${r.totalRevenue}`
+      `top_students,${i + 1},${csvEscape(r.name)},${r.schoolId},${r.studentCount},${formatAnalyticsCurrency(r.totalRevenue)},${r.studentGrowthPercent ?? ""},${r.revenueGrowthPercent ?? ""}`
     );
   });
-  lines.push("top_schools,revenue_rank,name,school_id,students,revenue");
+  lines.push("top_schools,revenue_rank,name,school_id,students,revenue_tsh,student_growth_pct,revenue_growth_pct");
   payload.topSchoolsByRevenue.forEach((r, i) => {
     lines.push(
-      `top_revenue,${i + 1},${csvEscape(r.name)},${r.schoolId},${r.studentCount},${r.totalRevenue}`
+      `top_revenue,${i + 1},${csvEscape(r.name)},${r.schoolId},${r.studentCount},${formatAnalyticsCurrency(r.totalRevenue)},${r.studentGrowthPercent ?? ""},${r.revenueGrowthPercent ?? ""}`
     );
   });
-  lines.push("revenue_by_school_in_range,rank,name,school_id,revenue");
+  lines.push("revenue_by_school_in_range,rank,name,school_id,revenue_tsh,revenue_raw");
   payload.revenueBySchoolTop10.forEach((r, i) => {
     lines.push(
-      `rev_bar,${i + 1},${csvEscape(r.name)},${r.schoolId},${r.revenue}`
+      `rev_bar,${i + 1},${csvEscape(r.name)},${r.schoolId},${formatAnalyticsCurrency(r.revenue)},${r.revenue}`
     );
   });
   lines.push("student_distribution,name,count");

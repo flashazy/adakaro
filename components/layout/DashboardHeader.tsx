@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SchoolDashboardRoleToggle } from "@/components/layout/SchoolDashboardRoleToggle";
+import { SuperAdminHeader } from "@/components/layout/SuperAdminHeader";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { cn } from "@/lib/utils";
 
@@ -85,21 +86,13 @@ export function DashboardHeader({
 
   const rightActions = (
     <>
-      {isSuperAdmin && isSuper ? (
-        <NavLinkWithLoading
-          href="/dashboard"
-          className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          School app
-        </NavLinkWithLoading>
-      ) : null}
       {isSuperAdmin && !isSuper ? (
-        <NavLinkWithLoading
-          href="/super-admin"
+        <a
+          href="/api/super-admin/schools/workspace/exit"
           className="rounded-lg px-3 py-2 text-sm font-medium text-amber-800 ring-1 ring-amber-300/80 hover:bg-amber-50 dark:text-amber-200 dark:ring-amber-700/60 dark:hover:bg-amber-950/40"
         >
           Super Admin
-        </NavLinkWithLoading>
+        </a>
       ) : null}
       {showParentDashboardLink && isSchoolAdminArea && !isSuper ? (
         <NavLinkWithLoading
@@ -202,32 +195,11 @@ export function DashboardHeader({
     );
   }
 
-  const superAdminNavLink = (href: string, label: string, isActive: boolean) => (
-    <NavLinkWithLoading
-      href={href}
-      className={
-        isActive
-          ? "rounded-lg bg-school-primary px-2.5 py-1.5 text-sm font-semibold text-white shadow-sm dark:bg-school-primary"
-          : "rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-      }
-    >
-      {label}
-    </NavLinkWithLoading>
-  );
-
-  const isSuperAdminDashboard =
-    pathname === "/super-admin" || pathname === "/super-admin/";
-  const isSuperAdminAnalytics = pathname.startsWith("/super-admin/analytics");
-  const isSuperAdminActivityLogs = pathname.startsWith(
-    "/super-admin/activity-logs"
-  );
-  const isSuperAdminWatchdog = pathname.startsWith("/super-admin/watchdog");
-  const isSuperAdminBroadcasts = pathname.startsWith(
-    "/super-admin/broadcasts"
-  );
-  const isSuperAdminUpgradeRequests = pathname.startsWith(
-    "/super-admin/upgrade-requests"
-  );
+  if (isSuperAdmin && isSuper) {
+    return (
+      <SuperAdminHeader fullName={fullName} avatarUrl={avatarUrl} />
+    );
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -284,43 +256,6 @@ export function DashboardHeader({
             />
             Adakaro
           </NavLinkWithLoading>
-          {isSuperAdmin && isSuper ? (
-            <nav
-              className="flex flex-wrap items-center gap-1 border-l border-slate-200 pl-3 dark:border-zinc-700"
-              aria-label="Super admin"
-            >
-              {superAdminNavLink(
-                "/super-admin",
-                "Dashboard",
-                isSuperAdminDashboard
-              )}
-              {superAdminNavLink(
-                "/super-admin/analytics",
-                "Analytics",
-                isSuperAdminAnalytics
-              )}
-              {superAdminNavLink(
-                "/super-admin/activity-logs",
-                "Activity logs",
-                isSuperAdminActivityLogs
-              )}
-              {superAdminNavLink(
-                "/super-admin/upgrade-requests",
-                "Upgrade requests",
-                isSuperAdminUpgradeRequests
-              )}
-              {superAdminNavLink(
-                "/super-admin/watchdog",
-                "Health Center",
-                isSuperAdminWatchdog
-              )}
-              {superAdminNavLink(
-                "/super-admin/broadcasts",
-                "Broadcast messages",
-                isSuperAdminBroadcasts
-              )}
-            </nav>
-          ) : null}
         </div>
 
         <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:flex-wrap md:items-center md:justify-end md:gap-3">
