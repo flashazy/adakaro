@@ -202,6 +202,7 @@ export async function GET(request: NextRequest) {
       schoolOptions,
       lastUpdated,
       total,
+      directoryTotal: allRows.length,
       page,
       pageSize,
       totalPages,

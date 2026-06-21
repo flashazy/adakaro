@@ -27,6 +27,30 @@ function csvEscape(value: string): string {
   return value;
 }
 
+/** Distinct `action` values stored in `admin_activity_logs` (read-only). */
+async function fetchDistinctAuditActions(
+  admin: SupabaseClient<Database>
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from("admin_activity_logs")
+    .select("action")
+    .order("action", { ascending: true })
+    .limit(10_000);
+
+  if (error) {
+    console.error("[activity-logs] distinct actions", error);
+    return [];
+  }
+
+  return [
+    ...new Set(
+      ((data ?? []) as { action: string }[])
+        .map((row) => row.action)
+        .filter((value): value is string => Boolean(value))
+    ),
+  ].sort();
+}
+
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const {
@@ -89,6 +113,7 @@ export async function GET(request: NextRequest) {
           );
         }
         const totalPages = 0;
+        const availableActions = await fetchDistinctAuditActions(admin);
         return NextResponse.json({
           logs: [],
           total: 0,
@@ -96,6 +121,13 @@ export async function GET(request: NextRequest) {
           pageSize: limit,
           totalPages,
           schoolNames: {},
+          availableActions,
+          summary: {
+            activeSchools: 0,
+            activeUsers: 0,
+            todayActivity: 0,
+            mostRecentAt: null,
+          },
         });
       }
     }
@@ -109,7 +141,7 @@ export async function GET(request: NextRequest) {
       out = out.ilike("user_email", `%${userSearch}%`);
     }
     if (actionFilter) {
-      out = out.ilike("action", `%${actionFilter}%`);
+      out = out.eq("action", actionFilter);
     }
     if (dateFrom) {
       out = out.gte("created_at", dateFrom);
@@ -183,12 +215,40 @@ export async function GET(request: NextRequest) {
   const rangeFrom = (page - 1) * limit;
   const rangeTo = rangeFrom + limit - 1;
 
-  const { data: rows, error, count } = await applyFilters(
-    admin
-      .from("admin_activity_logs")
-      .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
-  ).range(rangeFrom, rangeTo);
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayStartIso = todayStart.toISOString();
+
+  const [
+    { data: rows, error, count },
+    { count: todayCount },
+    { data: distinctRows },
+    { data: recentRows },
+    availableActions,
+  ] = await Promise.all([
+    applyFilters(
+      admin
+        .from("admin_activity_logs")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+    ).range(rangeFrom, rangeTo),
+    applyFilters(
+      admin
+        .from("admin_activity_logs")
+        .select("*", { count: "exact", head: true })
+    ).gte("created_at", todayStartIso),
+    applyFilters(
+      admin.from("admin_activity_logs").select("school_id, user_email")
+    ).limit(10_000),
+    applyFilters(
+      admin
+        .from("admin_activity_logs")
+        .select("created_at")
+        .order("created_at", { ascending: false })
+        .limit(1)
+    ),
+    fetchDistinctAuditActions(admin),
+  ]);
 
   if (error) {
     console.error("[activity-logs]", error);
@@ -218,6 +278,20 @@ export async function GET(request: NextRequest) {
   const total = count ?? 0;
   const totalPages = total > 0 ? Math.ceil(total / limit) : 0;
 
+  const distinct = (distinctRows ?? []) as {
+    school_id: string | null;
+    user_email: string | null;
+  }[];
+  const activeSchools = new Set(
+    distinct.map((r) => r.school_id).filter((id): id is string => Boolean(id))
+  ).size;
+  const activeUsers = new Set(
+    distinct
+      .map((r) => r.user_email)
+      .filter((email): email is string => Boolean(email))
+  ).size;
+  const recent = (recentRows ?? []) as { created_at: string }[];
+
   return NextResponse.json({
     logs,
     total,
@@ -225,5 +299,12 @@ export async function GET(request: NextRequest) {
     pageSize: limit,
     totalPages,
     schoolNames,
+    availableActions,
+    summary: {
+      activeSchools,
+      activeUsers,
+      todayActivity: todayCount ?? 0,
+      mostRecentAt: recent[0]?.created_at ?? null,
+    },
   });
 }

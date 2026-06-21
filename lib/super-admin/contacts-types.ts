@@ -65,6 +65,8 @@ export interface SuperAdminContactsResponse {
   page: number;
   pageSize: number;
   totalPages: number;
+  /** Full directory size before client filters (for subset counters). */
+  directoryTotal: number;
   /** All phones/emails in the filtered set (for bulk copy). */
   filteredPhones: string[];
   filteredEmails: string[];

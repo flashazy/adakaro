@@ -51,7 +51,7 @@ export function SchoolInformationForm({
       ) : null}
       {state.success ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
-          School information saved.
+          School information updated.
         </div>
       ) : null}
 
@@ -174,7 +174,8 @@ export function SchoolInformationForm({
         <SubmitButton />
       ) : (
         <p className="text-xs text-slate-500 dark:text-zinc-400">
-          Only a school admin can edit school information.
+          Only a school admin or Super Admin in workspace mode can edit school
+          information.
         </p>
       )}
     </form>

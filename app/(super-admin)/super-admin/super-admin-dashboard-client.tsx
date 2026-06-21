@@ -6,6 +6,7 @@ import { binaryPlanLabel } from "@/lib/plans";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { SchoolsLifecycleDashboard } from "@/components/super-admin/schools-lifecycle-dashboard";
+import { SuperAdminDashboardMobilePolish } from "./super-admin-dashboard-mobile-polish";
 import {
   saBtnPrimary,
   saBtnPrimarySm,
@@ -18,6 +19,10 @@ import {
 import { highlightedKpiTrend } from "@/lib/super-admin/dashboard-presentation";
 import { computeBusinessSnapshot } from "@/lib/super-admin/dashboard-insights";
 import type { SuperAdminSchoolRow } from "@/lib/super-admin/types";
+import { SmartIntelligenceSection } from "@/components/super-admin/smart-intelligence/smart-intelligence-section";
+import type { SmartIntelligencePayload } from "@/lib/super-admin/smart-intelligence-types";
+import { DemoLeadsWidget } from "@/components/super-admin/demo-leads-widget";
+import type { DemoLeadPipelineStats } from "@/lib/demo-requests/types";
 import { cn } from "@/lib/utils";
 
 export interface PendingUpgradeRow {
@@ -58,11 +63,17 @@ interface SuperAdminDashboardClientProps {
   initialData: DashboardData;
   /** Defaults to [] if omitted (avoids crashes during HMR or stale renders). */
   initialPendingUpgrades?: PendingUpgradeRow[];
+  initialIntelligence?: SmartIntelligencePayload | null;
+  intelligenceError?: string | null;
+  initialLeadPipelineStats?: DemoLeadPipelineStats | null;
 }
 
 export function SuperAdminDashboardClient({
   initialData,
   initialPendingUpgrades = [],
+  initialIntelligence = null,
+  intelligenceError = null,
+  initialLeadPipelineStats = null,
 }: SuperAdminDashboardClientProps) {
   const router = useRouter();
   const [pendingUpgrades, setPendingUpgrades] = useState(initialPendingUpgrades);
@@ -102,7 +113,12 @@ export function SuperAdminDashboardClient({
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <>
+      <SuperAdminDashboardMobilePolish />
+      <div
+        id="sa-dashboard"
+        className="mx-auto max-w-full space-y-4 overflow-x-hidden sm:space-y-6 md:max-w-7xl"
+      >
       <SaExecutiveHeader
         title="Super Admin Dashboard"
         subtitle="Monitor school growth, engagement, health, and platform performance."
@@ -113,32 +129,40 @@ export function SuperAdminDashboardClient({
         <SuperAdminNavLink
           href="/super-admin/analytics"
           loadingLabel="Loading…"
-          className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700"
+          className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-700 sm:text-sm"
         >
           Analytics
         </SuperAdminNavLink>
         <SuperAdminNavLink
           href="/super-admin/activity-logs"
           loadingLabel="Loading…"
-          className="text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-700"
+          className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-700 sm:text-sm"
         >
           Activity logs
         </SuperAdminNavLink>
+        <SuperAdminNavLink
+          href="/super-admin/demo-requests"
+          loadingLabel="Loading…"
+          className="text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-700 sm:text-sm"
+        >
+          Demo Requests
+        </SuperAdminNavLink>
         {pendingUpgrades.length > 0 ? (
           <span
-            className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-medium text-amber-800"
+            className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 sm:px-3 sm:py-1 sm:text-sm"
             title="Pending plan upgrade requests"
           >
             {pendingUpgrades.length} pending upgrade
             {pendingUpgrades.length === 1 ? "" : "s"}
           </span>
         ) : null}
-        <SuperAdminNavLink href="/super-admin/create" loadingLabel="Loading…" className={saBtnPrimary}>
+        <SuperAdminNavLink href="/super-admin/create" loadingLabel="Loading…" className={cn(saBtnPrimary, "max-md:px-3 max-md:py-1.5 max-md:text-xs")}>
           Create School
         </SuperAdminNavLink>
       </SaExecutiveHeader>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="max-md:space-y-3">
+      <div className="grid auto-rows-fr grid-cols-2 items-stretch gap-2 lg:grid-cols-3 lg:gap-4">
         <SaKpiCardHighlighted
           label="Total Schools"
           value={initialData.stats.schools}
@@ -156,10 +180,11 @@ export function SuperAdminDashboardClient({
             "Average Health Score",
             businessSnapshot.averageHealthScore
           )}
+          className="max-md:col-span-2"
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid auto-rows-fr grid-cols-2 items-stretch gap-2 lg:grid-cols-5 lg:gap-4">
         <SaKpiCard label="Total Students" value={initialData.stats.students} />
         <SaKpiCard label="Admin Memberships" value={initialData.stats.admins} />
         <SaKpiCard label="Total Payments" value={initialData.stats.payments} />
@@ -167,19 +192,78 @@ export function SuperAdminDashboardClient({
         <SaKpiCard
           label="Average Students Per School"
           value={businessSnapshot.averageStudentsPerSchool}
+          className="max-md:col-span-2"
         />
       </div>
+      </div>
+
+      <SmartIntelligenceSection
+        initialData={initialIntelligence}
+        initialError={intelligenceError}
+        schoolCount={initialData.stats.schools}
+        schools={initialData.schools}
+        activeSchools={initialData.stats.lifecycle.activeSchools}
+      />
+
+      {initialLeadPipelineStats ? (
+        <DemoLeadsWidget pipelineStats={initialLeadPipelineStats} />
+      ) : null}
 
       {pendingUpgrades.length > 0 ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/50 px-5 py-5 shadow-sm">
-          <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+        <section className="rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-4 shadow-sm sm:rounded-2xl sm:px-5 sm:py-5">
+          <h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
             Pending upgrades
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             School admins requested a plan change. Approve to update the school plan, or deny to
             close the request.
           </p>
-          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+
+          <div className="mt-4 space-y-3 md:hidden">
+            {pendingUpgrades.map((row) => (
+              <article
+                key={row.id}
+                className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm"
+              >
+                <SuperAdminNavLink
+                  href={`/super-admin/schools/${row.school_id}`}
+                  loadingLabel="Opening…"
+                  className="font-medium text-indigo-600 hover:text-indigo-700"
+                >
+                  {row.school_name}
+                </SuperAdminNavLink>
+                <p className="mt-1 text-xs text-slate-500">{row.requester_display}</p>
+                <p className="mt-2 text-sm text-slate-700">
+                  {binaryPlanLabel(row.current_plan)} → {binaryPlanLabel(row.requested_plan)}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{formatDate(row.created_at)}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <SuperAdminLoadingButton
+                    type="button"
+                    disabled={reviewBusyKey?.startsWith(`${row.id}:`) ?? false}
+                    loading={reviewBusyKey === `${row.id}:approve`}
+                    loadingLabel="Approving…"
+                    onClick={() => reviewRequest(row.id, true)}
+                    className={cn(saBtnPrimarySm, "w-full")}
+                  >
+                    Approve
+                  </SuperAdminLoadingButton>
+                  <SuperAdminLoadingButton
+                    type="button"
+                    disabled={reviewBusyKey?.startsWith(`${row.id}:`) ?? false}
+                    loading={reviewBusyKey === `${row.id}:deny`}
+                    loadingLabel="Denying…"
+                    onClick={() => reviewRequest(row.id, false)}
+                    className={cn(saBtnSecondarySm, "w-full")}
+                  >
+                    Deny
+                  </SuperAdminLoadingButton>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-4 hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
@@ -252,16 +336,19 @@ export function SuperAdminDashboardClient({
         </section>
       ) : null}
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+      <section className="max-md:mt-10 max-md:border-t max-md:border-slate-200/70 max-md:pt-8">
+        <h2 className="text-base font-bold tracking-tight text-slate-950 sm:text-lg sm:font-semibold sm:text-slate-900">
           Schools Management
         </h2>
+        <div className="mt-4 max-md:mt-5">
         <SchoolsLifecycleDashboard
           schools={initialData.schools}
           lifecycleStats={initialData.stats.lifecycle}
           averageHealthScore={businessSnapshot.averageHealthScore}
         />
+        </div>
       </section>
-    </div>
+      </div>
+    </>
   );
 }

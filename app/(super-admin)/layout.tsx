@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
+import { SuperAdminFloatingScroll } from "@/components/super-admin/super-admin-floating-scroll";
+import { SuperAdminToaster } from "@/components/super-admin/super-admin-toaster";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function SuperAdminGroupLayout({
   children,
@@ -48,6 +50,8 @@ export default async function SuperAdminGroupLayout({
         avatarUrl={row?.avatar_url ?? null}
       />
       <div id="page-content">{children}</div>
+      <SuperAdminFloatingScroll />
+      <SuperAdminToaster />
     </>
   );
 }

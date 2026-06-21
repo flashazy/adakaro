@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getSchoolAdminUserIds } from "@/lib/broadcasts/school-admin-user-ids";
+import {
+  audienceScopeLabel,
+  resolveBroadcastAudience,
+  type ResolvedBroadcastAudience,
+} from "@/lib/broadcasts/broadcast-audience";
+import { loadBroadcastTargetRow } from "@/lib/broadcasts/load-broadcast-target";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 
 export const dynamic = "force-dynamic";
+
+const READERS_LOAD_ERROR = "Unable to load readers. Please try again.";
 
 export interface ReaderRow {
   user_id: string;
@@ -45,32 +52,33 @@ export async function GET(
     admin = createAdminClient();
   } catch (e) {
     console.error("[broadcasts/readers] admin client", e);
-    return NextResponse.json(
-      { error: "Server configuration error." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: READERS_LOAD_ERROR }, { status: 500 });
   }
 
-  const { data: broadcast, error: bErr } = await admin
-    .from("broadcasts")
-    .select("id, title")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (bErr) {
-    console.error("[broadcasts/readers] broadcast", bErr);
-    return NextResponse.json(
-      { error: bErr.message || "Query failed." },
-      { status: 500 }
-    );
+  const { row, error: loadError } = await loadBroadcastTargetRow(admin, id);
+  if (loadError) {
+    console.error("[broadcasts/readers] broadcast load failed", loadError);
+    return NextResponse.json({ error: READERS_LOAD_ERROR }, { status: 500 });
   }
-  if (!broadcast) {
+  if (!row) {
     return NextResponse.json({ error: "Broadcast not found." }, { status: 404 });
   }
 
-  const title = (broadcast as { title: string }).title;
+  let audience: ResolvedBroadcastAudience;
+  try {
+    audience = await resolveBroadcastAudience(admin, {
+      target_type: row.target_type,
+      target_user_ids: row.target_user_ids,
+      target_school_id: row.target_school_id,
+      target_school_ids: row.target_school_ids,
+    });
+  } catch (err) {
+    console.error("[broadcasts/readers] audience resolution failed", err);
+    return NextResponse.json({ error: READERS_LOAD_ERROR }, { status: 500 });
+  }
 
-  const schoolAdminIds = await getSchoolAdminUserIds(admin);
+  const schoolAdminIds = audience.recipientUserIds;
+  const title = row.title;
 
   const { data: reads, error: rErr } = await admin
     .from("broadcast_reads")
@@ -79,10 +87,7 @@ export async function GET(
 
   if (rErr) {
     console.error("[broadcasts/readers] reads", rErr);
-    return NextResponse.json(
-      { error: rErr.message || "Query failed." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: READERS_LOAD_ERROR }, { status: 500 });
   }
 
   const readRows = (reads ?? []) as { user_id: string; read_at: string }[];
@@ -95,10 +100,14 @@ export async function GET(
 
   let nameById = new Map<string, string>();
   if (schoolAdminIds.length > 0) {
-    const { data: profiles } = await admin
+    const { data: profiles, error: pErr } = await admin
       .from("profiles")
       .select("id, full_name")
       .in("id", schoolAdminIds);
+    if (pErr) {
+      console.error("[broadcasts/readers] profiles", pErr);
+      return NextResponse.json({ error: READERS_LOAD_ERROR }, { status: 500 });
+    }
     nameById = new Map(
       (profiles ?? []).map((p) => [
         (p as { id: string; full_name: string }).id,
@@ -110,17 +119,37 @@ export async function GET(
   let schoolNameById = new Map<string, string>();
   let memberships: { user_id: string; school_id: string }[] = [];
   if (schoolAdminIds.length > 0) {
-    const { data: mem } = await admin
+    const { data: mem, error: mErr } = await admin
       .from("school_members")
       .select("user_id, school_id")
-      .in("user_id", schoolAdminIds);
+      .in("user_id", schoolAdminIds)
+      .eq("role", "admin");
+    if (mErr) {
+      console.error("[broadcasts/readers] school_members", mErr);
+      return NextResponse.json({ error: READERS_LOAD_ERROR }, { status: 500 });
+    }
     memberships = (mem ?? []) as { user_id: string; school_id: string }[];
+
+    const allowedSchoolIds = new Set([
+      ...(audience.targetSchoolId ? [audience.targetSchoolId] : []),
+      ...audience.schoolIds,
+    ]);
+    if (allowedSchoolIds.size > 0) {
+      memberships = memberships.filter((m) =>
+        allowedSchoolIds.has(m.school_id)
+      );
+    }
+
     const schoolIds = [...new Set(memberships.map((m) => m.school_id))];
     if (schoolIds.length > 0) {
-      const { data: schools } = await admin
+      const { data: schools, error: sErr } = await admin
         .from("schools")
         .select("id, name")
         .in("id", schoolIds);
+      if (sErr) {
+        console.error("[broadcasts/readers] schools", sErr);
+        return NextResponse.json({ error: READERS_LOAD_ERROR }, { status: 500 });
+      }
       schoolNameById = new Map(
         (schools ?? []).map((s) => [
           (s as { id: string; name: string }).id,
@@ -135,7 +164,7 @@ export async function GET(
       .filter((m) => m.user_id === uid)
       .map((m) => schoolNameById.get(m.school_id) ?? "—")
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    return names[0] ?? "—";
+    return names[0] ?? audience.targetSchoolName ?? "—";
   }
 
   const readList: ReaderRow[] = readUserIdsInAudience
@@ -167,7 +196,12 @@ export async function GET(
   return NextResponse.json({
     broadcast_id: id,
     broadcast_title: title,
+    audience_scope: audience.scope,
+    audience_scope_label: audienceScopeLabel(audience.scope),
+    target_school_id: audience.targetSchoolId,
+    target_school_name: audience.targetSchoolName,
     total_school_admins: total,
+    recipient_count: total,
     read_count: readCount,
     not_read_count: notReadCount,
     read_percent: readPercent,

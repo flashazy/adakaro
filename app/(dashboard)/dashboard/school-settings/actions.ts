@@ -16,6 +16,7 @@ import type {
   SchoolSettingsState,
   TermStructureValue,
 } from "./school-settings-shared";
+import { requireSchoolSettingsAccess, canManageSchoolSettings } from "@/lib/school-settings/can-manage-school-settings";
 
 type SchoolsUpdate = Database["public"]["Tables"]["schools"]["Update"];
 
@@ -91,10 +92,11 @@ export async function uploadSchoolLogo(
     return { error: "You must be logged in." };
   }
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
+  const access = await requireSchoolSettingsAccess(supabase);
+  if (!access.ok) {
+    return { error: access.error };
   }
+  const { schoolId } = access;
 
   const path = `${user.id}/logo.${ext}`;
   const { error: uploadError } = await supabase.storage
@@ -155,10 +157,11 @@ export async function removeSchoolLogo(
     return { error: "You must be logged in." };
   }
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
+  const access = await requireSchoolSettingsAccess(supabase);
+  if (!access.ok) {
+    return { error: access.error };
   }
+  const { schoolId } = access;
 
   const admin = getSchoolsAdminOrNull();
   if (!admin) {
@@ -296,14 +299,11 @@ export async function uploadSchoolStamp(
   if (!user) {
     return { error: "You must be logged in." };
   }
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
-  }
-  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
   if (!adminCheck.ok) {
     return { error: adminCheck.error };
   }
+  const { schoolId } = adminCheck;
 
   const path = `schools/${schoolId}/stamp.${ext}`;
   const { error: uploadError } = await supabase.storage
@@ -366,14 +366,11 @@ export async function removeSchoolStamp(
   if (!user) {
     return { error: "You must be logged in." };
   }
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
-  }
-  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
   if (!adminCheck.ok) {
     return { error: adminCheck.error };
   }
+  const { schoolId } = adminCheck;
 
   const admin = getSchoolsAdminOrNull();
   if (!admin) {
@@ -445,18 +442,35 @@ async function requireHeadTeacherSignatureAccess(
   supabase: Awaited<ReturnType<typeof createClient>>,
   schoolId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const [{ data: isAdmin, error: adminErr }, { data: isTeacher, error: tErr }, { data: isSuper, error: sErr }] =
-    await Promise.all([
-      supabase.rpc("is_school_admin", { p_school_id: schoolId } as never),
-      supabase.rpc("is_teacher_for_school", { p_school_id: schoolId } as never),
-      supabase.rpc("is_super_admin", {} as never),
-    ]);
-  if (!adminErr && isAdmin) return { ok: true };
-  if (!tErr && isTeacher) return { ok: true };
-  if (!sErr && isSuper) return { ok: true };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be logged in." };
+  }
+
+  if (
+    await canManageSchoolSettings({
+      supabase,
+      user,
+      schoolId,
+    })
+  ) {
+    return { ok: true };
+  }
+
+  const { data: isTeacher, error: tErr } = await supabase.rpc(
+    "is_teacher_for_school",
+    { p_school_id: schoolId } as never
+  );
+  if (!tErr && isTeacher) {
+    return { ok: true };
+  }
+
   return {
     ok: false,
-    error: "You must be a school admin, teacher, or super admin to change this.",
+    error:
+      "You must be a school admin, teacher, or super admin in workspace mode to change this.",
   };
 }
 
@@ -680,18 +694,11 @@ export async function updateSchoolHeadTeacher(
     return { error: "You must be logged in." };
   }
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
   }
-
-  const { data: isAdmin, error: adminErr } = await supabase.rpc(
-    "is_school_admin",
-    { p_school_id: schoolId } as never
-  );
-  if (adminErr || !isAdmin) {
-    return { error: "You must be a school admin to assign the head teacher." };
-  }
+  const { schoolId } = adminCheck;
 
   const raw = String(formData.get("head_teacher_id") ?? "").trim();
   const headTeacherId = raw.length > 0 ? raw : null;
@@ -761,18 +768,11 @@ export async function updateSchoolCurrency(
     return { error: "You must be logged in." };
   }
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
   }
-
-  const { data: isAdmin, error: adminErr } = await supabase.rpc(
-    "is_school_admin",
-    { p_school_id: schoolId } as never
-  );
-  if (adminErr || !isAdmin) {
-    return { error: "You must be a school admin to change currency." };
-  }
+  const { schoolId } = adminCheck;
 
   const admin = getSchoolsAdminOrNull();
   if (!admin) {
@@ -818,18 +818,11 @@ export async function updateSchoolLevel(
     return { error: "You must be logged in." };
   }
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
   }
-
-  const { data: isAdmin, error: adminErr } = await supabase.rpc(
-    "is_school_admin",
-    { p_school_id: schoolId } as never
-  );
-  if (adminErr || !isAdmin) {
-    return { error: "You must be a school admin to change the school level." };
-  }
+  const { schoolId } = adminCheck;
 
   const admin = getSchoolsAdminOrNull();
   if (!admin) {
@@ -874,17 +867,20 @@ function normalizeOptionalDate(raw: FormDataEntryValue | null): string | null {
 }
 
 async function requireSchoolAdminForSchool(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  schoolId: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data: isAdmin, error: adminErr } = await supabase.rpc(
-    "is_school_admin",
-    { p_school_id: schoolId } as never
-  );
-  if (adminErr || !isAdmin) {
-    return { ok: false, error: "You must be a school admin to change this." };
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<
+  | { ok: true; schoolId: string; userId: string }
+  | { ok: false; error: string }
+> {
+  const access = await requireSchoolSettingsAccess(supabase);
+  if (!access.ok) {
+    return { ok: false, error: access.error };
   }
-  return { ok: true };
+  return {
+    ok: true,
+    schoolId: access.schoolId,
+    userId: access.userId,
+  };
 }
 
 export async function updateSchoolInformation(
@@ -898,14 +894,11 @@ export async function updateSchoolInformation(
   if (!user) {
     return { error: "You must be logged in." };
   }
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
-  }
-  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
   if (!adminCheck.ok) {
     return { error: adminCheck.error };
   }
+  const { schoolId } = adminCheck;
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) {
@@ -959,14 +952,11 @@ export async function updateSchoolAcademicSettings(
   if (!user) {
     return { error: "You must be logged in." };
   }
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
-  }
-  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
   if (!adminCheck.ok) {
     return { error: adminCheck.error };
   }
+  const { schoolId } = adminCheck;
 
   const termStructureRaw = String(
     formData.get("term_structure") ?? ""
@@ -1025,14 +1015,11 @@ export async function updateSchoolBranding(
   if (!user) {
     return { error: "You must be logged in." };
   }
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
-  }
-  const adminCheck = await requireSchoolAdminForSchool(supabase, schoolId);
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
   if (!adminCheck.ok) {
     return { error: adminCheck.error };
   }
+  const { schoolId } = adminCheck;
 
   const motto = normalizeOptionalText(formData.get("motto"));
   const colorRaw = String(formData.get("primary_color") ?? "").trim();
@@ -1186,18 +1173,11 @@ export async function updateSchoolPromotionRules(
     return { error: "You must be logged in." };
   }
 
-  const schoolId = await getSchoolIdForUser(supabase, user.id);
-  if (!schoolId) {
-    return { error: "No school found for your account." };
+  const adminCheck = await requireSchoolAdminForSchool(supabase);
+  if (!adminCheck.ok) {
+    return { error: adminCheck.error };
   }
-
-  const { data: isAdmin, error: adminErr } = await supabase.rpc(
-    "is_school_admin",
-    { p_school_id: schoolId } as never
-  );
-  if (adminErr || !isAdmin) {
-    return { error: "You must be a school admin to change promotion rules." };
-  }
+  const { schoolId } = adminCheck;
 
   const { data: existing } = await supabase
     .from("promotion_rules")

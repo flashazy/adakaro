@@ -24,6 +24,9 @@ import { SchoolPromotionRulesForm } from "./school-promotion-rules-form";
 import { SchoolSettingsCollapsibleSection } from "./school-settings-collapsible-section";
 import { SchoolSettingsVisitMarker } from "@/components/dashboard/school-settings-visit-marker";
 import type { TermStructureValue } from "./school-settings-shared";
+import { canManageSchoolSettings } from "@/lib/school-settings/can-manage-school-settings";
+import { checkIsSuperAdmin } from "@/lib/super-admin";
+import { readSuperAdminWorkspaceSchoolId } from "@/lib/super-admin/workspace-school";
 
 export const dynamic = "force-dynamic";
 
@@ -98,18 +101,24 @@ export default async function SchoolSettingsPage() {
   }
   const fetched = (schoolRes.data as unknown as FetchedSchool | null) ?? null;
 
-  const { data: isAdminFlag } = await supabase.rpc("is_school_admin", {
-    p_school_id: schoolId,
-  } as never);
-  const isSchoolAdmin = !!isAdminFlag;
+  const isSuperAdmin = await checkIsSuperAdmin(supabase, user.id);
+  const supportAccessSchoolId = isSuperAdmin
+    ? await readSuperAdminWorkspaceSchoolId()
+    : null;
 
-  const [{ data: isTeacherForSchool }, { data: isSuperAdminFlag }] =
-    await Promise.all([
-      supabase.rpc("is_teacher_for_school", { p_school_id: schoolId } as never),
-      supabase.rpc("is_super_admin", {} as never),
-    ]);
+  const canManageSettings = await canManageSchoolSettings({
+    supabase,
+    user,
+    schoolId,
+    supportAccessSchoolId,
+    isSuperAdmin,
+  });
+
+  const [{ data: isTeacherForSchool }] = await Promise.all([
+    supabase.rpc("is_teacher_for_school", { p_school_id: schoolId } as never),
+  ]);
   const canManageHeadTeacherSignature =
-    isSchoolAdmin || !!isTeacherForSchool || !!isSuperAdminFlag;
+    canManageSettings || !!isTeacherForSchool;
 
   const termStructure: TermStructureValue =
     fetched?.term_structure === "3_terms" ? "3_terms" : "2_terms";
@@ -137,7 +146,7 @@ export default async function SchoolSettingsPage() {
   const headTeacherSignatureUrl =
     (fetched?.head_teacher_signature_url?.trim() || null) ?? null;
   const headTeacherId = fetched?.head_teacher_id ?? null;
-  const headTeacherCandidates = isSchoolAdmin
+  const headTeacherCandidates = canManageSettings
     ? await listHeadTeacherCandidates(schoolId)
     : [];
 
@@ -148,7 +157,7 @@ export default async function SchoolSettingsPage() {
     minAverageGrade: number;
   }[] = [];
 
-  if (isSchoolAdmin) {
+  if (canManageSettings) {
     const { data: promoRules } = await supabase
       .from("promotion_rules")
       .select("class_id, min_average_grade")
@@ -224,7 +233,7 @@ export default async function SchoolSettingsPage() {
           description="Contact details and registration shown on official documents where configured."
         >
           <SchoolInformationForm
-            canEdit={isSchoolAdmin}
+            canEdit={canManageSettings}
             initial={{
               name: row.name,
               address: fetched?.address ?? null,
@@ -237,14 +246,14 @@ export default async function SchoolSettingsPage() {
           />
         </SchoolSettingsCollapsibleSection>
 
-        {isSchoolAdmin ? (
+        {canManageSettings ? (
           <SchoolSettingsCollapsibleSection
             sectionId="promotion-rules"
             title="Promotion rules"
             description="Minimum average exam grade (%) for year-end promotion. Based on teacher gradebook exam scores only — no attendance."
           >
             <SchoolPromotionRulesForm
-              canEdit={isSchoolAdmin}
+              canEdit={canManageSettings}
               defaultMinGrade={defaultMinGrade}
               classOverrides={classPromotionOverrides}
             />
@@ -257,7 +266,7 @@ export default async function SchoolSettingsPage() {
           description="Calendar reference for reports and planning (optional)."
         >
           <SchoolAcademicSettingsForm
-            canEdit={isSchoolAdmin}
+            canEdit={canManageSettings}
             initial={{
               currentAcademicYear: fetched?.current_academic_year ?? null,
               termStructure,
@@ -286,7 +295,7 @@ export default async function SchoolSettingsPage() {
         >
           <SchoolBrandingForm
             key={`${fetched?.updated_at ?? ""}-${fetched?.primary_color ?? ""}`}
-            canEdit={isSchoolAdmin}
+            canEdit={canManageSettings}
             initial={{
               motto: fetched?.motto ?? null,
               primaryColor: fetched?.primary_color ?? null,
@@ -317,7 +326,7 @@ export default async function SchoolSettingsPage() {
           />
         </SchoolSettingsCollapsibleSection>
 
-        {isSchoolAdmin ? (
+        {canManageSettings ? (
           <SchoolSettingsCollapsibleSection
             sectionId="school-stamp"
             title="School stamp"
@@ -330,7 +339,7 @@ export default async function SchoolSettingsPage() {
           </SchoolSettingsCollapsibleSection>
         ) : null}
 
-        {isSchoolAdmin ? (
+        {canManageSettings ? (
           <SchoolSettingsCollapsibleSection
             sectionId="head-teacher-account"
             title="Head teacher (duty book)"
@@ -363,7 +372,7 @@ export default async function SchoolSettingsPage() {
         >
           <SchoolLevelForm
             currentLevel={schoolLevel}
-            canEdit={isSchoolAdmin}
+            canEdit={canManageSettings}
           />
         </SchoolSettingsCollapsibleSection>
 

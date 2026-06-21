@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { submitContactForm, type ContactFormState } from "./actions";
+import { DEMO_REQUEST_SCHOOL_TYPES } from "@/lib/demo-requests/types";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -11,9 +12,9 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[140px]"
+      className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[160px]"
     >
-      {pending ? "Sending…" : "Send message — we'll reply within 1–2 days"}
+      {pending ? "Submitting…" : "Request Demo"}
     </button>
   );
 }
@@ -37,8 +38,9 @@ export function ContactForm() {
           className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200"
           role="status"
         >
-          <p className="font-semibold text-emerald-800 dark:text-emerald-200">
-            Thank you! We&apos;ll get back to you soon.
+          <p className="font-semibold">
+            Thank you. Your demo request has been received. Adakaro will contact
+            you shortly.
           </p>
         </div>
       ) : null}
@@ -58,7 +60,7 @@ export function ContactForm() {
             htmlFor="fullName"
             className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
           >
-            Full name
+            Full Name <span className="text-red-500">*</span>
           </label>
           <input
             id="fullName"
@@ -66,8 +68,43 @@ export function ContactForm() {
             type="text"
             autoComplete="name"
             required
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
-            placeholder="Your name"
+            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            placeholder="Your full name"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="schoolName"
+            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+          >
+            School Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="schoolName"
+            name="schoolName"
+            type="text"
+            required
+            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            placeholder="Your school name"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="phone"
+            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+          >
+            Phone / WhatsApp Number <span className="text-red-500">*</span>
+          </label>
+          <input
+            id="phone"
+            name="phone"
+            type="tel"
+            autoComplete="tel"
+            required
+            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            placeholder="+255 7XX XXX XXX"
           />
         </div>
 
@@ -76,34 +113,57 @@ export function ContactForm() {
             htmlFor="email"
             className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
           >
-            Email
+            Email Address
           </label>
           <input
             id="email"
             name="email"
             type="email"
             autoComplete="email"
-            required
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
-            placeholder="you@example.com"
+            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            placeholder="you@school.com"
           />
         </div>
 
-        <div>
-          <label
-            htmlFor="subject"
-            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-          >
-            Subject
-          </label>
-          <input
-            id="subject"
-            name="subject"
-            type="text"
-            required
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
-            placeholder="How can we help?"
-          />
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="schoolType"
+              className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+            >
+              School Type
+            </label>
+            <select
+              id="schoolType"
+              name="schoolType"
+              defaultValue=""
+              className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+            >
+              <option value="">Select school type</option>
+              {DEMO_REQUEST_SCHOOL_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label
+              htmlFor="studentCount"
+              className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
+            >
+              Number of Students
+            </label>
+            <input
+              id="studentCount"
+              name="studentCount"
+              type="number"
+              min={0}
+              step={1}
+              className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+              placeholder="e.g. 450"
+            />
+          </div>
         </div>
 
         <div>
@@ -116,11 +176,9 @@ export function ContactForm() {
           <textarea
             id="message"
             name="message"
-            required
             rows={5}
-            minLength={10}
-            className="mt-1.5 block w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
-            placeholder="Tell us more about your question or how we can help…"
+            className="mt-1.5 block w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500"
+            placeholder="Tell us about your school and what you would like to see in a demo…"
           />
         </div>
 

@@ -6,6 +6,9 @@ import { fetchSuperAdminDashboardFromApi } from "@/lib/super-admin/fetch-dashboa
 import { loadSuperAdminDashboardData } from "@/lib/super-admin/load-dashboard-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/types/supabase";
+import { loadSmartIntelligence } from "@/lib/super-admin/load-smart-intelligence";
+import { loadDemoLeadPipelineStats } from "@/lib/demo-requests/load-pipeline-stats";
+import type { SmartIntelligencePayload } from "@/lib/super-admin/smart-intelligence-types";
 import {
   SuperAdminDashboardClient,
   type PendingUpgradeRow,
@@ -180,11 +183,25 @@ export default async function SuperAdminHomePage() {
     return row;
   });
 
+  let initialIntelligence: SmartIntelligencePayload | null = null;
+  let intelligenceError: string | null = null;
+  const intelligenceResult = await loadSmartIntelligence(dashboardData.schools);
+  if (intelligenceResult.ok) {
+    initialIntelligence = intelligenceResult.data;
+  } else {
+    intelligenceError = intelligenceResult.message;
+  }
+
+  const initialLeadPipelineStats = await loadDemoLeadPipelineStats(supabase);
+
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-50 px-4 py-4 max-md:pt-2 sm:px-6 sm:py-8 sm:pt-8">
       <SuperAdminDashboardClient
         initialData={dashboardData}
         initialPendingUpgrades={initialPendingUpgrades}
+        initialIntelligence={initialIntelligence}
+        intelligenceError={intelligenceError}
+        initialLeadPipelineStats={initialLeadPipelineStats}
       />
     </div>
   );

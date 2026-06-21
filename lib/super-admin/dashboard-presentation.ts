@@ -70,6 +70,21 @@ export function healthScoreValueColor(
   }
 }
 
+/** Subtle scan indicator dot for mobile health scores (no charts/bars). */
+export function healthScoreIndicatorDot(
+  category: "excellent" | "healthy" | "at_risk" | "inactive"
+): string {
+  switch (category) {
+    case "excellent":
+    case "healthy":
+      return "bg-emerald-500";
+    case "at_risk":
+      return "bg-amber-500";
+    case "inactive":
+      return "bg-red-500";
+  }
+}
+
 /** Executive callout from existing health distribution counts. */
 export function healthOverviewCallout(
   lifecycleStats: {

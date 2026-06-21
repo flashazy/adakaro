@@ -81,19 +81,68 @@ export const saTableRowHover =
 export const saStatusBadge =
   "inline-flex h-5 items-center rounded-full px-2.5 text-[11px] font-semibold ring-1 ring-inset";
 
+/** Shared mobile KPI shell — identical sizing for standard + highlighted cards. */
+const saMobileKpiShell =
+  "flex h-full min-h-0 flex-col max-md:h-[4.5rem] max-md:rounded-lg max-md:border max-md:border-slate-200 max-md:bg-white max-md:px-2.5 max-md:py-2.5 max-md:shadow-sm max-md:hover:translate-y-0 max-md:hover:shadow-sm";
+
+const saMobileKpiLabel =
+  "max-md:min-h-[1.625rem] max-md:text-[11px] max-md:font-medium max-md:leading-tight max-md:text-slate-400";
+
+const saMobileKpiValue =
+  "max-md:mt-auto max-md:text-3xl max-md:font-extrabold max-md:leading-none max-md:text-slate-950";
+
+/** Executive section anchor spacing + typography (mobile). */
+export const saMobileSectionLead = "max-md:mt-8";
+export const saMobileSectionLeadFirst = "max-md:mt-6";
+export const saMobileSectionContentGap = "max-md:mt-2";
+export const saMobileExecutiveTitle =
+  "max-md:font-bold max-md:tracking-tight max-md:text-slate-950";
+
+export const saMobileSectionAnchor = cn(
+  "max-md:mb-1 max-md:text-[10px] max-md:font-bold max-md:tracking-[0.2em] max-md:text-slate-600"
+);
+
+const saMobileKpiValueEmphasis =
+  "max-md:!text-[1.75rem] max-md:!font-black max-md:!text-slate-950";
+
 export function SaKpiCard({
   label,
   value,
   className,
+  emphasizeMobile = false,
 }: {
   label: string;
   value: string | number;
   className?: string;
+  /** Stronger value weight for business-critical metrics on mobile. */
+  emphasizeMobile?: boolean;
 }) {
   return (
-    <div className={cn(saKpiCard, className)}>
-      <p className={saKpiLabel}>{label}</p>
-      <p className={saKpiValue}>{value}</p>
+    <div
+      className={cn(
+        saKpiCard,
+        saMobileKpiShell,
+        className
+      )}
+    >
+      <p
+        className={cn(
+          saKpiLabel,
+          saMobileKpiLabel,
+          emphasizeMobile && "max-md:font-semibold max-md:text-slate-500"
+        )}
+      >
+        {label}
+      </p>
+      <p
+        className={cn(
+          saKpiValue,
+          saMobileKpiValue,
+          emphasizeMobile && saMobileKpiValueEmphasis
+        )}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -110,10 +159,25 @@ export function SaKpiCardHighlighted({
   className?: string;
 }) {
   return (
-    <div className={cn(saKpiCardHighlighted, className)}>
-      <p className={saKpiLabel}>{label}</p>
-      <p className={saKpiValueHighlighted}>{value}</p>
-      <p className={saKpiCaption}>{caption}</p>
+    <div
+      className={cn(
+        saKpiCardHighlighted,
+        saMobileKpiShell,
+        "max-md:shadow-sm",
+        className
+      )}
+    >
+      <p className={cn(saKpiLabel, saMobileKpiLabel)}>{label}</p>
+      <p
+        className={cn(
+          saKpiValueHighlighted,
+          saMobileKpiValue,
+          "max-md:font-black"
+        )}
+      >
+        {value}
+      </p>
+      <p className={cn(saKpiCaption, "max-md:hidden")}>{caption}</p>
     </div>
   );
 }
@@ -173,17 +237,55 @@ export function SaTooltip({
 export function SaSectionAnchor({
   label,
   id,
+  className,
 }: {
   label: string;
   id?: string;
+  className?: string;
 }) {
   return (
     <p
       id={id}
-      className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500"
+      className={cn(
+        "text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500",
+        saMobileSectionAnchor,
+        className
+      )}
     >
       {label}
     </p>
+  );
+}
+
+function SaExecutiveHeaderChips({
+  dateLabel,
+  totalSchools,
+  paidSchools,
+  className,
+}: {
+  dateLabel: string;
+  totalSchools: number;
+  paidSchools: number;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2", className)}>
+      <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs tabular-nums text-slate-600 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm">
+        {dateLabel}
+      </span>
+      <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm">
+        <span className="text-slate-500">Schools</span>{" "}
+        <span className="font-semibold tabular-nums text-slate-900">
+          {totalSchools}
+        </span>
+      </span>
+      <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm">
+        <span className="text-slate-500">Paid</span>{" "}
+        <span className="font-semibold tabular-nums text-slate-900">
+          {paidSchools}
+        </span>
+      </span>
+    </div>
   );
 }
 
@@ -203,36 +305,33 @@ export function SaExecutiveHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <header className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:rounded-2xl sm:px-5 sm:py-5 lg:px-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-5">
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
             {title}
           </h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-500">
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500 sm:mt-1.5">
             {subtitle}
           </p>
           {children ? (
-            <div className="mt-4 flex flex-wrap items-center gap-4">{children}</div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4 sm:gap-3">
+              {children}
+            </div>
           ) : null}
+          <SaExecutiveHeaderChips
+            dateLabel={dateLabel}
+            totalSchools={totalSchools}
+            paidSchools={paidSchools}
+            className="mt-3 lg:hidden"
+          />
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-3 text-sm text-slate-600 lg:justify-end">
-          <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 tabular-nums">
-            {dateLabel}
-          </span>
-          <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <span className="text-slate-500">Schools</span>{" "}
-            <span className="font-semibold tabular-nums text-slate-900">
-              {totalSchools}
-            </span>
-          </span>
-          <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <span className="text-slate-500">Paid</span>{" "}
-            <span className="font-semibold tabular-nums text-slate-900">
-              {paidSchools}
-            </span>
-          </span>
-        </div>
+        <SaExecutiveHeaderChips
+          dateLabel={dateLabel}
+          totalSchools={totalSchools}
+          paidSchools={paidSchools}
+          className="hidden shrink-0 lg:flex lg:justify-end"
+        />
       </div>
     </header>
   );
@@ -241,14 +340,20 @@ export function SaExecutiveHeader({
 export function SaSectionHeader({
   title,
   subtitle,
+  className,
+  subtitleClassName,
 }: {
   title: string;
   subtitle?: string;
+  className?: string;
+  subtitleClassName?: string;
 }) {
   return (
     <div>
-      <h2 className={saSectionTitle}>{title}</h2>
-      {subtitle ? <p className={saSectionSubtitle}>{subtitle}</p> : null}
+      <h2 className={cn(saSectionTitle, className)}>{title}</h2>
+      {subtitle ? (
+        <p className={cn(saSectionSubtitle, subtitleClassName)}>{subtitle}</p>
+      ) : null}
     </div>
   );
 }

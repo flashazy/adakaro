@@ -1,7 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { binaryPlanLabel } from "@/lib/plans";
 import { enterSuperAdminSchoolWorkspace } from "@/lib/super-admin/open-school-workspace.client";
 import {
@@ -27,6 +38,10 @@ import {
 } from "@/lib/super-admin/contacts-utils";
 import { schoolLifecycleStatusLabel } from "@/lib/super-admin/school-lifecycle";
 import {
+  buildContactRowSchoolProfileHref,
+  type ContactsRowActionContext,
+} from "@/lib/super-admin/smart-intelligence-navigation";
+import {
   saBtnActionMenu,
   saBtnSecondarySm,
   saChipCalm,
@@ -42,13 +57,19 @@ export function ContactsExecutiveHeader({
   schoolsRepresented,
   totalContacts,
   loading = false,
+  filteredSchoolName = null,
   backHref = "/super-admin",
+  backLabel = "Back",
+  backLoadingLabel = "Loading…",
 }: {
   lastUpdated: string | null;
   schoolsRepresented: number;
   totalContacts: number;
   loading?: boolean;
+  filteredSchoolName?: string | null;
   backHref?: string;
+  backLabel?: string;
+  backLoadingLabel?: string;
 }) {
   const formatted =
     lastUpdated != null
@@ -60,7 +81,9 @@ export function ContactsExecutiveHeader({
 
   const summaryLine = loading
     ? "Loading contact summary…"
-    : `${totalContacts.toLocaleString()} contacts • ${schoolsRepresented.toLocaleString()} schools • Updated ${formatted}`;
+    : filteredSchoolName
+      ? `${totalContacts.toLocaleString()} contacts for ${filteredSchoolName} • Updated ${formatted}`
+      : `${totalContacts.toLocaleString()} contacts • ${schoolsRepresented.toLocaleString()} schools • Updated ${formatted}`;
 
   return (
     <header className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-white to-indigo-50/40 px-5 py-5 shadow-sm sm:px-6">
@@ -76,15 +99,17 @@ export function ContactsExecutiveHeader({
               </h1>
               <p className="mt-1 text-sm text-slate-500">{summaryLine}</p>
               <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-600">
-                Official communication directory across all Adakaro schools.
+                {filteredSchoolName
+                  ? `Official contacts for ${filteredSchoolName}.`
+                  : "Official communication directory across all Adakaro schools."}
               </p>
             </div>
             <SuperAdminNavLink
               href={backHref}
-              loadingLabel="Loading…"
+              loadingLabel={backLoadingLabel}
               className="shrink-0 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-white"
             >
-              Back
+              {backLabel}
             </SuperAdminNavLink>
           </div>
         </div>
@@ -396,136 +421,185 @@ export function ContactsEmptyState({ onClear }: { onClear: () => void }) {
   );
 }
 
-export function ContactActionsMenu({ row }: { row: SuperAdminContactRow }) {
+export function ContactActionsMenu({
+  row,
+  actionContext = {},
+}: {
+  row: SuperAdminContactRow;
+  actionContext?: ContactsRowActionContext;
+}) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
-  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [viewOpening, setViewOpening] = useState(false);
+  const [schoolOpening, setSchoolOpening] = useState(false);
+  const [workspaceOpening, setWorkspaceOpening] = useState(false);
   const phoneCopy = useCopyWithFeedback();
   const emailCopy = useCopyWithFeedback();
   const rowCopy = useCopyWithFeedback();
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const schoolProfileHref = buildContactRowSchoolProfileHref(
+    row.schoolId,
+    actionContext
+  );
 
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+  const closeMenu = useCallback(() => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }, []);
+
+  const menuStyle = usePortalMenuPosition(open, triggerRef, menuRef);
+
+  const actionBusy = viewOpening || schoolOpening || workspaceOpening;
+
+  async function handleViewContact() {
+    if (viewOpening) return;
+    setViewOpening(true);
+    try {
+      setViewOpen(true);
+      closeMenu();
+    } finally {
+      setViewOpening(false);
     }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [open]);
+  }
+
+  async function handleOpenSchool() {
+    if (schoolOpening) return;
+    setSchoolOpening(true);
+    try {
+      await router.push(schoolProfileHref);
+      closeMenu();
+    } catch {
+      toast.error("Could not open school profile.");
+    } finally {
+      setSchoolOpening(false);
+    }
+  }
 
   async function handleWorkspace() {
-    setWorkspaceBusy(true);
-    const result = await enterSuperAdminSchoolWorkspace(row.schoolId);
-    if (!result.ok) {
-      alert(result.error);
-      setWorkspaceBusy(false);
+    if (workspaceOpening) return;
+    setWorkspaceOpening(true);
+    try {
+      const result = await enterSuperAdminSchoolWorkspace(row.schoolId);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      closeMenu();
+    } finally {
+      setWorkspaceOpening(false);
     }
+  }
+
+  async function copyPhone() {
+    if (!row.phone) {
+      toast.message("No phone number on this contact.");
+      return;
+    }
+    const ok = await phoneCopy.copy(row.phone, () =>
+      toast.error("Could not copy phone.")
+    );
+    if (ok) toast.success("Phone copied");
+    closeMenu();
+  }
+
+  async function copyEmail() {
+    if (!row.email) {
+      toast.message("No email address on this contact.");
+      return;
+    }
+    const ok = await emailCopy.copy(row.email, () =>
+      toast.error("Could not copy email.")
+    );
+    if (ok) toast.success("Email copied");
+    closeMenu();
+  }
+
+  async function copyRow() {
+    const ok = await rowCopy.copy(contactRowCopyText(row), () =>
+      toast.error("Could not copy contact row.")
+    );
+    if (ok) toast.success("Contact row copied");
+    closeMenu();
   }
 
   return (
     <>
-      <div ref={ref} className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className={saBtnActionMenu}
-          aria-expanded={open}
-          aria-haspopup="menu"
-        >
-          Actions
-          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor" aria-hidden>
-            <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" />
-          </svg>
-        </button>
-        {open ? (
-          <div
-            role="menu"
-            className="absolute right-0 z-20 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
-          >
-            <MenuItem
-              onClick={() => {
-                setViewOpen(true);
-                setOpen(false);
-              }}
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={saBtnActionMenu}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-busy={actionBusy}
+        disabled={actionBusy}
+      >
+        {actionBusy ? "Opening…" : "Actions"}
+        <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor" aria-hidden>
+          <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z" />
+        </svg>
+      </button>
+
+      {open && menuStyle
+        ? createPortal(
+            <ContactActionsPortalMenu
+              menuRef={menuRef}
+              menuStyle={menuStyle}
+              onClose={closeMenu}
             >
-              View contact
-            </MenuItem>
-            <MenuItem asChild>
-              <SuperAdminNavLink
-                href={`/super-admin/schools/${row.schoolId}`}
-                loadingLabel="Opening…"
-                className={cn(
-                  "block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                )}
-                onClick={() => setOpen(false)}
+              <ContactMenuItem
+                disabled={viewOpening}
+                onClick={() => void handleViewContact()}
               >
-                Open school
-              </SuperAdminNavLink>
-            </MenuItem>
-            {row.phone ? (
-              <MenuItem
+                {viewOpening ? "Opening…" : "View contact"}
+              </ContactMenuItem>
+              <ContactMenuItem
+                disabled={schoolOpening}
+                onClick={() => void handleOpenSchool()}
+              >
+                {schoolOpening ? "Opening…" : "Open school"}
+              </ContactMenuItem>
+              <ContactMenuItem
                 disabled={phoneCopy.isCopying}
-                onClick={() => {
-                  void phoneCopy.copy(row.phone!, () =>
-                    alert("Could not copy phone.")
-                  );
-                  setOpen(false);
-                }}
+                onClick={() => void copyPhone()}
               >
                 {phoneCopy.isCopying
                   ? "Copying…"
-                  : phoneCopy.isCopied
-                    ? "Copied"
-                    : "Copy phone"}
-              </MenuItem>
-            ) : null}
-            {row.email ? (
-              <MenuItem
+                  : row.phone
+                    ? "Copy phone"
+                    : "Copy phone (missing)"}
+              </ContactMenuItem>
+              <ContactMenuItem
                 disabled={emailCopy.isCopying}
-                onClick={() => {
-                  void emailCopy.copy(row.email!, () =>
-                    alert("Could not copy email.")
-                  );
-                  setOpen(false);
-                }}
+                onClick={() => void copyEmail()}
               >
                 {emailCopy.isCopying
                   ? "Copying…"
-                  : emailCopy.isCopied
-                    ? "Copied"
-                    : "Copy email"}
-              </MenuItem>
-            ) : null}
-            <MenuItem
-              disabled={rowCopy.isCopying}
-              onClick={() => {
-                void rowCopy.copy(contactRowCopyText(row), () =>
-                  alert("Could not copy contact row.")
-                );
-                setOpen(false);
-              }}
-            >
-              {rowCopy.isCopying
-                ? "Copying…"
-                : rowCopy.isCopied
-                  ? "Copied"
-                  : "Copy row"}
-            </MenuItem>
-            {row.contactType === "admin" ? (
-              <MenuItem
-                disabled={workspaceBusy}
-                onClick={() => {
-                  void handleWorkspace();
-                  setOpen(false);
-                }}
+                  : row.email
+                    ? "Copy email"
+                    : "Copy email (missing)"}
+              </ContactMenuItem>
+              <ContactMenuItem
+                disabled={rowCopy.isCopying}
+                onClick={() => void copyRow()}
               >
-                {workspaceBusy ? "Opening…" : "Open school workspace"}
-              </MenuItem>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+                {rowCopy.isCopying ? "Copying…" : "Copy row"}
+              </ContactMenuItem>
+              {row.contactType === "admin" ? (
+                <ContactMenuItem
+                  disabled={workspaceOpening}
+                  onClick={() => void handleWorkspace()}
+                >
+                  {workspaceOpening ? "Opening…" : "Open school workspace"}
+                </ContactMenuItem>
+              ) : null}
+            </ContactActionsPortalMenu>,
+            document.body
+          )
+        : null}
+
       {viewOpen ? (
         <ContactViewModal row={row} onClose={() => setViewOpen(false)} />
       ) : null}
@@ -533,28 +607,128 @@ export function ContactActionsMenu({ row }: { row: SuperAdminContactRow }) {
   );
 }
 
-function MenuItem({
+function usePortalMenuPosition(
+  open: boolean,
+  anchorRef: React.RefObject<HTMLElement | null>,
+  menuRef: React.RefObject<HTMLElement | null>
+): CSSProperties | null {
+  const [style, setStyle] = useState<CSSProperties | null>(null);
+
+  const updatePosition = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+
+    const rect = anchor.getBoundingClientRect();
+    const menuHeight = menuRef.current?.offsetHeight ?? 280;
+    const menuWidth = menuRef.current?.offsetWidth ?? 192;
+    const gap = 6;
+
+    const spaceBelow = window.innerHeight - rect.bottom - gap;
+    const spaceAbove = rect.top - gap;
+    const openUp = spaceBelow < menuHeight && spaceAbove > spaceBelow;
+
+    let top = openUp ? rect.top - menuHeight - gap : rect.bottom + gap;
+    top = Math.max(gap, Math.min(top, window.innerHeight - menuHeight - gap));
+
+    let left = rect.right - menuWidth;
+    left = Math.max(gap, Math.min(left, window.innerWidth - menuWidth - gap));
+
+    setStyle({
+      position: "fixed",
+      top,
+      left,
+      minWidth: "12rem",
+      zIndex: 201,
+    });
+  }, [anchorRef, menuRef]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setStyle(null);
+      return;
+    }
+
+    updatePosition();
+    const raf = requestAnimationFrame(updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [open, updatePosition]);
+
+  return style;
+}
+
+function ContactActionsPortalMenu({
+  menuRef,
+  menuStyle,
+  onClose,
+  children,
+}: {
+  menuRef: React.RefObject<HTMLDivElement | null>;
+  menuStyle: CSSProperties;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    const first = menuRef.current?.querySelector<HTMLElement>(
+      '[role="menuitem"]:not([disabled])'
+    );
+    first?.focus();
+  }, [menuRef]);
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[200]"
+        aria-hidden
+        onClick={onClose}
+      />
+      <div
+        ref={menuRef}
+        role="menu"
+        style={menuStyle}
+        className="overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl ring-1 ring-slate-900/5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </>
+  );
+}
+
+function ContactMenuItem({
   children,
   onClick,
   disabled,
-  asChild,
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
-  asChild?: boolean;
 }) {
-  const className =
-    "block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50";
-
-  if (asChild) {
-    return <div className={className}>{children}</div>;
-  }
-
   return (
     <button
       type="button"
-      className={cn(className, disabled && "cursor-not-allowed opacity-70")}
+      role="menuitem"
+      className={cn(
+        "block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent"
+      )}
       onClick={onClick}
       disabled={disabled}
     >
@@ -618,9 +792,12 @@ function SchoolNameLink({ row }: { row: SuperAdminContactRow }) {
   async function openWorkspace() {
     if (opening) return;
     setOpening(true);
-    const result = await enterSuperAdminSchoolWorkspace(row.schoolId);
-    if (!result.ok) {
-      alert(result.error);
+    try {
+      const result = await enterSuperAdminSchoolWorkspace(row.schoolId);
+      if (!result.ok) {
+        toast.error(result.error);
+      }
+    } finally {
       setOpening(false);
     }
   }
@@ -693,6 +870,14 @@ function ContactViewModal({
   onClose: () => void;
 }) {
   const source = contactSourceDisplay(row.sourceLabel);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   return (
     <div
@@ -785,7 +970,13 @@ function ContactRoleBadge({ row }: { row: SuperAdminContactRow }) {
   );
 }
 
-export function ContactTableRow({ row }: { row: SuperAdminContactRow }) {
+export function ContactTableRow({
+  row,
+  actionContext,
+}: {
+  row: SuperAdminContactRow;
+  actionContext?: ContactsRowActionContext;
+}) {
   return (
     <tr className={cn("border-b border-slate-100 last:border-0", saTableRowHover)}>
       <td className="hidden px-4 py-3.5 md:table-cell">
@@ -823,13 +1014,19 @@ export function ContactTableRow({ row }: { row: SuperAdminContactRow }) {
         <ContactSourceBadge sourceLabel={row.sourceLabel} />
       </td>
       <td className="px-4 py-3.5">
-        <ContactActionsMenu row={row} />
+        <ContactActionsMenu row={row} actionContext={actionContext} />
       </td>
     </tr>
   );
 }
 
-export function ContactMobileCard({ row }: { row: SuperAdminContactRow }) {
+export function ContactMobileCard({
+  row,
+  actionContext,
+}: {
+  row: SuperAdminContactRow;
+  actionContext?: ContactsRowActionContext;
+}) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -860,7 +1057,7 @@ export function ContactMobileCard({ row }: { row: SuperAdminContactRow }) {
             </p>
           </div>
           <div className="mt-3">
-            <ContactActionsMenu row={row} />
+            <ContactActionsMenu row={row} actionContext={actionContext} />
           </div>
         </div>
       </div>

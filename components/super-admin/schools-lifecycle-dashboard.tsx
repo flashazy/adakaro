@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDate } from "@/lib/format-date";
 import { binaryPlanLabel, isPaidPlanId } from "@/lib/plans";
 import { formatSchoolLastActivity } from "@/lib/super-admin/school-health";
@@ -31,6 +31,7 @@ import {
   platformHealthFromAverage,
   recommendedActionIcon,
   attentionSeverityAccent,
+  healthScoreIndicatorDot,
   SA_TOOLTIPS,
 } from "@/lib/super-admin/dashboard-presentation";
 import {
@@ -60,10 +61,57 @@ import {
   SaSectionHeader,
   SaTooltip,
   SaTopSchoolBadge,
+  saMobileSectionLead,
+  saMobileSectionLeadFirst,
+  saMobileSectionContentGap,
+  saMobileExecutiveTitle,
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { enterSuperAdminSchoolWorkspace } from "@/lib/super-admin/open-school-workspace.client";
 import type { SuperAdminSchoolRow } from "@/lib/super-admin/types";
 import { cn } from "@/lib/utils";
+
+const saDashboardPanel = cn(
+  saSection,
+  "max-md:rounded-xl max-md:px-4 max-md:py-3"
+);
+
+const saDashboardGrowthPanel =
+  "rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-4 shadow-sm max-md:rounded-xl max-md:px-3.5 max-md:py-3 sm:rounded-2xl sm:px-5 sm:py-5";
+
+const saDashboardAttentionPanel =
+  "rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-4 shadow-sm max-md:rounded-xl max-md:px-3.5 max-md:py-3 sm:rounded-2xl sm:px-5 sm:py-5";
+
+const saDashboardToolbar = cn(
+  saDirectoryToolbar,
+  "max-md:rounded-xl max-md:px-4 max-md:py-3"
+);
+
+const saMobileCardActionBtn =
+  "inline-flex min-h-11 w-full items-center justify-center py-2 sm:min-h-0 sm:w-auto sm:py-1.5";
+
+const saMobileFieldLabel =
+  "text-[9px] font-medium uppercase tracking-wide text-slate-400/60";
+
+function FunnelArrowVertical() {
+  return (
+    <div
+      className="flex h-2 shrink-0 items-center justify-center sm:hidden"
+      aria-hidden
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-3 w-3 text-slate-300/90"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="m6 9 6 6 6-6" />
+      </svg>
+    </div>
+  );
+}
 
 function FunnelArrow() {
   return (
@@ -90,7 +138,7 @@ function SearchIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 max-md:left-3.5 max-md:h-[18px] max-md:w-[18px]"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -101,6 +149,103 @@ function SearchIcon() {
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
     </svg>
+  );
+}
+
+const saMobileSearchInput = cn(
+  saSearchInput,
+  "max-md:h-12 max-md:rounded-xl max-md:py-0 max-md:pl-10 max-md:pr-3 max-md:text-[15px] max-md:focus:border-indigo-500 max-md:focus:ring-2 max-md:focus:ring-indigo-100/80"
+);
+
+const saMobilePlanSelect = cn(
+  saInput,
+  "max-md:h-12 max-md:rounded-xl max-md:border-slate-300 max-md:py-0 max-md:text-[15px] max-md:focus:border-indigo-500 max-md:focus:ring-2 max-md:focus:ring-indigo-100/80"
+);
+
+const saMobileFilterTabActive = cn(
+  saFilterTabActive,
+  "max-md:scale-100 max-md:shadow-sm max-md:ring-2 max-md:ring-indigo-500/25"
+);
+
+const saMobileFilterTabInactive = cn(
+  saFilterTabInactive,
+  "max-md:bg-slate-50 max-md:text-slate-600"
+);
+
+function DirectoryStatusFilterTabs({
+  tabs,
+  statusFilter,
+  onSelect,
+}: {
+  tabs: { key: StatusFilter; label: string; count: number }[];
+  statusFilter: StatusFilter;
+  onSelect: (key: StatusFilter) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [fadeLeft, setFadeLeft] = useState(false);
+  const [fadeRight, setFadeRight] = useState(false);
+
+  const updateFades = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    setFadeLeft(el.scrollLeft > 6);
+    setFadeRight(maxScroll > 6 && el.scrollLeft < maxScroll - 6);
+  }, []);
+
+  useEffect(() => {
+    updateFades();
+    const el = scrollRef.current;
+    if (!el) return;
+
+    el.addEventListener("scroll", updateFades, { passive: true });
+    window.addEventListener("resize", updateFades, { passive: true });
+
+    const observer = new ResizeObserver(updateFades);
+    observer.observe(el);
+
+    return () => {
+      el.removeEventListener("scroll", updateFades);
+      window.removeEventListener("resize", updateFades);
+      observer.disconnect();
+    };
+  }, [updateFades, tabs]);
+
+  return (
+    <div className="relative md:contents">
+      {fadeLeft ? (
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-white via-white/90 to-transparent md:hidden dark:from-zinc-900 dark:via-zinc-900/90"
+          aria-hidden
+        />
+      ) : null}
+      {fadeRight ? (
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-white via-white/90 to-transparent md:hidden dark:from-zinc-900 dark:via-zinc-900/90"
+          aria-hidden
+        />
+      ) : null}
+      <div
+        ref={scrollRef}
+        className="flex gap-2 max-md:-mx-0.5 max-md:overflow-x-auto max-md:scroll-smooth max-md:pb-0.5 max-md:pr-4 max-md:[-ms-overflow-style:none] max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible"
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => onSelect(tab.key)}
+            className={cn(
+              "shrink-0 rounded-full px-3.5 text-xs font-medium transition-all duration-200 sm:px-4 sm:py-2 sm:text-sm",
+              "max-md:inline-flex max-md:min-h-11 max-md:items-center max-md:py-2",
+              statusFilter === tab.key ? saMobileFilterTabActive : saMobileFilterTabInactive,
+              "max-md:last:mr-1"
+            )}
+          >
+            {tab.label} ({tab.count})
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -146,12 +291,14 @@ function SchoolActionsMenu({
   onArchive,
   onRestore,
   onDelete,
+  buttonClassName,
 }: {
   school: SuperAdminSchoolRow;
   onView: () => void;
   onArchive: () => void;
   onRestore: () => void;
   onDelete: () => void;
+  buttonClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -221,7 +368,7 @@ function SchoolActionsMenu({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={saBtnActionMenu}
+        className={cn(saBtnActionMenu, buttonClassName)}
       >
         <MoreHorizontalIcon />
         Actions
@@ -440,15 +587,15 @@ export function SchoolsLifecycleDashboard({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-4 overflow-x-hidden sm:space-y-6">
+      <div className="grid auto-rows-fr grid-cols-2 items-stretch gap-2 lg:grid-cols-4 lg:gap-4">
         <SaKpiCard label="Setup Schools" value={lifecycleStats.setupSchools} />
         <SaKpiCard label="Active Schools" value={lifecycleStats.activeSchools} />
         <SaKpiCard label="Inactive Schools" value={lifecycleStats.inactiveSchools} />
         <SaKpiCard label="Archived Schools" value={lifecycleStats.archivedSchools} />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid auto-rows-fr grid-cols-2 items-stretch gap-2 lg:grid-cols-4 lg:gap-4">
         <SaKpiCard
           label="New Setup Schools (30d)"
           value={lifecycleStats.newSetupSchoolsLast30Days}
@@ -461,19 +608,32 @@ export function SchoolsLifecycleDashboard({
           label="Active Schools This Month"
           value={lifecycleStats.activeSchoolsThisMonth}
         />
-        <SaKpiCard label="Schools At Risk" value={lifecycleStats.schoolsAtRisk} />
+        <SaKpiCard
+          label="Schools At Risk"
+          value={lifecycleStats.schoolsAtRisk}
+          emphasizeMobile
+        />
       </div>
 
-      <SaSectionAnchor label="Health Overview" id="sa-health-overview" />
-      <section className={saSection} aria-labelledby="sa-health-overview">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <SaSectionHeader title="School Health Overview" />
+      <SaSectionAnchor
+        label="Health Overview"
+        id="sa-health-overview"
+        className={saMobileSectionLeadFirst}
+      />
+      <section className={saDashboardPanel} aria-labelledby="sa-health-overview">
+        <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
+          <SaSectionHeader
+            title="School Health Overview"
+            className={cn("max-md:text-base", saMobileExecutiveTitle)}
+          />
           {healthTotal > 0 ? (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-slate-500">Platform Health:</span>
+            <div className="flex w-full items-center gap-1.5 text-xs max-md:font-medium sm:w-auto sm:gap-2 sm:text-sm">
+              <span className="text-slate-500 max-md:font-semibold max-md:text-slate-700">
+                Platform Health:
+              </span>
               <span
                 className={cn(
-                  "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset",
+                  "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset max-md:px-2.5 max-md:py-1 max-md:text-xs max-md:font-bold sm:px-2.5 sm:text-xs",
                   platformHealth.className
                 )}
               >
@@ -490,11 +650,11 @@ export function SchoolsLifecycleDashboard({
         ) : (
           <>
             {healthCallout ? (
-              <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:rounded-xl sm:text-sm">
                 {healthCallout}
               </p>
             ) : null}
-            <div className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-3 flex h-2.5 w-full min-w-0 overflow-hidden rounded-full bg-slate-100 sm:mt-4 sm:h-3">
               {(
                 [
                   ["excellent", lifecycleStats.healthExcellent, "bg-emerald-500"],
@@ -513,25 +673,29 @@ export function SchoolsLifecycleDashboard({
                 );
               })}
             </div>
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid grid-cols-1 gap-1.5 sm:mt-4 sm:grid-cols-2 sm:gap-2">
               {healthRows.map((row) => (
                 <div
                   key={row.label}
-                  className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm"
+                  className="flex min-h-[2.25rem] items-center justify-between gap-3 rounded-lg bg-slate-50 px-2.5 py-2 text-xs sm:min-h-0 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm"
                 >
-                  <span className="flex items-center gap-2 text-slate-600">
+                  <span className="flex min-w-0 items-center gap-2 text-slate-600">
                     <span
                       className={cn("h-2 w-2 shrink-0 rounded-full", row.barClass)}
                       aria-hidden
                     />
-                    <span>
+                    <span className="min-w-0">
                       <span className="font-medium text-slate-800">{row.label}</span>{" "}
                       <span className="text-xs text-slate-500">({row.range})</span>
                     </span>
                   </span>
-                  <span className="tabular-nums text-slate-700">
-                    {row.count}{" "}
-                    <span className="text-slate-500">({row.percent}%)</span>
+                  <span className="flex shrink-0 items-center gap-2 tabular-nums text-slate-700">
+                    <span className="min-w-[1.25rem] text-right font-medium">
+                      {row.count}
+                    </span>
+                    <span className="min-w-[2.75rem] text-right text-slate-500">
+                      ({row.percent}%)
+                    </span>
                   </span>
                 </div>
               ))}
@@ -540,14 +704,20 @@ export function SchoolsLifecycleDashboard({
         )}
       </section>
 
-      <SaSectionAnchor label="Growth Opportunities" id="sa-growth-opportunities" />
+      <SaSectionAnchor
+        label="Growth Opportunities"
+        id="sa-growth-opportunities"
+        className={saMobileSectionLead}
+      />
       <section
-        className="rounded-2xl border border-emerald-100 bg-emerald-50/30 px-5 py-5 shadow-sm"
+        className={saDashboardGrowthPanel}
         aria-labelledby="sa-growth-opportunities"
       >
         <SaSectionHeader
           title="Growth Opportunities"
           subtitle="Schools closest to becoming successful, expanding clients."
+          className={cn("max-md:text-base", saMobileExecutiveTitle)}
+          subtitleClassName="max-md:mt-0.5 max-md:text-xs"
         />
         {growthOpportunities.length === 0 ? (
           <SaEmptyState
@@ -555,43 +725,41 @@ export function SchoolsLifecycleDashboard({
             className="mt-4 border-emerald-100 bg-white/60"
           />
         ) : (
-          <ol className="mt-4 space-y-3">
+          <ol className={cn("mt-3 space-y-2.5 sm:mt-4 sm:space-y-3", saMobileSectionContentGap)}>
             {growthOpportunities.map((item, index) => {
               const badge = growthOpportunityBadge(item.insight);
               return (
                 <li
                   key={item.school.id}
                   className={cn(
-                    "flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm",
-                    saInteractiveCard
+                    "flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm sm:gap-3 sm:rounded-2xl sm:p-4",
+                    saInteractiveCard,
+                    "max-md:hover:translate-y-0 max-md:hover:shadow-sm"
                   )}
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-800">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800 sm:h-8 sm:w-8 sm:text-sm">
                     {index + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-900">{item.school.name}</p>
-                      <span
-                        className={cn(
-                          saChipCalm,
-                          badge.className
-                        )}
-                      >
+                    <p className="break-words text-sm font-semibold leading-snug text-slate-950">
+                      {item.school.name}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <span className={cn(saChipCalm, badge.className)}>
                         {badge.label}
                       </span>
                     </div>
-                    <p className="mt-0.5 text-sm text-slate-500">
+                    <p className="mt-0.5 text-[11px] text-slate-500 sm:text-sm">
                       {item.school.student_count} students · {item.school.health_label}
                     </p>
-                    <p className="mt-1.5 text-xs font-medium text-emerald-700">
+                    <p className="mt-0.5 text-[11px] font-semibold leading-snug text-emerald-800 sm:mt-1.5 sm:text-xs sm:font-medium sm:text-emerald-700">
                       {item.insight}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setDrawerSchool(item.school)}
-                    className={saBtnSecondarySm}
+                    className={cn(saBtnSecondarySm, "shrink-0 self-start")}
                   >
                     View
                   </button>
@@ -602,27 +770,35 @@ export function SchoolsLifecycleDashboard({
         )}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch lg:gap-6">
         <div>
-          <SaSectionAnchor label="Recommended Actions" id="sa-recommended-actions" />
-          <section className={saSection} aria-labelledby="sa-recommended-actions">
+          <SaSectionAnchor
+            label="Recommended Actions"
+            id="sa-recommended-actions"
+            className={saMobileSectionLead}
+          />
+          <section className={saDashboardPanel} aria-labelledby="sa-recommended-actions">
           <SaSectionHeader
             title="Recommended Actions"
             subtitle="What to focus on today."
+            className={cn("max-md:text-base", saMobileExecutiveTitle)}
+            subtitleClassName="max-md:mt-0.5 max-md:text-xs"
           />
-          <ul className="mt-4 space-y-3">
+          <ul className={cn("mt-3 space-y-1.5 sm:mt-4 sm:space-y-3", saMobileSectionContentGap)}>
             {recommendedActions.map((action) => (
               <li
                 key={action}
-                className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-3 text-sm text-slate-700"
+                className="flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/80 px-2 py-1.5 text-xs font-medium text-slate-800 transition-all duration-150 max-md:active:scale-[0.99] max-md:active:bg-slate-100 sm:min-h-0 sm:items-start sm:gap-3 sm:rounded-xl sm:px-3 sm:py-3 sm:text-sm sm:font-normal sm:text-slate-700"
               >
                 <span
-                  className="flex h-7 w-7 shrink-0 items-center justify-center text-base"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white text-base leading-none ring-1 ring-slate-200/90 max-md:shadow-sm sm:h-7 sm:w-7 sm:rounded-none sm:bg-transparent sm:text-base sm:ring-0 sm:shadow-none"
                   aria-hidden
                 >
                   {recommendedActionIcon(action)}
                 </span>
-                <span className="leading-relaxed">{action}</span>
+                <span className="min-w-0 flex-1 leading-snug sm:leading-relaxed">
+                  {action}
+                </span>
               </li>
             ))}
           </ul>
@@ -630,22 +806,35 @@ export function SchoolsLifecycleDashboard({
         </div>
 
         <div>
-          <SaSectionAnchor label="Lifecycle Funnel" />
-          <section className={cn(saSection, "flex flex-col justify-center")}>
-          <SaSectionHeader title="Schools Lifecycle Funnel" />
-          <div className="mt-5 flex flex-1 flex-col items-center justify-center gap-3 sm:flex-row sm:items-stretch">
+          <SaSectionAnchor label="Lifecycle Funnel" className={saMobileSectionLead} />
+          <section className={cn(saDashboardPanel, "flex flex-col justify-center")}>
+          <SaSectionHeader
+            title="Schools Lifecycle Funnel"
+            className="max-md:text-base"
+          />
+          <div className={cn("mt-3 flex w-full flex-col items-stretch sm:mt-5 sm:flex-row sm:items-stretch sm:gap-3", "max-md:mt-2 max-md:gap-0")}>
             {funnelSteps.map((step, index) => (
-              <div key={step.label} className="flex min-w-0 flex-1 items-stretch">
-                {index > 0 ? <FunnelArrow /> : null}
-                <div className="flex min-h-[5.5rem] flex-1 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-3 py-4 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-                  <p className="text-xl font-bold tabular-nums text-slate-950">
+              <div
+                key={step.label}
+                className="flex w-full min-w-0 flex-col items-stretch sm:flex-1 sm:flex-row"
+              >
+                {index > 0 ? (
+                  <>
+                    <FunnelArrowVertical />
+                    <FunnelArrow />
+                  </>
+                ) : null}
+                <div className="flex min-h-[3.25rem] w-full flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-center shadow-sm transition-all duration-200 sm:min-h-[5.5rem] sm:flex-1 sm:rounded-2xl sm:px-3 sm:py-4 sm:hover:-translate-y-0.5 sm:hover:shadow-md">
+                  <p className="text-lg font-extrabold tabular-nums leading-none text-slate-950 sm:text-xl sm:font-bold">
                     {step.count}
                   </p>
-                  <p className="mt-0.5 text-xs font-medium text-slate-600">
+                  <p className="mt-0.5 text-[10px] font-medium leading-tight text-slate-600 sm:text-xs">
                     {step.label}
                   </p>
                   {step.sublabel ? (
-                    <p className="text-[10px] text-slate-400">{step.sublabel}</p>
+                    <p className="text-[9px] leading-tight text-slate-400 sm:text-[10px]">
+                      {step.sublabel}
+                    </p>
                   ) : null}
                 </div>
               </div>
@@ -655,31 +844,41 @@ export function SchoolsLifecycleDashboard({
         </div>
       </div>
 
-      <SaSectionAnchor label="Attention Queue" id="sa-attention-queue" />
+      <SaSectionAnchor
+        label="Attention Queue"
+        id="sa-attention-queue"
+        className={saMobileSectionLead}
+      />
       <section
-        className="rounded-2xl border border-amber-200 bg-amber-50/50 px-5 py-5 shadow-sm"
+        className={saDashboardAttentionPanel}
         aria-labelledby="sa-attention-queue"
       >
-        <SaSectionHeader title="Schools Requiring Attention" />
+        <SaSectionHeader
+          title="Schools Requiring Attention"
+          className="max-md:text-base"
+        />
         {attentionSchools.length === 0 ? (
           <SaEmptyState
             message="No schools currently require attention."
             className="mt-4 border-amber-100 bg-white/60"
           />
         ) : (
-          <ul className="mt-4 space-y-3">
+          <ul className="mt-3 space-y-2.5 sm:mt-4 sm:space-y-3">
             {attentionSchools.map((school) => (
               <li
                 key={school.id}
                 className={cn(
-                  "flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 pl-3 shadow-sm",
+                  "flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 pl-2.5 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:rounded-2xl sm:p-4 sm:pl-3",
                   attentionSeverityAccent(school.priority),
-                  saInteractiveCard
+                  saInteractiveCard,
+                  "max-md:hover:translate-y-0 max-md:hover:shadow-sm"
                 )}
               >
-                <div className="min-w-0">
-                  <p className="font-medium text-slate-900">{school.name}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <p className="break-words font-semibold text-slate-950">
+                    {school.name}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2 sm:mt-2">
                     {school.badges.map((badge) => (
                       <span
                         key={badge.label}
@@ -689,28 +888,30 @@ export function SchoolsLifecycleDashboard({
                       </span>
                     ))}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-1.5 text-xs text-slate-500 sm:mt-2">
                     Health: {school.health_score} · Last activity:{" "}
                     {formatSchoolLastActivity(school.last_activity_at)}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:gap-2">
                   <button
                     type="button"
                     onClick={() => setDrawerSchool(school)}
-                    className={saBtnSecondarySm}
+                    className={cn(saBtnSecondarySm, saMobileCardActionBtn)}
                   >
                     View
                   </button>
                   {school.school_status !== "archived" ? (
-                    <button
+                    <SuperAdminLoadingButton
                       type="button"
                       disabled={busyId === school.id}
+                      loading={busyId === school.id}
+                      loadingLabel="Archiving…"
                       onClick={() => setArchiveTarget(school)}
-                      className={saBtnArchiveOutline}
+                      className={cn(saBtnArchiveOutline, saMobileCardActionBtn)}
                     >
                       Archive
-                    </button>
+                    </SuperAdminLoadingButton>
                   ) : null}
                 </div>
               </li>
@@ -719,11 +920,14 @@ export function SchoolsLifecycleDashboard({
         )}
       </section>
 
-      <div className="space-y-2">
-        <SaSectionAnchor label="Schools Directory" id="sa-schools-directory" />
-        <div aria-labelledby="sa-schools-directory" className="space-y-4">
-          <div className={saDirectoryToolbar}>
-            <p className="text-sm text-slate-600">
+      <div className={cn("max-md:space-y-3", saMobileSectionLead)}>
+        <SaSectionAnchor
+          label="Schools Directory"
+          id="sa-schools-directory"
+        />
+        <div aria-labelledby="sa-schools-directory" className="space-y-3 sm:space-y-4">
+          <div className={saDashboardToolbar}>
+            <p className="text-xs text-slate-600 sm:text-sm">
               <span className="font-medium text-slate-800">
                 Showing {filteredSchools.length} school
                 {filteredSchools.length === 1 ? "" : "s"}
@@ -738,38 +942,28 @@ export function SchoolsLifecycleDashboard({
               <span>{filteredStatusCounts.setup} Setup</span>
             </p>
 
-            <div className="flex flex-wrap gap-2">
-              {statusTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setStatusFilter(tab.key)}
-                  className={cn(
-                    "rounded-full px-4 py-2 text-sm font-medium transition-all duration-200",
-                    statusFilter === tab.key ? saFilterTabActive : saFilterTabInactive
-                  )}
-                >
-                  {tab.label} ({tab.count})
-                </button>
-              ))}
-            </div>
+            <DirectoryStatusFilterTabs
+              tabs={statusTabs}
+              statusFilter={statusFilter}
+              onSelect={setStatusFilter}
+            />
 
             <div className="flex flex-col gap-1.5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                <div className="relative min-w-[12rem] flex-1">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
+                <div className="relative w-full min-w-0 flex-1 sm:min-w-[12rem]">
                   <SearchIcon />
                   <input
                     type="text"
                     placeholder="Search schools by name..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className={saSearchInput}
+                    className={saMobileSearchInput}
                   />
                 </div>
                 <select
                   value={planFilter}
                   onChange={(e) => setPlanFilter(e.target.value)}
-                  className={cn(saInput, "border-slate-300")}
+                  className={cn(saMobilePlanSelect, "w-full sm:w-auto")}
                 >
                   <option value="all">All plans</option>
                   <option value="free">Free</option>
@@ -785,7 +979,7 @@ export function SchoolsLifecycleDashboard({
             </div>
           </div>
 
-      <div className="space-y-3 md:hidden">
+      <div className="space-y-2 md:hidden">
         {filteredSchools.length === 0 ? (
           <SaEmptyState
             message="No schools match your filters."
@@ -806,29 +1000,33 @@ export function SchoolsLifecycleDashboard({
               }
             }}
             className={cn(
-              "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm",
+              "rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm",
               saInteractiveCard,
-              saTableRowHover
+              saTableRowHover,
+              "max-md:hover:translate-y-0 max-md:hover:shadow-sm"
             )}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex min-w-0 items-start gap-2">
                 <SaRankBadge rank={index + 1} />
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium text-slate-900">{school.name}</p>
-                    {school.id === topHealthSchoolId ? (
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-semibold leading-snug text-slate-950">
+                    {school.name}
+                  </p>
+                  {school.id === topHealthSchoolId ? (
+                    <div className="mt-0.5">
                       <SaTooltip content={SA_TOOLTIPS.topSchool}>
                         <SaTopSchoolBadge />
                       </SaTooltip>
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <SaTooltip content={SA_TOOLTIPS.status}>
                 <span
                   className={cn(
                     saStatusBadge,
+                    "shrink-0",
                     schoolLifecycleStatusBadgeClass(school.school_status)
                   )}
                 >
@@ -836,29 +1034,63 @@ export function SchoolsLifecycleDashboard({
                 </span>
               </SaTooltip>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
-              <span
-                className={cn(
-                  "font-bold tabular-nums",
-                  healthScoreValueColor(school.health_category)
-                )}
-              >
-                {school.health_score}
-                <span className="font-normal text-slate-400"> /100</span>
-              </span>
-              <span>{binaryPlanLabel(school.plan)}</span>
-              <span>Students: {school.student_count}</span>
-              <span>{formatSchoolLastActivity(school.last_activity_at)}</span>
-            </div>
+            <dl className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+              <div>
+                <dt className={saMobileFieldLabel}>Health</dt>
+                <dd className="mt-0.5 flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "h-2 w-2 shrink-0 rounded-full",
+                      healthScoreIndicatorDot(school.health_category)
+                    )}
+                    aria-hidden
+                  />
+                  <span
+                    className={cn(
+                      "text-sm font-extrabold tabular-nums leading-none",
+                      healthScoreValueColor(school.health_category)
+                    )}
+                  >
+                    {school.health_score}
+                    <span className="text-[10px] font-normal text-slate-400">
+                      {" "}
+                      /100
+                    </span>
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt className={saMobileFieldLabel}>Plan</dt>
+                <dd className="mt-0.5 font-medium text-slate-600">
+                  {binaryPlanLabel(school.plan)}
+                </dd>
+              </div>
+              <div>
+                <dt className={saMobileFieldLabel}>Students</dt>
+                <dd className="mt-0.5 tabular-nums text-slate-600">
+                  {school.student_count}
+                </dd>
+              </div>
+              <div>
+                <dt className={saMobileFieldLabel}>Activity</dt>
+                <dd className="mt-0.5 leading-snug text-slate-600">
+                  {formatSchoolLastActivity(school.last_activity_at)}
+                </dd>
+              </div>
+              <div className="col-span-2">
+                <dt className={saMobileFieldLabel}>Created</dt>
+                <dd className="mt-0.5 text-slate-600">{formatDate(school.created_at)}</dd>
+              </div>
+            </dl>
             <div
-              className="mt-3 flex gap-2"
+              className="mt-2 grid grid-cols-2 gap-2"
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
                 onClick={() => setDrawerSchool(school)}
-                className={cn(saBtnSecondarySm, "flex-1")}
+                className={cn(saBtnSecondarySm, saMobileCardActionBtn)}
               >
                 View
               </button>
@@ -872,6 +1104,7 @@ export function SchoolsLifecycleDashboard({
                   setDeleteConfirmText("");
                   setDeleteFinalOpen(false);
                 }}
+                buttonClassName={cn(saMobileCardActionBtn, "justify-center")}
               />
             </div>
           </article>

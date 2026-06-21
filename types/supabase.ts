@@ -203,6 +203,168 @@ export interface Database {
           },
         ];
       };
+      demo_requests: {
+        Row: {
+          id: string;
+          created_at: string;
+          full_name: string;
+          school_name: string;
+          phone: string;
+          email: string | null;
+          school_type: string | null;
+          student_count: number | null;
+          message: string | null;
+          status: string;
+          source: string;
+          notes: string | null;
+          updated_at: string;
+          next_action: string | null;
+          next_action_date: string | null;
+          demo_date: string | null;
+          demo_time: string | null;
+          meeting_link: string | null;
+          last_contact_at: string | null;
+          lost_reason: string | null;
+          won_reason: string | null;
+          assigned_to_id: string | null;
+          assigned_to_name: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          full_name: string;
+          school_name: string;
+          phone: string;
+          email?: string | null;
+          school_type?: string | null;
+          student_count?: number | null;
+          message?: string | null;
+          status?: string;
+          source?: string;
+          notes?: string | null;
+          updated_at?: string;
+          next_action?: string | null;
+          next_action_date?: string | null;
+          demo_date?: string | null;
+          demo_time?: string | null;
+          meeting_link?: string | null;
+          last_contact_at?: string | null;
+          lost_reason?: string | null;
+          won_reason?: string | null;
+          assigned_to_id?: string | null;
+          assigned_to_name?: string | null;
+        };
+        Update: {
+          full_name?: string;
+          school_name?: string;
+          phone?: string;
+          email?: string | null;
+          school_type?: string | null;
+          student_count?: number | null;
+          message?: string | null;
+          status?: string;
+          source?: string;
+          notes?: string | null;
+          updated_at?: string;
+          next_action?: string | null;
+          next_action_date?: string | null;
+          demo_date?: string | null;
+          demo_time?: string | null;
+          meeting_link?: string | null;
+          last_contact_at?: string | null;
+          lost_reason?: string | null;
+          won_reason?: string | null;
+          assigned_to_id?: string | null;
+          assigned_to_name?: string | null;
+        };
+      };
+      demo_request_notes: {
+        Row: {
+          id: string;
+          demo_request_id: string;
+          author_id: string | null;
+          author_name: string;
+          content: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          demo_request_id: string;
+          author_id?: string | null;
+          author_name: string;
+          content: string;
+          created_at?: string;
+        };
+        Update: {
+          demo_request_id?: string;
+          author_id?: string | null;
+          author_name?: string;
+          content?: string;
+        };
+      };
+      demo_request_timeline_events: {
+        Row: {
+          id: string;
+          demo_request_id: string;
+          event_type: string;
+          label: string;
+          detail: string | null;
+          actor_id: string | null;
+          actor_name: string | null;
+          metadata: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          demo_request_id: string;
+          event_type: string;
+          label: string;
+          detail?: string | null;
+          actor_id?: string | null;
+          actor_name?: string | null;
+          metadata?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          demo_request_id?: string;
+          event_type?: string;
+          label?: string;
+          detail?: string | null;
+          actor_id?: string | null;
+          actor_name?: string | null;
+          metadata?: Json | null;
+        };
+      };
+      super_admin_notifications: {
+        Row: {
+          id: string;
+          recipient_id: string;
+          category: string;
+          title: string;
+          message: string;
+          metadata: Json | null;
+          read_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          recipient_id: string;
+          category?: string;
+          title: string;
+          message: string;
+          metadata?: Json | null;
+          read_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          recipient_id?: string;
+          category?: string;
+          title?: string;
+          message?: string;
+          metadata?: Json | null;
+          read_at?: string | null;
+        };
+      };
       duty_book_events: {
         Row: {
           id: string;
@@ -499,6 +661,11 @@ export interface Database {
           sent_by: string;
           sent_at: string;
           target_user_ids: string[] | null;
+          target_type: string;
+          target_school_id: string | null;
+          target_school_ids: string[] | null;
+          source: string | null;
+          source_context: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -510,6 +677,11 @@ export interface Database {
           sent_by: string;
           sent_at?: string;
           target_user_ids?: string[] | null;
+          target_type?: string;
+          target_school_id?: string | null;
+          target_school_ids?: string[] | null;
+          source?: string | null;
+          source_context?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -519,6 +691,11 @@ export interface Database {
           is_urgent?: boolean;
           sent_at?: string;
           target_user_ids?: string[] | null;
+          target_type?: string;
+          target_school_id?: string | null;
+          target_school_ids?: string[] | null;
+          source?: string | null;
+          source_context?: Record<string, unknown>;
           updated_at?: string;
         };
         Relationships: [
@@ -2913,6 +3090,7 @@ export type ParentStudent = Database["public"]["Tables"]["parent_students"]["Row
 export type ParentLinkRequest = Database["public"]["Tables"]["parent_link_requests"]["Row"];
 export type SchoolInvitation = Database["public"]["Tables"]["school_invitations"]["Row"];
 export type UpgradeRequest = Database["public"]["Tables"]["upgrade_requests"]["Row"];
+export type DemoRequest = Database["public"]["Tables"]["demo_requests"]["Row"];
 export type Broadcast = Database["public"]["Tables"]["broadcasts"]["Row"];
 export type BroadcastRead = Database["public"]["Tables"]["broadcast_reads"]["Row"];
 export type StudentFeeBalance = Database["public"]["Views"]["student_fee_balances"]["Row"];

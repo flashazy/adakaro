@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type {
   ContactHasFilter,
   ContactPlanFilter,
@@ -15,7 +16,6 @@ import {
 } from "@/components/super-admin/super-admin-loading-action";
 import {
   ContactsCoverageWidget,
-  ContactsEmptyState,
   ContactsExecutiveHeader,
   ContactsInsightChips,
   ContactsQuickActions,
@@ -23,6 +23,24 @@ import {
   ContactMobileCard,
   ContactTableRow,
 } from "./contacts-center-ui";
+import {
+  buildContactsFilterChips,
+  buildContactsFilterSummaryItems,
+  ContactsActiveFilterSummary,
+  ContactsDirectoryHeader,
+  ContactsFilteredEmptyState,
+  ContactsFilterBadgesRow,
+  ContactsFilterResultCounter,
+  ContactsFiltersAppliedBadge,
+  ContactsHasFilterSelect,
+  CONTACTS_EMAIL_FILTER_OPTIONS,
+  CONTACTS_PHONE_FILTER_OPTIONS,
+  countContactsActiveFilters,
+  EMAIL_FILTER_TOOLTIPS,
+  EMAIL_FILTER_LABELS,
+  PHONE_FILTER_TOOLTIPS,
+  PHONE_FILTER_LABELS,
+} from "./contacts-filter-ui";
 import {
   saBtnSecondarySm,
   saDirectoryToolbar,
@@ -32,9 +50,18 @@ import {
   saSearchInput,
   saSection,
   SaKpiCard,
-  SaSectionHeader,
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { cn } from "@/lib/utils";
+import { SchoolIntelligenceContextBanner } from "@/components/super-admin/smart-intelligence/school-intelligence-context-banner";
+import { useSchoolIntelligenceContext } from "@/components/super-admin/smart-intelligence/use-school-intelligence-context";
+import {
+  buildSchoolContactsHref,
+  isFromIntelligenceNavigation,
+  intelligenceDashboardHref,
+  parseIntelligenceNavigationFromSearchParams,
+  type ContactsRowActionContext,
+  type SmartIntelligenceNavigationContext,
+} from "@/lib/super-admin/smart-intelligence-navigation";
 
 const ROWS_PER_PAGE_OPTIONS = [25, 50, 100] as const;
 
@@ -57,13 +84,23 @@ function SearchIcon() {
 }
 
 export function ContactsCenterClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const schoolSelectRef = useRef<HTMLSelectElement>(null);
+  const intelligenceNav = useMemo(
+    () => parseIntelligenceNavigationFromSearchParams(searchParams),
+    [searchParams]
+  );
+  const fromIntelligence = isFromIntelligenceNavigation(searchParams);
+  const urlSchoolId = searchParams.get("schoolId")?.trim() ?? "";
+
   const phoneCopy = useCopyWithFeedback();
   const emailCopy = useCopyWithFeedback();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ContactTypeFilter>("all");
   const [planFilter, setPlanFilter] = useState<ContactPlanFilter>("all");
   const [statusFilter, setStatusFilter] = useState<ContactStatusFilter>("all");
-  const [schoolFilter, setSchoolFilter] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState(urlSchoolId);
   const [hasPhone, setHasPhone] = useState<ContactHasFilter>("all");
   const [hasEmail, setHasEmail] = useState<ContactHasFilter>("all");
   const [includeEmpty, setIncludeEmpty] = useState(false);
@@ -74,6 +111,80 @@ export function ContactsCenterClient() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SuperAdminContactsResponse | null>(null);
 
+  const activeSchoolId =
+    schoolFilter || intelligenceNav?.schoolId || urlSchoolId || null;
+  const { data: schoolContextPayload, loading: schoolContextLoading } =
+    useSchoolIntelligenceContext(activeSchoolId);
+
+  const activeSchoolName = useMemo(() => {
+    if (intelligenceNav?.schoolName && intelligenceNav.schoolId === activeSchoolId) {
+      return intelligenceNav.schoolName;
+    }
+    if (schoolContextPayload?.school.name) return schoolContextPayload.school.name;
+    const fromOptions = (data?.schoolOptions ?? []).find(
+      (s) => s.id === activeSchoolId
+    )?.name;
+    return fromOptions ?? searchParams.get("schoolName")?.trim() ?? "";
+  }, [
+    intelligenceNav,
+    activeSchoolId,
+    schoolContextPayload?.school.name,
+    data?.schoolOptions,
+    searchParams,
+  ]);
+
+  useEffect(() => {
+    setSchoolFilter(urlSchoolId);
+  }, [urlSchoolId]);
+
+  function replaceContactsUrl(nextSchoolId: string, schoolName?: string) {
+    if (!nextSchoolId) {
+      router.replace("/super-admin/contacts");
+      return;
+    }
+
+    const ctx: SmartIntelligenceNavigationContext = {
+      schoolId: nextSchoolId,
+      schoolName: schoolName ?? "",
+      source: intelligenceNav?.source ?? "general",
+      riskLevel: intelligenceNav?.riskLevel,
+      engagementScore: intelligenceNav?.engagementScore,
+      onboardingProgress: intelligenceNav?.onboardingProgress,
+    };
+
+    if (fromIntelligence) {
+      router.replace(buildSchoolContactsHref(ctx));
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("schoolId", nextSchoolId);
+    if (schoolName) params.set("schoolName", schoolName);
+    router.replace(`/super-admin/contacts?${params.toString()}`);
+  }
+
+  function clearSchoolContextFilter() {
+    setSchoolFilter("");
+    setPage(1);
+    router.replace("/super-admin/contacts");
+  }
+
+  function focusSchoolPicker() {
+    setSchoolFilter("");
+    router.replace("/super-admin/contacts");
+    window.setTimeout(() => schoolSelectRef.current?.focus(), 100);
+  }
+
+  function handleSchoolFilterChange(nextSchoolId: string) {
+    setSchoolFilter(nextSchoolId);
+    setPage(1);
+    const schoolName =
+      (data?.schoolOptions ?? []).find((s) => s.id === nextSchoolId)?.name ?? "";
+    replaceContactsUrl(nextSchoolId, schoolName);
+  }
+
+  const effectiveSchoolId = schoolFilter || urlSchoolId || intelligenceNav?.schoolId || "";
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     params.set("page", String(page));
@@ -82,7 +193,7 @@ export function ContactsCenterClient() {
     if (typeFilter !== "all") params.set("type", typeFilter);
     if (planFilter !== "all") params.set("plan", planFilter);
     if (statusFilter !== "all") params.set("schoolStatus", statusFilter);
-    if (schoolFilter) params.set("schoolId", schoolFilter);
+    if (effectiveSchoolId) params.set("schoolId", effectiveSchoolId);
     if (hasPhone !== "all") params.set("hasPhone", hasPhone);
     if (hasEmail !== "all") params.set("hasEmail", hasEmail);
     if (includeEmpty) params.set("includeEmpty", "1");
@@ -98,6 +209,7 @@ export function ContactsCenterClient() {
     hasPhone,
     hasEmail,
     includeEmpty,
+    effectiveSchoolId,
   ]);
 
   const fetchContacts = useCallback(async () => {
@@ -194,6 +306,45 @@ export function ContactsCenterClient() {
     setHasPhone("all");
     setHasEmail("all");
     setIncludeEmpty(false);
+    setPage(1);
+    if (searchParams.get("schoolId")) {
+      router.replace("/super-admin/contacts");
+    }
+  }
+
+  function removeFilterChip(id: string) {
+    setPage(1);
+    switch (id) {
+      case "search":
+        setSearch("");
+        break;
+      case "type":
+        setTypeFilter("all");
+        break;
+      case "plan":
+        setPlanFilter("all");
+        break;
+      case "status":
+        setStatusFilter("all");
+        break;
+      case "school":
+        setSchoolFilter("");
+        if (searchParams.get("schoolId")) {
+          router.replace("/super-admin/contacts");
+        }
+        break;
+      case "phone":
+        setHasPhone("all");
+        break;
+      case "email":
+        setHasEmail("all");
+        break;
+      case "includeEmpty":
+        setIncludeEmpty(false);
+        break;
+      default:
+        break;
+    }
   }
 
   const stats = data?.stats;
@@ -201,10 +352,71 @@ export function ContactsCenterClient() {
   const coverage = data?.coverage;
   const schoolOptions = data?.schoolOptions ?? [];
   const total = data?.total ?? 0;
+  const directoryTotal = data?.directoryTotal ?? total;
   const totalPages = data?.totalPages ?? 0;
   const pageSize = data?.pageSize ?? limit;
   const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = total === 0 ? 0 : Math.min(page * pageSize, total);
+
+  const filterChipInput = useMemo(
+    () => ({
+      search,
+      typeFilter,
+      planFilter,
+      statusFilter,
+      schoolName: effectiveSchoolId ? activeSchoolName : "",
+      hasPhone,
+      hasEmail,
+      includeEmpty,
+    }),
+    [
+      search,
+      typeFilter,
+      planFilter,
+      statusFilter,
+      effectiveSchoolId,
+      activeSchoolName,
+      hasPhone,
+      hasEmail,
+      includeEmpty,
+    ]
+  );
+
+  const filterChips = useMemo(
+    () => buildContactsFilterChips(filterChipInput),
+    [filterChipInput]
+  );
+
+  const filterSummaryItems = useMemo(
+    () => buildContactsFilterSummaryItems(filterChipInput),
+    [filterChipInput]
+  );
+
+  const activeFilterCount = useMemo(
+    () =>
+      countContactsActiveFilters({
+        search,
+        typeFilter,
+        planFilter,
+        statusFilter,
+        schoolId: effectiveSchoolId,
+        hasPhone,
+        hasEmail,
+        includeEmpty,
+      }),
+    [
+      search,
+      typeFilter,
+      planFilter,
+      statusFilter,
+      effectiveSchoolId,
+      hasPhone,
+      hasEmail,
+      includeEmpty,
+    ]
+  );
+
+  const schoolsInFilteredSet = activeSchoolId ? 1 : (insights?.schoolsRepresented ?? 0);
 
   const typeTabs: { key: ContactTypeFilter; label: string }[] = [
     { key: "all", label: "All" },
@@ -213,16 +425,54 @@ export function ContactsCenterClient() {
     { key: "parent", label: "Parents" },
   ];
 
+  const rowActionContext = useMemo<ContactsRowActionContext>(
+    () => ({
+      filteredSchoolId: activeSchoolId,
+      schoolName: activeSchoolName || null,
+      fromIntelligence,
+      intelligenceNav,
+    }),
+    [activeSchoolId, activeSchoolName, fromIntelligence, intelligenceNav]
+  );
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
       <ContactsExecutiveHeader
         lastUpdated={data?.lastUpdated ?? null}
-        schoolsRepresented={insights?.schoolsRepresented ?? 0}
+        schoolsRepresented={
+          activeSchoolId ? 1 : (insights?.schoolsRepresented ?? 0)
+        }
         totalContacts={stats?.total ?? 0}
         loading={loading}
+        filteredSchoolName={activeSchoolId ? activeSchoolName : null}
+        backHref={fromIntelligence ? intelligenceDashboardHref() : "/super-admin"}
+        backLabel={fromIntelligence ? "Back to Intelligence" : "Back"}
+        backLoadingLabel={fromIntelligence ? "Returning…" : "Loading…"}
       />
 
+      {activeSchoolId ? (
+        <SchoolIntelligenceContextBanner
+          schoolName={
+            intelligenceNav?.schoolName ||
+            schoolContextPayload?.school.name ||
+            schoolOptions.find((s) => s.id === activeSchoolId)?.name ||
+            ""
+          }
+          context={schoolContextPayload?.school ?? null}
+          loading={schoolContextLoading}
+          showIntelligenceReturn={fromIntelligence}
+          filterMode="contacts"
+          onClearFilter={clearSchoolContextFilter}
+          onChangeSchool={focusSchoolPicker}
+        />
+      ) : null}
+
       <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 snap-x snap-mandatory sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3 xl:grid-cols-6">
+        {activeFilterCount > 0 ? (
+          <p className="col-span-full -mb-1 text-xs text-slate-500">
+            KPI metrics reflect your active filters
+          </p>
+        ) : null}
         <SaKpiCard
           label="Total Contacts"
           value={loading ? "…" : (stats?.total ?? "—")}
@@ -261,27 +511,54 @@ export function ContactsCenterClient() {
       </section>
 
       <section className={saSection}>
-        <SaSectionHeader
-          title="Directory"
-          subtitle="Search, filter, and export contacts across all schools."
+        <ContactsDirectoryHeader
+          loading={loading}
+          filteredTotal={total}
+          schoolsRepresented={schoolsInFilteredSet}
+          activeSchoolName={activeSchoolId ? activeSchoolName : null}
         />
 
         <div className={cn(saDirectoryToolbar, "mt-4 gap-0 overflow-hidden p-0")}>
           <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-5 py-4 shadow-sm backdrop-blur-sm supports-[backdrop-filter]:bg-white/90">
-            <div className="flex flex-wrap gap-2">
-              {typeTabs.map((tab) => (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {typeTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setTypeFilter(tab.key)}
+                    className={cn(
+                      "rounded-full px-4 py-2 text-sm font-medium transition-all duration-200",
+                      typeFilter === tab.key ? saFilterTabActive : saFilterTabInactive
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <ContactsFiltersAppliedBadge count={activeFilterCount} />
                 <button
-                  key={tab.key}
                   type="button"
-                  onClick={() => setTypeFilter(tab.key)}
+                  onClick={clearFilters}
+                  disabled={activeFilterCount === 0}
                   className={cn(
-                    "rounded-full px-4 py-2 text-sm font-medium transition-all duration-200",
-                    typeFilter === tab.key ? saFilterTabActive : saFilterTabInactive
+                    saBtnSecondarySm,
+                    "bg-white",
+                    activeFilterCount === 0 && "cursor-not-allowed opacity-50"
                   )}
                 >
-                  {tab.label}
+                  Reset Filters
                 </button>
-              ))}
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <ContactsFilterBadgesRow
+                chips={filterChips}
+                onRemove={removeFilterChip}
+                onClearAll={clearFilters}
+              />
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -296,9 +573,14 @@ export function ContactsCenterClient() {
                 />
               </div>
               <select
-                value={schoolFilter}
-                onChange={(e) => setSchoolFilter(e.target.value)}
-                className={cn(saInput, "border-slate-300")}
+                ref={schoolSelectRef}
+                value={effectiveSchoolId}
+                onChange={(e) => handleSchoolFilterChange(e.target.value)}
+                className={cn(
+                  saInput,
+                  "border-slate-300",
+                  effectiveSchoolId && "border-indigo-300 bg-indigo-50/40 font-medium"
+                )}
               >
                 <option value="">All schools</option>
                 {schoolOptions.map((school) => (
@@ -330,24 +612,24 @@ export function ContactsCenterClient() {
                 <option value="inactive">Inactive</option>
                 <option value="archived">Archived</option>
               </select>
-              <select
+              <ContactsHasFilterSelect
+                id="contacts-phone-filter"
+                label="Phone"
                 value={hasPhone}
-                onChange={(e) => setHasPhone(e.target.value as ContactHasFilter)}
-                className={cn(saInput, "border-slate-300")}
-              >
-                <option value="all">Phone: Any</option>
-                <option value="yes">Has phone</option>
-                <option value="no">No phone</option>
-              </select>
-              <select
+                onChange={setHasPhone}
+                options={CONTACTS_PHONE_FILTER_OPTIONS}
+                tooltips={PHONE_FILTER_TOOLTIPS}
+                optionLabels={PHONE_FILTER_LABELS}
+              />
+              <ContactsHasFilterSelect
+                id="contacts-email-filter"
+                label="Email"
                 value={hasEmail}
-                onChange={(e) => setHasEmail(e.target.value as ContactHasFilter)}
-                className={cn(saInput, "border-slate-300")}
-              >
-                <option value="all">Email: Any</option>
-                <option value="yes">Has email</option>
-                <option value="no">No email</option>
-              </select>
+                onChange={setHasEmail}
+                options={CONTACTS_EMAIL_FILTER_OPTIONS}
+                tooltips={EMAIL_FILTER_TOOLTIPS}
+                optionLabels={EMAIL_FILTER_LABELS}
+              />
               <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
                 <input
                   type="checkbox"
@@ -357,6 +639,17 @@ export function ContactsCenterClient() {
                 />
                 Include rows without phone or email
               </label>
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <ContactsFilterResultCounter
+                loading={loading}
+                rangeStart={rangeStart}
+                rangeEnd={rangeEnd}
+                filteredTotal={total}
+                directoryTotal={directoryTotal}
+                activeFilterCount={activeFilterCount}
+              />
             </div>
           </div>
 
@@ -372,16 +665,8 @@ export function ContactsCenterClient() {
             exportParentsUrl={buildExportUrl("csv", "parent")}
           />
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-slate-600">
-              {loading
-                ? "Loading contacts…"
-                : total === 0
-                  ? "No contacts match your filters."
-                  : `Showing ${rangeStart}–${rangeEnd} of ${total} contacts`}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <SuperAdminLoadingButton
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <SuperAdminLoadingButton
                 type="button"
                 disabled={copyBusy || loading}
                 loading={phoneCopy.isCopying}
@@ -411,7 +696,6 @@ export function ContactsCenterClient() {
               <SuperAdminExportLink href={buildExportUrl("excel")} className={saBtnSecondarySm}>
                 Export Excel
               </SuperAdminExportLink>
-            </div>
           </div>
           </div>
         </div>
@@ -425,13 +709,27 @@ export function ContactsCenterClient() {
           <p className="mt-4 text-sm text-red-600">{error}</p>
         ) : null}
 
+        <div className="mt-4">
+          <ContactsActiveFilterSummary
+            loading={loading}
+            filteredTotal={total}
+            directoryTotal={directoryTotal}
+            summaryItems={filterSummaryItems}
+            onClearAll={clearFilters}
+          />
+        </div>
+
         <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           {loading ? (
             <p className="px-4 py-12 text-center text-sm text-slate-500">
               Loading contacts…
             </p>
           ) : total === 0 ? (
-            <ContactsEmptyState onClear={clearFilters} />
+            <ContactsFilteredEmptyState
+              summaryItems={filterSummaryItems}
+              onClearFilters={clearFilters}
+              onShowAll={clearFilters}
+            />
           ) : (
             <>
               <div className="hidden max-h-[min(70vh,48rem)] overflow-auto md:block">
@@ -439,14 +737,22 @@ export function ContactsCenterClient() {
                   <ContactsTableHeader />
                   <tbody>
                     {(data?.contacts ?? []).map((row) => (
-                      <ContactTableRow key={row.id} row={row} />
+                      <ContactTableRow
+                        key={row.id}
+                        row={row}
+                        actionContext={rowActionContext}
+                      />
                     ))}
                   </tbody>
                 </table>
               </div>
               <div className="space-y-3 p-3 md:hidden">
                 {(data?.contacts ?? []).map((row) => (
-                  <ContactMobileCard key={row.id} row={row} />
+                  <ContactMobileCard
+                    key={row.id}
+                    row={row}
+                    actionContext={rowActionContext}
+                  />
                 ))}
               </div>
             </>

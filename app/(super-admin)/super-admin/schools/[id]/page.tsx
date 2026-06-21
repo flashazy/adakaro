@@ -13,6 +13,8 @@ import {
   type SchoolDetail,
   type StudentRow,
 } from "./school-detail-client";
+import { loadSchoolCommandCenter } from "@/lib/super-admin/load-school-command-center";
+import type { SchoolCommandCenterPayload } from "@/lib/super-admin/school-command-center";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +46,9 @@ export default async function SuperAdminSchoolDetailPage({
     | "suspension_reason"
     | "created_at"
     | "created_by"
+    | "school_status"
+    | "last_activity_at"
+    | "updated_at"
   >;
 
   /** Prefer full row (includes suspension fields after migration 00041). */
@@ -53,7 +58,7 @@ export default async function SuperAdminSchoolDetailPage({
     const full = await client
       .from("schools")
       .select(
-        "id, name, plan, currency, status, suspension_reason, created_at, created_by"
+        "id, name, plan, currency, status, suspension_reason, created_at, created_by, school_status, last_activity_at, updated_at"
       )
       .eq("id", id)
       .maybeSingle();
@@ -68,14 +73,18 @@ export default async function SuperAdminSchoolDetailPage({
     if (base.error || !base.data) {
       return null;
     }
+    const baseRow = base.data as Pick<
+      SchoolPick,
+      "id" | "name" | "plan" | "currency" | "created_at" | "created_by"
+    >;
     return {
-      ...(base.data as Pick<
-        SchoolPick,
-        "id" | "name" | "plan" | "currency" | "created_at" | "created_by"
-      >),
+      ...baseRow,
       status: "active",
       suspension_reason: null,
-    } as SchoolPick;
+      school_status: "setup",
+      last_activity_at: null,
+      updated_at: baseRow.created_at,
+    } as unknown as SchoolPick;
   }
 
   let queryClient = supabase;
@@ -104,7 +113,7 @@ export default async function SuperAdminSchoolDetailPage({
       `
       user_id,
       role,
-      profiles ( full_name, email )
+      profiles ( full_name, email, phone, last_sign_in_at, avatar_url )
     `
     )
     .eq("school_id", id);
@@ -113,13 +122,22 @@ export default async function SuperAdminSchoolDetailPage({
     const r = row as {
       user_id: string;
       role: string;
-      profiles: { full_name: string; email: string | null } | null;
+      profiles: {
+        full_name: string;
+        email: string | null;
+        phone: string | null;
+        last_sign_in_at: string | null;
+        avatar_url: string | null;
+      } | null;
     };
     return {
       user_id: r.user_id,
       role: r.role,
       full_name: r.profiles?.full_name ?? "—",
       email: r.profiles?.email ?? null,
+      phone: r.profiles?.phone ?? null,
+      last_sign_in_at: r.profiles?.last_sign_in_at ?? null,
+      avatar_url: r.profiles?.avatar_url ?? null,
     };
   });
 
@@ -153,6 +171,34 @@ export default async function SuperAdminSchoolDetailPage({
     created_by: school.created_by,
   };
 
+  let commandCenter: SchoolCommandCenterPayload | null = null;
+  try {
+    const admin = createAdminClient();
+    commandCenter = await loadSchoolCommandCenter(
+      admin,
+      {
+        id: school.id,
+        name: school.name,
+        plan: school.plan,
+        currency: school.currency,
+        created_at: school.created_at,
+        school_status: school.school_status,
+        last_activity_at: school.last_activity_at,
+        updated_at: school.updated_at,
+      },
+      {
+        adminCount: members.filter((m) => m.role === "admin").length,
+        studentCount: studentCount ?? 0,
+      }
+    );
+  } catch (e) {
+    console.error("[super-admin/schools/detail] command center:", e);
+  }
+
+  if (!commandCenter) {
+    notFound();
+  }
+
   return (
     <Suspense
       fallback={
@@ -163,6 +209,7 @@ export default async function SuperAdminSchoolDetailPage({
     >
       <SchoolDetailClient
         school={schoolDetail}
+        commandCenter={commandCenter}
         members={members}
         students={(studentsRaw ?? []) as StudentRow[]}
         studentCount={studentCount ?? 0}

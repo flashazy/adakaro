@@ -1,9 +1,10 @@
 "use client";
 
-import { SuperAdminNavLink } from "@/components/super-admin/super-admin-loading-action";
+import { SuperAdminLoadingButton } from "@/components/super-admin/super-admin-loading-action";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatLocaleDateTime, formatShortLocaleDate } from "@/lib/format-date";
+import { formatSchoolLastActivity } from "@/lib/super-admin/school-health";
 import {
   binaryPlanLabel,
   isPaidPlanId,
@@ -11,6 +12,16 @@ import {
   type PlanId,
 } from "@/lib/plans";
 import { SchoolCurrencySelect } from "@/components/SchoolCurrencySelect";
+import type { SchoolCommandCenterPayload } from "@/lib/super-admin/school-command-center";
+import { enterSuperAdminSchoolWorkspace } from "@/lib/super-admin/open-school-workspace.client";
+import { SchoolCommandCenterView } from "./school-command-center-ui";
+import {
+  CopyButton,
+  SchoolManagementCollapsible,
+  TableEmptyState,
+  ThemedEmptyPanel,
+} from "./school-command-center-shared";
+import { GraduationCap, MailOpen, UserCircle } from "lucide-react";
 
 export interface SchoolDetail {
   id: string;
@@ -28,6 +39,9 @@ export interface MemberRow {
   role: string;
   full_name: string;
   email: string | null;
+  phone: string | null;
+  last_sign_in_at: string | null;
+  avatar_url: string | null;
 }
 
 export interface StudentRow {
@@ -47,6 +61,7 @@ export interface InvitationRow {
 
 interface Props {
   school: SchoolDetail;
+  commandCenter: SchoolCommandCenterPayload;
   members: MemberRow[];
   students: StudentRow[];
   studentCount: number;
@@ -82,6 +97,7 @@ function ModalShell({
 
 export function SchoolDetailClient({
   school: initialSchool,
+  commandCenter,
   members: initialMembers,
   students: initialStudents,
   studentCount: initialStudentCount,
@@ -116,6 +132,7 @@ export function SchoolDetailClient({
   const [activateOpen, setActivateOpen] = useState(false);
   const [suspendReasonDraft, setSuspendReasonDraft] = useState("");
   const [statusPending, setStatusPending] = useState(false);
+  const [workspaceOpening, setWorkspaceOpening] = useState(false);
 
   const stripQueryModalFlags = useCallback(() => {
     const sp = new URLSearchParams(searchParams.toString());
@@ -363,52 +380,35 @@ export function SchoolDetailClient({
     }
   }
 
+  async function openWorkspace() {
+    if (workspaceOpening) return;
+    setWorkspaceOpening(true);
+    try {
+      const result = await enterSuperAdminSchoolWorkspace(school.id);
+      if (!result.ok) alert(result.error);
+    } finally {
+      setWorkspaceOpening(false);
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      <div className="border-b border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-          <SuperAdminNavLink
-            href="/super-admin"
-            loadingLabel="Loading…"
-            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-          >
-            ← Back to dashboard
-          </SuperAdminNavLink>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {school.name}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-            School ID: {school.id}
-          </p>
-        </div>
-      </div>
+    <div className="min-h-screen bg-slate-50">
+      <main className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
+        <SchoolCommandCenterView
+          school={school}
+          commandCenter={commandCenter}
+          members={members}
+          students={students}
+          invitations={invitations}
+          onUpgradePlan={() => setPlanOpen(true)}
+          onEditSchool={() => setEditOpen(true)}
+          onOpenWorkspace={() => void openWorkspace()}
+          workspaceOpening={workspaceOpening}
+        />
 
-      <main className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => setPlanOpen(true)}
-            className={
-              isPaidPlanId(school.plan)
-                ? "rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-zinc-900 dark:text-red-300 dark:hover:bg-red-950/40"
-                : "rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-            }
-          >
-            {isPaidPlanId(school.plan) ? "Downgrade to Free" : "Upgrade to Paid"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setEditOpen(true)}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-          >
-            Edit school
-          </button>
-        </div>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-            Status
-          </h2>
+        <SchoolManagementCollapsible>
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Account status</h2>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <span
               className={
@@ -450,38 +450,53 @@ export function SchoolDetailClient({
           ) : null}
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-            Details
-          </h2>
-          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">School details</h2>
+          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <dt className="text-slate-500 dark:text-zinc-400">Plan</dt>
-              <dd className="font-medium text-slate-900 dark:text-white">
+              <dt className="text-slate-500">Account Status</dt>
+              <dd className="mt-1 font-medium text-slate-900">
+                {school.status === "active" ? "Active" : "Suspended"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">School Age</dt>
+              <dd className="mt-1 font-medium text-slate-900">
+                {commandCenter.daysSinceCreated === null
+                  ? "—"
+                  : `${commandCenter.daysSinceCreated} days`}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Last Activity</dt>
+              <dd className="mt-1 font-medium text-slate-900">
+                {formatSchoolLastActivity(commandCenter.activity.lastLogin)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Plan</dt>
+              <dd className="mt-1 font-medium text-slate-900">
                 {binaryPlanLabel(school.plan)}
               </dd>
             </div>
             <div>
-              <dt className="text-slate-500 dark:text-zinc-400">Currency</dt>
-              <dd className="font-medium text-slate-900 dark:text-white">
-                {school.currency}
-              </dd>
+              <dt className="text-slate-500">Currency</dt>
+              <dd className="mt-1 font-medium text-slate-900">{school.currency}</dd>
             </div>
             <div>
-              <dt className="text-slate-500 dark:text-zinc-400">Created</dt>
-              <dd className="font-medium text-slate-900 dark:text-white">
+              <dt className="text-slate-500">Created</dt>
+              <dd className="mt-1 font-medium text-slate-900">
                 {formatLocaleDateTime(school.created_at)}
               </dd>
             </div>
           </dl>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-            Invite admin
-          </h2>
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Invite admin</h2>
           <form onSubmit={sendInvite} className="mt-4 flex flex-col gap-3 sm:flex-row">
             <input
+              id="invite-admin-email"
               type="email"
               required
               value={inviteEmail}
@@ -504,10 +519,22 @@ export function SchoolDetailClient({
           ) : null}
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">
             Admins &amp; members
           </h2>
+          {members.length === 0 ? (
+            <div className="mt-4">
+              <TableEmptyState
+                icon={UserCircle}
+                theme="blue"
+                title="No team members available"
+                description="Administrator accounts will appear here once the school completes setup."
+                actionLabel="Open Workspace"
+                onAction={() => void openWorkspace()}
+              />
+            </div>
+          ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead>
@@ -525,7 +552,12 @@ export function SchoolDetailClient({
                     <tr key={m.user_id}>
                       <td className="py-2 pr-4">{m.full_name}</td>
                       <td className="py-2 pr-4 text-slate-600 dark:text-zinc-400">
-                        {m.email ?? "—"}
+                        <span className="inline-flex items-center gap-1">
+                          {m.email ?? "—"}
+                          {m.email ? (
+                            <CopyButton value={m.email} label="Copy email" />
+                          ) : null}
+                        </span>
                       </td>
                       <td className="py-2 pr-4">
                         <select
@@ -566,12 +598,25 @@ export function SchoolDetailClient({
               </tbody>
             </table>
           </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
             Students ({studentCount})
           </h2>
+          {students.length === 0 ? (
+            <div className="mt-4">
+              <TableEmptyState
+                icon={GraduationCap}
+                theme="purple"
+                title="No students available"
+                description="Student records will appear here once onboarding begins."
+                actionLabel="Open Workspace"
+                onAction={() => void openWorkspace()}
+              />
+            </div>
+          ) : (
           <div className="mt-4 max-h-80 overflow-y-auto overflow-x-auto">
             <table className="min-w-full text-left text-sm">
               <thead>
@@ -593,26 +638,35 @@ export function SchoolDetailClient({
                 ))}
               </tbody>
             </table>
-            {students.length === 0 ? (
-              <p className="py-4 text-sm text-slate-500">No students yet.</p>
-            ) : null}
             {studentCount > students.length ? (
               <p className="mt-2 text-xs text-slate-500">
                 Showing first {students.length} of {studentCount}.
               </p>
             ) : null}
           </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
             Pending invitations
           </h2>
+          {invitations.length === 0 ? (
+            <div className="mt-4">
+              <ThemedEmptyPanel
+                icon={MailOpen}
+                theme="amber"
+                title="No pending invitations"
+                description="Invite a school administrator to begin onboarding."
+                primaryLabel="Invite Admin"
+                onPrimary={() => {
+                  document.getElementById("invite-admin-email")?.focus();
+                }}
+              />
+            </div>
+          ) : (
           <ul className="mt-4 divide-y divide-slate-100 dark:divide-zinc-800">
-            {invitations.length === 0 ? (
-              <li className="py-3 text-sm text-slate-500">None.</li>
-            ) : (
-              invitations.map((inv) => (
+              {invitations.map((inv) => (
                 <li
                   key={inv.id}
                   className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
@@ -634,10 +688,11 @@ export function SchoolDetailClient({
                     Resend (copy link)
                   </button>
                 </li>
-              ))
-            )}
+              ))}
           </ul>
+          )}
         </section>
+        </SchoolManagementCollapsible>
       </main>
 
       {planOpen ? (

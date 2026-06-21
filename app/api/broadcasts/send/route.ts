@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { isMissingColumnError } from "@/lib/broadcasts/broadcast-target-types";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import type { Database } from "@/types/supabase";
 
@@ -36,6 +37,11 @@ export async function POST(request: NextRequest) {
     message?: string;
     is_urgent?: boolean;
     target_user_ids?: string[] | null;
+    target_school_id?: string | null;
+    target_school_ids?: string[] | null;
+    target_type?: string | null;
+    source?: string | null;
+    source_context?: Record<string, unknown> | null;
   };
   try {
     body = await request.json();
@@ -61,20 +67,77 @@ export async function POST(request: NextRequest) {
     ];
   }
 
+  const targetSchoolId = body.target_school_id?.trim() || null;
+  const targetSchoolIds = Array.isArray(body.target_school_ids)
+    ? [
+        ...new Set(
+          body.target_school_ids.map((x) => String(x).trim()).filter(Boolean)
+        ),
+      ]
+    : null;
+
+  let targetType = body.target_type?.trim() || null;
+  if (!targetType) {
+    if (targetSchoolIds?.length) {
+      targetType = "selected_schools";
+    } else if (targetSchoolId) {
+      targetType = "single_school";
+    } else if (targetUserIds?.length) {
+      targetType = "targeted_admins";
+    } else {
+      targetType = "all";
+    }
+  }
+
   const insertRow: Record<string, unknown> = {
     title,
     message,
     is_urgent: Boolean(body.is_urgent),
     sent_by: user.id,
+    target_type: targetType,
   };
-  if (targetUserIds && targetUserIds.length > 0) {
+
+  if (targetUserIds?.length) {
     insertRow.target_user_ids = targetUserIds;
   }
+  if (targetSchoolId) {
+    insertRow.target_school_id = targetSchoolId;
+  }
+  if (targetSchoolIds?.length) {
+    insertRow.target_school_ids = targetSchoolIds;
+  }
+  if (body.source?.trim()) {
+    insertRow.source = body.source.trim();
+  }
+  if (body.source_context && typeof body.source_context === "object") {
+    insertRow.source_context = body.source_context;
+  }
 
-  const { data: inserted, error } = await (admin as any)
+  let { data: inserted, error } = await (admin as any)
     .from("broadcasts")
     .insert(insertRow)
     .select("id, sent_at");
+
+  if (error && isMissingColumnError(error)) {
+    console.warn(
+      "[broadcasts/send] targeting columns missing — legacy insert. Apply migration 00178_broadcast_targeting_columns.sql"
+    );
+    const legacyRow: Record<string, unknown> = {
+      title,
+      message,
+      is_urgent: Boolean(body.is_urgent),
+      sent_by: user.id,
+    };
+    if (targetUserIds?.length) {
+      legacyRow.target_user_ids = targetUserIds;
+    }
+    const legacy = await (admin as any)
+      .from("broadcasts")
+      .insert(legacyRow)
+      .select("id, sent_at");
+    inserted = legacy.data;
+    error = legacy.error;
+  }
 
   if (error) {
     console.error("[broadcasts/send]", error);

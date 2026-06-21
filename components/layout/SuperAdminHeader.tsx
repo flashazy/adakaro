@@ -3,6 +3,7 @@
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { NavLinkWithLoading } from "@/components/layout/nav-link-with-loading";
 import { SuperAdminSchoolWorkspacePicker } from "@/components/super-admin/super-admin-school-workspace-picker";
+import { SuperAdminNotificationsBell } from "@/components/super-admin/super-admin-notifications-bell";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { cn } from "@/lib/utils";
 import {
@@ -460,11 +461,12 @@ export function SuperAdminHeader({
   );
   const isHealthCenter = pathname.startsWith("/super-admin/watchdog");
   const isActivityLogs = pathname.startsWith("/super-admin/activity-logs");
+  const isDemoRequests = pathname.startsWith("/super-admin/demo-requests");
   const isBroadcasts = pathname.startsWith("/super-admin/broadcasts");
 
   const isSchoolsGroupActive =
     isContacts || isUpgradeRequests || isHealthCenter || isActivityLogs;
-  const isCommunicationsGroupActive = isBroadcasts;
+  const isCommunicationsGroupActive = isBroadcasts || isDemoRequests;
 
   const iconClass = "h-4 w-4";
 
@@ -502,6 +504,13 @@ export function SuperAdminHeader({
   ];
 
   const communicationsItems: NavDropdownItem[] = [
+    {
+      href: "/super-admin/demo-requests",
+      label: "Demo Requests",
+      description: "Inbound demo leads from Contact page",
+      isActive: isDemoRequests,
+      icon: <MessageSquare className={iconClass} strokeWidth={1.75} aria-hidden />,
+    },
     {
       href: "/super-admin/broadcasts",
       label: "Broadcast Messages",
@@ -676,6 +685,8 @@ export function SuperAdminHeader({
           <div className="hidden sm:block">
             <ThemeToggle />
           </div>
+
+          <SuperAdminNotificationsBell />
 
           <UserMenu fullName={fullName} avatarUrl={avatarUrl} />
 
