@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
+import { loadDemoRequestRows } from "@/lib/demo-requests/load-demo-request-rows";
 import {
   computeDemoRequestStats,
   computeExecutiveInsights,
   computePipelineStats,
   computeDailyActivity,
   computeConversionAnalytics,
-  DEMO_REQUEST_SELECT_COLS,
   DEMO_REQUEST_STATUSES,
   DEMO_REQUEST_LEAD_SOURCES,
   DEMO_REQUEST_REQUEST_TYPES,
-  DEMO_REQUEST_SOURCE_LABELS,
+  type DemoRequestLeadSource,
+  type DemoRequestRequestType,
   type DemoRequestRow,
   type TimelineEventLite,
 } from "@/lib/demo-requests/types";
@@ -44,39 +44,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  let db = supabase;
-  let rows: DemoRequestRow[] = [];
-
-  const first = await supabase
-    .from("demo_requests")
-    .select(DEMO_REQUEST_SELECT_COLS)
-    .order("created_at", { ascending: false });
-
-  if (first.error) {
-    try {
-      db = createAdminClient();
-      const second = await db
-        .from("demo_requests")
-        .select(DEMO_REQUEST_SELECT_COLS)
-        .order("created_at", { ascending: false });
-      if (second.error) {
-        console.error("[demo-requests] load:", second.error);
-        return NextResponse.json(
-          { error: "Could not load demo requests." },
-          { status: 500 }
-        );
-      }
-      rows = (second.data ?? []) as DemoRequestRow[];
-    } catch (e) {
-      console.error("[demo-requests] admin client:", e);
-      return NextResponse.json(
-        { error: "Server configuration error." },
-        { status: 500 }
-      );
-    }
-  } else {
-    rows = (first.data ?? []) as DemoRequestRow[];
+  const { rows, error: loadError } = await loadDemoRequestRows(supabase);
+  if (loadError) {
+    return NextResponse.json({ error: loadError }, { status: 500 });
   }
+
+  const db = supabase;
 
   const url = request.nextUrl;
   const status = url.searchParams.get("status")?.trim() ?? "";
@@ -94,15 +67,13 @@ export async function GET(request: NextRequest) {
   }
   if (
     source &&
-    DEMO_REQUEST_LEAD_SOURCES.includes(source as DemoRequestRow["source"])
+    DEMO_REQUEST_LEAD_SOURCES.includes(source as DemoRequestLeadSource)
   ) {
     filtered = filtered.filter((row) => row.source === source);
   }
   if (
     requestType &&
-    DEMO_REQUEST_REQUEST_TYPES.includes(
-      requestType as DemoRequestRow["request_type"]
-    )
+    DEMO_REQUEST_REQUEST_TYPES.includes(requestType as DemoRequestRequestType)
   ) {
     filtered = filtered.filter((row) => row.request_type === requestType);
   }

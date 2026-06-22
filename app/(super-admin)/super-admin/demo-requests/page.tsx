@@ -5,13 +5,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkIsSuperAdmin } from "@/lib/super-admin";
 import type { Database } from "@/types/supabase";
+import { loadDemoRequestRows } from "@/lib/demo-requests/load-demo-request-rows";
 import {
   computeDemoRequestStats,
   computeExecutiveInsights,
   computePipelineStats,
   computeDailyActivity,
   computeConversionAnalytics,
-  DEMO_REQUEST_SELECT_COLS,
   type DemoRequestRow,
   type TimelineEventLite,
 } from "@/lib/demo-requests/types";
@@ -22,29 +22,8 @@ export const dynamic = "force-dynamic";
 async function loadDemoRequests(
   userClient: SupabaseClient<Database>
 ): Promise<DemoRequestRow[]> {
-  const first = await userClient
-    .from("demo_requests")
-    .select(DEMO_REQUEST_SELECT_COLS)
-    .order("created_at", { ascending: false });
-
-  if (!first.error && first.data) {
-    return first.data as DemoRequestRow[];
-  }
-
-  try {
-    const admin = createAdminClient();
-    const second = await admin
-      .from("demo_requests")
-      .select(DEMO_REQUEST_SELECT_COLS)
-      .order("created_at", { ascending: false });
-    if (!second.error && second.data) {
-      return second.data as DemoRequestRow[];
-    }
-  } catch {
-    /* service role unavailable */
-  }
-
-  return [];
+  const { rows } = await loadDemoRequestRows(userClient);
+  return rows;
 }
 
 async function loadTimelineEventsForAnalytics(

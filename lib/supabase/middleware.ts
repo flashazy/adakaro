@@ -147,9 +147,14 @@ export async function updateSession(request: NextRequest) {
   const rawCc = request.cookies.get(CAPTURE_SESSION_COOKIE)?.value ?? "";
   const captureRead = await readCaptureSession(request);
   const captureSession = captureRead.ok ? captureRead.payload : null;
+  const isCaptureCardRelevantRoute =
+    isCaptureCardRoute ||
+    isEnrollmentDeskAccessRoute ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/api/capture-card");
 
-  if (debug) {
-    console.info("[cc_session] check", {
+  if (debug && isCaptureCardRelevantRoute) {
+    console.info("[cc_session] capture-card session", {
       pathname,
       hasCookie: Boolean(rawCc),
       decodeOk: captureRead.ok,
