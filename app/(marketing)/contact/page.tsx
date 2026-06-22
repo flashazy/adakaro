@@ -1,23 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Check, MessageCircle } from "lucide-react";
+import { Check } from "lucide-react";
 import { SmartFloatingScrollButton } from "@/components/landing/landing-scroll";
 import { ContactForm } from "./contact-form";
+import { ContactDirectCard } from "./contact-direct-card";
 import { ContactWhatsAppFloat } from "./contact-whatsapp-float";
-import {
-  CONTACT_CARD_CLASS,
-  CONTACT_HELPER_CLASS,
-  CONTACT_SECTION_LABEL_CLASS,
-} from "./contact-ui";
+import { ContactWhatsAppProvider } from "./contact-whatsapp-provider";
 
 export const metadata: Metadata = {
   title: "Request Demo — Adakaro",
   description:
     "Request a demo of Adakaro school management software for your school in Tanzania and East Africa.",
 };
-
-const WHATSAPP_HREF =
-  "https://wa.me/255762545454?text=Hello%20Adakaro%2C%20I%20would%20like%20to%20request%20a%20demo%20for%20my%20school.";
 
 const footerLinks = [
   { href: "/", label: "← Back to home" },
@@ -42,7 +36,7 @@ const trustItems = [
 
 export default function ContactPage() {
   return (
-    <>
+    <ContactWhatsAppProvider>
       <div className="min-h-screen overflow-x-clip bg-slate-50 px-5 pb-28 pt-8 dark:bg-zinc-950 sm:px-6 sm:py-16 md:pb-16">
         <div className="mx-auto max-w-3xl">
           <header className="mb-6 text-center sm:mb-10 sm:text-left lg:mb-12">
@@ -84,61 +78,7 @@ export default function ContactPage() {
             </div>
 
             <aside className="min-w-0 lg:col-span-2">
-              <div className={CONTACT_CARD_CLASS}>
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                  Contact Adakaro Directly
-                </h2>
-                <dl className="mt-4 space-y-5 text-sm">
-                  <div>
-                    <dt className={CONTACT_SECTION_LABEL_CLASS}>Email</dt>
-                    <dd className="mt-1">
-                      <a
-                        href="mailto:info@adakaro.com"
-                        className="font-medium text-indigo-600 hover:text-indigo-500 focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:text-indigo-400"
-                      >
-                        info@adakaro.com
-                      </a>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className={CONTACT_SECTION_LABEL_CLASS}>WhatsApp</dt>
-                    <dd className="mt-1">
-                      <a
-                        href={WHATSAPP_HREF}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-base font-semibold leading-snug text-slate-900 hover:text-emerald-700 focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:text-white dark:hover:text-emerald-400"
-                      >
-                        +255 762 545 454
-                      </a>
-                    </dd>
-                    <dd className={`mt-1.5 ${CONTACT_HELPER_CLASS}`}>
-                      Preferred contact method for demos and support.
-                    </dd>
-                    <dd className={`mt-2.5 ${CONTACT_HELPER_CLASS}`}>
-                      <span className="font-medium text-slate-600 dark:text-zinc-400">
-                        Available:
-                      </span>{" "}
-                      Mon–Fri
-                      <br />
-                      8:00 AM – 6:00 PM (EAT)
-                    </dd>
-                  </div>
-                </dl>
-                <p className="mt-5 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
-                  Send us a WhatsApp message and we&apos;ll help you schedule a
-                  demo for your school.
-                </p>
-                <a
-                  href={WHATSAPP_HREF}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
-                >
-                  <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
-                  WhatsApp Adakaro
-                </a>
-              </div>
+              <ContactDirectCard />
             </aside>
           </div>
 
@@ -161,12 +101,12 @@ export default function ContactPage() {
           </nav>
         </div>
       </div>
-      <ContactWhatsAppFloat href={WHATSAPP_HREF} />
+      <ContactWhatsAppFloat />
       <SmartFloatingScrollButton
         sectionIds={[]}
         hideWhileScrolling
         className="bottom-4 right-4 sm:bottom-8 sm:right-8"
       />
-    </>
+    </ContactWhatsAppProvider>
   );
 }
