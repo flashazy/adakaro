@@ -17,6 +17,7 @@ import {
   Menu,
   MessageSquare,
   Moon,
+  Sparkles,
   Settings,
   Sun,
   User,
@@ -455,6 +456,7 @@ export function SuperAdminHeader({
   const isDashboard =
     pathname === "/super-admin" || pathname === "/super-admin/";
   const isAnalytics = pathname.startsWith("/super-admin/analytics");
+  const isAITraining = pathname.startsWith("/super-admin/ai-training");
   const isContacts = pathname.startsWith("/super-admin/contacts");
   const isUpgradeRequests = pathname.startsWith(
     "/super-admin/upgrade-requests"
@@ -646,6 +648,16 @@ export function SuperAdminHeader({
           >
             Analytics
           </NavLinkWithLoading>
+          <NavLinkWithLoading
+            href="/super-admin/ai-training"
+            loadingLabel="Loading…"
+            className={cn(
+              navTriggerBase,
+              isAITraining ? navTriggerActive : navTriggerInactive
+            )}
+          >
+            AI Training
+          </NavLinkWithLoading>
           <NavDropdown
             label="Schools"
             items={schoolsItems}
@@ -738,6 +750,11 @@ export function SuperAdminHeader({
 
             {mobileNavLink("/super-admin", "Dashboard", isDashboard)}
             {mobileNavLink("/super-admin/analytics", "Analytics", isAnalytics)}
+            {mobileNavLink(
+              "/super-admin/ai-training",
+              "AI Training",
+              isAITraining
+            )}
 
             <p className="mt-3 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-zinc-500">
               Schools

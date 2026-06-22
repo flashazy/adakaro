@@ -1,0 +1,14 @@
+export { AIChatWidget, AIChatFloatButton } from "./AIChatWidget";
+export { AIConversation } from "./AIConversation";
+export { AIMessage } from "./AIMessage";
+export { AISuggestions } from "./AISuggestions";
+export { AIWelcomeScreen } from "./AIWelcomeScreen";
+export { AIThinkingIndicator } from "./AIThinkingIndicator";
+export { AIEmptyState } from "./AIEmptyState";
+export { AIPublicAssistant } from "./AIPublicAssistant";
+export { AICopilotAssistant } from "./AICopilotAssistant";
+export { CopilotDock, CopilotStatusBadge } from "./copilot-dock";
+export { CopilotWelcomeScreen } from "./copilot-welcome-screen";
+export { CopilotPromptCards } from "./copilot-prompt-cards";
+export type { CopilotAIStatus } from "./copilot-dock";
+export { useAIChat } from "./use-ai-chat";

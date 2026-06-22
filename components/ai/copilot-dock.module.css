@@ -1,0 +1,16 @@
+@keyframes copilotIconGlow {
+  0%,
+  88%,
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  92% {
+    opacity: 0.45;
+    transform: scale(1.12);
+  }
+}
+
+.iconGlow {
+  animation: copilotIconGlow 7s ease-in-out infinite;
+}

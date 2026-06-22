@@ -34,10 +34,24 @@ const trustItems = [
   },
 ] as const;
 
+const productTrustChips = [
+  "Report Cards",
+  "Attendance",
+  "School Finance",
+  "Student Management",
+] as const;
+
+const socialProofFeatures = [
+  "Student Management",
+  "Attendance",
+  "Report Cards",
+  "Finance",
+] as const;
+
 export default function ContactPage() {
   return (
     <ContactWhatsAppProvider>
-      <div className="min-h-screen overflow-x-clip bg-slate-50 px-5 pb-28 pt-8 dark:bg-zinc-950 sm:px-6 sm:py-16 md:pb-16">
+      <div className="min-h-screen overflow-x-clip bg-slate-50 px-5 pb-36 pt-8 dark:bg-zinc-950 sm:px-6 sm:py-16 sm:pb-28 md:pb-16">
         <div className="mx-auto max-w-3xl">
           <header className="mb-6 text-center sm:mb-10 sm:text-left lg:mb-12">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-600 sm:text-[11px] sm:tracking-[0.14em]">
@@ -72,9 +86,49 @@ export default function ContactPage() {
             ))}
           </ul>
 
+          <ul
+            className="mb-7 flex flex-wrap items-center justify-center gap-2 sm:mb-8 sm:justify-start"
+            aria-label="Adakaro product capabilities"
+          >
+            {productTrustChips.map((chip) => (
+              <li key={chip}>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                  <Check
+                    className="h-3 w-3 shrink-0 text-emerald-600/80 dark:text-emerald-500/80"
+                    strokeWidth={2.5}
+                    aria-hidden
+                  />
+                  {chip}
+                </span>
+              </li>
+            ))}
+          </ul>
+
           <div className="grid min-w-0 gap-6 lg:grid-cols-5 lg:gap-12">
-            <div className="min-w-0 lg:col-span-3">
+            <div className="min-w-0 space-y-6 lg:col-span-3">
               <ContactForm />
+
+              <section
+                className="rounded-xl border border-slate-200/80 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/50 sm:px-6"
+                aria-label="Trusted by growing schools"
+              >
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  Trusted by growing schools
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+                  Schools use Adakaro to manage attendance, report cards,
+                  finance and school operations.
+                </p>
+                <ul className="mt-4 flex flex-wrap gap-2">
+                  {socialProofFeatures.map((feature) => (
+                    <li key={feature}>
+                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        {feature}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             </div>
 
             <aside className="min-w-0 lg:col-span-2">
@@ -105,7 +159,7 @@ export default function ContactPage() {
       <SmartFloatingScrollButton
         sectionIds={[]}
         hideWhileScrolling
-        className="bottom-4 right-4 sm:bottom-8 sm:right-8"
+        className="bottom-4 right-4 z-40 sm:bottom-8 sm:right-8"
       />
     </ContactWhatsAppProvider>
   );

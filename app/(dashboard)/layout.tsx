@@ -15,6 +15,7 @@ import { checkIsTeacher } from "@/lib/teacher-auth";
 import { fetchClassesWhereUserIsClassTeacher } from "@/lib/class-teacher";
 import { SchoolPrimaryCssVars } from "@/components/school-branding/school-primary-css-vars";
 import { DashboardFeedbackProvider } from "@/components/dashboard/dashboard-feedback-provider";
+import { DashboardAIChatShell } from "@/components/ai/dashboard-ai-chat-shell";
 import { invalidateExpiredTeacherTempPasswordIfNeeded } from "@/lib/teacher-temp-password-expiry";
 import { getDashboardBlockState } from "@/lib/dashboard/dashboard-block";
 import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
@@ -167,7 +168,9 @@ export default async function DashboardGroupLayout({
             className="w-full max-w-full min-w-0 overflow-x-hidden px-4 pb-12 pt-6 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0 print:overflow-visible"
           >
             <DashboardFeedbackProvider>
-              <SyncProvider>{children}</SyncProvider>
+              <DashboardAIChatShell>
+                <SyncProvider>{children}</SyncProvider>
+              </DashboardAIChatShell>
             </DashboardFeedbackProvider>
           </div>
         </div>
@@ -264,24 +267,26 @@ export default async function DashboardGroupLayout({
           className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
         >
           <DashboardFeedbackProvider>
-            {blockState?.blocked && blockState.schoolId ? (
-              <BlockedDashboard
-                schoolId={blockState.schoolId}
-                studentCount={blockState.studentCount}
-                freeLimit={blockState.freeLimit}
-                initialPendingRequest={blockState.pendingRequest}
-                lastRejected={blockState.lastRejected}
-              />
-            ) : (
-              // SyncProvider wraps the school-admin/parent branch too so
-              // offline payments, student CRUD, and chat have a sync
-              // runtime. The provider is a no-op on the server and only
-              // does work after hydration in the browser.
-              <SyncProvider>
-                <BroadcastBanner showBroadcasts={showSchoolAdminBroadcasts} />
-                {children}
-              </SyncProvider>
-            )}
+            <DashboardAIChatShell>
+              {blockState?.blocked && blockState.schoolId ? (
+                <BlockedDashboard
+                  schoolId={blockState.schoolId}
+                  studentCount={blockState.studentCount}
+                  freeLimit={blockState.freeLimit}
+                  initialPendingRequest={blockState.pendingRequest}
+                  lastRejected={blockState.lastRejected}
+                />
+              ) : (
+                // SyncProvider wraps the school-admin/parent branch too so
+                // offline payments, student CRUD, and chat have a sync
+                // runtime. The provider is a no-op on the server and only
+                // does work after hydration in the browser.
+                <SyncProvider>
+                  <BroadcastBanner showBroadcasts={showSchoolAdminBroadcasts} />
+                  {children}
+                </SyncProvider>
+              )}
+            </DashboardAIChatShell>
           </DashboardFeedbackProvider>
         </div>
       </div>

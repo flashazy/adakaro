@@ -3,6 +3,7 @@
 import { ArrowUp, ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useAIChatUIOpen } from "@/components/ai/ai-chat-ui-context";
 
 /** Order matches landing page sections top-to-bottom */
 const LANDING_SECTION_IDS = [
@@ -109,6 +110,7 @@ export function SmartFloatingScrollButton({
   const [nearBottom, setNearBottom] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [isScrolling, setIsScrolling] = useState(false);
+  const aiChatOpen = useAIChatUIOpen();
 
   const update = useCallback(() => {
     setScrollY(window.scrollY);
@@ -176,15 +178,20 @@ export function SmartFloatingScrollButton({
   const topFadeOpacity = scrollY < 56 ? 0.85 + (scrollY / 56) * 0.15 : 1;
   const hiddenWhileScrolling =
     hideWhileScrolling && isMobileViewport() && isScrolling;
+  const hidden = hiddenWhileScrolling || aiChatOpen;
+
+  if (aiChatOpen) {
+    return null;
+  }
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      style={{ opacity: hiddenWhileScrolling ? 0 : topFadeOpacity }}
+      style={{ opacity: hidden ? 0 : topFadeOpacity }}
       className={cn(
-        "fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg shadow-slate-900/10 transition-[opacity,transform] duration-200 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-black/30 dark:hover:bg-zinc-700",
-        hiddenWhileScrolling &&
+        "fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg shadow-slate-900/10 transition-[opacity,transform] duration-200 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-black/30 dark:hover:bg-zinc-700",
+        hidden &&
           "pointer-events-none max-md:translate-y-1 max-md:scale-95",
         className
       )}
