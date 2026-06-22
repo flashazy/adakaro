@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
@@ -73,6 +73,69 @@ function navigateWhatsAppPopup(
     }
   }
   window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+}
+
+function selectHelpOption(
+  option: "demo" | "support",
+  setters: {
+    setErrors: (errors: Record<string, string>) => void;
+    setStep: (step: ModalStep) => void;
+    setSubmitPhase: (phase: SubmitPhase) => void;
+    setPendingWhatsAppUrl: (url: string | null) => void;
+  }
+) {
+  setters.setErrors({});
+  setters.setSubmitPhase("idle");
+  setters.setPendingWhatsAppUrl(null);
+  setters.setStep(option);
+}
+
+function HelpOptionCard({
+  title,
+  description,
+  icon,
+  iconClassName,
+  borderHoverClassName,
+  onSelect,
+}: {
+  title: string;
+  description: string;
+  icon: ReactNode;
+  iconClassName: string;
+  borderHoverClassName: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect();
+      }}
+      className={cn(
+        "relative z-10 flex w-full cursor-pointer items-start gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-left transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 active:scale-[0.99] dark:border-zinc-700 dark:bg-zinc-800/50",
+        borderHoverClassName
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+          iconClassName
+        )}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-slate-900 dark:text-white">
+          {title}
+        </span>
+        <span className="mt-1 block text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+          {description}
+        </span>
+      </span>
+    </button>
+  );
 }
 
 function getModalCopy(step: ModalStep): { title: string; subtitle: string } {
@@ -276,6 +339,15 @@ export function ContactWhatsAppModal({
     );
   }
 
+  function handleSelectHelpOption(option: "demo" | "support") {
+    selectHelpOption(option, {
+      setErrors,
+      setStep,
+      setSubmitPhase,
+      setPendingWhatsAppUrl,
+    });
+  }
+
   if (!mounted || !open) return null;
 
   return createPortal(
@@ -289,7 +361,7 @@ export function ContactWhatsAppModal({
     >
       <button
         type="button"
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px] transition-opacity"
+        className="absolute inset-0 z-0 bg-slate-900/50 backdrop-blur-[2px] transition-opacity"
         aria-label="Close dialog"
         onClick={handleClose}
         disabled={submitting}
@@ -299,8 +371,10 @@ export function ContactWhatsAppModal({
         aria-modal="true"
         aria-labelledby="whatsapp-modal-title"
         aria-busy={submitting}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
         className={cn(
-          "relative z-10 flex max-h-[min(92dvh,720px)] w-full max-w-md min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900",
+          "relative z-20 flex max-h-[min(92dvh,720px)] w-full max-w-md min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900",
           "transition-[transform,opacity] duration-200 ease-out",
           visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-[0.98] opacity-0 sm:translate-y-0"
         )}
@@ -345,50 +419,33 @@ export function ContactWhatsAppModal({
           </button>
         </div>
 
-        {/* Scrollable body */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
+        {/* Body */}
+        <div
+          className={cn(
+            "min-h-0 flex-1",
+            step === "choose"
+              ? "flex flex-col px-5 py-5"
+              : "overflow-y-auto overscroll-contain px-5 py-5"
+          )}
+        >
           {step === "choose" ? (
             <div className="grid gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setErrors({});
-                  setStep("demo");
-                }}
-                className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-left transition hover:border-indigo-200 hover:bg-indigo-50/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 active:scale-[0.99] dark:border-zinc-700 dark:bg-zinc-800/50 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/30"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
-                  <Calendar className="h-5 w-5" aria-hidden />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold text-slate-900 dark:text-white">
-                    Request a Demo
-                  </span>
-                  <span className="mt-1 block text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
-                    Schedule a walkthrough of Adakaro for your school.
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setErrors({});
-                  setStep("support");
-                }}
-                className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-left transition hover:border-emerald-200 hover:bg-emerald-50/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-[0.99] dark:border-zinc-700 dark:bg-zinc-800/50 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                  <Headphones className="h-5 w-5" aria-hidden />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold text-slate-900 dark:text-white">
-                    Get Support
-                  </span>
-                  <span className="mt-1 block text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
-                    Get help with your account or a technical issue.
-                  </span>
-                </span>
-              </button>
+              <HelpOptionCard
+                title="Request a Demo"
+                description="Schedule a walkthrough of Adakaro for your school."
+                icon={<Calendar className="h-5 w-5" aria-hidden />}
+                iconClassName="bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300"
+                borderHoverClassName="hover:border-indigo-200 hover:bg-indigo-50/50 focus-visible:outline-indigo-600 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/30"
+                onSelect={() => handleSelectHelpOption("demo")}
+              />
+              <HelpOptionCard
+                title="Get Support"
+                description="Get help with your account or a technical issue."
+                icon={<Headphones className="h-5 w-5" aria-hidden />}
+                iconClassName="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                borderHoverClassName="hover:border-emerald-200 hover:bg-emerald-50/50 focus-visible:outline-emerald-600 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
+                onSelect={() => handleSelectHelpOption("support")}
+              />
             </div>
           ) : null}
 

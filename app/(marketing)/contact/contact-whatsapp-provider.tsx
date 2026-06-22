@@ -12,6 +12,7 @@ import { ContactWhatsAppModal } from "./contact-whatsapp-modal";
 
 interface ContactWhatsAppContextValue {
   openWhatsAppModal: () => void;
+  modalOpen: boolean;
 }
 
 const ContactWhatsAppContext = createContext<ContactWhatsAppContextValue | null>(
@@ -25,8 +26,8 @@ export function ContactWhatsAppProvider({ children }: { children: ReactNode }) {
   const closeWhatsAppModal = useCallback(() => setOpen(false), []);
 
   const value = useMemo(
-    () => ({ openWhatsAppModal }),
-    [openWhatsAppModal]
+    () => ({ openWhatsAppModal, modalOpen: open }),
+    [openWhatsAppModal, open]
   );
 
   return (

@@ -8,7 +8,7 @@ import { useContactWhatsApp } from "./contact-whatsapp-provider";
 const CONTACT_FORM_ID = "contact-demo-form";
 
 export function ContactWhatsAppFloat() {
-  const { openWhatsAppModal } = useContactWhatsApp();
+  const { openWhatsAppModal, modalOpen } = useContactWhatsApp();
   const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
@@ -38,6 +38,8 @@ export function ContactWhatsAppFloat() {
       document.removeEventListener("focusout", onFocusOut);
     };
   }, []);
+
+  if (modalOpen) return null;
 
   return (
     <button

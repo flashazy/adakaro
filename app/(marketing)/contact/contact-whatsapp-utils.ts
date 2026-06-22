@@ -63,19 +63,13 @@ export function buildSupportWhatsAppMessage(
     `Name: ${payload.fullName.trim()}`,
     `School: ${payload.schoolName.trim()}`,
     `Phone: ${payload.phone.trim()}`,
-  ];
-
-  if (payload.email?.trim()) {
-    lines.push(`Email: ${payload.email.trim()}`);
-  }
-
-  lines.push(
+    `Email: ${payload.email?.trim() || "—"}`,
     "",
     "Issue:",
     payload.issue.trim(),
     "",
-    "Thank you."
-  );
+    "Thank you.",
+  ];
 
   return lines.join("\n");
 }
