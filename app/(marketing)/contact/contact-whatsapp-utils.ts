@@ -9,6 +9,7 @@ export interface DemoWhatsAppPayload {
   fullName: string;
   schoolName: string;
   phone: string;
+  email?: string;
   studentCount: string;
   message: string;
 }
@@ -17,6 +18,7 @@ export interface SupportWhatsAppPayload {
   fullName: string;
   schoolName: string;
   phone: string;
+  email?: string;
   issue: string;
 }
 
@@ -30,6 +32,10 @@ export function buildDemoWhatsAppMessage(payload: DemoWhatsAppPayload): string {
     `School: ${payload.schoolName.trim()}`,
     `Phone: ${payload.phone.trim()}`,
   ];
+
+  if (payload.email?.trim()) {
+    lines.push(`Email: ${payload.email.trim()}`);
+  }
 
   if (payload.studentCount.trim()) {
     lines.push(`Students: ${payload.studentCount.trim()}`);
@@ -49,7 +55,7 @@ export function buildDemoWhatsAppMessage(payload: DemoWhatsAppPayload): string {
 export function buildSupportWhatsAppMessage(
   payload: SupportWhatsAppPayload
 ): string {
-  return [
+  const lines = [
     "Hello Adakaro,",
     "",
     "I need support.",
@@ -57,14 +63,25 @@ export function buildSupportWhatsAppMessage(
     `Name: ${payload.fullName.trim()}`,
     `School: ${payload.schoolName.trim()}`,
     `Phone: ${payload.phone.trim()}`,
+  ];
+
+  if (payload.email?.trim()) {
+    lines.push(`Email: ${payload.email.trim()}`);
+  }
+
+  lines.push(
     "",
     "Issue:",
     payload.issue.trim(),
     "",
-    "Thank you.",
-  ].join("\n");
+    "Thank you."
+  );
+
+  return lines.join("\n");
 }
 
-export function openWhatsAppChat(message: string): void {
-  window.open(buildWhatsAppUrl(message), "_blank", "noopener,noreferrer");
+export function openWhatsAppChat(message: string): boolean {
+  const url = buildWhatsAppUrl(message);
+  const popup = window.open(url, "_blank", "noopener,noreferrer");
+  return popup != null;
 }

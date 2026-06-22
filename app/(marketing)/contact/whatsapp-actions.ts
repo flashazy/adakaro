@@ -9,6 +9,7 @@ export interface WhatsAppLeadSubmitInput {
   full_name: string;
   school_name: string;
   phone: string;
+  email?: string | null;
   student_count?: number | null;
   message: string;
 }
@@ -29,6 +30,7 @@ export async function submitWhatsAppLead(
   const fullName = input.full_name.trim();
   const schoolName = input.school_name.trim();
   const phone = input.phone.trim();
+  const email = input.email?.trim() || null;
   const message = input.message.trim();
   const requestType = input.request_type;
 
@@ -48,7 +50,7 @@ export async function submitWhatsAppLead(
       full_name: fullName,
       school_name: schoolName,
       phone,
-      email: null,
+      email,
       school_type: null,
       student_count: studentCount,
       message,

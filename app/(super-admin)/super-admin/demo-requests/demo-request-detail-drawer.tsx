@@ -67,7 +67,7 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { LeadReminderBadges, FollowUpAlertBadges } from "./demo-request-badges";
+import { LeadReminderBadges, FollowUpAlertBadges, LeadSourceBadge, LeadRequestTypeBadge } from "./demo-request-badges";
 import {
   AttentionFlagsRow,
   CallSchoolModal,
@@ -289,28 +289,37 @@ export function DemoRequestDetailDrawer({
         row?: DemoRequestRow;
         error?: string;
       };
-      if (!res.ok) {
-        showAdminErrorToast(body.error || "Could not load lead details.");
+      if (!res.ok || !body.row) {
+        setLiveRow(row);
+        setStatus(row.status);
+        setNextAction(row.next_action ?? "");
+        setNextActionDate(row.next_action_date ?? "");
+        setDemoDate(row.demo_date ?? "");
+        setDemoTime(row.demo_time ? row.demo_time.slice(0, 5) : "");
+        setMeetingLink(row.meeting_link ?? "");
+        setLostReason(row.lost_reason ?? "");
+        setWonReason(row.won_reason ?? "");
+        setLeadOwner(resolveOwnerSelectValue(row));
+        setNotes([]);
+        setTimeline([]);
         return;
       }
-      if (body.row) {
-        setLiveRow(body.row);
-        setStatus(body.row.status);
-        setNextAction(body.row.next_action ?? "");
-        setNextActionDate(body.row.next_action_date ?? "");
-        setDemoDate(body.row.demo_date ?? "");
-        setDemoTime(body.row.demo_time ? body.row.demo_time.slice(0, 5) : "");
-        setMeetingLink(body.row.meeting_link ?? "");
-        setLostReason(body.row.lost_reason ?? "");
-        setWonReason(body.row.won_reason ?? "");
-        setLeadOwner(resolveOwnerSelectValue(body.row));
-      }
+      setLiveRow(body.row);
+      setStatus(body.row.status);
+      setNextAction(body.row.next_action ?? "");
+      setNextActionDate(body.row.next_action_date ?? "");
+      setDemoDate(body.row.demo_date ?? "");
+      setDemoTime(body.row.demo_time ? body.row.demo_time.slice(0, 5) : "");
+      setMeetingLink(body.row.meeting_link ?? "");
+      setLostReason(body.row.lost_reason ?? "");
+      setWonReason(body.row.won_reason ?? "");
+      setLeadOwner(resolveOwnerSelectValue(body.row));
       setNotes(body.notes ?? []);
       setTimeline(body.timeline ?? []);
     } finally {
       setLoadingDetail(false);
     }
-  }, [row.id]);
+  }, [row.id, row]);
 
   useEffect(() => {
     void loadDetail();
@@ -430,6 +439,10 @@ export function DemoRequestDetailDrawer({
     liveRow.student_count != null
       ? `${liveRow.student_count.toLocaleString()} Students`
       : "Students unknown";
+  const messageLabel =
+    liveRow.request_type === "support" ? "Support Issue" : "Message";
+  const leadSource = liveRow.source ?? "contact_page";
+  const leadRequestType = liveRow.request_type ?? "demo";
 
   const contactModalContext = useMemo(
     (): ContactModalContext => ({
@@ -794,6 +807,8 @@ export function DemoRequestDetailDrawer({
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
+              <LeadSourceBadge source={leadSource} />
+              <LeadRequestTypeBadge requestType={leadRequestType} />
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-bold tabular-nums text-slate-900">
                   {score}
@@ -1056,30 +1071,30 @@ export function DemoRequestDetailDrawer({
               <dl className="grid gap-4 text-sm sm:grid-cols-2">
                 <div>
                   <dt className="text-slate-500">Phone</dt>
-                  <dd className="mt-0.5 font-medium text-slate-900">{row.phone}</dd>
+                  <dd className="mt-0.5 font-medium text-slate-900">{liveRow.phone}</dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">Email</dt>
                   <dd className="mt-0.5 font-medium text-slate-900">
-                    {row.email ?? "—"}
+                    {liveRow.email ?? "—"}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">School Type</dt>
                   <dd className="mt-0.5 font-medium text-slate-900">
-                    {row.school_type ?? "—"}
+                    {liveRow.school_type ?? "—"}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">Submitted</dt>
                   <dd className="mt-0.5 font-medium text-slate-900">
-                    {formatDate(row.created_at)}
+                    {formatDate(liveRow.created_at)}
                   </dd>
                 </div>
                 <div className="sm:col-span-2">
-                  <dt className="text-slate-500">Message</dt>
+                  <dt className="text-slate-500">{messageLabel}</dt>
                   <dd className="mt-1 whitespace-pre-wrap leading-relaxed text-slate-800">
-                    {row.message?.trim() ? row.message : "—"}
+                    {liveRow.message?.trim() ? liveRow.message : "—"}
                   </dd>
                 </div>
               </dl>

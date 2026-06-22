@@ -20,7 +20,7 @@ import {
   ADAKARO_WHATSAPP_DISPLAY,
   buildDemoWhatsAppMessage,
   buildSupportWhatsAppMessage,
-  openWhatsAppChat,
+  buildWhatsAppUrl,
 } from "./contact-whatsapp-utils";
 import { submitWhatsAppLead } from "./whatsapp-actions";
 
@@ -30,6 +30,7 @@ const emptyDemoForm = {
   fullName: "",
   schoolName: "",
   phone: "",
+  email: "",
   studentCount: "",
   message: "",
 };
@@ -38,8 +39,11 @@ const emptySupportForm = {
   fullName: "",
   schoolName: "",
   phone: "",
+  email: "",
   issue: "",
 };
+
+type SubmitPhase = "idle" | "saving" | "success" | "failed";
 
 const DEMO_MESSAGE_PLACEHOLDER = `Examples:
 • Report Cards
@@ -54,7 +58,22 @@ const SUPPORT_ISSUE_PLACEHOLDER = `Examples:
 • Fee balances are incorrect
 • Unable to access my account`;
 
-const OPENING_DELAY_MS = 450;
+const OPENING_DELAY_MS = 1200;
+
+function navigateWhatsAppPopup(
+  popup: Window | null,
+  whatsappUrl: string
+): void {
+  if (popup && !popup.closed) {
+    try {
+      popup.location.href = whatsappUrl;
+      return;
+    } catch {
+      popup.close();
+    }
+  }
+  window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+}
 
 function getModalCopy(step: ModalStep): { title: string; subtitle: string } {
   switch (step) {
@@ -94,7 +113,10 @@ export function ContactWhatsAppModal({
   const [supportForm, setSupportForm] = useState(emptySupportForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [saveWarning, setSaveWarning] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("idle");
+  const [pendingWhatsAppUrl, setPendingWhatsAppUrl] = useState<string | null>(
+    null
+  );
 
   const modalCopy = getModalCopy(step);
 
@@ -116,7 +138,8 @@ export function ContactWhatsAppModal({
     setSupportForm(emptySupportForm);
     setErrors({});
     setSubmitting(false);
-    setSaveWarning(false);
+    setSubmitPhase("idle");
+    setPendingWhatsAppUrl(null);
   }
 
   const completeClose = useCallback(() => {
@@ -181,61 +204,76 @@ export function ContactWhatsAppModal({
     return Object.keys(next).length === 0;
   }
 
-  async function handleDemoSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (submitting || !validateDemo()) return;
+  async function handleWhatsAppContinue(
+    validate: () => boolean,
+    buildMessage: () => string,
+    buildLead: () => Parameters<typeof submitWhatsAppLead>[0]
+  ) {
+    if (submitting || !validate()) return;
+
+    const whatsappUrl = buildWhatsAppUrl(buildMessage());
+    const popup = window.open("about:blank", "_blank", "noopener,noreferrer");
 
     setSubmitting(true);
-    setSaveWarning(false);
+    setSubmitPhase("saving");
+    setPendingWhatsAppUrl(whatsappUrl);
 
-    const saveResult = await submitWhatsAppLead({
-      request_type: "demo",
-      full_name: demoForm.fullName,
-      school_name: demoForm.schoolName,
-      phone: demoForm.phone,
-      student_count: demoForm.studentCount
-        ? Number.parseInt(demoForm.studentCount, 10)
-        : null,
-      message: demoForm.message,
-    });
+    const saveResult = await submitWhatsAppLead(buildLead());
 
-    if (!saveResult.saved) {
-      setSaveWarning(true);
+    if (saveResult.saved) {
+      setSubmitPhase("success");
+      navigateWhatsAppPopup(popup, whatsappUrl);
+      await new Promise((resolve) => window.setTimeout(resolve, OPENING_DELAY_MS));
+      completeClose();
+      return;
     }
 
-    const message = buildDemoWhatsAppMessage(demoForm);
-    await new Promise((resolve) =>
-      window.setTimeout(resolve, saveResult.saved ? OPENING_DELAY_MS : 2000)
-    );
-    openWhatsAppChat(message);
+    if (popup && !popup.closed) {
+      popup.close();
+    }
+    setSubmitPhase("failed");
+    setSubmitting(false);
+  }
+
+  function handleOpenWhatsAppAnyway() {
+    if (!pendingWhatsAppUrl) return;
+    window.open(pendingWhatsAppUrl, "_blank", "noopener,noreferrer");
     completeClose();
+  }
+
+  async function handleDemoSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await handleWhatsAppContinue(
+      validateDemo,
+      () => buildDemoWhatsAppMessage(demoForm),
+      () => ({
+        request_type: "demo",
+        full_name: demoForm.fullName,
+        school_name: demoForm.schoolName,
+        phone: demoForm.phone,
+        email: demoForm.email || null,
+        student_count: demoForm.studentCount
+          ? Number.parseInt(demoForm.studentCount, 10)
+          : null,
+        message: demoForm.message,
+      })
+    );
   }
 
   async function handleSupportSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (submitting || !validateSupport()) return;
-
-    setSubmitting(true);
-    setSaveWarning(false);
-
-    const saveResult = await submitWhatsAppLead({
-      request_type: "support",
-      full_name: supportForm.fullName,
-      school_name: supportForm.schoolName,
-      phone: supportForm.phone,
-      message: supportForm.issue,
-    });
-
-    if (!saveResult.saved) {
-      setSaveWarning(true);
-    }
-
-    const message = buildSupportWhatsAppMessage(supportForm);
-    await new Promise((resolve) =>
-      window.setTimeout(resolve, saveResult.saved ? OPENING_DELAY_MS : 2000)
+    await handleWhatsAppContinue(
+      validateSupport,
+      () => buildSupportWhatsAppMessage(supportForm),
+      () => ({
+        request_type: "support",
+        full_name: supportForm.fullName,
+        school_name: supportForm.schoolName,
+        phone: supportForm.phone,
+        email: supportForm.email || null,
+        message: supportForm.issue,
+      })
     );
-    openWhatsAppChat(message);
-    completeClose();
   }
 
   if (!mounted || !open) return null;
@@ -393,6 +431,15 @@ export function ContactWhatsAppModal({
                 placeholder="+255 7XX XXX XXX"
               />
               <Field
+                id="wa-demo-email"
+                label="Email Address"
+                type="email"
+                value={demoForm.email}
+                disabled={submitting}
+                onChange={(v) => setDemoForm((f) => ({ ...f, email: v }))}
+                placeholder="you@school.com (optional)"
+              />
+              <Field
                 id="wa-demo-students"
                 label="Number of Students"
                 value={demoForm.studentCount}
@@ -464,6 +511,15 @@ export function ContactWhatsAppModal({
                 onChange={(v) => setSupportForm((f) => ({ ...f, phone: v }))}
                 placeholder="+255 7XX XXX XXX"
               />
+              <Field
+                id="wa-support-email"
+                label="Email Address"
+                type="email"
+                value={supportForm.email}
+                disabled={submitting}
+                onChange={(v) => setSupportForm((f) => ({ ...f, email: v }))}
+                placeholder="you@school.com (optional)"
+              />
               <div>
                 <label htmlFor="wa-support-issue" className={CONTACT_LABEL_CLASS}>
                   Support Issue <span className="text-red-500">*</span>
@@ -504,7 +560,8 @@ export function ContactWhatsAppModal({
               formId={step === "demo" ? "wa-demo-form" : "wa-support-form"}
               onCancel={handleClose}
               loading={submitting}
-              saveWarning={saveWarning}
+              phase={submitPhase}
+              onOpenWhatsAppAnyway={handleOpenWhatsAppAnyway}
             />
           )}
         </div>
@@ -562,47 +619,76 @@ function ModalActions({
   formId,
   onCancel,
   loading,
-  saveWarning,
+  phase,
+  onOpenWhatsAppAnyway,
 }: {
   formId: string;
   onCancel: () => void;
   loading: boolean;
-  saveWarning?: boolean;
+  phase: SubmitPhase;
+  onOpenWhatsAppAnyway: () => void;
 }) {
   return (
     <div className="space-y-3">
-      {saveWarning ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs leading-relaxed text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
-          WhatsApp will open, but this request could not be saved in the
-          dashboard.
+      {phase === "success" ? (
+        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs leading-relaxed text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-200">
+          Request saved. WhatsApp is opening now.
         </p>
       ) : null}
-      <p className="text-center text-xs leading-relaxed text-slate-500 dark:text-zinc-500">
-        We only use this information to respond to your request.
-      </p>
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      {phase === "failed" ? (
+        <>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs leading-relaxed text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
+            We could not save this request in the dashboard, but you can still
+            continue on WhatsApp.
+          </p>
+          <button
+            type="button"
+            onClick={onOpenWhatsAppAnyway}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-[0.99]"
+          >
+            <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
+            Open WhatsApp Anyway
+          </button>
+        </>
+      ) : null}
+      {phase !== "failed" ? (
+        <>
+          <p className="text-center text-xs leading-relaxed text-slate-500 dark:text-zinc-500">
+            We only use this information to respond to your request.
+          </p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={loading}
+              className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 sm:w-auto"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form={formId}
+              disabled={loading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+              ) : (
+                <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              {loading ? "Saving request…" : "Continue on WhatsApp"}
+            </button>
+          </div>
+        </>
+      ) : (
         <button
           type="button"
           onClick={onCancel}
-          disabled={loading}
-          className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 sm:w-auto"
+          className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Cancel
+          Close
         </button>
-        <button
-          type="submit"
-          form={formId}
-          disabled={loading}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-          ) : (
-            <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
-          )}
-          {loading ? "Opening WhatsApp…" : "Continue on WhatsApp"}
-        </button>
-      </div>
+      )}
     </div>
   );
 }
