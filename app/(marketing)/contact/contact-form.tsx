@@ -5,6 +5,12 @@ import { useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { submitContactForm, type ContactFormState } from "./actions";
 import { DEMO_REQUEST_SCHOOL_TYPES } from "@/lib/demo-requests/types";
+import {
+  CONTACT_CARD_CLASS,
+  CONTACT_FIELD_CLASS,
+  CONTACT_FIELD_TEXTAREA_CLASS,
+  CONTACT_LABEL_CLASS,
+} from "./contact-ui";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -21,8 +27,8 @@ function SubmitButton() {
 
 const initialState: ContactFormState = {};
 
-const fieldClassName =
-  "mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:placeholder:text-zinc-500 sm:py-2.5 sm:text-sm";
+const alertClass =
+  "mb-5 rounded-lg border px-4 py-3 text-sm leading-relaxed sm:mb-6";
 
 export function ContactForm() {
   const [state, formAction] = useActionState(submitContactForm, initialState);
@@ -35,10 +41,10 @@ export function ContactForm() {
   }, [state.ok]);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:rounded-xl sm:p-8">
+    <div className={CONTACT_CARD_CLASS}>
       {state.ok ? (
         <div
-          className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200 sm:mb-6"
+          className={`${alertClass} border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200`}
           role="status"
         >
           <p className="font-semibold">
@@ -50,7 +56,7 @@ export function ContactForm() {
 
       {state.error ? (
         <div
-          className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 sm:mb-6"
+          className={`${alertClass} border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300`}
           role="alert"
         >
           {state.error}
@@ -64,10 +70,7 @@ export function ContactForm() {
         className="space-y-4 sm:space-y-5"
       >
         <div>
-          <label
-            htmlFor="fullName"
-            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-          >
+          <label htmlFor="fullName" className={CONTACT_LABEL_CLASS}>
             Full Name <span className="text-red-500">*</span>
           </label>
           <input
@@ -76,16 +79,13 @@ export function ContactForm() {
             type="text"
             autoComplete="name"
             required
-            className={fieldClassName}
+            className={CONTACT_FIELD_CLASS}
             placeholder="Your full name"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="schoolName"
-            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-          >
+          <label htmlFor="schoolName" className={CONTACT_LABEL_CLASS}>
             School Name <span className="text-red-500">*</span>
           </label>
           <input
@@ -93,16 +93,13 @@ export function ContactForm() {
             name="schoolName"
             type="text"
             required
-            className={fieldClassName}
+            className={CONTACT_FIELD_CLASS}
             placeholder="Your school name"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="phone"
-            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-          >
+          <label htmlFor="phone" className={CONTACT_LABEL_CLASS}>
             Phone / WhatsApp Number <span className="text-red-500">*</span>
           </label>
           <input
@@ -111,16 +108,13 @@ export function ContactForm() {
             type="tel"
             autoComplete="tel"
             required
-            className={fieldClassName}
+            className={CONTACT_FIELD_CLASS}
             placeholder="+255 7XX XXX XXX"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-          >
+          <label htmlFor="email" className={CONTACT_LABEL_CLASS}>
             Email Address
           </label>
           <input
@@ -128,24 +122,21 @@ export function ContactForm() {
             name="email"
             type="email"
             autoComplete="email"
-            className={fieldClassName}
+            className={CONTACT_FIELD_CLASS}
             placeholder="you@school.com"
           />
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 md:gap-5">
           <div>
-            <label
-              htmlFor="schoolType"
-              className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-            >
+            <label htmlFor="schoolType" className={CONTACT_LABEL_CLASS}>
               School Type
             </label>
             <select
               id="schoolType"
               name="schoolType"
               defaultValue=""
-              className={fieldClassName}
+              className={CONTACT_FIELD_CLASS}
             >
               <option value="">Select school type</option>
               {DEMO_REQUEST_SCHOOL_TYPES.map((type) => (
@@ -156,10 +147,7 @@ export function ContactForm() {
             </select>
           </div>
           <div>
-            <label
-              htmlFor="studentCount"
-              className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-            >
+            <label htmlFor="studentCount" className={CONTACT_LABEL_CLASS}>
               Number of Students
             </label>
             <input
@@ -168,29 +156,26 @@ export function ContactForm() {
               type="number"
               min={0}
               step={1}
-              className={fieldClassName}
+              className={CONTACT_FIELD_CLASS}
               placeholder="e.g. 450"
             />
           </div>
         </div>
 
         <div>
-          <label
-            htmlFor="message"
-            className="block text-sm font-medium text-slate-700 dark:text-zinc-300"
-          >
+          <label htmlFor="message" className={CONTACT_LABEL_CLASS}>
             Message
           </label>
           <textarea
             id="message"
             name="message"
             rows={5}
-            className={`${fieldClassName} resize-y`}
+            className={CONTACT_FIELD_TEXTAREA_CLASS}
             placeholder="Tell us about your school and what you would like to see in a demo…"
           />
         </div>
 
-        <div className="pt-1">
+        <div className="pt-0.5">
           <SubmitButton />
         </div>
       </form>
