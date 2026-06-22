@@ -13,6 +13,10 @@ import {
   isNewLeadFollowUpOverdue,
   needsNextStep,
   reminderToneClass,
+  DEMO_REQUEST_SOURCE_LABELS,
+  DEMO_REQUEST_TYPE_LABELS,
+  type DemoRequestLeadSource,
+  type DemoRequestRequestType,
   type DemoRequestRow,
   type DemoRequestStatus,
   type DemoRequestTimelineEvent,
@@ -223,5 +227,65 @@ export function FollowUpAlertBadges({
         </span>
       ))}
     </div>
+  );
+}
+
+function sourceLabel(source: string): string {
+  if (source in DEMO_REQUEST_SOURCE_LABELS) {
+    return DEMO_REQUEST_SOURCE_LABELS[source as DemoRequestLeadSource];
+  }
+  return source;
+}
+
+function requestTypeLabel(requestType: string): string {
+  if (requestType in DEMO_REQUEST_TYPE_LABELS) {
+    return DEMO_REQUEST_TYPE_LABELS[requestType as DemoRequestRequestType];
+  }
+  return requestType;
+}
+
+export function LeadSourceBadge({
+  source,
+  className,
+}: {
+  source: string;
+  className?: string;
+}) {
+  const isWhatsApp = source === "whatsapp";
+  return (
+    <span
+      className={cn(
+        badgeBase,
+        isWhatsApp
+          ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
+          : "bg-indigo-50 text-indigo-800 ring-indigo-200",
+        className
+      )}
+    >
+      {sourceLabel(source)}
+    </span>
+  );
+}
+
+export function LeadRequestTypeBadge({
+  requestType,
+  className,
+}: {
+  requestType: string;
+  className?: string;
+}) {
+  const isSupport = requestType === "support";
+  return (
+    <span
+      className={cn(
+        badgeBase,
+        isSupport
+          ? "bg-amber-50 text-amber-900 ring-amber-200"
+          : "bg-slate-100 text-slate-700 ring-slate-200",
+        className
+      )}
+    >
+      {requestTypeLabel(requestType)}
+    </span>
   );
 }

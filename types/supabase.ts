@@ -216,6 +216,7 @@ export interface Database {
           message: string | null;
           status: string;
           source: string;
+          request_type: string;
           notes: string | null;
           updated_at: string;
           next_action: string | null;
@@ -241,6 +242,7 @@ export interface Database {
           message?: string | null;
           status?: string;
           source?: string;
+          request_type?: string;
           notes?: string | null;
           updated_at?: string;
           next_action?: string | null;
@@ -264,6 +266,7 @@ export interface Database {
           message?: string | null;
           status?: string;
           source?: string;
+          request_type?: string;
           notes?: string | null;
           updated_at?: string;
           next_action?: string | null;

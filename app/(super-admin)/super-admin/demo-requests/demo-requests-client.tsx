@@ -12,6 +12,10 @@ import {
 import {
   DEMO_REQUEST_SCHOOL_TYPES,
   DEMO_REQUEST_STATUSES,
+  DEMO_REQUEST_LEAD_SOURCES,
+  DEMO_REQUEST_REQUEST_TYPES,
+  DEMO_REQUEST_SOURCE_LABELS,
+  DEMO_REQUEST_TYPE_LABELS,
   formatRevenueTzs,
   isNextActionOverdue,
   computeLeadScore,
@@ -41,7 +45,9 @@ import {
   FollowUpAlertBadges,
   LeadPriorityBadge,
   LeadReminderBadges,
+  LeadRequestTypeBadge,
   LeadScoreBadge,
+  LeadSourceBadge,
   LeadValueBadge,
   RevenueOpportunityBadge,
   ScheduledDemoBadge,
@@ -153,6 +159,8 @@ export function DemoRequestsClient({
   const [activityPeriod, setActivityPeriod] = useState<ActivityPeriod>("today");
   const [statusFilter, setStatusFilter] = useState("");
   const [schoolTypeFilter, setSchoolTypeFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [requestTypeFilter, setRequestTypeFilter] = useState("");
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -163,7 +171,11 @@ export function DemoRequestsClient({
   } | null>(null);
 
   const hasActiveFilters = Boolean(
-    statusFilter || schoolTypeFilter || search.trim()
+    statusFilter ||
+      schoolTypeFilter ||
+      sourceFilter ||
+      requestTypeFilter ||
+      search.trim()
   );
   const isTrulyEmpty = initialRows.length === 0 && !hasActiveFilters;
 
@@ -179,6 +191,8 @@ export function DemoRequestsClient({
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
       if (schoolTypeFilter) params.set("schoolType", schoolTypeFilter);
+      if (sourceFilter) params.set("source", sourceFilter);
+      if (requestTypeFilter) params.set("requestType", requestTypeFilter);
       if (search.trim()) params.set("search", search.trim());
       const res = await fetch(
         `/api/super-admin/demo-requests?${params.toString()}`,
@@ -210,7 +224,7 @@ export function DemoRequestsClient({
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, schoolTypeFilter, search]);
+  }, [statusFilter, schoolTypeFilter, sourceFilter, requestTypeFilter, search]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -512,7 +526,7 @@ export function DemoRequestsClient({
 
           <div
             className={cn(
-              "grid flex-1 gap-3 sm:grid-cols-3",
+              "grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5",
               !filtersOpen && "hidden lg:grid"
             )}
           >
@@ -549,6 +563,42 @@ export function DemoRequestsClient({
               </select>
             </div>
             <div>
+              <label htmlFor="demo-filter-source" className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Source
+              </label>
+              <select
+                id="demo-filter-source"
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">All sources</option>
+                {DEMO_REQUEST_LEAD_SOURCES.map((source) => (
+                  <option key={source} value={source}>
+                    {DEMO_REQUEST_SOURCE_LABELS[source]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="demo-filter-request-type" className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Type
+              </label>
+              <select
+                id="demo-filter-request-type"
+                value={requestTypeFilter}
+                onChange={(e) => setRequestTypeFilter(e.target.value)}
+                className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">All types</option>
+                {DEMO_REQUEST_REQUEST_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {DEMO_REQUEST_TYPE_LABELS[type]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-1 xl:col-span-1">
               <label htmlFor="demo-filter-search" className="block text-xs font-medium uppercase tracking-wide text-slate-500">
                 Search
               </label>
@@ -610,6 +660,8 @@ export function DemoRequestsClient({
                       <LeadScoreBadge row={row} showScore={false} />
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1">
+                      <LeadSourceBadge source={row.source} />
+                      <LeadRequestTypeBadge requestType={row.request_type ?? "demo"} />
                       <LeadPriorityBadge studentCount={row.student_count} schoolType={row.school_type} />
                       <LeadValueBadge studentCount={row.student_count} />
                       <RevenueOpportunityBadge studentCount={row.student_count} compact />
@@ -661,7 +713,11 @@ export function DemoRequestsClient({
                       <td className="py-3 pr-4">
                         <p className="font-medium text-slate-900">{row.school_name}</p>
                         <p className="text-xs text-slate-500">{row.full_name}</p>
-                        <ScheduledDemoBadge demoDate={row.demo_date} status={row.status} className="mt-1" />
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          <LeadSourceBadge source={row.source} />
+                          <LeadRequestTypeBadge requestType={row.request_type ?? "demo"} />
+                          <ScheduledDemoBadge demoDate={row.demo_date} status={row.status} />
+                        </div>
                       </td>
                       <td className="py-3 pr-4"><LeadScoreBadge row={row} /></td>
                       <td className="py-3 pr-4"><RevenueOpportunityBadge studentCount={row.student_count} compact /></td>

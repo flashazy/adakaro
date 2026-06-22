@@ -29,7 +29,28 @@ export const DEMO_REQUEST_NEXT_ACTIONS = [
 export type DemoRequestNextAction = (typeof DEMO_REQUEST_NEXT_ACTIONS)[number];
 
 export const DEMO_REQUEST_SELECT_COLS =
-  "id, created_at, full_name, school_name, phone, email, school_type, student_count, message, status, source, notes, updated_at, next_action, next_action_date, demo_date, demo_time, meeting_link, last_contact_at, lost_reason, won_reason, assigned_to_id, assigned_to_name";
+  "id, created_at, full_name, school_name, phone, email, school_type, student_count, message, status, source, request_type, notes, updated_at, next_action, next_action_date, demo_date, demo_time, meeting_link, last_contact_at, lost_reason, won_reason, assigned_to_id, assigned_to_name";
+
+export const DEMO_REQUEST_LEAD_SOURCES = [
+  "contact_page",
+  "whatsapp",
+] as const;
+
+export type DemoRequestLeadSource = (typeof DEMO_REQUEST_LEAD_SOURCES)[number];
+
+export const DEMO_REQUEST_REQUEST_TYPES = ["demo", "support"] as const;
+
+export type DemoRequestRequestType = (typeof DEMO_REQUEST_REQUEST_TYPES)[number];
+
+export const DEMO_REQUEST_SOURCE_LABELS: Record<DemoRequestLeadSource, string> = {
+  contact_page: "Website Form",
+  whatsapp: "WhatsApp",
+};
+
+export const DEMO_REQUEST_TYPE_LABELS: Record<DemoRequestRequestType, string> = {
+  demo: "Demo",
+  support: "Support",
+};
 
 export interface DemoRequestRow {
   id: string;
@@ -42,7 +63,8 @@ export interface DemoRequestRow {
   student_count: number | null;
   message: string | null;
   status: DemoRequestStatus;
-  source: string;
+  source: DemoRequestLeadSource | string;
+  request_type: DemoRequestRequestType | string;
   notes: string | null;
   updated_at: string;
   next_action: string | null;

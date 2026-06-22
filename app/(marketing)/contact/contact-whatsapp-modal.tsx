@@ -22,6 +22,7 @@ import {
   buildSupportWhatsAppMessage,
   openWhatsAppChat,
 } from "./contact-whatsapp-utils";
+import { submitWhatsAppLead } from "./whatsapp-actions";
 
 type ModalStep = "choose" | "demo" | "support";
 
@@ -93,6 +94,7 @@ export function ContactWhatsAppModal({
   const [supportForm, setSupportForm] = useState(emptySupportForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [saveWarning, setSaveWarning] = useState(false);
 
   const modalCopy = getModalCopy(step);
 
@@ -114,6 +116,7 @@ export function ContactWhatsAppModal({
     setSupportForm(emptySupportForm);
     setErrors({});
     setSubmitting(false);
+    setSaveWarning(false);
   }
 
   const completeClose = useCallback(() => {
@@ -183,8 +186,27 @@ export function ContactWhatsAppModal({
     if (submitting || !validateDemo()) return;
 
     setSubmitting(true);
+    setSaveWarning(false);
+
+    const saveResult = await submitWhatsAppLead({
+      request_type: "demo",
+      full_name: demoForm.fullName,
+      school_name: demoForm.schoolName,
+      phone: demoForm.phone,
+      student_count: demoForm.studentCount
+        ? Number.parseInt(demoForm.studentCount, 10)
+        : null,
+      message: demoForm.message,
+    });
+
+    if (!saveResult.saved) {
+      setSaveWarning(true);
+    }
+
     const message = buildDemoWhatsAppMessage(demoForm);
-    await new Promise((resolve) => window.setTimeout(resolve, OPENING_DELAY_MS));
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, saveResult.saved ? OPENING_DELAY_MS : 2000)
+    );
     openWhatsAppChat(message);
     completeClose();
   }
@@ -194,8 +216,24 @@ export function ContactWhatsAppModal({
     if (submitting || !validateSupport()) return;
 
     setSubmitting(true);
+    setSaveWarning(false);
+
+    const saveResult = await submitWhatsAppLead({
+      request_type: "support",
+      full_name: supportForm.fullName,
+      school_name: supportForm.schoolName,
+      phone: supportForm.phone,
+      message: supportForm.issue,
+    });
+
+    if (!saveResult.saved) {
+      setSaveWarning(true);
+    }
+
     const message = buildSupportWhatsAppMessage(supportForm);
-    await new Promise((resolve) => window.setTimeout(resolve, OPENING_DELAY_MS));
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, saveResult.saved ? OPENING_DELAY_MS : 2000)
+    );
     openWhatsAppChat(message);
     completeClose();
   }
@@ -466,6 +504,7 @@ export function ContactWhatsAppModal({
               formId={step === "demo" ? "wa-demo-form" : "wa-support-form"}
               onCancel={handleClose}
               loading={submitting}
+              saveWarning={saveWarning}
             />
           )}
         </div>
@@ -523,13 +562,21 @@ function ModalActions({
   formId,
   onCancel,
   loading,
+  saveWarning,
 }: {
   formId: string;
   onCancel: () => void;
   loading: boolean;
+  saveWarning?: boolean;
 }) {
   return (
     <div className="space-y-3">
+      {saveWarning ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs leading-relaxed text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
+          WhatsApp will open, but this request could not be saved in the
+          dashboard.
+        </p>
+      ) : null}
       <p className="text-center text-xs leading-relaxed text-slate-500 dark:text-zinc-500">
         We only use this information to respond to your request.
       </p>

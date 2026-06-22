@@ -10,6 +10,9 @@ import {
   computeConversionAnalytics,
   DEMO_REQUEST_SELECT_COLS,
   DEMO_REQUEST_STATUSES,
+  DEMO_REQUEST_LEAD_SOURCES,
+  DEMO_REQUEST_REQUEST_TYPES,
+  DEMO_REQUEST_SOURCE_LABELS,
   type DemoRequestRow,
   type TimelineEventLite,
 } from "@/lib/demo-requests/types";
@@ -78,6 +81,8 @@ export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const status = url.searchParams.get("status")?.trim() ?? "";
   const schoolType = url.searchParams.get("schoolType")?.trim() ?? "";
+  const source = url.searchParams.get("source")?.trim() ?? "";
+  const requestType = url.searchParams.get("requestType")?.trim() ?? "";
   const search = url.searchParams.get("search")?.trim() ?? "";
 
   let filtered = rows;
@@ -86,6 +91,20 @@ export async function GET(request: NextRequest) {
   }
   if (schoolType) {
     filtered = filtered.filter((row) => row.school_type === schoolType);
+  }
+  if (
+    source &&
+    DEMO_REQUEST_LEAD_SOURCES.includes(source as DemoRequestRow["source"])
+  ) {
+    filtered = filtered.filter((row) => row.source === source);
+  }
+  if (
+    requestType &&
+    DEMO_REQUEST_REQUEST_TYPES.includes(
+      requestType as DemoRequestRow["request_type"]
+    )
+  ) {
+    filtered = filtered.filter((row) => row.request_type === requestType);
   }
   if (search) {
     filtered = filtered.filter((row) => matchesSearch(row, search));
