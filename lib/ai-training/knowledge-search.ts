@@ -57,6 +57,7 @@ function scoreEntry(query: string, entry: AIKnowledgeEntry): number {
     ...entry.keywords,
     ...entry.search_phrases,
     ...entry.alternative_wording,
+    ...entry.synonyms ?? [],
     ...entry.related_terms,
   ];
 
@@ -109,6 +110,9 @@ export function scoreEntryWithMatches(
   for (const alt of entry.alternative_wording) {
     if (scoreCandidate(query, queryTokens, alt) >= 0.5) matchedPhrases.push(alt);
   }
+  for (const syn of entry.synonyms ?? []) {
+    if (scoreCandidate(query, queryTokens, syn) >= 0.35) matchedKeywords.push(syn);
+  }
 
   return {
     entry,
@@ -144,7 +148,10 @@ export async function loadActiveKnowledgeEntries(
     return [];
   }
 
-  return (data ?? []) as AIKnowledgeEntry[];
+  return (data ?? []).map((row) => ({
+    ...(row as AIKnowledgeEntry),
+    synonyms: (row as AIKnowledgeEntry).synonyms ?? [],
+  }));
 }
 
 export async function searchKnowledgeEntries(

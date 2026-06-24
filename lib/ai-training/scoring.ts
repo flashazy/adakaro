@@ -20,6 +20,9 @@ export function computeEntryQuality(entry: AIKnowledgeEntry): {
   if (entry.alternative_wording.length >= 2) score += 15;
   else if (entry.alternative_wording.length >= 1) score += 8;
 
+  if ((entry.synonyms ?? []).length >= 3) score += 10;
+  else if ((entry.synonyms ?? []).length >= 1) score += 5;
+
   if (entry.related_terms.length >= 3) score += 10;
   if (entry.answer.trim().length >= 120) score += 15;
   if (entry.usage_count >= 5) score += 15;

@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
     keywords?: string[];
     search_phrases?: string[];
     alternative_wording?: string[];
+    synonyms?: string[];
     related_terms?: string[];
     answer?: string;
     priority?: KnowledgePriority;
@@ -91,6 +92,9 @@ export async function POST(request: NextRequest) {
     alternative_wording: body.alternative_wording?.length
       ? body.alternative_wording
       : generated?.alternative_wording ?? [],
+    synonyms: body.synonyms?.length
+      ? body.synonyms
+      : generated?.synonyms ?? [],
     related_terms: body.related_terms?.length
       ? body.related_terms
       : generated?.related_terms ?? [],

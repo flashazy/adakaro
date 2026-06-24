@@ -235,7 +235,12 @@ export function AITrainingClient({
         rows: AIKnowledgeEntry[];
         total: number;
       };
-      setKnowledgeRows(data.rows);
+      setKnowledgeRows(
+        data.rows.map((row) => ({
+          ...row,
+          synonyms: row.synonyms ?? [],
+        }))
+      );
       setKnowledgeTotal(data.total);
     } finally {
       setLoadingKnowledge(false);
@@ -330,7 +335,7 @@ export function AITrainingClient({
       keywords: keywordsToText(row.keywords),
       search_phrases: keywordsToText(row.search_phrases),
       alternative_wording: keywordsToText(row.alternative_wording),
-      synonyms: "",
+      synonyms: keywordsToText(row.synonyms ?? []),
       related_terms: keywordsToText(row.related_terms),
       answer: row.answer,
       priority: row.priority,
@@ -350,12 +355,8 @@ export function AITrainingClient({
         keywords: textToKeywords(form.keywords),
         search_phrases: textToKeywords(form.search_phrases),
         alternative_wording: textToKeywords(form.alternative_wording),
-        related_terms: [
-          ...new Set([
-            ...textToKeywords(form.related_terms),
-            ...textToKeywords(form.synonyms),
-          ]),
-        ],
+        synonyms: textToKeywords(form.synonyms),
+        related_terms: textToKeywords(form.related_terms),
         autoGenerateKeywords: false,
         unansweredId: form.unansweredId,
       };

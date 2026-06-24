@@ -19,6 +19,7 @@ export async function PATCH(
     keywords?: string[];
     search_phrases?: string[];
     alternative_wording?: string[];
+    synonyms?: string[];
     related_terms?: string[];
     answer?: string;
     priority?: KnowledgePriority;
@@ -32,6 +33,7 @@ export async function PATCH(
   if (body.keywords !== undefined) patch.keywords = body.keywords;
   if (body.search_phrases !== undefined) patch.search_phrases = body.search_phrases;
   if (body.alternative_wording !== undefined) patch.alternative_wording = body.alternative_wording;
+  if (body.synonyms !== undefined) patch.synonyms = body.synonyms;
   if (body.related_terms !== undefined) patch.related_terms = body.related_terms;
   if (body.priority !== undefined) patch.priority = body.priority;
   if (body.status !== undefined) patch.status = body.status;

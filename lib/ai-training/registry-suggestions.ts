@@ -81,6 +81,7 @@ export async function createDraftKnowledgeFromRegistry(
       keywords,
       search_phrases: [question.trim().toLowerCase()],
       alternative_wording: [],
+      synonyms: [],
       related_terms: mod.relatedModules,
       priority: "normal",
       status: "archived",

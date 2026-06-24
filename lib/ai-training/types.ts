@@ -20,6 +20,7 @@ export interface AIKnowledgeEntry {
   keywords: string[];
   search_phrases: string[];
   alternative_wording: string[];
+  synonyms: string[];
   related_terms: string[];
   answer: string;
   priority: KnowledgePriority;
