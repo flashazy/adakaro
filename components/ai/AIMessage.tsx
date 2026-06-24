@@ -34,12 +34,14 @@ export function AIMessage({
   onRegenerate,
   onActionSelect,
   showActions = true,
+  hideActionChips = false,
 }: {
   message: AIMessage;
   isStreaming?: boolean;
   onRegenerate?: () => void;
   onActionSelect?: (prompt: string) => void;
   showActions?: boolean;
+  hideActionChips?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
@@ -102,7 +104,7 @@ export function AIMessage({
             <CopilotRichBlocks meta={copilotMeta} />
           ) : null}
 
-          {copilotMeta?.actions && onActionSelect && !isStreaming ? (
+          {copilotMeta?.actions && onActionSelect && !isStreaming && !hideActionChips ? (
             <CopilotActionChips
               actions={copilotMeta.actions}
               onSelect={onActionSelect}

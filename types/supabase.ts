@@ -746,6 +746,7 @@ export interface Database {
           term_3_start: string | null;
           term_3_end: string | null;
           timezone: string | null;
+          copilot_enabled: boolean;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -785,6 +786,7 @@ export interface Database {
           term_3_start?: string | null;
           term_3_end?: string | null;
           timezone?: string | null;
+          copilot_enabled?: boolean;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -823,6 +825,7 @@ export interface Database {
           term_3_start?: string | null;
           term_3_end?: string | null;
           timezone?: string | null;
+          copilot_enabled?: boolean;
           updated_at?: string;
         };
       };

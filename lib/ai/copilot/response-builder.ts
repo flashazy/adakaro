@@ -3,6 +3,16 @@ import type { CopilotContext } from "@/lib/ai/types";
 import type { ConversationFilters } from "./types";
 import type { CopilotBlock, CopilotMessageMeta } from "./types";
 import { followUpActionsForTool } from "./follow-ups";
+import {
+  buildRegistryNavigationResponse,
+  buildClarificationContent,
+} from "@/lib/ai/copilot/navigation-response";
+import {
+  getRegistryModule,
+  type CopilotIntentType,
+  type AdakaroModuleId,
+} from "@/lib/ai/adakaro-registry";
+import { findRegistryCard } from "@/lib/ai/adakaro-registry";
 
 function formatTzs(amount: number): string {
   return `TSh ${amount.toLocaleString("en-US")}`;
@@ -23,7 +33,192 @@ export function buildCopilotResponse(
   const blocks: CopilotBlock[] = [];
   let responseType: CopilotMessageMeta["responseType"] = "summary";
 
+  // Clarification for ambiguous queries.
+  if (toolResult.tool === "clarification" && data.ambiguous) {
+    const options = (data.options ?? []) as Array<{
+      label: string;
+      moduleName: string;
+    }>;
+    return {
+      content: buildClarificationContent(options),
+      meta: {
+        schoolName,
+        responseType: "summary",
+        confidence: "low",
+        blocks: [],
+        actions: options.map((o, i) => ({
+          id: `clarify-${i}`,
+          label: o.label,
+          prompt: `Show ${o.label}`,
+        })),
+      },
+    };
+  }
+
+  // Navigation / explanation response with action chips.
+  if (toolResult.navigation) {
+    const registryModuleId = String(data.registryModuleId ?? "");
+    const mod = registryModuleId
+      ? getRegistryModule(registryModuleId as AdakaroModuleId)
+      : null;
+    const intentType = (data.intentType ?? "navigation") as CopilotIntentType;
+    const cardMatch = mod ? findRegistryCard(userMessage) : null;
+
+    if (mod) {
+      const built = buildRegistryNavigationResponse(
+        mod,
+        intentType,
+        cardMatch?.card,
+        schoolName
+      );
+      return built;
+    }
+
+    const label = String(data.label ?? "This page");
+    const description = String(data.description ?? toolResult.summary);
+    const href = String(data.href ?? "");
+    const lines = [`**${label}**`, "", description];
+    if (href) {
+      lines.push("", `→ [Open ${label}](${href})`);
+    }
+    return {
+      content: lines.join("\n"),
+      meta: {
+        schoolName,
+        responseType: "summary",
+        confidence: "high",
+        blocks: [],
+        actions: href
+          ? [{ id: "open", label: "Open Page", prompt: `Open ${label}` }]
+          : [],
+      },
+    };
+  }
+
   switch (toolResult.tool) {
+    case "monthly_income":
+    case "collection_performance": {
+      responseType = "metrics";
+      const thisMonth = Number(data.thisMonth ?? 0);
+      const paymentCount = Number(data.paymentCount ?? 0);
+      const lastMonth = Number(data.lastMonth ?? 0);
+      const changePct = Number(data.changePct ?? 0);
+      const collectionRate = Number(data.collectionRate ?? 0);
+      const monthLabel = String(data.monthLabel ?? "this month");
+
+      blocks.push({
+        type: "metrics",
+        items: [
+          {
+            label: "This month",
+            value: formatTzs(thisMonth),
+            highlight: true,
+          },
+          { label: "Payments", value: String(paymentCount) },
+          ...(toolResult.tool === "collection_performance"
+            ? [{ label: "Collection rate", value: `${collectionRate}%` }]
+            : [
+                {
+                  label: "vs last month",
+                  value: `${changePct >= 0 ? "+" : ""}${changePct}%`,
+                },
+              ]),
+        ],
+      });
+
+      const content = [
+        schoolHeader(schoolName, "Monthly Income"),
+        "",
+        `Your monthly income for **${monthLabel}** is **${formatTzs(thisMonth)}**.`,
+        "",
+        `- **Payments recorded:** ${paymentCount}`,
+        toolResult.tool === "collection_performance"
+          ? `- **Overall collection rate:** ${collectionRate}%`
+          : `- **Last month:** ${formatTzs(lastMonth)} (${changePct >= 0 ? "+" : ""}${changePct}% change)`,
+        "",
+        "_Monthly income is the total fee payments recorded in Adakaro during the current calendar month._",
+      ].join("\n");
+
+      return {
+        content,
+        meta: {
+          schoolName,
+          responseType,
+          confidence: "high",
+          blocks,
+          actions: followUpActionsForTool(toolResult.tool, userMessage),
+        },
+      };
+    }
+
+    case "class_count": {
+      responseType = "summary";
+      const total = Number(data.total ?? 0);
+      blocks.push({
+        type: "metrics",
+        items: [{ label: "Active classes", value: String(total), highlight: true }],
+      });
+
+      const content = [
+        schoolHeader(schoolName, "Classes"),
+        "",
+        `Your school has **${total}** active class${total === 1 ? "" : "es"}.`,
+      ].join("\n");
+
+      return {
+        content,
+        meta: {
+          schoolName,
+          responseType,
+          confidence: "high",
+          blocks,
+          actions: followUpActionsForTool(toolResult.tool, userMessage),
+        },
+      };
+    }
+
+    case "attendance_today": {
+      responseType = "metrics";
+      const rate = Number(data.rate ?? 0);
+      const present = Number(data.present ?? 0);
+      const absent = Number(data.absent ?? 0);
+      const total = Number(data.total ?? 0);
+      const absentList = (data.absentStudents ?? []) as string[];
+
+      blocks.push({
+        type: "metrics",
+        items: [
+          { label: "Today's rate", value: `${rate}%`, highlight: true },
+          { label: "Present", value: String(present) },
+          { label: "Absent", value: String(absent) },
+        ],
+      });
+
+      const content = [
+        schoolHeader(schoolName, "Attendance Today"),
+        "",
+        total > 0
+          ? `**Rate:** ${rate}% · **Present:** ${present} · **Absent:** ${absent}`
+          : "No attendance has been recorded for today yet.",
+        absentList.length
+          ? `\n**Absent today:**\n${absentList.map((n) => `• ${n}`).join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      return {
+        content,
+        meta: {
+          schoolName,
+          responseType,
+          confidence: total > 0 ? "high" : "low",
+          blocks,
+          actions: followUpActionsForTool(toolResult.tool, userMessage),
+        },
+      };
+    }
+
     case "fee_balances_summary":
     case "top_debtors": {
       responseType = "table";

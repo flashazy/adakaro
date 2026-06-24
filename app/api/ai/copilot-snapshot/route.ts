@@ -16,7 +16,7 @@ export async function GET() {
   }
 
   const ctx = await resolveCopilotContext(supabase, user.id);
-  if (!ctx?.schoolId) {
+  if (!ctx?.schoolId || !ctx.copilotEnabled || !ctx.roleResolved) {
     return NextResponse.json({
       schoolName: ctx?.schoolName ?? "Your School",
       studentCount: 0,

@@ -5,41 +5,54 @@ import { ArrowRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AINavLink } from "./ai-nav-link";
 
-const LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g;
+// Matches either a markdown link [label](href) or inline bold **text**.
+const INLINE_RE = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
 
-function renderInlineLinks(text: string, linkClassName: string) {
+function renderInline(text: string, linkClassName: string) {
   const parts: ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-  const re = new RegExp(LINK_RE.source, "g");
+  const re = new RegExp(INLINE_RE.source, "g");
 
   while ((match = re.exec(text)) !== null) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
-    const href = match[2]!;
-    const label = match[1]!;
-    const isExternal =
-      href.startsWith("http://") || href.startsWith("https://");
-    if (isExternal) {
+
+    const boldText = match[3];
+    if (boldText !== undefined) {
+      // Inline bold (e.g. "**Overall completion:** 100%").
       parts.push(
-        <a
-          key={`${match.index}-${href}`}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={linkClassName}
-        >
-          {label}
-        </a>
+        <strong key={`b-${match.index}`} className="font-semibold">
+          {boldText}
+        </strong>
       );
     } else {
-      parts.push(
-        <AINavLink key={`${match.index}-${href}`} href={href} className={linkClassName}>
-          {label}
-        </AINavLink>
-      );
+      const label = match[1]!;
+      const href = match[2]!;
+      const isExternal =
+        href.startsWith("http://") || href.startsWith("https://");
+      if (isExternal) {
+        parts.push(
+          <a
+            key={`l-${match.index}-${href}`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={linkClassName}
+          >
+            {label}
+          </a>
+        );
+      } else {
+        parts.push(
+          <AINavLink key={`l-${match.index}-${href}`} href={href} className={linkClassName}>
+            {label}
+          </AINavLink>
+        );
+      }
     }
+
     lastIndex = match.index + match[0].length;
   }
 
@@ -68,7 +81,8 @@ export function AIMessageContent({
         const trimmed = line.trim();
         if (!trimmed) return <div key={i} className="h-1" aria-hidden />;
 
-        const headingMatch = trimmed.match(/^\*\*(.+)\*\*$/);
+        // Full-line bold = section heading (only when the whole line is bold).
+        const headingMatch = trimmed.match(/^\*\*([^*]+)\*\*$/);
         if (headingMatch) {
           return (
             <p
@@ -115,7 +129,7 @@ export function AIMessageContent({
                 aria-hidden
               />
               <span className="min-w-0 flex-1">
-                {renderInlineLinks(bulletMatch[1]!, linkClass)}
+                {renderInline(bulletMatch[1]!, linkClass)}
               </span>
             </div>
           );
@@ -123,7 +137,7 @@ export function AIMessageContent({
 
         return (
           <p key={i} className="min-w-0">
-            {renderInlineLinks(trimmed, linkClass)}
+            {renderInline(trimmed, linkClass)}
           </p>
         );
       })}

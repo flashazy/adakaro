@@ -15,6 +15,7 @@ import {
 } from "./school-detail-client";
 import { loadSchoolCommandCenter } from "@/lib/super-admin/load-school-command-center";
 import type { SchoolCommandCenterPayload } from "@/lib/super-admin/school-command-center";
+import { CopilotToggle } from "@/components/super-admin/copilot-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export default async function SuperAdminSchoolDetailPage({
     | "school_status"
     | "last_activity_at"
     | "updated_at"
+    | "copilot_enabled"
   >;
 
   /** Prefer full row (includes suspension fields after migration 00041). */
@@ -58,7 +60,7 @@ export default async function SuperAdminSchoolDetailPage({
     const full = await client
       .from("schools")
       .select(
-        "id, name, plan, currency, status, suspension_reason, created_at, created_by, school_status, last_activity_at, updated_at"
+        "id, name, plan, currency, status, suspension_reason, created_at, created_by, school_status, last_activity_at, updated_at, copilot_enabled"
       )
       .eq("id", id)
       .maybeSingle();
@@ -84,6 +86,7 @@ export default async function SuperAdminSchoolDetailPage({
       school_status: "setup",
       last_activity_at: null,
       updated_at: baseRow.created_at,
+      copilot_enabled: false,
     } as unknown as SchoolPick;
   }
 
@@ -207,6 +210,23 @@ export default async function SuperAdminSchoolDetailPage({
         </div>
       }
     >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">
+            Adakaro Copilot
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {school.copilot_enabled
+              ? "Enabled — staff at this school can use Copilot."
+              : "Disabled — Copilot is hidden for this school."}
+          </p>
+        </div>
+        <CopilotToggle
+          schoolId={school.id}
+          schoolName={school.name}
+          enabled={Boolean(school.copilot_enabled)}
+        />
+      </div>
       <SchoolDetailClient
         school={schoolDetail}
         commandCenter={commandCenter}

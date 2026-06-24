@@ -1,6 +1,13 @@
 import type { CopilotContext } from "@/lib/ai/types";
 import type { CopilotMessageMeta } from "./types";
-import { followUpActionsForTool } from "./follow-ups";
+import {
+  clarificationMessage,
+  findAmbiguousHint,
+  findDashboardTopic,
+  findAmbiguousRegistryMatches,
+} from "@/lib/ai/dashboard-context";
+import { buildClarificationContent } from "@/lib/ai/copilot/navigation-response";
+import { findRegistryModule } from "@/lib/ai/adakaro-registry";
 
 export function buildCopilotFallback(
   message: string,
@@ -8,37 +15,76 @@ export function buildCopilotFallback(
 ): { content: string; meta: CopilotMessageMeta } {
   const schoolLabel = ctx.schoolName ?? "Your school";
 
+  const ambiguous = findAmbiguousRegistryMatches(message, 4);
+  if (ambiguous.length > 1) {
+    const options = ambiguous.slice(0, 3).map((m) => ({
+      label: m.card.label,
+      moduleName: m.module.dashboardPage,
+    }));
+    return {
+      content: [`**${schoolLabel}**`, "", buildClarificationContent(options)].join(
+        "\n"
+      ),
+      meta: {
+        schoolName: ctx.schoolName ?? undefined,
+        responseType: "summary",
+        confidence: "low",
+        blocks: [],
+        actions: options.map((o, i) => ({
+          id: `clarify-${i}`,
+          label: o.label,
+          prompt: `Show ${o.label}`,
+        })),
+      },
+    };
+  }
+
+  const mod = findRegistryModule(message);
+  if (mod) {
+    return {
+      content: [
+        `**${schoolLabel}**`,
+        "",
+        `**${mod.name}**`,
+        "",
+        mod.description,
+        "",
+        `Would you like to open ${mod.name} or see statistics?`,
+      ].join("\n"),
+      meta: {
+        schoolName: ctx.schoolName ?? undefined,
+        responseType: "summary",
+        confidence: "low",
+        blocks: [],
+        actions: [
+          { id: "open", label: "Open Page", prompt: `Open ${mod.name}` },
+          {
+            id: "explain",
+            label: "Explain Feature",
+            prompt: `What is ${mod.name}?`,
+          },
+        ],
+      },
+    };
+  }
+
+  const guess = findDashboardTopic(message) ?? findAmbiguousHint(message);
   const content = [
     `**${schoolLabel}**`,
     "",
-    "I don't currently have enough school data to answer that question confidently.",
-    "",
-    "You may be able to answer this after:",
-    "• Recording attendance",
-    "• Adding finance records",
-    "• Completing AI training in the Training Center",
-    "",
-    "Try asking about fee balances, attendance, syllabus coverage, or report cards — I can help with those when data is available.",
+    clarificationMessage(guess),
   ].join("\n");
 
   return {
     content,
     meta: {
       schoolName: ctx.schoolName ?? undefined,
-      responseType: "recommendations",
+      responseType: "summary",
       confidence: "none",
-      blocks: [
-        {
-          type: "recommendations",
-          items: [
-            "Record attendance for today",
-            "Add fee payments and outstanding balances",
-            "Set up syllabus topics for coverage tracking",
-            "Add knowledge entries in AI Training Center",
-          ],
-        },
-      ],
-      actions: followUpActionsForTool("none", message),
+      blocks: [],
+      actions: guess
+        ? [{ id: "try", label: guess.label, prompt: `Show ${guess.label}` }]
+        : [],
     },
   };
 }

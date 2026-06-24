@@ -103,7 +103,14 @@ export function useAIChat({
           const errBody = (await res.json().catch(() => ({}))) as {
             error?: string;
           };
-          throw new Error(errBody.error ?? "Could not reach Adakaro AI.");
+          const statusMsg =
+            res.status === 401
+              ? "Please sign in again to use Adakaro Copilot."
+              : res.status === 404
+                ? "I couldn't load that information right now. Please try again in a moment."
+                : errBody.error ??
+                  "I couldn't load that information right now. Please try again in a moment.";
+          throw new Error(statusMsg);
         }
 
         if (!res.body) throw new Error("No response stream.");
@@ -202,7 +209,9 @@ export function useAIChat({
               ? {
                   ...m,
                   content:
-                    "I'm sorry — I couldn't complete that response. Please try again.",
+                    msg.includes("try again") || msg.includes("sign in")
+                      ? msg
+                      : "I couldn't load that information right now. Please try again in a moment.",
                 }
               : m
           )

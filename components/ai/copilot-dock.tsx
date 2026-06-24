@@ -117,7 +117,7 @@ export function CopilotDock({
             Adakaro Copilot
           </p>
           <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-zinc-400 sm:line-clamp-1">
-            Ask about students, fees, attendance, reports, and school operations.
+            Ask anything about your school
           </p>
           <div className="mt-1.5 md:hidden">
             <CopilotStatusBadge status={status} compact />

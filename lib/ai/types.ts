@@ -42,6 +42,10 @@ export interface CopilotContext {
   role: CopilotRole;
   displayName: string;
   allowedTools: string[];
+  /** Whether Adakaro Copilot is enabled for this school (super-admin rollout). */
+  copilotEnabled: boolean;
+  /** False when the user's school role could not be trusted/resolved. */
+  roleResolved: boolean;
 }
 
 export interface ChatRequestBody {
@@ -72,4 +76,7 @@ export interface ToolResult {
   tool: string;
   summary: string;
   data?: Record<string, unknown>;
+  denied?: boolean;
+  /** Navigation/help response (explains a page rather than fetching data). */
+  navigation?: boolean;
 }

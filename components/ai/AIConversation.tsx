@@ -24,10 +24,6 @@ export function AIConversation({
   onRegenerate,
   isBusy,
   className,
-  onFillPrompt,
-  showCopilotOnboarding = true,
-  copilotSnapshot = null,
-  onActionSelect,
   isCopilot = false,
 }: {
   messages: AIMessage[];
@@ -43,10 +39,6 @@ export function AIConversation({
   onRegenerate?: () => void;
   isBusy: boolean;
   className?: string;
-  onFillPrompt?: (prompt: string) => void;
-  showCopilotOnboarding?: boolean;
-  copilotSnapshot?: import("@/lib/ai/copilot/types").CopilotSnapshot | null;
-  onActionSelect?: (prompt: string) => void;
   isCopilot?: boolean;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -65,15 +57,8 @@ export function AIConversation({
     >
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {showWelcome ? (
-          welcomeVariant === "copilot" && onFillPrompt ? (
-            <CopilotWelcomeScreen
-              suggestions={welcomeSuggestions}
-              onFillPrompt={onFillPrompt}
-              onSendPrompt={onSelectSuggestion}
-              snapshot={copilotSnapshot}
-              disabled={isBusy}
-              showOnboarding={showCopilotOnboarding}
-            />
+          isCopilot ? (
+            <CopilotWelcomeScreen />
           ) : (
             <AIWelcomeScreen
               title={welcomeTitle}
@@ -86,19 +71,29 @@ export function AIConversation({
           )
         ) : (
           <div className="py-2">
-            {messages.map((msg) => (
-              <AIMessageBubble
-                key={msg.id}
-                message={msg}
-                isStreaming={isStreaming && msg.id === streamingMessageId}
-                onRegenerate={
-                  msg.role === "assistant" && !isBusy ? onRegenerate : undefined
-                }
-                onActionSelect={
-                  isCopilot && msg.role === "assistant" ? onActionSelect : undefined
-                }
-              />
-            ))}
+            {messages.map((msg) => {
+              const meta = msg.metadata?.copilotMeta as
+                | { actions?: unknown[] }
+                | undefined;
+              const hasCopilotActions =
+                isCopilot && (meta?.actions?.length ?? 0) > 0;
+              return (
+                <AIMessageBubble
+                  key={msg.id}
+                  message={msg}
+                  isStreaming={isStreaming && msg.id === streamingMessageId}
+                  onRegenerate={
+                    msg.role === "assistant" && !isBusy
+                      ? onRegenerate
+                      : undefined
+                  }
+                  onActionSelect={
+                    hasCopilotActions ? onSelectSuggestion : undefined
+                  }
+                  hideActionChips={isCopilot && !hasCopilotActions}
+                />
+              );
+            })}
             {isThinking ? (
               <div className="px-4 py-2">
                 <AIThinkingIndicator />
@@ -109,7 +104,7 @@ export function AIConversation({
         <div ref={bottomRef} className="h-px shrink-0" aria-hidden />
       </div>
 
-      {followUpSuggestions.length > 0 && !showWelcome && !isCopilot ? (
+      {followUpSuggestions.length > 0 && !showWelcome ? (
         <AISuggestions
           suggestions={followUpSuggestions}
           onSelect={onSelectSuggestion}

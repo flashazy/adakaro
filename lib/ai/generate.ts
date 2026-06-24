@@ -13,6 +13,11 @@ import {
   buildCopilotSystemPrompt,
 } from "@/lib/ai/prompts/system-prompts";
 import { resolveCopilotContext } from "@/lib/ai/permissions";
+import { verifyCopilotRole } from "@/lib/ai/copilot/role-verification";
+import {
+  persistCopilotUnanswered,
+} from "@/lib/ai/copilot-events";
+import { createDraftKnowledgeFromRegistry } from "@/lib/ai-training/registry-suggestions";
 import { suggestionsAfterResponse } from "@/lib/ai/suggestions";
 import {
   buildChatMessages,
@@ -72,6 +77,15 @@ export async function* generateChatStream(
       yield { type: "error", error: "Could not resolve your school context." };
       return;
     }
+
+    const roleCheck = verifyCopilotRole(copilotCtx);
+    if (!roleCheck.ok && roleCheck.message) {
+      for await (const token of streamFallbackText(roleCheck.message)) {
+        yield { type: "token", content: token };
+      }
+      yield { type: "done", suggestions: [] };
+      return;
+    }
   }
 
   if (!conversationId) {
@@ -118,16 +132,27 @@ export async function* generateChatStream(
     );
 
     if (toolResult && toolResult.tool !== "none") {
-      const priorContext = buildPriorContext(historyForTools);
-      const filters = parseConversationFilters(trimmed, priorContext);
-      const built = buildCopilotResponse(
-        toolResult,
-        copilotCtx,
-        trimmed,
-        filters
-      );
-      toolSummary = built.content;
-      copilotMeta = built.meta;
+      if (toolResult.denied) {
+        toolSummary = toolResult.summary;
+        copilotMeta = {
+          schoolName: copilotCtx.schoolName ?? undefined,
+          responseType: "summary",
+          confidence: "high",
+          blocks: [],
+          actions: [],
+        };
+      } else {
+        const priorContext = buildPriorContext(historyForTools);
+        const filters = parseConversationFilters(trimmed, priorContext);
+        const built = buildCopilotResponse(
+          toolResult,
+          copilotCtx,
+          trimmed,
+          filters
+        );
+        toolSummary = built.content;
+        copilotMeta = built.meta;
+      }
     }
   }
 
@@ -215,10 +240,21 @@ export async function* generateChatStream(
     }
   }
 
+  if (product === "copilot" && copilotCtx && !toolResult) {
+    void persistCopilotUnanswered(
+      trimmed,
+      copilotCtx.schoolId,
+      copilotCtx.role
+    );
+    void createDraftKnowledgeFromRegistry(supabase, trimmed, input.userId);
+  }
+
   const suggestions: AISuggestion[] =
-    copilotMeta?.actions?.length
-      ? copilotMeta.actions
-      : suggestionsAfterResponse(trimmed, assistantContent, product);
+    product === "copilot"
+      ? copilotMeta?.actions ?? []
+      : copilotMeta?.actions?.length
+        ? copilotMeta.actions
+        : suggestionsAfterResponse(trimmed, assistantContent, product);
 
   const assistantMsg = await insertMessage(supabase, {
     conversationId,

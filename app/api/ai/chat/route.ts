@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateChatStream } from "@/lib/ai/generate";
 import type { AIProduct, ChatRequestBody } from "@/lib/ai/types";
@@ -10,6 +10,11 @@ const AI_SESSION_COOKIE = "adakaro_ai_session";
 
 function encodeSse(data: unknown): string {
   return `data: ${JSON.stringify(data)}\n\n`;
+}
+
+/** Lightweight health check so clients can verify the route is registered. */
+export async function GET() {
+  return NextResponse.json({ ok: true, route: "/api/ai/chat" });
 }
 
 export async function POST(request: NextRequest) {

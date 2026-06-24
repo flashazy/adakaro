@@ -16,6 +16,7 @@ import { fetchClassesWhereUserIsClassTeacher } from "@/lib/class-teacher";
 import { SchoolPrimaryCssVars } from "@/components/school-branding/school-primary-css-vars";
 import { DashboardFeedbackProvider } from "@/components/dashboard/dashboard-feedback-provider";
 import { DashboardAIChatShell } from "@/components/ai/dashboard-ai-chat-shell";
+import { isSchoolCopilotEnabled } from "@/lib/ai/copilot-access";
 import { invalidateExpiredTeacherTempPasswordIfNeeded } from "@/lib/teacher-temp-password-expiry";
 import { getDashboardBlockState } from "@/lib/dashboard/dashboard-block";
 import { canUserRecordStudentPayment } from "@/lib/payments/record-permission.server";
@@ -55,6 +56,7 @@ export default async function DashboardGroupLayout({
 
   const schoolDisplayForLayout = await resolveSchoolDisplay(user.id, supabase);
   const schoolIdForDual = schoolDisplayForLayout?.schoolId ?? null;
+  const copilotEnabled = await isSchoolCopilotEnabled(schoolIdForDual);
   const cookieStore = await cookies();
   const dashboardModeCookie = cookieStore.get("school_dashboard_mode")?.value;
 
@@ -168,7 +170,7 @@ export default async function DashboardGroupLayout({
             className="w-full max-w-full min-w-0 overflow-x-hidden px-4 pb-12 pt-6 sm:px-6 lg:px-8 md:mx-auto md:max-w-6xl print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0 print:overflow-visible"
           >
             <DashboardFeedbackProvider>
-              <DashboardAIChatShell>
+              <DashboardAIChatShell copilotEnabled={copilotEnabled}>
                 <SyncProvider>{children}</SyncProvider>
               </DashboardAIChatShell>
             </DashboardFeedbackProvider>
@@ -267,7 +269,7 @@ export default async function DashboardGroupLayout({
           className="mx-auto w-full max-w-6xl px-4 pb-12 pt-6 sm:px-6 lg:px-8 print:max-w-none print:bg-white print:px-0 print:pb-0 print:pt-0"
         >
           <DashboardFeedbackProvider>
-            <DashboardAIChatShell>
+            <DashboardAIChatShell copilotEnabled={copilotEnabled}>
               {blockState?.blocked && blockState.schoolId ? (
                 <BlockedDashboard
                   schoolId={blockState.schoolId}

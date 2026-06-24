@@ -136,6 +136,7 @@ export async function loadActiveKnowledgeEntries(
     .from("ai_knowledge_entries")
     .select("*")
     .eq("status", "active")
+    .neq("category", "needs_review")
     .order("priority", { ascending: false });
 
   if (error) {
