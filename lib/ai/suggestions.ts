@@ -2,24 +2,24 @@ import type { AISuggestion } from "@/lib/ai/types";
 
 export const PUBLIC_WELCOME_SUGGESTIONS: AISuggestion[] = [
   {
-    id: "how-it-works",
-    label: "How does Adakaro work?",
-    prompt: "How does Adakaro work for schools?",
+    id: "what-is",
+    label: "What is Adakaro?",
+    prompt: "What is Adakaro?",
+  },
+  {
+    id: "pricing",
+    label: "How much does Adakaro cost?",
+    prompt: "How much does Adakaro cost?",
+  },
+  {
+    id: "report-cards",
+    label: "How do report cards work?",
+    prompt: "How do report cards work?",
   },
   {
     id: "request-demo",
     label: "Can I request a demo?",
     prompt: "How can I request a demo of Adakaro?",
-  },
-  {
-    id: "report-cards",
-    label: "How do report cards work?",
-    prompt: "Can Adakaro generate report cards?",
-  },
-  {
-    id: "features",
-    label: "What features are included?",
-    prompt: "What features are included in Adakaro?",
   },
 ];
 

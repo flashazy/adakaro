@@ -6,6 +6,7 @@ import type { AIMessage } from "@/lib/ai/types";
 import { AIMessage as AIMessageBubble } from "./AIMessage";
 import { AIThinkingIndicator } from "./AIThinkingIndicator";
 import { AIWelcomeScreen } from "./AIWelcomeScreen";
+import { PublicAIWelcomeScreen } from "./public-ai-welcome-screen";
 import { CopilotWelcomeScreen } from "./copilot-welcome-screen";
 import { AISuggestions } from "./AISuggestions";
 import type { AISuggestion } from "@/lib/ai/types";
@@ -43,35 +44,48 @@ export function AIConversation({
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasConversationStarted = messages.length > 0 || isThinking;
+  const isPublic = welcomeVariant === "public" && !isCopilot;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, isThinking, followUpSuggestions]);
+  }, [messages, isThinking, followUpSuggestions, isStreaming]);
 
-  const showWelcome = messages.length === 0 && !isThinking;
+  const showWelcome = !hasConversationStarted;
 
   return (
     <div
       ref={containerRef}
       className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", className)}
     >
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth">
         {showWelcome ? (
-          isCopilot ? (
-            <CopilotWelcomeScreen />
-          ) : (
-            <AIWelcomeScreen
-              title={welcomeTitle}
-              subtitle={welcomeSubtitle}
-              suggestions={welcomeSuggestions}
-              onSelectSuggestion={onSelectSuggestion}
-              disabled={isBusy}
-              variant={welcomeVariant}
-            />
-          )
+          <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
+            {isCopilot ? (
+              <CopilotWelcomeScreen />
+            ) : welcomeVariant === "public" ? (
+              <PublicAIWelcomeScreen
+                suggestions={welcomeSuggestions}
+                onSelectSuggestion={onSelectSuggestion}
+                disabled={isBusy}
+              />
+            ) : (
+              <AIWelcomeScreen
+                title={welcomeTitle}
+                subtitle={welcomeSubtitle}
+                suggestions={welcomeSuggestions}
+                onSelectSuggestion={onSelectSuggestion}
+                disabled={isBusy}
+                variant={welcomeVariant}
+              />
+            )}
+          </div>
         ) : (
-          <div className="py-2">
+          <div className="py-1 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-250">
             {messages.map((msg) => {
+              if (isThinking && msg.role === "assistant" && !msg.content) {
+                return null;
+              }
               const meta = msg.metadata?.copilotMeta as
                 | { actions?: unknown[] }
                 | undefined;
@@ -91,13 +105,12 @@ export function AIConversation({
                     hasCopilotActions ? onSelectSuggestion : undefined
                   }
                   hideActionChips={isCopilot && !hasCopilotActions}
+                  variant={isPublic ? "public" : "default"}
                 />
               );
             })}
             {isThinking ? (
-              <div className="px-4 py-2">
-                <AIThinkingIndicator />
-              </div>
+              <AIThinkingIndicator showAvatar showIdentity={isPublic} />
             ) : null}
           </div>
         )}
@@ -109,7 +122,8 @@ export function AIConversation({
           suggestions={followUpSuggestions}
           onSelect={onSelectSuggestion}
           disabled={isBusy}
-          className="border-t border-slate-100 pt-3 dark:border-zinc-800"
+          variant="premium"
+          className="shrink-0 border-t border-slate-100 px-3 py-2.5 dark:border-zinc-800"
         />
       ) : null}
     </div>

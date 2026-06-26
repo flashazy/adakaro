@@ -94,12 +94,27 @@ export function AIChatWidget({
       ? messages[messages.length - 1]?.id
       : null;
 
+  const adjustTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const maxHeight = 160;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [input, adjustTextareaHeight, open]);
+
   const handleSubmit = useCallback(
     (e?: FormEvent) => {
       e?.preventDefault();
       const text = input.trim();
       if (!text || isBusy) return;
       setInput("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
       void sendMessage(text);
     },
     [input, isBusy, sendMessage]
@@ -145,7 +160,7 @@ export function AIChatWidget({
               </div>
             ) : (
               <p className="truncate text-xs text-slate-500 dark:text-zinc-400">
-                Platform assistant
+                AI Assistant
               </p>
             )}
           </div>
@@ -199,52 +214,52 @@ export function AIChatWidget({
         </p>
       ) : null}
 
-      {/* Input — primary focus */}
+      {/* Input */}
       <form
         onSubmit={handleSubmit}
         className={cn(
           "shrink-0 border-t border-slate-200/80 dark:border-zinc-800",
-          isCopilot ? "bg-white p-4 dark:bg-zinc-950" : "bg-slate-50/80 p-3 dark:bg-zinc-900/50"
+          "bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 dark:bg-zinc-950 sm:px-4 sm:pb-4 sm:pt-4"
         )}
       >
         <div
           className={cn(
-            "flex items-end gap-2 rounded-2xl border bg-white shadow-sm transition-all duration-200 focus-within:border-indigo-400 focus-within:shadow-[0_0_0_4px_rgba(99,102,241,0.1)] dark:bg-zinc-900 dark:focus-within:border-indigo-600",
-            isCopilot
-              ? "border-slate-200 p-3 dark:border-zinc-700"
-              : "border-slate-200 p-2.5 dark:border-zinc-700"
+            "flex items-end gap-3 rounded-[1.25rem] border border-slate-200/90 bg-white p-2 pl-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)]",
+            "transition-all duration-200 ease-out",
+            "focus-within:border-indigo-400 focus-within:shadow-[0_0_0_4px_rgba(99,102,241,0.12),0_2px_8px_rgba(99,102,241,0.08)]",
+            "dark:border-zinc-700 dark:bg-zinc-900 dark:focus-within:border-indigo-500 dark:focus-within:shadow-[0_0_0_4px_rgba(99,102,241,0.15)]"
           )}
         >
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              adjustTextareaHeight();
+            }}
             onKeyDown={handleKeyDown}
-            rows={isCopilot ? 2 : 1}
+            rows={1}
             disabled={isBusy}
-            placeholder={isCopilot ? "Ask anything…" : `Message ${meta.shortName}…`}
+            placeholder={
+              isCopilot ? "Ask anything…" : "Ask Adakaro AI anything..."
+            }
             className={cn(
-              "flex-1 resize-none bg-transparent px-1 text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-60 dark:text-white dark:placeholder:text-zinc-500",
-              isCopilot
-                ? "min-h-[52px] max-h-40 text-[15px] leading-relaxed"
-                : "min-h-[44px] max-h-32 text-sm py-2.5"
+              "flex-1 resize-none bg-transparent py-3 text-[15px] leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-60 dark:text-white dark:placeholder:text-zinc-500",
+              "min-h-[48px] max-h-40"
             )}
             aria-label="Message"
           />
           <button
             type="submit"
             disabled={isBusy || !input.trim()}
-            className={cn(
-              "flex shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white transition-all duration-200 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40",
-              isCopilot ? "mb-0.5 h-10 w-10" : "mb-0.5 h-9 w-9"
-            )}
+            className="mb-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm transition-all duration-150 ease-out hover:bg-indigo-500 hover:shadow-md hover:shadow-indigo-500/20 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
             aria-label={isBusy ? "Sending…" : "Send message"}
           >
             <ArrowUp className="h-4 w-4" />
           </button>
         </div>
         {!isCopilot ? (
-          <p className="mt-2 text-center text-[10px] text-slate-400 dark:text-zinc-500">
+          <p className="mt-2 px-1 text-center text-[9px] leading-snug text-slate-400/80 dark:text-zinc-600">
             Adakaro AI answers platform questions. It cannot access school data.
           </p>
         ) : null}
@@ -266,7 +281,7 @@ export function AIChatWidget({
     <>
       <button
         type="button"
-        className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-[2px] transition-opacity duration-200 sm:bg-transparent sm:backdrop-blur-none"
+        className="fixed inset-0 z-[110] bg-slate-900/40 backdrop-blur-[2px] transition-opacity duration-250 sm:bg-transparent sm:backdrop-blur-none motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
         aria-label="Close assistant"
         onClick={onClose}
       />
@@ -276,7 +291,8 @@ export function AIChatWidget({
           "inset-x-0 bottom-0 top-auto max-h-[min(92dvh,720px)] rounded-t-2xl border border-slate-200 dark:border-zinc-800",
           "pb-[env(safe-area-inset-bottom,0px)]",
           "sm:inset-y-0 sm:left-auto sm:right-0 sm:top-0 sm:h-full sm:max-h-none sm:w-[min(100%,420px)] sm:rounded-none sm:border-l sm:border-t-0 sm:pb-0",
-          "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 motion-safe:duration-200 sm:motion-safe:slide-in-from-right-4"
+          "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-250",
+          "motion-safe:slide-in-from-bottom-4 sm:motion-safe:slide-in-from-right-4"
         )}
         role="dialog"
         aria-modal="true"

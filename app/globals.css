@@ -279,3 +279,21 @@ body {
     opacity: 0.85;
   }
 }
+
+/* Public AI assistant: thinking shimmer */
+@keyframes ai-thinking-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+.ai-thinking-shimmer::before {
+  animation: ai-thinking-shimmer 1.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-thinking-shimmer::before {
+    animation: none;
+  }
+}

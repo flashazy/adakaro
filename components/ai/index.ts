@@ -3,6 +3,7 @@ export { AIConversation } from "./AIConversation";
 export { AIMessage } from "./AIMessage";
 export { AISuggestions } from "./AISuggestions";
 export { AIWelcomeScreen } from "./AIWelcomeScreen";
+export { PublicAIWelcomeScreen } from "./public-ai-welcome-screen";
 export { AIThinkingIndicator } from "./AIThinkingIndicator";
 export { AIEmptyState } from "./AIEmptyState";
 export { AIPublicAssistant } from "./AIPublicAssistant";

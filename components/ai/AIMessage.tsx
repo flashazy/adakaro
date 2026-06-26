@@ -35,6 +35,7 @@ export function AIMessage({
   onActionSelect,
   showActions = true,
   hideActionChips = false,
+  variant = "default",
 }: {
   message: AIMessage;
   isStreaming?: boolean;
@@ -42,10 +43,12 @@ export function AIMessage({
   onActionSelect?: (prompt: string) => void;
   showActions?: boolean;
   hideActionChips?: boolean;
+  variant?: "default" | "public";
 }) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
   const copilotMeta = !isUser ? getCopilotMeta(message) : null;
+  const isPublic = variant === "public";
 
   async function handleCopy() {
     try {
@@ -60,16 +63,17 @@ export function AIMessage({
   return (
     <div
       className={cn(
-        "group flex gap-3 px-4 py-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200",
+        "group flex gap-3 px-3 py-2.5 sm:px-4 sm:py-3",
+        "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200",
         isUser ? "flex-row-reverse" : "flex-row"
       )}
     >
       <div
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
+          "flex shrink-0 items-center justify-center rounded-xl",
           isUser
-            ? "bg-indigo-600 text-white"
-            : "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
+            ? "h-8 w-8 bg-indigo-600 text-white"
+            : "h-9 w-9 bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm"
         )}
         aria-hidden
       >
@@ -82,22 +86,31 @@ export function AIMessage({
 
       <div
         className={cn(
-          "min-w-0 max-w-[92%] sm:max-w-[85%]",
+          "min-w-0",
+          isUser ? "max-w-[88%] sm:max-w-[82%]" : "max-w-[92%] sm:max-w-[88%]",
           isUser ? "items-end text-right" : "items-start"
         )}
       >
         <div
           className={cn(
-            "rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm",
+            "rounded-2xl shadow-sm",
             isUser
-              ? "bg-indigo-600 text-white"
-              : "border border-slate-200/80 bg-white text-slate-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+              ? cn(
+                  "bg-indigo-600 px-4 py-3 text-[15px] leading-relaxed text-white",
+                  isPublic && "rounded-br-md"
+                )
+              : cn(
+                  "border border-slate-200/80 bg-white px-4 py-3 text-[15px] leading-[1.65] text-slate-800 dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100",
+                  isPublic && "rounded-bl-md"
+                )
           )}
         >
           {message.content ? (
             <AIMessageContent content={message.content} isUser={isUser} />
           ) : isStreaming ? (
-            <span className="inline-block h-4 w-1 animate-pulse rounded bg-indigo-400" />
+            <span className="inline-flex items-center gap-1" aria-hidden>
+              <span className="inline-block h-4 w-0.5 animate-pulse rounded-full bg-indigo-400" />
+            </span>
           ) : null}
 
           {copilotMeta && !isStreaming ? (
@@ -114,7 +127,7 @@ export function AIMessage({
 
         <div
           className={cn(
-            "mt-1 flex items-center gap-2 text-[11px] text-slate-400",
+            "mt-1.5 flex items-center gap-2 text-[10px] text-slate-400/90 dark:text-zinc-500",
             isUser ? "justify-end" : "justify-start"
           )}
         >
@@ -124,7 +137,7 @@ export function AIMessage({
               <button
                 type="button"
                 onClick={() => void handleCopy()}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 opacity-0 transition hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100 dark:hover:bg-zinc-800"
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 opacity-0 transition-opacity duration-150 hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100 dark:hover:bg-zinc-800"
                 aria-label="Copy response"
               >
                 {copied ? (
@@ -137,7 +150,7 @@ export function AIMessage({
                 <button
                   type="button"
                   onClick={onRegenerate}
-                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 opacity-0 transition hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100 dark:hover:bg-zinc-800"
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 opacity-0 transition-opacity duration-150 hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100 dark:hover:bg-zinc-800"
                   aria-label="Regenerate response"
                 >
                   <RefreshCw className="h-3 w-3" />
