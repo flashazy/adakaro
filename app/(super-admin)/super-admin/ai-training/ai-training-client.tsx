@@ -13,6 +13,7 @@ import {
   Brain,
   CheckCircle2,
   FileUp,
+  GraduationCap,
   HelpCircle,
   Loader2,
   Pencil,
@@ -43,6 +44,7 @@ import {
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { BulkImportModal } from "@/components/super-admin/ai-training/bulk-import-modal";
 import { IntentCoveragePanel } from "@/components/super-admin/ai-training/intent-coverage-panel";
+import { LearningPanel } from "@/components/super-admin/ai-training/learning-panel";
 import {
   AIHealthScoreCard,
   formatDateTime,
@@ -65,12 +67,13 @@ import type {
 import { KNOWLEDGE_CATEGORIES, STARTER_QUESTIONS } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils";
 
-type TabId = "overview" | "knowledge" | "unanswered" | "analytics";
+type TabId = "overview" | "knowledge" | "unanswered" | "analytics" | "learning";
 
 const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "overview", label: "Overview", icon: Sparkles },
   { id: "knowledge", label: "Knowledge Entries", icon: BookOpen },
   { id: "unanswered", label: "Unanswered Questions", icon: HelpCircle },
+  { id: "learning", label: "AI Learning", icon: GraduationCap },
   { id: "analytics", label: "Usage Analytics", icon: Brain },
 ];
 
@@ -1140,6 +1143,8 @@ export function AITrainingClient({
           ) : null}
         </div>
       ) : null}
+
+      {tab === "learning" ? <LearningPanel /> : null}
 
       {tab === "analytics" ? (
         <div className="mt-8 space-y-6">

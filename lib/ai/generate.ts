@@ -33,7 +33,12 @@ import {
   recordKnowledgeUsage,
   resolvePublicKnowledgeQuery,
 } from "@/lib/ai-training/knowledge-search";
+import {
+  buildLearningCaptureFromResult,
+  captureLearningEvent,
+} from "@/lib/ai-training/learning-capture";
 import { sessionContextFromEntry } from "@/lib/ai-training/public-session-memory";
+import type { LearningAnswerStatus } from "@/lib/ai-training/learning-types";
 import type {
   AIProduct,
   AISuggestion,
@@ -251,7 +256,37 @@ export async function* generateChatStream(
     }
   }
 
-  if (product === "public") {
+  if (product === "public" && knowledgeResult) {
+    const learningStatus: LearningAnswerStatus =
+      answerSource === "knowledge"
+        ? "answered"
+        : answerSource === "clarification"
+          ? "clarified"
+          : answerSource === "llm"
+            ? "llm"
+            : knowledgeResult.type === "no_match"
+              ? "unanswered"
+              : "fallback";
+
+    void captureLearningEvent(
+      supabase,
+      buildLearningCaptureFromResult(trimmed, {
+        matchedEntryId: knowledgeMatch?.entry.id ?? null,
+        matchedIntentKey:
+          knowledgeMatch?.matchedIntentKey ??
+          knowledgeResult.matchedIntentKey ??
+          null,
+        finalScore:
+          knowledgeMatch?.finalScore ??
+          knowledgeMatch?.score ??
+          knowledgeResult.candidates[0]?.score ??
+          null,
+        answerStatus: learningStatus,
+        candidates: knowledgeResult.candidates,
+        reasonSignals: knowledgeResult.reasonSignals.map((s) => s.detail),
+      })
+    );
+
     if (knowledgeMatch) {
       await recordKnowledgeUsage(
         supabase,
@@ -259,7 +294,7 @@ export async function* generateChatStream(
         trimmed,
         knowledgeMatch.finalScore ?? knowledgeMatch.score
       );
-    } else if (answerSource === "fallback" && knowledgeResult) {
+    } else if (answerSource === "fallback" || learningStatus === "unanswered") {
       await logUnansweredQuestion(
         supabase,
         trimmed,

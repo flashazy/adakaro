@@ -13,6 +13,7 @@ import {
   formatClarificationResponse,
   resolveZeroCostRetrieval,
 } from "./zero-cost-retrieval";
+import { loadIntentLearningOverrides } from "./learning-capture";
 import {
   extractPublicSessionContext,
   sessionContextFromEntry,
@@ -135,8 +136,12 @@ export async function resolvePublicKnowledgeQuery(
   const entries = await loadActiveKnowledgeEntries(supabase);
   const entriesById = new Map(entries.map((e) => [e.id, e]));
   const session = extractPublicSessionContext(input.history ?? [], entriesById);
+  const intentOverrides = await loadIntentLearningOverrides(supabase);
 
-  return resolveKnowledgeMatch(input.query, entries, supabase, { session });
+  return resolveKnowledgeMatch(input.query, entries, supabase, {
+    session,
+    intentOverrides,
+  });
 }
 
 /** @deprecated Use resolvePublicKnowledgeQuery for full zero-cost flow. */

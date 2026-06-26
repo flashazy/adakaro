@@ -17,6 +17,7 @@ import {
   type RankedKnowledgeEntry,
 } from "./knowledge-scoring";
 import { resolveEntryIntent } from "./intent-registry";
+import type { IntentLearningOverrides } from "./learning-types";
 import { CLARIFICATION_AMBIGUITY_GAP, CLARIFICATION_MIN_SCORE } from "./retrieval-config";
 import type { AIKnowledgeEntry, KnowledgeSearchMatch, UnansweredMatchDebug } from "./types";
 import { MATCH_SCORE_THRESHOLD } from "./types";
@@ -79,7 +80,8 @@ function buildRelatedClarification(
 export function resolveZeroCostRetrieval(
   query: string,
   entries: AIKnowledgeEntry[],
-  session?: PublicSessionContext
+  session?: PublicSessionContext,
+  intentOverrides?: IntentLearningOverrides
 ): ZeroCostRetrievalResult {
   const trimmed = query.trim();
   const empty: ZeroCostRetrievalResult = {
@@ -101,7 +103,7 @@ export function resolveZeroCostRetrieval(
 
   const context = { allEntries: entries, session };
   const baseRanked = rankAllEntriesScored(expandedQuery, entries, context);
-  const reasoning = applyIntentReasoning(trimmed, baseRanked, session);
+  const reasoning = applyIntentReasoning(trimmed, baseRanked, session, intentOverrides);
   const ranked = reasoning.ranked;
   const candidates = ranked.slice(0, 5);
   const best = ranked[0];

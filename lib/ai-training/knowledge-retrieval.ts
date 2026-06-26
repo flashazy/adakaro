@@ -18,6 +18,7 @@ export type { ZeroCostRetrievalResult };
 
 export interface ResolveKnowledgeMatchOptions {
   session?: PublicSessionContext;
+  intentOverrides?: import("./learning-types").IntentLearningOverrides;
   /** @deprecated Paid semantic path — only when PAID_EMBEDDINGS_ENABLED=true */
   semanticScores?: Map<string, number>;
   keywordOnly?: boolean;
@@ -26,9 +27,10 @@ export interface ResolveKnowledgeMatchOptions {
 function zeroCostMatch(
   query: string,
   entries: AIKnowledgeEntry[],
-  session?: PublicSessionContext
+  session?: PublicSessionContext,
+  intentOverrides?: import("./learning-types").IntentLearningOverrides
 ): ZeroCostRetrievalResult {
-  return resolveZeroCostRetrieval(query, entries, session);
+  return resolveZeroCostRetrieval(query, entries, session, intentOverrides);
 }
 
 function legacyKeywordMatch(
@@ -124,7 +126,12 @@ export function resolveKnowledgeMatchSync(
   entries: AIKnowledgeEntry[],
   options?: ResolveKnowledgeMatchOptions
 ): ZeroCostRetrievalResult {
-  return zeroCostMatch(query, entries, options?.session);
+  return zeroCostMatch(
+    query,
+    entries,
+    options?.session,
+    options?.intentOverrides
+  );
 }
 
 export async function resolveKnowledgeMatch(
@@ -134,7 +141,7 @@ export async function resolveKnowledgeMatch(
   options?: ResolveKnowledgeMatchOptions
 ): Promise<ZeroCostRetrievalResult> {
   if (isZeroCostRetrievalEnabled()) {
-    return zeroCostMatch(query, entries, options?.session);
+    return zeroCostMatch(query, entries, options?.session, options?.intentOverrides);
   }
 
   if (
@@ -179,7 +186,12 @@ export async function resolveKnowledgeMatch(
     };
   }
 
-  return zeroCostMatch(query, entries, options?.session);
+  return zeroCostMatch(
+    query,
+    entries,
+    options?.session,
+    options?.intentOverrides
+  );
 }
 
 export function getKeywordCandidatesForTest(

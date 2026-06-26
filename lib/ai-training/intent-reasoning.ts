@@ -5,6 +5,7 @@ import {
   type IntentDefinition,
 } from "./intent-registry";
 import type { PublicSessionContext } from "./public-session-memory";
+import type { IntentLearningOverrides } from "./learning-types";
 import type { RankedKnowledgeEntry } from "./knowledge-scoring";
 import { resolveEntryIntent } from "./intent-registry";
 
@@ -51,24 +52,32 @@ function findMatchingPhrases(normalizedQuery: string, phrases: string[]): string
   return [...new Set(matches)].sort((a, b) => b.length - a.length);
 }
 
-function allPhrasesForIntent(intent: IntentDefinition): {
+function allPhrasesForIntent(
+  intent: IntentDefinition,
+  overrides?: IntentLearningOverrides
+): {
   triggers: string[];
   negatives: string[];
   keywords: string[];
 } {
+  const learnedTriggers = overrides?.triggerPhrases.get(intent.key) ?? [];
+  const learnedNegatives = overrides?.negativePhrases.get(intent.key) ?? [];
+
   return {
     triggers: [
       ...(intent.triggerPhrases ?? []),
       ...intent.matchTerms,
+      ...learnedTriggers,
     ],
-    negatives: intent.negativePhrases ?? [],
+    negatives: [...(intent.negativePhrases ?? []), ...learnedNegatives],
     keywords: intent.intentKeywords ?? [],
   };
 }
 
 export function analyzeIntentSignals(
   query: string,
-  intentKey: string
+  intentKey: string,
+  overrides?: IntentLearningOverrides
 ): IntentSignalAnalysis {
   const intent = getIntentDefinition(intentKey);
   const empty: IntentSignalAnalysis = {
@@ -85,7 +94,7 @@ export function analyzeIntentSignals(
   if (!intent) return empty;
 
   const normalizedQuery = normalizeText(query);
-  const { triggers, negatives, keywords } = allPhrasesForIntent(intent);
+  const { triggers, negatives, keywords } = allPhrasesForIntent(intent, overrides);
 
   const triggerMatches = findMatchingPhrases(normalizedQuery, triggers);
   const negativeMatches = findMatchingPhrases(normalizedQuery, negatives);
@@ -116,7 +125,8 @@ export function analyzeIntentSignals(
 export function collectCandidateIntentKeysFromQuery(
   query: string,
   ranked: RankedKnowledgeEntry[],
-  session?: PublicSessionContext
+  session?: PublicSessionContext,
+  overrides?: IntentLearningOverrides
 ): string[] {
   const keys = new Set<string>();
 
@@ -129,7 +139,7 @@ export function collectCandidateIntentKeysFromQuery(
   }
 
   for (const intent of INTENT_REGISTRY) {
-    const analysis = analyzeIntentSignals(query, intent.key);
+    const analysis = analyzeIntentSignals(query, intent.key, overrides);
     if (
       analysis.triggerMatches.length > 0 ||
       analysis.keywordMatches.length > 0
@@ -166,14 +176,20 @@ function pushSignal(
 export function applyIntentReasoning(
   query: string,
   ranked: RankedKnowledgeEntry[],
-  session?: PublicSessionContext
+  session?: PublicSessionContext,
+  overrides?: IntentLearningOverrides
 ): IntentReasoningResult {
   const signals: IntentReasonSignal[] = [];
-  const intentKeys = collectCandidateIntentKeysFromQuery(query, ranked, session);
+  const intentKeys = collectCandidateIntentKeysFromQuery(
+    query,
+    ranked,
+    session,
+    overrides
+  );
   const intentAnalyses = new Map<string, IntentSignalAnalysis>();
 
   for (const intentKey of intentKeys) {
-    const analysis = analyzeIntentSignals(query, intentKey);
+    const analysis = analyzeIntentSignals(query, intentKey, overrides);
     intentAnalyses.set(intentKey, analysis);
 
     for (const phrase of analysis.triggerMatches) {
