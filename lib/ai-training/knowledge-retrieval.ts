@@ -156,6 +156,8 @@ export async function resolveKnowledgeMatch(
           candidates: [],
           expandedQuery: query,
           matchedIntentKey: semanticMatch.matchedIntentKey ?? null,
+          reasonSignals: [],
+          selectionSummary: null,
         };
       }
     } catch (error) {
@@ -172,6 +174,8 @@ export async function resolveKnowledgeMatch(
       candidates: [],
       expandedQuery: query,
       matchedIntentKey: legacy.matchedIntentKey ?? null,
+      reasonSignals: [],
+      selectionSummary: null,
     };
   }
 

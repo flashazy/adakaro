@@ -4,16 +4,20 @@ import {
   type ClarificationResult,
 } from "./clarification";
 import {
+  applyIntentReasoning,
+  buildRelatedIntentClarification,
+  type IntentReasonSignal,
+} from "./intent-reasoning";
+import {
   expandQueryWithSession,
   type PublicSessionContext,
 } from "./public-session-memory";
 import {
   rankAllEntriesScored,
-  rankKnowledgeEntriesScored,
   type RankedKnowledgeEntry,
 } from "./knowledge-scoring";
 import { resolveEntryIntent } from "./intent-registry";
-import { CLARIFICATION_MIN_SCORE } from "./retrieval-config";
+import { CLARIFICATION_AMBIGUITY_GAP, CLARIFICATION_MIN_SCORE } from "./retrieval-config";
 import type { AIKnowledgeEntry, KnowledgeSearchMatch, UnansweredMatchDebug } from "./types";
 import { MATCH_SCORE_THRESHOLD } from "./types";
 
@@ -24,6 +28,8 @@ export interface ZeroCostRetrievalResult {
   candidates: RankedKnowledgeEntry[];
   expandedQuery: string;
   matchedIntentKey: string | null;
+  reasonSignals: IntentReasonSignal[];
+  selectionSummary: string | null;
 }
 
 function toSearchMatch(ranked: RankedKnowledgeEntry): KnowledgeSearchMatch {
@@ -34,6 +40,39 @@ function toSearchMatch(ranked: RankedKnowledgeEntry): KnowledgeSearchMatch {
     semanticScore: null,
     finalScore: ranked.score,
     matchedIntentKey: ranked.breakdown.matchedIntentKey,
+  };
+}
+
+function buildRelatedClarification(
+  ranked: RankedKnowledgeEntry[]
+): ClarificationResult | null {
+  if (ranked.length < 2) return null;
+
+  const topScore = ranked[0]!.score;
+  const secondScore = ranked[1]!.score;
+  if (topScore - secondScore >= CLARIFICATION_AMBIGUITY_GAP) return null;
+
+  const topIntents = ranked.slice(0, 3).map((c) => {
+    return resolveEntryIntent(c.entry).intent_key;
+  }).filter(Boolean) as string[];
+
+  const message = buildRelatedIntentClarification(topIntents);
+  if (!message) return null;
+
+  const options = ranked.slice(0, 3).map((c) => {
+    const intent = resolveEntryIntent(c.entry);
+    return {
+      intentKey: intent.intent_key,
+      intentName: intent.intent_name ?? c.entry.question,
+      question: c.entry.question,
+      entryId: c.entry.id,
+    };
+  });
+
+  return {
+    message,
+    options,
+    topScore: ranked[0]?.score ?? 0,
   };
 }
 
@@ -50,6 +89,8 @@ export function resolveZeroCostRetrieval(
     candidates: [],
     expandedQuery: trimmed,
     matchedIntentKey: null,
+    reasonSignals: [],
+    selectionSummary: null,
   };
 
   if (!trimmed || entries.length === 0) return empty;
@@ -59,24 +100,47 @@ export function resolveZeroCostRetrieval(
     : trimmed;
 
   const context = { allEntries: entries, session };
-  const ranked = rankAllEntriesScored(expandedQuery, entries, context);
+  const baseRanked = rankAllEntriesScored(expandedQuery, entries, context);
+  const reasoning = applyIntentReasoning(trimmed, baseRanked, session);
+  const ranked = reasoning.ranked;
   const candidates = ranked.slice(0, 5);
   const best = ranked[0];
 
   if (!best || best.score < CLARIFICATION_MIN_SCORE) {
-    return { ...empty, candidates, expandedQuery };
+    return {
+      ...empty,
+      candidates,
+      expandedQuery,
+      reasonSignals: reasoning.signals,
+      selectionSummary: reasoning.selectionSummary,
+    };
   }
 
   if (best.score >= MATCH_SCORE_THRESHOLD) {
-    const strong = rankKnowledgeEntriesScored(expandedQuery, entries, context);
-    const winner = strong[0] ?? best;
+    const winner = best;
     return {
       type: "match",
       match: toSearchMatch(winner),
       clarification: null,
       candidates,
       expandedQuery,
-      matchedIntentKey: winner.breakdown.matchedIntentKey,
+      matchedIntentKey: resolveEntryIntent(winner.entry).intent_key,
+      reasonSignals: reasoning.signals,
+      selectionSummary: reasoning.selectionSummary,
+    };
+  }
+
+  const relatedClarification = buildRelatedClarification(ranked);
+  if (relatedClarification) {
+    return {
+      type: "clarification",
+      match: null,
+      clarification: relatedClarification,
+      candidates,
+      expandedQuery,
+      matchedIntentKey: resolveEntryIntent(best.entry).intent_key,
+      reasonSignals: reasoning.signals,
+      selectionSummary: reasoning.selectionSummary,
     };
   }
 
@@ -88,11 +152,19 @@ export function resolveZeroCostRetrieval(
       clarification,
       candidates,
       expandedQuery,
-      matchedIntentKey: best.breakdown.matchedIntentKey,
+      matchedIntentKey: resolveEntryIntent(best.entry).intent_key,
+      reasonSignals: reasoning.signals,
+      selectionSummary: reasoning.selectionSummary,
     };
   }
 
-  return { ...empty, candidates, expandedQuery };
+  return {
+    ...empty,
+    candidates,
+    expandedQuery,
+    reasonSignals: reasoning.signals,
+    selectionSummary: reasoning.selectionSummary,
+  };
 }
 
 export function formatClarificationResponse(
@@ -117,5 +189,9 @@ export function buildMatchDebugPayload(
       score: c.score,
     })),
     resultType: result.type,
+    reasonSignals: result.reasonSignals.slice(0, 8).map((s) => s.detail),
+    selectionSummary: result.selectionSummary ?? undefined,
   };
 }
+
+export type { IntentReasonSignal };

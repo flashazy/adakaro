@@ -80,6 +80,8 @@ export interface UnansweredMatchDebug {
     score: number;
   }>;
   resultType?: string;
+  reasonSignals?: string[];
+  selectionSummary?: string;
 }
 
 export interface KnowledgeEmbeddingRow {

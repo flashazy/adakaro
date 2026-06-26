@@ -26,6 +26,8 @@ interface TestResult {
   needsClarification: boolean;
   clarificationMessage: string | null;
   retrievalMode: string;
+  reasonSignals: Array<{ type: string; intentKey: string; phrase?: string; detail: string }>;
+  selectionSummary: string | null;
 }
 
 export function TestAIDrawer({
@@ -156,6 +158,30 @@ export function TestAIDrawer({
                   value={result.matchedIntentKey ?? result.matchedIntentName ?? "—"}
                 />
               </div>
+
+              {result.selectionSummary ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Why this intent won
+                  </p>
+                  <p className="mt-1 text-sm text-slate-700">{result.selectionSummary}</p>
+                </div>
+              ) : null}
+
+              {result.reasonSignals.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Reason signals
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                    {result.reasonSignals.slice(0, 6).map((signal, index) => (
+                      <li key={`${signal.intentKey}-${index}`} className="rounded-lg bg-slate-50 px-2 py-1">
+                        {signal.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               {result.needsClarification && result.clarificationMessage ? (
                 <div className="rounded-xl bg-indigo-50/80 p-3 text-sm text-indigo-900">

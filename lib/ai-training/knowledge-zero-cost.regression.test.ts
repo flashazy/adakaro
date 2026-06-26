@@ -72,18 +72,42 @@ const ZERO_COST_ENTRIES: AIKnowledgeEntry[] = [
     intent_key: "student.archive_inactive",
     intent_name: "Archive / Deactivate Students",
     intent_group: "Student Management",
-    related_intents: ["student.profile_information"],
+    related_intents: ["student.class_history", "student.profile_information"],
     keywords: ["hide", "archive", "inactive", "deactivate"],
     search_phrases: [
       "hide student keep records",
       "deactivate student keep records",
+      "archive student without deleting",
     ],
     alternative_wording: [
       "remove learner from active lists but keep history",
       "hide student but keep records",
+      "archive a student without deleting report cards",
+      "remove a student from the active list",
     ],
-    synonyms: ["inactive student", "soft delete student"],
+    synonyms: ["inactive student", "soft delete student", "hide learner"],
     related_terms: ["student lifecycle"],
+  }),
+  mockEntry({
+    id: "class-history",
+    category: "Student Management",
+    question: "Can I see a student's class movement history?",
+    intent_key: "student.class_history",
+    intent_name: "Class History",
+    intent_group: "Student Management",
+    related_intents: ["student.class_transfer", "student.archive_inactive"],
+    keywords: ["class history", "movement history", "previous classes"],
+    search_phrases: [
+      "student movement history",
+      "previous classes for a student",
+      "view class history",
+    ],
+    alternative_wording: [
+      "see previous classes for a student",
+      "view a student's movement history",
+    ],
+    synonyms: ["class movement log", "stream history"],
+    related_terms: ["promotions", "streaming"],
   }),
   mockEntry({
     id: "transfer",
@@ -219,6 +243,54 @@ describe("zero-cost retrieval meaning-based queries", () => {
       "student.archive_inactive",
       "Can I deactivate or archive students?"
     );
+  });
+
+  it("maps hide student keep records to archive", () => {
+    expectIntentMatch(
+      "Can I hide a student but keep their records?",
+      "student.archive_inactive",
+      "Can I deactivate or archive students?"
+    );
+  });
+
+  it("maps archive without deleting report cards to archive", () => {
+    expectIntentMatch(
+      "Can I archive a student without deleting report cards?",
+      "student.archive_inactive",
+      "Can I deactivate or archive students?"
+    );
+  });
+
+  it("maps remove from active list to archive", () => {
+    expectIntentMatch(
+      "Can I remove a student from the active list?",
+      "student.archive_inactive",
+      "Can I deactivate or archive students?"
+    );
+  });
+
+  it("maps previous classes query to class history", () => {
+    expectIntentMatch(
+      "Can I see previous classes for a student?",
+      "student.class_history",
+      "Can I see a student's class movement history?"
+    );
+  });
+
+  it("maps movement history query to class history", () => {
+    expectIntentMatch(
+      "Can I view a student's movement history?",
+      "student.class_history",
+      "Can I see a student's class movement history?"
+    );
+  });
+
+  it("does not map archive query to class history", () => {
+    const result = testKnowledgeQuery(
+      "Can I remove a learner from active lists but keep history?",
+      ZERO_COST_ENTRIES
+    );
+    assert.notEqual(result.matchedIntentKey, "student.class_history");
   });
 
   it("maps pupil stream change to class transfer", () => {

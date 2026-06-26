@@ -3,8 +3,12 @@ export interface IntentDefinition {
   name: string;
   group: string;
   relatedIntents: string[];
-  /** Terms used for query matching when no entry exists yet. */
+  /** Legacy match terms — also used as trigger phrases. */
   matchTerms: string[];
+  triggerPhrases?: string[];
+  negativePhrases?: string[];
+  intentKeywords?: string[];
+  disambiguationHint?: string;
 }
 
 export const INTENT_REGISTRY: IntentDefinition[] = [
@@ -21,6 +25,8 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
     group: "Pricing",
     relatedIntents: ["pricing.starter_plan", "pricing.billing_start", "demo.request"],
     matchTerms: ["free plan", "try before paying", "free trial", "try the system"],
+    triggerPhrases: ["try before paying", "try the system", "free plan", "free trial"],
+    disambiguationHint: "trying Adakaro before paying",
   },
   {
     key: "pricing.billing_start",
@@ -28,6 +34,8 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
     group: "Pricing",
     relatedIntents: ["pricing.free_plan", "pricing.cost", "pricing.monthly_features"],
     matchTerms: ["when do i start paying", "start paying", "billing start"],
+    triggerPhrases: ["when do i start paying", "start paying", "billing starts"],
+    disambiguationHint: "when billing or payments begin",
   },
   {
     key: "pricing.starter_plan",
@@ -35,6 +43,8 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
     group: "Pricing",
     relatedIntents: ["pricing.free_plan", "pricing.cost"],
     matchTerms: ["starter plan", "starter package", "starter tier"],
+    triggerPhrases: ["starter plan", "starter package", "starter tier"],
+    disambiguationHint: "the starter pricing package",
   },
   {
     key: "pricing.monthly_features",
@@ -42,6 +52,13 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
     group: "Pricing",
     relatedIntents: ["pricing.cost", "pricing.billing_start"],
     matchTerms: ["monthly billing", "lose features", "pay monthly"],
+    triggerPhrases: [
+      "lose features",
+      "pay monthly",
+      "monthly billing",
+      "monthly plan features",
+    ],
+    disambiguationHint: "whether monthly billing removes features",
   },
   {
     key: "student.bulk_import",
@@ -60,6 +77,15 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
       "bring learners",
       "migrate students",
     ],
+    triggerPhrases: [
+      "bulk import",
+      "import students in bulk",
+      "another system",
+      "bring learners",
+      "migrate students",
+      "external system",
+    ],
+    disambiguationHint: "importing students in bulk from another system",
   },
   {
     key: "student.excel_upload",
@@ -67,6 +93,8 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
     group: "Student Management",
     relatedIntents: ["student.bulk_import", "student.csv_template"],
     matchTerms: ["upload excel", "excel file", "spreadsheet"],
+    triggerPhrases: ["upload excel", "excel file", "excel upload", "spreadsheet"],
+    disambiguationHint: "uploading Excel files",
   },
   {
     key: "student.csv_template",
@@ -74,15 +102,13 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
     group: "Student Management",
     relatedIntents: ["student.bulk_import", "student.excel_upload"],
     matchTerms: ["csv template", "download template"],
+    triggerPhrases: ["csv template", "download template"],
   },
   {
     key: "student.class_transfer",
     name: "Class Transfer",
     group: "Student Management",
-    relatedIntents: [
-      "student.class_history",
-      "student.archive_inactive",
-    ],
+    relatedIntents: ["student.class_history", "student.archive_inactive"],
     matchTerms: [
       "transfer students",
       "change class",
@@ -90,19 +116,54 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
       "move pupil",
       "change pupil",
     ],
+    triggerPhrases: [
+      "transfer students",
+      "change class",
+      "another stream",
+      "move pupil",
+      "change pupil",
+      "move to another class",
+    ],
+    disambiguationHint: "moving a student to another class or stream",
   },
   {
     key: "student.class_history",
     name: "Class History",
     group: "Student Management",
-    relatedIntents: ["student.class_transfer"],
+    relatedIntents: ["student.class_transfer", "student.archive_inactive"],
     matchTerms: ["class history", "movement history", "stream history"],
+    triggerPhrases: [
+      "previous classes",
+      "class history",
+      "movement history",
+      "previous streams",
+      "student journey",
+      "class movement",
+      "view movement history",
+      "see previous classes",
+    ],
+    negativePhrases: [
+      "active list",
+      "active lists",
+      "remove from active list",
+      "remove from active lists",
+      "hide student",
+      "hide learner",
+      "archive student",
+      "deactivate student",
+      "mark inactive",
+      "remove learner",
+      "keep records",
+      "without deleting",
+    ],
+    intentKeywords: ["previous", "movement", "journey", "past classes"],
+    disambiguationHint: "viewing a student's class movement history",
   },
   {
     key: "student.archive_inactive",
     name: "Archive / Deactivate Students",
     group: "Student Management",
-    relatedIntents: ["student.profile_information"],
+    relatedIntents: ["student.class_history", "student.profile_information"],
     matchTerms: [
       "archive student",
       "deactivate student",
@@ -111,6 +172,25 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
       "remove learner",
       "active lists",
     ],
+    triggerPhrases: [
+      "remove from active list",
+      "remove from active lists",
+      "hide student",
+      "hide learner",
+      "archive student",
+      "deactivate student",
+      "mark inactive",
+      "keep records",
+      "keep history",
+      "student left school",
+      "former student",
+      "remove learner",
+      "active list",
+      "without deleting",
+    ],
+    intentKeywords: ["inactive", "archive", "hide", "deactivate", "soft delete"],
+    disambiguationHint:
+      "hiding or deactivating a student while keeping records and history",
   },
   {
     key: "student.profile_information",
@@ -118,6 +198,7 @@ export const INTENT_REGISTRY: IntentDefinition[] = [
     group: "Student Management",
     relatedIntents: ["student.archive_inactive"],
     matchTerms: ["student information", "store student", "student profile"],
+    triggerPhrases: ["student information", "store student data", "student profile"],
   },
   {
     key: "attendance.tracking",
@@ -170,15 +251,31 @@ export function inferIntentFromText(
 ): Pick<IntentDefinition, "key" | "name" | "group" | "relatedIntents"> | null {
   const normalized = question.toLowerCase();
 
+  let best: { intent: IntentDefinition; score: number } | null = null;
+
   for (const intent of INTENT_REGISTRY) {
-    if (intent.matchTerms.some((term) => normalized.includes(term.toLowerCase()))) {
-      return {
-        key: intent.key,
-        name: intent.name,
-        group: intent.group,
-        relatedIntents: intent.relatedIntents,
-      };
+    const phrases = [
+      ...(intent.triggerPhrases ?? []),
+      ...intent.matchTerms,
+    ];
+    let score = 0;
+    for (const term of phrases) {
+      if (normalized.includes(term.toLowerCase())) {
+        score += term.length;
+      }
     }
+    if (score > 0 && (!best || score > best.score)) {
+      best = { intent, score };
+    }
+  }
+
+  if (best) {
+    return {
+      key: best.intent.key,
+      name: best.intent.name,
+      group: best.intent.group,
+      relatedIntents: best.intent.relatedIntents,
+    };
   }
 
   if (category) {

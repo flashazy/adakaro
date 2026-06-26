@@ -7,6 +7,7 @@ import {
 import { resolveKnowledgeMatchSync } from "./knowledge-retrieval";
 import { resolveEntryIntent } from "./intent-registry";
 import { formatClarificationResponse } from "./zero-cost-retrieval";
+import type { IntentReasonSignal } from "./intent-reasoning";
 import type { AIKnowledgeEntry } from "./types";
 import { MATCH_SCORE_THRESHOLD } from "./types";
 import type { PublicSessionContext } from "./public-session-memory";
@@ -25,6 +26,8 @@ export interface AITestMatchResult {
   needsClarification: boolean;
   clarificationMessage: string | null;
   retrievalMode: "zero_cost";
+  reasonSignals: IntentReasonSignal[];
+  selectionSummary: string | null;
 }
 
 export interface TestKnowledgeQueryOptions {
@@ -35,6 +38,9 @@ function buildTestResult(
   query: string,
   result: ReturnType<typeof resolveKnowledgeMatchSync>
 ): AITestMatchResult {
+  const baseSignals = result.reasonSignals ?? [];
+  const baseSummary = result.selectionSummary ?? null;
+
   if (result.type === "clarification" && result.clarification) {
     return {
       matched: false,
@@ -50,6 +56,8 @@ function buildTestResult(
       needsClarification: true,
       clarificationMessage: formatClarificationResponse(result.clarification),
       retrievalMode: "zero_cost",
+      reasonSignals: baseSignals,
+      selectionSummary: baseSummary,
     };
   }
 
@@ -76,6 +84,8 @@ function buildTestResult(
       needsClarification: false,
       clarificationMessage: null,
       retrievalMode: "zero_cost",
+      reasonSignals: baseSignals,
+      selectionSummary: baseSummary,
     };
   }
 
@@ -100,6 +110,8 @@ function buildTestResult(
     needsClarification: false,
     clarificationMessage: null,
     retrievalMode: "zero_cost",
+    reasonSignals: baseSignals,
+    selectionSummary: baseSummary,
   };
 }
 
@@ -117,6 +129,8 @@ export function testKnowledgeQuery(
       candidates: [],
       expandedQuery: "",
       matchedIntentKey: null,
+      reasonSignals: [],
+      selectionSummary: null,
     });
   }
 
