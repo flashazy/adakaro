@@ -10,7 +10,7 @@
     "migrate:capture-card-bcrypt": "node scripts/migrate-capture-card-passwords-to-bcrypt.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test:knowledge": "npx tsx --test lib/ai-training/knowledge-search.regression.test.ts"
+    "test:knowledge": "npx tsx --test lib/ai-training/knowledge-search.regression.test.ts lib/ai-training/knowledge-semantic.regression.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

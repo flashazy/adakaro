@@ -8,6 +8,7 @@ import {
   scoreEntry,
   scoreEntryBreakdown,
 } from "./knowledge-scoring";
+import { resolveKnowledgeMatch } from "./knowledge-retrieval";
 import type {
   AIKnowledgeEntry,
   KnowledgeSearchMatch,
@@ -102,8 +103,7 @@ export async function searchKnowledgeEntries(
   query: string
 ): Promise<KnowledgeSearchMatch | null> {
   const entries = await loadActiveKnowledgeEntries(supabase);
-  const ranked = rankKnowledgeEntries(query, entries);
-  return ranked[0] ?? null;
+  return resolveKnowledgeMatch(query, entries, supabase);
 }
 
 export async function recordKnowledgeUsage(

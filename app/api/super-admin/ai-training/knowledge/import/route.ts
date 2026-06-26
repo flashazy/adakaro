@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
 import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
-import type { KnowledgePriority } from "@/lib/ai-training/types";
+import type { AIKnowledgeEntry, KnowledgePriority } from "@/lib/ai-training/types";
 
 export const dynamic = "force-dynamic";
 
@@ -121,10 +122,14 @@ export async function POST(request: NextRequest) {
   const { data, error } = await dataClient
     .from("ai_knowledge_entries")
     .insert(payloads as never)
-    .select("id");
+    .select("*");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  for (const row of data ?? []) {
+    void syncKnowledgeEntryEmbeddingSafe(dataClient, row as AIKnowledgeEntry);
   }
 
   return NextResponse.json({ ok: true, count: data?.length ?? payloads.length });

@@ -233,7 +233,7 @@ export async function* generateChatStream(
         supabase,
         knowledgeMatch.entry.id,
         trimmed,
-        knowledgeMatch.score
+        knowledgeMatch.finalScore ?? knowledgeMatch.score
       );
     } else if (answerSource === "fallback") {
       await logUnansweredQuestion(supabase, trimmed, "public_ai");

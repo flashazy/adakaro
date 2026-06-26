@@ -56,7 +56,29 @@ export interface KeywordGenerationResult {
 
 export interface KnowledgeSearchMatch {
   entry: AIKnowledgeEntry;
+  /** Final combined score used for selection. */
   score: number;
+  keywordScore?: number;
+  semanticScore?: number | null;
+  finalScore?: number;
+}
+
+export interface KnowledgeEmbeddingRow {
+  id: string;
+  knowledge_entry_id: string;
+  embedding_text: string;
+  embedding_model: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmbeddingStatusSummary {
+  activeEntries: number;
+  embeddedEntries: number;
+  missingEntries: number;
+  lastEmbeddingUpdate: string | null;
+  embeddingModel: string;
+  embeddingsAvailable: boolean;
 }
 
 export interface AIHealthScore {

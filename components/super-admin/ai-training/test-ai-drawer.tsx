@@ -20,6 +20,15 @@ interface TestResult {
   answerPreview: string | null;
   category: string | null;
   entry: { question: string } | null;
+  keywordScore: number;
+  semanticScore: number | null;
+  finalScore: number;
+  semanticAvailable: boolean;
+}
+
+function formatScore(value: number | null): string {
+  if (value === null) return "—";
+  return `${Math.round(value * 100)}%`;
 }
 
 export function TestAIDrawer({
@@ -60,7 +69,7 @@ export function TestAIDrawer({
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Test Adakaro AI</h2>
             <p className={saSectionSubtitle}>
-              Preview how the knowledge base matches a question.
+              Preview keyword + semantic retrieval scores.
             </p>
           </div>
           <button
@@ -133,15 +142,30 @@ export function TestAIDrawer({
                   {result.matched ? "Strong match found" : "No strong match found"}
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                  {result.confidence}% confidence
+                  {result.confidence}% final confidence
                 </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <ScorePill label="Keyword" value={formatScore(result.keywordScore)} />
+                <ScorePill
+                  label="Semantic"
+                  value={
+                    result.semanticScore !== null
+                      ? formatScore(result.semanticScore)
+                      : result.semanticAvailable
+                        ? "—"
+                        : "N/A"
+                  }
+                />
+                <ScorePill label="Final" value={formatScore(result.finalScore)} highlight />
               </div>
 
               {result.entry ? (
                 <>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      Best matching entry
+                      Selected entry
                     </p>
                     <p className="mt-1 text-sm font-medium text-slate-800">
                       {result.entry.question}
@@ -201,6 +225,32 @@ export function TestAIDrawer({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ScorePill({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-2 py-2 text-center",
+        highlight
+          ? "border-indigo-200 bg-indigo-50"
+          : "border-slate-200 bg-slate-50"
+      )}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="mt-0.5 text-sm font-bold tabular-nums text-slate-900">{value}</p>
     </div>
   );
 }

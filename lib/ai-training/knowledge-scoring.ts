@@ -1,5 +1,9 @@
 import type { AIKnowledgeEntry, KnowledgePriority } from "./types";
 import { MATCH_SCORE_THRESHOLD } from "./types";
+import {
+  KEYWORD_CANDIDATE_MIN_SCORE,
+  KEYWORD_CANDIDATE_POOL_SIZE,
+} from "./embedding-config";
 
 /** Common words excluded from token overlap (still allowed inside multi-word phrases). */
 export const SCORING_STOP_WORDS = new Set([
@@ -376,6 +380,22 @@ export function rankKnowledgeEntriesScored(
     })
     .filter((m) => m.score >= MATCH_SCORE_THRESHOLD)
     .sort(compareRankedEntries);
+}
+
+/** Top keyword candidates for semantic re-ranking (wider pool, lower floor). */
+export function rankKeywordCandidates(
+  query: string,
+  entries: AIKnowledgeEntry[],
+  limit = KEYWORD_CANDIDATE_POOL_SIZE
+): RankedKnowledgeEntry[] {
+  return entries
+    .map((entry) => {
+      const breakdown = scoreEntryBreakdown(query, entry);
+      return { entry, score: breakdown.score, breakdown };
+    })
+    .filter((m) => m.score >= KEYWORD_CANDIDATE_MIN_SCORE)
+    .sort(compareRankedEntries)
+    .slice(0, limit);
 }
 
 export { MATCH_SCORE_THRESHOLD, FIELD_WEIGHTS };

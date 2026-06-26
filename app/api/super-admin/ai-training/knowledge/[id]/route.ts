@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
-import type { KnowledgePriority, KnowledgeStatus } from "@/lib/ai-training/types";
+import type { AIKnowledgeEntry, KnowledgePriority, KnowledgeStatus } from "@/lib/ai-training/types";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,8 @@ export async function PATCH(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  void syncKnowledgeEntryEmbeddingSafe(dataClient, data as AIKnowledgeEntry);
 
   return NextResponse.json({ row: data });
 }

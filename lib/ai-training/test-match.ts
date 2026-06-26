@@ -1,9 +1,12 @@
-import type { AIKnowledgeEntry } from "./types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
 import {
   rankKnowledgeEntries,
   scoreEntryWithMatches,
 } from "./knowledge-search";
+import { resolveKnowledgeMatch, resolveKnowledgeMatchSync } from "./knowledge-retrieval";
 import { scoreEntry } from "./knowledge-scoring";
+import type { AIKnowledgeEntry } from "./types";
 import { MATCH_SCORE_THRESHOLD } from "./types";
 
 export interface AITestMatchResult {
@@ -14,14 +17,23 @@ export interface AITestMatchResult {
   matchedPhrases: string[];
   answerPreview: string | null;
   category: string | null;
+  keywordScore: number;
+  semanticScore: number | null;
+  finalScore: number;
+  semanticAvailable: boolean;
 }
 
-export function testKnowledgeQuery(
+export interface TestKnowledgeQueryOptions {
+  keywordOnly?: boolean;
+  semanticScores?: Map<string, number>;
+}
+
+function buildTestResult(
   query: string,
-  entries: AIKnowledgeEntry[]
+  match: ReturnType<typeof resolveKnowledgeMatchSync> | null,
+  semanticAvailable: boolean
 ): AITestMatchResult {
-  const trimmed = query.trim();
-  if (!trimmed) {
+  if (!match) {
     return {
       matched: false,
       confidence: 0,
@@ -30,46 +42,116 @@ export function testKnowledgeQuery(
       matchedPhrases: [],
       answerPreview: null,
       category: null,
+      keywordScore: 0,
+      semanticScore: null,
+      finalScore: 0,
+      semanticAvailable,
     };
   }
 
-  const ranked = rankKnowledgeEntries(trimmed, entries);
-  const bestRanked = ranked[0];
+  const keywordScore = match.keywordScore ?? match.score;
+  const semanticScore = match.semanticScore ?? null;
+  const finalScore = match.finalScore ?? match.score;
+  const matched = finalScore >= MATCH_SCORE_THRESHOLD;
 
-  if (!bestRanked || bestRanked.score < MATCH_SCORE_THRESHOLD) {
-    const topEntry = [...entries].sort(
-      (a, b) => scoreEntry(trimmed, b) - scoreEntry(trimmed, a)
-    )[0];
-    const fallbackDetail = topEntry
-      ? scoreEntryWithMatches(trimmed, topEntry)
-      : null;
-
-    return {
-      matched: false,
-      confidence: Math.round((fallbackDetail?.score ?? 0) * 100),
-      entry: null,
-      matchedKeywords: fallbackDetail?.matchedKeywords ?? [],
-      matchedPhrases: fallbackDetail?.matchedPhrases ?? [],
-      answerPreview: null,
-      category: null,
-    };
-  }
-
-  const bestDetail = scoreEntryWithMatches(trimmed, bestRanked.entry);
+  const detail = scoreEntryWithMatches(query, match.entry);
   const preview =
-    bestRanked.entry.answer.length > 280
-      ? `${bestRanked.entry.answer.slice(0, 280).trim()}…`
-      : bestRanked.entry.answer;
+    match.entry.answer.length > 280
+      ? `${match.entry.answer.slice(0, 280).trim()}…`
+      : match.entry.answer;
 
   return {
-    matched: true,
-    confidence: Math.round(bestRanked.score * 100),
-    entry: bestRanked.entry,
-    matchedKeywords: bestDetail.matchedKeywords,
-    matchedPhrases: bestDetail.matchedPhrases,
-    answerPreview: preview,
-    category: bestRanked.entry.category,
+    matched,
+    confidence: Math.round(finalScore * 100),
+    entry: matched ? match.entry : null,
+    matchedKeywords: detail.matchedKeywords,
+    matchedPhrases: detail.matchedPhrases,
+    answerPreview: matched ? preview : null,
+    category: matched ? match.entry.category : null,
+    keywordScore,
+    semanticScore,
+    finalScore,
+    semanticAvailable,
   };
+}
+
+function buildNoMatchFallback(
+  query: string,
+  entries: AIKnowledgeEntry[],
+  semanticAvailable: boolean
+): AITestMatchResult {
+  const topEntry = [...entries].sort(
+    (a, b) => scoreEntry(query, b) - scoreEntry(query, a)
+  )[0];
+  const fallbackDetail = topEntry
+    ? scoreEntryWithMatches(query, topEntry)
+    : null;
+
+  return {
+    matched: false,
+    confidence: Math.round((fallbackDetail?.score ?? 0) * 100),
+    entry: null,
+    matchedKeywords: fallbackDetail?.matchedKeywords ?? [],
+    matchedPhrases: fallbackDetail?.matchedPhrases ?? [],
+    answerPreview: null,
+    category: null,
+    keywordScore: fallbackDetail?.score ?? 0,
+    semanticScore: null,
+    finalScore: fallbackDetail?.score ?? 0,
+    semanticAvailable,
+  };
+}
+
+export function testKnowledgeQuery(
+  query: string,
+  entries: AIKnowledgeEntry[],
+  options?: TestKnowledgeQueryOptions
+): AITestMatchResult {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return buildTestResult(trimmed, null, false);
+  }
+
+  const match = resolveKnowledgeMatchSync(trimmed, entries, {
+    keywordOnly:
+      options?.keywordOnly ??
+      !(options?.semanticScores && options.semanticScores.size > 0),
+    semanticScores: options?.semanticScores,
+  });
+
+  if (!match || (match.finalScore ?? match.score) < MATCH_SCORE_THRESHOLD) {
+    return buildNoMatchFallback(trimmed, entries, Boolean(options?.semanticScores));
+  }
+
+  return buildTestResult(trimmed, match, Boolean(options?.semanticScores));
+}
+
+export async function testKnowledgeQueryAsync(
+  query: string,
+  entries: AIKnowledgeEntry[],
+  supabase?: SupabaseClient<Database>,
+  options?: TestKnowledgeQueryOptions
+): Promise<AITestMatchResult> {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return buildTestResult(trimmed, null, false);
+  }
+
+  const match = await resolveKnowledgeMatch(trimmed, entries, supabase, options);
+  const semanticAvailable = match?.semanticScore !== null && match?.semanticScore !== undefined;
+
+  if (!match || (match.finalScore ?? match.score) < MATCH_SCORE_THRESHOLD) {
+    const fallback = buildNoMatchFallback(trimmed, entries, semanticAvailable);
+    if (match) {
+      fallback.keywordScore = match.keywordScore ?? match.score;
+      fallback.semanticScore = match.semanticScore ?? null;
+      fallback.finalScore = match.finalScore ?? match.score;
+      fallback.confidence = Math.round((match.finalScore ?? match.score) * 100);
+    }
+    return fallback;
+  }
+
+  return buildTestResult(trimmed, match, semanticAvailable);
 }
 
 export function rankAllForTest(query: string, entries: AIKnowledgeEntry[]) {

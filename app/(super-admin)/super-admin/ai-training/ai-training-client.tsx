@@ -42,6 +42,7 @@ import {
   saTableRowHover,
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { BulkImportModal } from "@/components/super-admin/ai-training/bulk-import-modal";
+import { EmbeddingsPanel } from "@/components/super-admin/ai-training/embeddings-panel";
 import {
   AIHealthScoreCard,
   formatDateTime,
@@ -578,6 +579,8 @@ export function AITrainingClient({
               </>
             )}
           </div>
+
+          <EmbeddingsPanel />
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className={saSection}>

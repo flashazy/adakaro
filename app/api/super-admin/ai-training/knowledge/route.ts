@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
 import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
-import type { KnowledgePriority } from "@/lib/ai-training/types";
+import type { AIKnowledgeEntry, KnowledgePriority } from "@/lib/ai-training/types";
 
 export const dynamic = "force-dynamic";
 
@@ -123,6 +124,11 @@ export async function POST(request: NextRequest) {
       } as never)
       .eq("id", body.unansweredId);
   }
+
+  void syncKnowledgeEntryEmbeddingSafe(
+    dataClient,
+    data as AIKnowledgeEntry
+  );
 
   return NextResponse.json({ row: data });
 }
