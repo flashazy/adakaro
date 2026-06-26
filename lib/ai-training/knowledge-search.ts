@@ -2,6 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeQuestionForDedup } from "./keyword-generator";
+import {
+  rankKnowledgeEntriesScored,
+  scoreCandidate,
+  scoreEntry,
+  scoreEntryBreakdown,
+} from "./knowledge-scoring";
 import type {
   AIKnowledgeEntry,
   KnowledgeSearchMatch,
@@ -9,83 +15,21 @@ import type {
 } from "./types";
 import { MATCH_SCORE_THRESHOLD } from "./types";
 
-function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function tokenSet(text: string): Set<string> {
-  return new Set(
-    normalizeText(text)
-      .split(" ")
-      .filter((t) => t.length > 1)
-  );
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  let intersection = 0;
-  for (const token of a) {
-    if (b.has(token)) intersection++;
-  }
-  const union = a.size + b.size - intersection;
-  return union === 0 ? 0 : intersection / union;
-}
-
-function substringScore(query: string, candidate: string): number {
-  const q = normalizeText(query);
-  const c = normalizeText(candidate);
-  if (!q || !c) return 0;
-  if (c === q) return 1;
-  if (c.includes(q) || q.includes(c)) return 0.85;
-  return 0;
-}
-
-function scoreCandidate(query: string, queryTokens: Set<string>, candidate: string): number {
-  const sub = substringScore(query, candidate);
-  const jac = jaccard(queryTokens, tokenSet(candidate));
-  return Math.max(sub, jac);
-}
-
-function scoreEntry(query: string, entry: AIKnowledgeEntry): number {
-  const queryTokens = tokenSet(query);
-  const fields = [
-    entry.question,
-    ...entry.keywords,
-    ...entry.search_phrases,
-    ...entry.alternative_wording,
-    ...entry.synonyms ?? [],
-    ...entry.related_terms,
-  ];
-
-  let best = 0;
-  for (const field of fields) {
-    best = Math.max(best, scoreCandidate(query, queryTokens, field));
-  }
-
-  const priorityBoost =
-    entry.priority === "critical"
-      ? 0.08
-      : entry.priority === "high"
-        ? 0.05
-        : entry.priority === "low"
-          ? -0.02
-          : 0;
-
-  return Math.min(1, best + priorityBoost);
-}
+export {
+  MATCH_SCORE_THRESHOLD,
+  scoreCandidate,
+  scoreEntry,
+  scoreEntryBreakdown,
+} from "./knowledge-scoring";
 
 export function rankKnowledgeEntries(
   query: string,
   entries: AIKnowledgeEntry[]
 ): KnowledgeSearchMatch[] {
-  return entries
-    .map((entry) => ({ entry, score: scoreEntry(query, entry) }))
-    .filter((m) => m.score >= MATCH_SCORE_THRESHOLD)
-    .sort((a, b) => b.score - a.score);
+  return rankKnowledgeEntriesScored(query, entries).map(({ entry, score }) => ({
+    entry,
+    score,
+  }));
 }
 
 export function scoreEntryWithMatches(
@@ -97,21 +41,20 @@ export function scoreEntryWithMatches(
   matchedKeywords: string[];
   matchedPhrases: string[];
 } {
-  const queryTokens = tokenSet(query);
   const matchedKeywords: string[] = [];
   const matchedPhrases: string[] = [];
 
   for (const kw of entry.keywords) {
-    if (scoreCandidate(query, queryTokens, kw) >= 0.35) matchedKeywords.push(kw);
+    if (scoreCandidate(query, kw) >= 0.35) matchedKeywords.push(kw);
   }
   for (const phrase of entry.search_phrases) {
-    if (scoreCandidate(query, queryTokens, phrase) >= 0.35) matchedPhrases.push(phrase);
+    if (scoreCandidate(query, phrase) >= 0.35) matchedPhrases.push(phrase);
   }
   for (const alt of entry.alternative_wording) {
-    if (scoreCandidate(query, queryTokens, alt) >= 0.5) matchedPhrases.push(alt);
+    if (scoreCandidate(query, alt) >= 0.45) matchedPhrases.push(alt);
   }
   for (const syn of entry.synonyms ?? []) {
-    if (scoreCandidate(query, queryTokens, syn) >= 0.35) matchedKeywords.push(syn);
+    if (scoreCandidate(query, syn) >= 0.35) matchedKeywords.push(syn);
   }
 
   return {

@@ -9,7 +9,8 @@
     "build:sw": "node node_modules/@serwist/cli/dist/bin.mjs build",
     "migrate:capture-card-bcrypt": "node scripts/migrate-capture-card-passwords-to-bcrypt.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:knowledge": "npx tsx --test lib/ai-training/knowledge-search.regression.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

@@ -3,6 +3,7 @@ import {
   rankKnowledgeEntries,
   scoreEntryWithMatches,
 } from "./knowledge-search";
+import { scoreEntry } from "./knowledge-scoring";
 import { MATCH_SCORE_THRESHOLD } from "./types";
 
 export interface AITestMatchResult {
@@ -32,36 +33,42 @@ export function testKnowledgeQuery(
     };
   }
 
-  const ranked = entries
-    .map((entry) => scoreEntryWithMatches(trimmed, entry))
-    .sort((a, b) => b.score - a.score);
+  const ranked = rankKnowledgeEntries(trimmed, entries);
+  const bestRanked = ranked[0];
 
-  const best = ranked[0];
-  if (!best || best.score < MATCH_SCORE_THRESHOLD) {
+  if (!bestRanked || bestRanked.score < MATCH_SCORE_THRESHOLD) {
+    const topEntry = [...entries].sort(
+      (a, b) => scoreEntry(trimmed, b) - scoreEntry(trimmed, a)
+    )[0];
+    const fallbackDetail = topEntry
+      ? scoreEntryWithMatches(trimmed, topEntry)
+      : null;
+
     return {
       matched: false,
-      confidence: Math.round((best?.score ?? 0) * 100),
+      confidence: Math.round((fallbackDetail?.score ?? 0) * 100),
       entry: null,
-      matchedKeywords: best?.matchedKeywords ?? [],
-      matchedPhrases: best?.matchedPhrases ?? [],
+      matchedKeywords: fallbackDetail?.matchedKeywords ?? [],
+      matchedPhrases: fallbackDetail?.matchedPhrases ?? [],
       answerPreview: null,
       category: null,
     };
   }
 
+  const bestDetail = scoreEntryWithMatches(trimmed, bestRanked.entry);
   const preview =
-    best.entry.answer.length > 280
-      ? `${best.entry.answer.slice(0, 280).trim()}…`
-      : best.entry.answer;
+    bestRanked.entry.answer.length > 280
+      ? `${bestRanked.entry.answer.slice(0, 280).trim()}…`
+      : bestRanked.entry.answer;
 
   return {
     matched: true,
-    confidence: Math.round(best.score * 100),
-    entry: best.entry,
-    matchedKeywords: best.matchedKeywords,
-    matchedPhrases: best.matchedPhrases,
+    confidence: Math.round(bestRanked.score * 100),
+    entry: bestRanked.entry,
+    matchedKeywords: bestDetail.matchedKeywords,
+    matchedPhrases: bestDetail.matchedPhrases,
     answerPreview: preview,
-    category: best.entry.category,
+    category: bestRanked.entry.category,
   };
 }
 

@@ -135,4 +135,4 @@ export const STARTER_QUESTIONS = [
   "Can I import students from Excel?",
 ] as const;
 
-export const MATCH_SCORE_THRESHOLD = 0.42;
+export const MATCH_SCORE_THRESHOLD = 0.58;
