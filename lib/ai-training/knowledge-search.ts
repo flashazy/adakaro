@@ -8,12 +8,23 @@ import {
   scoreEntry,
   scoreEntryBreakdown,
 } from "./knowledge-scoring";
+import {
+  buildMatchDebugPayload,
+  formatClarificationResponse,
+  resolveZeroCostRetrieval,
+} from "./zero-cost-retrieval";
+import {
+  extractPublicSessionContext,
+  sessionContextFromEntry,
+} from "./public-session-memory";
 import { resolveKnowledgeMatch } from "./knowledge-retrieval";
 import type {
   AIKnowledgeEntry,
   KnowledgeSearchMatch,
+  UnansweredMatchDebug,
   UnansweredSource,
 } from "./types";
+import type { ZeroCostRetrievalResult } from "./zero-cost-retrieval";
 import { MATCH_SCORE_THRESHOLD } from "./types";
 
 export {
@@ -23,13 +34,16 @@ export {
   scoreEntryBreakdown,
 } from "./knowledge-scoring";
 
+export type { ZeroCostRetrievalResult };
+
 export function rankKnowledgeEntries(
   query: string,
   entries: AIKnowledgeEntry[]
 ): KnowledgeSearchMatch[] {
-  return rankKnowledgeEntriesScored(query, entries).map(({ entry, score }) => ({
+  return rankKnowledgeEntriesScored(query, entries).map(({ entry, score, breakdown }) => ({
     entry,
     score,
+    matchedIntentKey: breakdown.matchedIntentKey,
   }));
 }
 
@@ -92,18 +106,46 @@ export async function loadActiveKnowledgeEntries(
     return [];
   }
 
-  return (data ?? []).map((row) => ({
-    ...(row as AIKnowledgeEntry),
-    synonyms: (row as AIKnowledgeEntry).synonyms ?? [],
-  }));
+  return (data ?? []).map((row) => {
+    const entry = row as AIKnowledgeEntry;
+    return {
+      ...entry,
+      synonyms: entry.synonyms ?? [],
+      related_intents: entry.related_intents ?? [],
+    };
+  });
 }
 
+export interface PublicKnowledgeQueryInput {
+  query: string;
+  history?: Array<{
+    role: string;
+    content: string;
+    metadata?: {
+      knowledgeEntryId?: string | null;
+      sessionContext?: ReturnType<typeof sessionContextFromEntry> | null;
+    } | null;
+  }>;
+}
+
+export async function resolvePublicKnowledgeQuery(
+  supabase: SupabaseClient<Database>,
+  input: PublicKnowledgeQueryInput
+): Promise<ZeroCostRetrievalResult> {
+  const entries = await loadActiveKnowledgeEntries(supabase);
+  const entriesById = new Map(entries.map((e) => [e.id, e]));
+  const session = extractPublicSessionContext(input.history ?? [], entriesById);
+
+  return resolveKnowledgeMatch(input.query, entries, supabase, { session });
+}
+
+/** @deprecated Use resolvePublicKnowledgeQuery for full zero-cost flow. */
 export async function searchKnowledgeEntries(
   supabase: SupabaseClient<Database>,
   query: string
 ): Promise<KnowledgeSearchMatch | null> {
-  const entries = await loadActiveKnowledgeEntries(supabase);
-  return resolveKnowledgeMatch(query, entries, supabase);
+  const result = await resolvePublicKnowledgeQuery(supabase, { query });
+  return result.match;
 }
 
 export async function recordKnowledgeUsage(
@@ -134,7 +176,8 @@ export async function recordKnowledgeUsage(
     .eq("id", entryId)
     .maybeSingle();
 
-  const usageCount = ((current as { usage_count?: number } | null)?.usage_count ?? 0) + 1;
+  const usageCount =
+    ((current as { usage_count?: number } | null)?.usage_count ?? 0) + 1;
 
   const { error: updateError } = await client
     .from("ai_knowledge_entries")
@@ -152,7 +195,8 @@ export async function recordKnowledgeUsage(
 export async function logUnansweredQuestion(
   supabase: SupabaseClient<Database>,
   question: string,
-  source: UnansweredSource = "public_ai"
+  source: UnansweredSource = "public_ai",
+  matchDebug?: UnansweredMatchDebug
 ): Promise<void> {
   const client = await getAdminSupabase(supabase);
   const normalized = normalizeQuestionForDedup(question);
@@ -166,6 +210,7 @@ export async function logUnansweredQuestion(
     .maybeSingle();
 
   const now = new Date().toISOString();
+  const debugPayload = matchDebug ? (matchDebug as never) : null;
 
   if (existing) {
     const row = existing as { id: string; occurrences: number };
@@ -175,6 +220,7 @@ export async function logUnansweredQuestion(
         occurrences: row.occurrences + 1,
         last_seen_at: now,
         status: "pending",
+        match_debug: debugPayload,
       } as never)
       .eq("id", row.id);
     return;
@@ -187,6 +233,7 @@ export async function logUnansweredQuestion(
     status: "pending",
     first_seen_at: now,
     last_seen_at: now,
+    match_debug: debugPayload,
   } as never);
 }
 
@@ -198,3 +245,9 @@ export function formatKnowledgeAnswer(entry: AIKnowledgeEntry): string {
   }
   return `**${entry.question.replace(/\?+$/, "")}**\n\n${entry.answer.trim()}`;
 }
+
+export {
+  buildMatchDebugPayload,
+  formatClarificationResponse,
+  resolveZeroCostRetrieval,
+};

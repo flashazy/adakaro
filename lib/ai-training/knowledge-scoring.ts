@@ -1,149 +1,68 @@
 import type { AIKnowledgeEntry, KnowledgePriority } from "./types";
 import { MATCH_SCORE_THRESHOLD } from "./types";
+import { scoreGraphRelatedIntents } from "./knowledge-graph";
+import { resolveEntryIntent } from "./intent-registry";
 import {
-  KEYWORD_CANDIDATE_MIN_SCORE,
-  KEYWORD_CANDIDATE_POOL_SIZE,
-} from "./embedding-config";
+  conversationContextBoost,
+  type PublicSessionContext,
+} from "./public-session-memory";
 
 /** Common words excluded from token overlap (still allowed inside multi-word phrases). */
 export const SCORING_STOP_WORDS = new Set([
-  "a",
-  "an",
-  "the",
-  "to",
-  "for",
-  "of",
-  "and",
-  "or",
-  "but",
-  "with",
-  "their",
-  "my",
-  "your",
-  "is",
-  "are",
-  "do",
-  "does",
-  "how",
-  "what",
-  "when",
-  "where",
-  "which",
-  "who",
-  "why",
-  "can",
-  "i",
-  "me",
-  "we",
-  "you",
-  "it",
-  "its",
-  "in",
-  "on",
-  "at",
-  "by",
-  "from",
-  "as",
-  "be",
-  "been",
-  "being",
-  "have",
-  "has",
-  "had",
-  "will",
-  "would",
-  "could",
-  "should",
-  "may",
-  "might",
-  "each",
-  "there",
-  "here",
-  "also",
-  "just",
-  "only",
-  "very",
-  "so",
-  "not",
-  "no",
-  "yes",
-  "about",
-  "this",
-  "that",
-  "these",
-  "those",
-  "if",
-  "then",
-  "than",
+  "a", "an", "the", "to", "for", "of", "and", "or", "but", "with", "their", "my",
+  "your", "is", "are", "do", "does", "how", "what", "when", "where", "which",
+  "who", "why", "can", "i", "me", "we", "you", "it", "its", "in", "on", "at",
+  "by", "from", "as", "be", "been", "being", "have", "has", "had", "will",
+  "would", "could", "should", "may", "might", "each", "there", "here", "also",
+  "just", "only", "very", "so", "not", "no", "yes", "about", "this", "that",
+  "these", "those", "if", "then", "than",
 ]);
 
-/** Single tokens that must not earn a high substring match on their own. */
 export const GENERIC_SINGLE_TERMS = new Set([
-  "student",
-  "students",
-  "record",
-  "records",
-  "plan",
-  "plans",
-  "can",
-  "pay",
-  "class",
-  "classes",
-  "school",
-  "schools",
-  "data",
-  "information",
-  "fee",
-  "fees",
-  "payment",
-  "payments",
-  "stream",
-  "streams",
-  "parent",
-  "parents",
-  "teacher",
-  "teachers",
-  "admin",
-  "feature",
-  "features",
+  "student", "students", "record", "records", "plan", "plans", "can", "pay",
+  "class", "classes", "school", "schools", "data", "information", "fee", "fees",
+  "payment", "payments", "stream", "streams", "parent", "parents", "teacher",
+  "teachers", "admin", "feature", "features", "learner", "learners", "pupil",
+  "pupils",
 ]);
 
 const PLURAL_NORMALIZE: Record<string, string> = {
-  students: "student",
-  records: "record",
-  classes: "class",
-  streams: "stream",
-  fees: "fee",
-  payments: "payment",
-  schools: "school",
-  parents: "parent",
-  teachers: "teacher",
-  plans: "plan",
+  students: "student", learners: "learner", pupils: "pupil", records: "record",
+  classes: "class", streams: "stream", fees: "fee", payments: "payment",
+  schools: "school", parents: "parent", teachers: "teacher", plans: "plan",
   features: "feature",
 };
 
-const FIELD_WEIGHTS = {
+export const FIELD_WEIGHTS = {
   question: 1,
   search_phrases: 0.95,
   alternative_wording: 0.9,
-  keywords: 0.75,
-  synonyms: 0.7,
-  related_terms: 0.5,
+  intent: 0.88,
+  synonyms: 0.75,
+  keywords: 0.7,
+  related_terms: 0.45,
+  graph: 0.35,
 } as const;
 
 const PRIORITY_RANK: Record<KnowledgePriority, number> = {
-  critical: 4,
-  high: 3,
-  normal: 2,
-  low: 1,
+  critical: 4, high: 3, normal: 2, low: 1,
 };
+
+export interface ScoringContext {
+  allEntries?: AIKnowledgeEntry[];
+  session?: PublicSessionContext;
+}
 
 export interface EntryScoreBreakdown {
   score: number;
   phraseOverlap: number;
   questionScore: number;
   searchPhraseScore: number;
+  intentScore: number;
+  graphScore: number;
+  contextBoost: number;
   priorityBoost: number;
+  matchedIntentKey: string | null;
 }
 
 export function normalizeText(text: string): string {
@@ -182,13 +101,9 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 }
 
 function isGenericSingleTerm(token: string): boolean {
-  const normalized = normalizeToken(token);
-  return GENERIC_SINGLE_TERMS.has(normalized);
+  return GENERIC_SINGLE_TERMS.has(normalizeToken(token));
 }
 
-/**
- * Substring score — no 0.85 for generic single-word hits inside the query.
- */
 export function substringScore(query: string, candidate: string): number {
   const q = normalizeText(query);
   const c = normalizeText(candidate);
@@ -215,7 +130,6 @@ export function substringScore(query: string, candidate: string): number {
   return 0;
 }
 
-/** Share of query bigrams (meaningful tokens) found inside candidate text. */
 export function phraseOverlapRatio(query: string, candidate: string): number {
   const qTokens = meaningfulTokens(query);
   if (qTokens.length < 2) return 0;
@@ -232,7 +146,6 @@ export function phraseOverlapRatio(query: string, candidate: string): number {
   return total === 0 ? 0 : matched / total;
 }
 
-/** Max bigram overlap between query and any high-intent field text. */
 export function entryPhraseOverlap(query: string, entry: AIKnowledgeEntry): number {
   const fields = [
     entry.question,
@@ -253,19 +166,56 @@ export function scoreCandidate(query: string, candidate: string): number {
 
   let score = Math.max(sub, jac);
   if (phrase > 0) {
-    const phraseScore = 0.55 + phrase * 0.4;
-    score = Math.max(score, phraseScore);
+    score = Math.max(score, 0.55 + phrase * 0.4);
   }
 
   return Math.min(1, score);
 }
 
-function scoreField(
-  query: string,
-  candidate: string,
-  weight: number
-): number {
+function scoreField(query: string, candidate: string, weight: number): number {
   return scoreCandidate(query, candidate) * weight;
+}
+
+function scoreIntentFields(
+  query: string,
+  entry: AIKnowledgeEntry
+): { score: number; intentKey: string | null } {
+  const intent = resolveEntryIntent(entry);
+  let best = 0;
+
+  if (intent.intent_key) {
+    best = Math.max(
+      best,
+      scoreField(query, intent.intent_key.replace(/\./g, " "), FIELD_WEIGHTS.intent)
+    );
+    best = Math.max(
+      best,
+      scoreField(query, intent.intent_key, FIELD_WEIGHTS.intent * 0.9)
+    );
+  }
+
+  if (intent.intent_name) {
+    best = Math.max(
+      best,
+      scoreField(query, intent.intent_name, FIELD_WEIGHTS.intent)
+    );
+  }
+
+  if (intent.intent_group) {
+    best = Math.max(
+      best,
+      scoreField(query, intent.intent_group, FIELD_WEIGHTS.intent * 0.85)
+    );
+  }
+
+  for (const related of intent.related_intents ?? []) {
+    best = Math.max(
+      best,
+      scoreField(query, related.replace(/\./g, " "), FIELD_WEIGHTS.intent * 0.7)
+    );
+  }
+
+  return { score: best, intentKey: intent.intent_key };
 }
 
 function priorityBoost(priority: KnowledgePriority): number {
@@ -277,8 +227,24 @@ function priorityBoost(priority: KnowledgePriority): number {
 
 export function scoreEntryBreakdown(
   query: string,
-  entry: AIKnowledgeEntry
+  entry: AIKnowledgeEntry,
+  context?: ScoringContext
 ): EntryScoreBreakdown {
+  if (normalizeText(query) === normalizeText(entry.question)) {
+    const intent = resolveEntryIntent(entry);
+    return {
+      score: 1,
+      phraseOverlap: 1,
+      questionScore: 1,
+      searchPhraseScore: 1,
+      intentScore: 1,
+      graphScore: 0,
+      contextBoost: 0,
+      priorityBoost: 0,
+      matchedIntentKey: intent.intent_key,
+    };
+  }
+
   let bestWeighted = 0;
   let questionScore = 0;
   let searchPhraseScore = 0;
@@ -299,17 +265,20 @@ export function scoreEntryBreakdown(
     );
   }
 
-  for (const kw of entry.keywords) {
-    bestWeighted = Math.max(
-      bestWeighted,
-      scoreField(query, kw, FIELD_WEIGHTS.keywords)
-    );
-  }
+  const { score: intentScore, intentKey } = scoreIntentFields(query, entry);
+  bestWeighted = Math.max(bestWeighted, intentScore);
 
   for (const syn of entry.synonyms ?? []) {
     bestWeighted = Math.max(
       bestWeighted,
       scoreField(query, syn, FIELD_WEIGHTS.synonyms)
+    );
+  }
+
+  for (const kw of entry.keywords) {
+    bestWeighted = Math.max(
+      bestWeighted,
+      scoreField(query, kw, FIELD_WEIGHTS.keywords)
     );
   }
 
@@ -320,20 +289,38 @@ export function scoreEntryBreakdown(
     );
   }
 
+  const graphScore =
+    context?.allEntries && context.allEntries.length > 0
+      ? scoreGraphRelatedIntents(query, entry, context.allEntries)
+      : 0;
+  bestWeighted = Math.max(bestWeighted, graphScore);
+
+  const ctxBoost = context?.session
+    ? conversationContextBoost(entry, context.session)
+    : 0;
+
   const boost = priorityBoost(entry.priority);
   const phraseOverlap = entryPhraseOverlap(query, entry);
 
   return {
-    score: Math.min(1, bestWeighted + boost),
+    score: Math.min(1, bestWeighted + boost + ctxBoost),
     phraseOverlap,
     questionScore,
     searchPhraseScore,
+    intentScore,
+    graphScore,
+    contextBoost: ctxBoost,
     priorityBoost: boost,
+    matchedIntentKey: intentKey,
   };
 }
 
-export function scoreEntry(query: string, entry: AIKnowledgeEntry): number {
-  return scoreEntryBreakdown(query, entry).score;
+export function scoreEntry(
+  query: string,
+  entry: AIKnowledgeEntry,
+  context?: ScoringContext
+): number {
+  return scoreEntryBreakdown(query, entry, context).score;
 }
 
 export function compareRankedEntries(
@@ -346,6 +333,9 @@ export function compareRankedEntries(
   const phraseDiff = b.breakdown.phraseOverlap - a.breakdown.phraseOverlap;
   if (Math.abs(phraseDiff) > 0.001) return phraseDiff;
 
+  const intentDiff = b.breakdown.intentScore - a.breakdown.intentScore;
+  if (Math.abs(intentDiff) > 0.001) return intentDiff;
+
   const questionDiff = b.breakdown.questionScore - a.breakdown.questionScore;
   if (Math.abs(questionDiff) > 0.001) return questionDiff;
 
@@ -357,10 +347,7 @@ export function compareRankedEntries(
     PRIORITY_RANK[b.entry.priority] - PRIORITY_RANK[a.entry.priority];
   if (prioDiff !== 0) return prioDiff;
 
-  const usageDiff = b.entry.usage_count - a.entry.usage_count;
-  if (usageDiff !== 0) return usageDiff;
-
-  return 0;
+  return b.entry.usage_count - a.entry.usage_count;
 }
 
 export interface RankedKnowledgeEntry {
@@ -369,33 +356,46 @@ export interface RankedKnowledgeEntry {
   breakdown: EntryScoreBreakdown;
 }
 
-export function rankKnowledgeEntriesScored(
+export function rankAllEntriesScored(
   query: string,
-  entries: AIKnowledgeEntry[]
+  entries: AIKnowledgeEntry[],
+  context?: ScoringContext
 ): RankedKnowledgeEntry[] {
+  const scoringContext: ScoringContext = {
+    ...context,
+    allEntries: context?.allEntries ?? entries,
+  };
+
   return entries
     .map((entry) => {
-      const breakdown = scoreEntryBreakdown(query, entry);
+      const breakdown = scoreEntryBreakdown(query, entry, scoringContext);
       return { entry, score: breakdown.score, breakdown };
     })
-    .filter((m) => m.score >= MATCH_SCORE_THRESHOLD)
     .sort(compareRankedEntries);
 }
 
-/** Top keyword candidates for semantic re-ranking (wider pool, lower floor). */
+export function rankKnowledgeEntriesScored(
+  query: string,
+  entries: AIKnowledgeEntry[],
+  context?: ScoringContext
+): RankedKnowledgeEntry[] {
+  return rankAllEntriesScored(query, entries, context).filter(
+    (m) => m.score >= MATCH_SCORE_THRESHOLD
+  );
+}
+
+export const KEYWORD_CANDIDATE_POOL_SIZE = 10;
+export const KEYWORD_CANDIDATE_MIN_SCORE = 0.12;
+
 export function rankKeywordCandidates(
   query: string,
   entries: AIKnowledgeEntry[],
-  limit = KEYWORD_CANDIDATE_POOL_SIZE
+  limit = KEYWORD_CANDIDATE_POOL_SIZE,
+  context?: ScoringContext
 ): RankedKnowledgeEntry[] {
-  return entries
-    .map((entry) => {
-      const breakdown = scoreEntryBreakdown(query, entry);
-      return { entry, score: breakdown.score, breakdown };
-    })
+  return rankAllEntriesScored(query, entries, context)
     .filter((m) => m.score >= KEYWORD_CANDIDATE_MIN_SCORE)
-    .sort(compareRankedEntries)
     .slice(0, limit);
 }
 
-export { MATCH_SCORE_THRESHOLD, FIELD_WEIGHTS };
+export { MATCH_SCORE_THRESHOLD };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
+import { inferIntentFromText } from "@/lib/ai-training/intent-registry";
 import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import type { AIKnowledgeEntry, KnowledgePriority } from "@/lib/ai-training/types";
@@ -64,6 +65,10 @@ export async function POST(request: NextRequest) {
     priority?: KnowledgePriority;
     autoGenerateKeywords?: boolean;
     unansweredId?: string;
+    intent_key?: string;
+    intent_name?: string;
+    intent_group?: string;
+    related_intents?: string[];
   };
 
   const question = body.question?.trim();
@@ -82,6 +87,8 @@ export async function POST(request: NextRequest) {
       ? generateKeywordsFromQuestion(question, category)
       : null;
 
+  const inferred = inferIntentFromText(question, category);
+
   const payload = {
     category,
     question,
@@ -99,6 +106,13 @@ export async function POST(request: NextRequest) {
     related_terms: body.related_terms?.length
       ? body.related_terms
       : generated?.related_terms ?? [],
+    intent_key: body.intent_key ?? inferred?.key ?? null,
+    intent_name: body.intent_name ?? inferred?.name ?? null,
+    intent_group: body.intent_group ?? inferred?.group ?? category,
+    related_intents:
+      body.related_intents?.length
+        ? body.related_intents
+        : inferred?.relatedIntents ?? [],
     priority: body.priority ?? "normal",
     status: "active" as const,
     created_by: userId,

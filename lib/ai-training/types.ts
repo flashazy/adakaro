@@ -30,6 +30,10 @@ export interface AIKnowledgeEntry {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  intent_key?: string | null;
+  intent_name?: string | null;
+  intent_group?: string | null;
+  related_intents?: string[];
 }
 
 export interface AIUnansweredQuestion {
@@ -61,6 +65,21 @@ export interface KnowledgeSearchMatch {
   keywordScore?: number;
   semanticScore?: number | null;
   finalScore?: number;
+  matchedIntentKey?: string | null;
+}
+
+export interface UnansweredMatchDebug {
+  query: string;
+  expandedQuery?: string;
+  topScore?: number;
+  matchedIntentKey?: string | null;
+  candidates?: Array<{
+    entryId: string;
+    question: string;
+    intentKey?: string | null;
+    score: number;
+  }>;
+  resultType?: string;
 }
 
 export interface KnowledgeEmbeddingRow {
@@ -72,13 +91,22 @@ export interface KnowledgeEmbeddingRow {
   updated_at: string;
 }
 
-export interface EmbeddingStatusSummary {
-  activeEntries: number;
-  embeddedEntries: number;
-  missingEntries: number;
-  lastEmbeddingUpdate: string | null;
-  embeddingModel: string;
-  embeddingsAvailable: boolean;
+export interface IntentCoverageSummary {
+  totalIntents: number;
+  coveredIntents: number;
+  missingIntents: number;
+  weakIntents: number;
+  intents: Array<{
+    key: string;
+    name: string;
+    group: string;
+    entryCount: number;
+    status: "covered" | "missing" | "weak";
+  }>;
+  categoriesNeedingTraining: Array<{
+    group: string;
+    missingCount: number;
+  }>;
 }
 
 export interface AIHealthScore {

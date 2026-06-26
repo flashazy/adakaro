@@ -14,9 +14,7 @@ import {
 } from "@/lib/ai/prompts/system-prompts";
 import { resolveCopilotContext } from "@/lib/ai/permissions";
 import { verifyCopilotRole } from "@/lib/ai/copilot/role-verification";
-import {
-  persistCopilotUnanswered,
-} from "@/lib/ai/copilot-events";
+import { persistCopilotUnanswered } from "@/lib/ai/copilot-events";
 import { createDraftKnowledgeFromRegistry } from "@/lib/ai-training/registry-suggestions";
 import { suggestionsAfterResponse } from "@/lib/ai/suggestions";
 import {
@@ -28,11 +26,14 @@ import {
 import { executeCopilotTools } from "@/lib/ai/tools/executor";
 import { buildPublicAnswer } from "@/lib/ai/public-answer";
 import {
+  buildMatchDebugPayload,
+  formatClarificationResponse,
   formatKnowledgeAnswer,
   logUnansweredQuestion,
   recordKnowledgeUsage,
-  searchKnowledgeEntries,
+  resolvePublicKnowledgeQuery,
 } from "@/lib/ai-training/knowledge-search";
+import { sessionContextFromEntry } from "@/lib/ai-training/public-session-memory";
 import type {
   AIProduct,
   AISuggestion,
@@ -161,10 +162,27 @@ export async function* generateChatStream(
       ? buildCopilotSystemPrompt(copilotCtx)
       : buildPublicSystemPrompt();
 
-  const knowledgeMatch =
+  const knowledgeHistory = history
+    .filter((m) => m.id !== userMsg.id)
+    .map((m) => ({
+      role: m.role,
+      content: m.content,
+      metadata: (m.metadata ?? null) as {
+        knowledgeEntryId?: string | null;
+        sessionContext?: ReturnType<typeof sessionContextFromEntry> | null;
+      } | null,
+    }));
+
+  const knowledgeResult =
     product === "public"
-      ? await searchKnowledgeEntries(supabase, trimmed)
+      ? await resolvePublicKnowledgeQuery(supabase, {
+          query: trimmed,
+          history: knowledgeHistory,
+        })
       : null;
+
+  const knowledgeMatch = knowledgeResult?.match ?? null;
+  const clarification = knowledgeResult?.clarification ?? null;
 
   let fallbackText: string;
   if (product === "copilot" && copilotCtx) {
@@ -175,21 +193,27 @@ export async function* generateChatStream(
       fallbackText = fb.content;
       copilotMeta = fb.meta;
     }
+  } else if (knowledgeMatch) {
+    fallbackText = formatKnowledgeAnswer(knowledgeMatch.entry);
+  } else if (clarification) {
+    fallbackText = formatClarificationResponse(clarification);
   } else {
-    fallbackText = knowledgeMatch
-      ? formatKnowledgeAnswer(knowledgeMatch.entry)
-      : fallbackPublicAnswer(trimmed);
+    fallbackText = fallbackPublicAnswer(trimmed);
   }
 
   let assistantContent = "";
-  let answerSource: "knowledge" | "llm" | "fallback" = knowledgeMatch
-    ? "knowledge"
-    : "fallback";
+  let answerSource: "knowledge" | "clarification" | "llm" | "fallback" =
+    knowledgeMatch
+      ? "knowledge"
+      : clarification
+        ? "clarification"
+        : "fallback";
 
   try {
     if (
       shouldUseLiveModel() &&
       !knowledgeMatch &&
+      !clarification &&
       !toolSummary &&
       product !== "copilot"
     ) {
@@ -235,8 +259,13 @@ export async function* generateChatStream(
         trimmed,
         knowledgeMatch.finalScore ?? knowledgeMatch.score
       );
-    } else if (answerSource === "fallback") {
-      await logUnansweredQuestion(supabase, trimmed, "public_ai");
+    } else if (answerSource === "fallback" && knowledgeResult) {
+      await logUnansweredQuestion(
+        supabase,
+        trimmed,
+        "public_ai",
+        buildMatchDebugPayload(trimmed, knowledgeResult)
+      );
     }
   }
 
@@ -256,6 +285,10 @@ export async function* generateChatStream(
         ? copilotMeta.actions
         : suggestionsAfterResponse(trimmed, assistantContent, product);
 
+  const sessionContext = knowledgeMatch
+    ? sessionContextFromEntry(knowledgeMatch.entry)
+    : null;
+
   const assistantMsg = await insertMessage(supabase, {
     conversationId,
     role: "assistant",
@@ -263,7 +296,12 @@ export async function* generateChatStream(
     metadata: {
       toolUsed: toolResult ? true : false,
       knowledgeEntryId: knowledgeMatch?.entry.id ?? null,
-      copilotMeta: copilotMeta ?? null,
+      sessionContext,
+      matchedIntentKey:
+        knowledgeMatch?.matchedIntentKey ??
+        knowledgeResult?.matchedIntentKey ??
+        null,
+      answerSource,
     },
   });
 

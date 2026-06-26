@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isEmbeddingConfigured } from "@/lib/ai-training/embeddings";
 import { loadActiveKnowledgeEntries } from "@/lib/ai-training/knowledge-search";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import { testKnowledgeQueryAsync } from "@/lib/ai-training/test-match";
@@ -17,14 +16,7 @@ export async function POST(request: NextRequest) {
   }
 
   const entries = await loadActiveKnowledgeEntries(auth.dataClient);
-  const result = await testKnowledgeQueryAsync(
-    question,
-    entries,
-    auth.dataClient
-  );
+  const result = await testKnowledgeQueryAsync(question, entries);
 
-  return NextResponse.json({
-    ...result,
-    semanticAvailable: result.semanticAvailable || isEmbeddingConfigured(),
-  });
+  return NextResponse.json(result);
 }

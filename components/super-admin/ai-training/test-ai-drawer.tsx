@@ -20,15 +20,12 @@ interface TestResult {
   answerPreview: string | null;
   category: string | null;
   entry: { question: string } | null;
-  keywordScore: number;
-  semanticScore: number | null;
+  matchedIntentKey: string | null;
+  matchedIntentName: string | null;
   finalScore: number;
-  semanticAvailable: boolean;
-}
-
-function formatScore(value: number | null): string {
-  if (value === null) return "—";
-  return `${Math.round(value * 100)}%`;
+  needsClarification: boolean;
+  clarificationMessage: string | null;
+  retrievalMode: string;
 }
 
 export function TestAIDrawer({
@@ -69,7 +66,7 @@ export function TestAIDrawer({
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Test Adakaro AI</h2>
             <p className={saSectionSubtitle}>
-              Preview keyword + semantic retrieval scores.
+              Zero-cost retrieval — intent, phrases, and knowledge graph.
             </p>
           </div>
           <button
@@ -86,9 +83,6 @@ export function TestAIDrawer({
           <label className="block text-sm font-medium text-slate-700">
             Test question
           </label>
-          <p className="mt-1 text-xs leading-relaxed text-slate-500">
-            Test how Adakaro AI would answer a real visitor question.
-          </p>
           <textarea
             value={question}
             onChange={(e) => {
@@ -135,31 +129,39 @@ export function TestAIDrawer({
                   "rounded-xl border px-4 py-3",
                   result.matched
                     ? "border-emerald-200 bg-emerald-50"
-                    : "border-amber-200 bg-amber-50"
+                    : result.needsClarification
+                      ? "border-indigo-200 bg-indigo-50"
+                      : "border-amber-200 bg-amber-50"
                 )}
               >
                 <p className="text-sm font-semibold text-slate-900">
-                  {result.matched ? "Strong match found" : "No strong match found"}
+                  {result.matched
+                    ? "Strong match found"
+                    : result.needsClarification
+                      ? "Needs clarification"
+                      : "No strong match found"}
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
-                  {result.confidence}% final confidence
+                  {result.confidence}% confidence
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Mode: {result.retrievalMode.replace(/_/g, " ")}
                 </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <ScorePill label="Keyword" value={formatScore(result.keywordScore)} />
+              <div className="grid grid-cols-2 gap-2">
+                <ScorePill label="Final score" value={`${result.confidence}%`} highlight />
                 <ScorePill
-                  label="Semantic"
-                  value={
-                    result.semanticScore !== null
-                      ? formatScore(result.semanticScore)
-                      : result.semanticAvailable
-                        ? "—"
-                        : "N/A"
-                  }
+                  label="Matched intent"
+                  value={result.matchedIntentKey ?? result.matchedIntentName ?? "—"}
                 />
-                <ScorePill label="Final" value={formatScore(result.finalScore)} highlight />
               </div>
+
+              {result.needsClarification && result.clarificationMessage ? (
+                <div className="rounded-xl bg-indigo-50/80 p-3 text-sm text-indigo-900">
+                  {result.clarificationMessage}
+                </div>
+              ) : null}
 
               {result.entry ? (
                 <>
@@ -170,28 +172,13 @@ export function TestAIDrawer({
                     <p className="mt-1 text-sm font-medium text-slate-800">
                       {result.entry.question}
                     </p>
-                    {result.category ? (
-                      <p className="mt-1 text-xs text-slate-500">{result.category}</p>
+                    {result.matchedIntentName ? (
+                      <p className="mt-1 text-xs text-indigo-600">
+                        Intent: {result.matchedIntentName}
+                        {result.matchedIntentKey ? ` (${result.matchedIntentKey})` : ""}
+                      </p>
                     ) : null}
                   </div>
-
-                  {result.matchedKeywords.length > 0 ? (
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Matched keywords
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {result.matchedKeywords.map((kw) => (
-                          <span
-                            key={kw}
-                            className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
-                          >
-                            {kw}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
 
                   {result.answerPreview ? (
                     <div>
@@ -204,7 +191,7 @@ export function TestAIDrawer({
                     </div>
                   ) : null}
                 </>
-              ) : (
+              ) : !result.needsClarification ? (
                 <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center">
                   <p className="text-sm text-slate-600">
                     No strong match found. Consider creating a knowledge entry.
@@ -220,7 +207,7 @@ export function TestAIDrawer({
                     Create Knowledge Entry
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -250,7 +237,7 @@ function ScorePill({
       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
         {label}
       </p>
-      <p className="mt-0.5 text-sm font-bold tabular-nums text-slate-900">{value}</p>
+      <p className="mt-0.5 truncate text-sm font-bold text-slate-900">{value}</p>
     </div>
   );
 }

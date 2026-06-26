@@ -1,4 +1,5 @@
-import { AI_CONFIG, isAIConfigured } from "@/lib/ai/config";
+import { AI_CONFIG } from "@/lib/ai/config";
+import { isPublicPaidLlmEnabled } from "@/lib/ai-training/retrieval-config";
 import type { AIMessage } from "@/lib/ai/types";
 
 export interface OpenAIChatMessage {
@@ -96,6 +97,11 @@ export function buildChatMessages(
   return msgs;
 }
 
+export function isAIConfigured(): boolean {
+  return Boolean(AI_CONFIG.openaiApiKey.trim());
+}
+
+/** Public AI paid LLM — disabled by default. */
 export function shouldUseLiveModel(): boolean {
-  return isAIConfigured();
+  return isAIConfigured() && isPublicPaidLlmEnabled();
 }

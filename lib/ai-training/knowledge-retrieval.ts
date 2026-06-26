@@ -1,26 +1,37 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
-import { SEMANTIC_FALLBACK_THRESHOLD } from "./embedding-config";
+import { isPaidEmbeddingsEnabled, isZeroCostRetrievalEnabled } from "./retrieval-config";
 import {
-  rankKeywordCandidates,
   rankKnowledgeEntriesScored,
   type RankedKnowledgeEntry,
+  rankKeywordCandidates,
 } from "./knowledge-scoring";
 import {
-  pickBestSemanticFallback,
-  rerankWithSemanticScores,
-} from "./knowledge-semantic-rerank";
+  buildMatchDebugPayload,
+  resolveZeroCostRetrieval,
+  type ZeroCostRetrievalResult,
+} from "./zero-cost-retrieval";
+import type { PublicSessionContext } from "./public-session-memory";
 import type { AIKnowledgeEntry, KnowledgeSearchMatch } from "./types";
-import { MATCH_SCORE_THRESHOLD } from "./types";
+
+export type { ZeroCostRetrievalResult };
 
 export interface ResolveKnowledgeMatchOptions {
-  /** Inject semantic scores for tests (entry id → score). */
+  session?: PublicSessionContext;
+  /** @deprecated Paid semantic path — only when PAID_EMBEDDINGS_ENABLED=true */
   semanticScores?: Map<string, number>;
-  /** Skip live embedding API and database lookups. */
   keywordOnly?: boolean;
 }
 
-function keywordOnlyMatch(
+function zeroCostMatch(
+  query: string,
+  entries: AIKnowledgeEntry[],
+  session?: PublicSessionContext
+): ZeroCostRetrievalResult {
+  return resolveZeroCostRetrieval(query, entries, session);
+}
+
+function legacyKeywordMatch(
   query: string,
   entries: AIKnowledgeEntry[]
 ): KnowledgeSearchMatch | null {
@@ -34,29 +45,8 @@ function keywordOnlyMatch(
     keywordScore: best.score,
     semanticScore: null,
     finalScore: best.score,
+    matchedIntentKey: best.breakdown.matchedIntentKey,
   };
-}
-
-function resolveWithInjectedSemanticScores(
-  query: string,
-  entries: AIKnowledgeEntry[],
-  semanticScores: Map<string, number>
-): KnowledgeSearchMatch | null {
-  const keywordCandidates = rankKeywordCandidates(query, entries);
-
-  if (keywordCandidates.length > 0) {
-    const reranked = rerankWithSemanticScores({
-      keywordCandidates,
-      semanticScoresByEntryId: semanticScores,
-    });
-    if (reranked[0]) return reranked[0];
-  }
-
-  return pickBestSemanticFallback(
-    entries,
-    semanticScores,
-    SEMANTIC_FALLBACK_THRESHOLD
-  );
 }
 
 async function resolveWithLiveSemantic(
@@ -64,6 +54,7 @@ async function resolveWithLiveSemantic(
   entries: AIKnowledgeEntry[],
   supabase: SupabaseClient<Database>
 ): Promise<KnowledgeSearchMatch | null> {
+  const { SEMANTIC_FALLBACK_THRESHOLD } = await import("./embedding-config");
   const {
     generateEmbedding,
     isEmbeddingConfigured,
@@ -71,6 +62,10 @@ async function resolveWithLiveSemantic(
     semanticScoresFromEmbeddings,
     semanticSearchAllActive,
   } = await import("./embeddings");
+  const { rerankWithSemanticScores, pickBestSemanticFallback } = await import(
+    "./knowledge-semantic-rerank"
+  );
+  const { MATCH_SCORE_THRESHOLD } = await import("./types");
 
   if (!isEmbeddingConfigured()) return null;
 
@@ -78,9 +73,6 @@ async function resolveWithLiveSemantic(
   if (!queryEmbedding) return null;
 
   const keywordCandidates = rankKeywordCandidates(query, entries);
-  const hasStrongKeywordCandidate = keywordCandidates.some(
-    (c) => c.score >= MATCH_SCORE_THRESHOLD
-  );
 
   if (keywordCandidates.length > 0) {
     const candidateIds = keywordCandidates.map((c) => c.entry.id);
@@ -94,16 +86,14 @@ async function resolveWithLiveSemantic(
         queryEmbedding,
         storedEmbeddings
       );
-
       const reranked = rerankWithSemanticScores({
         keywordCandidates,
         semanticScoresByEntryId: semanticScores,
       });
-
       if (reranked[0]) return reranked[0];
     }
 
-    if (hasStrongKeywordCandidate) {
+    if (keywordCandidates.some((c) => c.score >= MATCH_SCORE_THRESHOLD)) {
       const best = keywordCandidates[0]!;
       return {
         entry: best.entry,
@@ -122,8 +112,6 @@ async function resolveWithLiveSemantic(
     10
   );
 
-  if (fallbackScores.size === 0) return null;
-
   return pickBestSemanticFallback(
     entries,
     fallbackScores,
@@ -135,19 +123,8 @@ export function resolveKnowledgeMatchSync(
   query: string,
   entries: AIKnowledgeEntry[],
   options?: ResolveKnowledgeMatchOptions
-): KnowledgeSearchMatch | null {
-  const trimmed = query.trim();
-  if (!trimmed || entries.length === 0) return null;
-
-  if (options?.semanticScores?.size) {
-    return resolveWithInjectedSemanticScores(
-      trimmed,
-      entries,
-      options.semanticScores
-    );
-  }
-
-  return keywordOnlyMatch(trimmed, entries);
+): ZeroCostRetrievalResult {
+  return zeroCostMatch(query, entries, options?.session);
 }
 
 export async function resolveKnowledgeMatch(
@@ -155,36 +132,50 @@ export async function resolveKnowledgeMatch(
   entries: AIKnowledgeEntry[],
   supabase?: SupabaseClient<Database>,
   options?: ResolveKnowledgeMatchOptions
-): Promise<KnowledgeSearchMatch | null> {
-  const trimmed = query.trim();
-  if (!trimmed || entries.length === 0) return null;
-
-  if (options?.keywordOnly) {
-    return keywordOnlyMatch(trimmed, entries);
+): Promise<ZeroCostRetrievalResult> {
+  if (isZeroCostRetrievalEnabled()) {
+    return zeroCostMatch(query, entries, options?.session);
   }
 
-  if (options?.semanticScores?.size) {
-    return resolveWithInjectedSemanticScores(
-      trimmed,
-      entries,
-      options.semanticScores
-    );
-  }
-
-  if (supabase) {
+  if (
+    isPaidEmbeddingsEnabled() &&
+    supabase &&
+    !options?.keywordOnly
+  ) {
     try {
       const semanticMatch = await resolveWithLiveSemantic(
-        trimmed,
+        query,
         entries,
         supabase
       );
-      if (semanticMatch) return semanticMatch;
+      if (semanticMatch) {
+        return {
+          type: "match",
+          match: semanticMatch,
+          clarification: null,
+          candidates: [],
+          expandedQuery: query,
+          matchedIntentKey: semanticMatch.matchedIntentKey ?? null,
+        };
+      }
     } catch (error) {
-      console.error("[ai-training] semantic retrieval failed:", error);
+      console.error("[ai-training] paid semantic retrieval failed:", error);
     }
   }
 
-  return keywordOnlyMatch(trimmed, entries);
+  const legacy = legacyKeywordMatch(query, entries);
+  if (legacy) {
+    return {
+      type: "match",
+      match: legacy,
+      clarification: null,
+      candidates: [],
+      expandedQuery: query,
+      matchedIntentKey: legacy.matchedIntentKey ?? null,
+    };
+  }
+
+  return zeroCostMatch(query, entries, options?.session);
 }
 
 export function getKeywordCandidatesForTest(
@@ -193,3 +184,5 @@ export function getKeywordCandidatesForTest(
 ): RankedKnowledgeEntry[] {
   return rankKeywordCandidates(query, entries);
 }
+
+export { buildMatchDebugPayload };

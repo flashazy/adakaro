@@ -1,4 +1,4 @@
-import "server-only";
+import { isPaidEmbeddingsEnabled } from "./retrieval-config";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AI_CONFIG, isAIConfigured } from "@/lib/ai/config";
@@ -14,7 +14,7 @@ import { buildKnowledgeEmbeddingText } from "./knowledge-embedding-text";
 import type { AIKnowledgeEntry } from "./types";
 
 export function isEmbeddingConfigured(): boolean {
-  return isAIConfigured();
+  return isPaidEmbeddingsEnabled() && isAIConfigured();
 }
 
 export async function generateEmbedding(text: string): Promise<number[] | null> {
@@ -246,7 +246,7 @@ export async function syncKnowledgeEntryEmbeddingSafe(
   client: SupabaseClient<Database>,
   entry: AIKnowledgeEntry
 ): Promise<void> {
-  if (!isEmbeddingConfigured()) return;
+  if (!isPaidEmbeddingsEnabled() || !isEmbeddingConfigured()) return;
 
   try {
     const result = await upsertKnowledgeEntryEmbedding(client, entry);

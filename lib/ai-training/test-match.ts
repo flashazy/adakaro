@@ -4,10 +4,12 @@ import {
   rankKnowledgeEntries,
   scoreEntryWithMatches,
 } from "./knowledge-search";
-import { resolveKnowledgeMatch, resolveKnowledgeMatchSync } from "./knowledge-retrieval";
-import { scoreEntry } from "./knowledge-scoring";
+import { resolveKnowledgeMatchSync } from "./knowledge-retrieval";
+import { resolveEntryIntent } from "./intent-registry";
+import { formatClarificationResponse } from "./zero-cost-retrieval";
 import type { AIKnowledgeEntry } from "./types";
 import { MATCH_SCORE_THRESHOLD } from "./types";
+import type { PublicSessionContext } from "./public-session-memory";
 
 export interface AITestMatchResult {
   matched: boolean;
@@ -17,88 +19,87 @@ export interface AITestMatchResult {
   matchedPhrases: string[];
   answerPreview: string | null;
   category: string | null;
-  keywordScore: number;
-  semanticScore: number | null;
+  matchedIntentKey: string | null;
+  matchedIntentName: string | null;
   finalScore: number;
-  semanticAvailable: boolean;
+  needsClarification: boolean;
+  clarificationMessage: string | null;
+  retrievalMode: "zero_cost";
 }
 
 export interface TestKnowledgeQueryOptions {
-  keywordOnly?: boolean;
-  semanticScores?: Map<string, number>;
+  session?: PublicSessionContext;
 }
 
 function buildTestResult(
   query: string,
-  match: ReturnType<typeof resolveKnowledgeMatchSync> | null,
-  semanticAvailable: boolean
+  result: ReturnType<typeof resolveKnowledgeMatchSync>
 ): AITestMatchResult {
-  if (!match) {
+  if (result.type === "clarification" && result.clarification) {
     return {
       matched: false,
-      confidence: 0,
+      confidence: Math.round(result.clarification.topScore * 100),
       entry: null,
       matchedKeywords: [],
       matchedPhrases: [],
       answerPreview: null,
       category: null,
-      keywordScore: 0,
-      semanticScore: null,
-      finalScore: 0,
-      semanticAvailable,
+      matchedIntentKey: result.matchedIntentKey,
+      matchedIntentName: null,
+      finalScore: result.clarification.topScore,
+      needsClarification: true,
+      clarificationMessage: formatClarificationResponse(result.clarification),
+      retrievalMode: "zero_cost",
     };
   }
 
-  const keywordScore = match.keywordScore ?? match.score;
-  const semanticScore = match.semanticScore ?? null;
-  const finalScore = match.finalScore ?? match.score;
-  const matched = finalScore >= MATCH_SCORE_THRESHOLD;
+  if (result.type === "match" && result.match) {
+    const finalScore = result.match.finalScore ?? result.match.score;
+    const detail = scoreEntryWithMatches(query, result.match.entry);
+    const intent = resolveEntryIntent(result.match.entry);
+    const preview =
+      result.match.entry.answer.length > 280
+        ? `${result.match.entry.answer.slice(0, 280).trim()}…`
+        : result.match.entry.answer;
 
-  const detail = scoreEntryWithMatches(query, match.entry);
-  const preview =
-    match.entry.answer.length > 280
-      ? `${match.entry.answer.slice(0, 280).trim()}…`
-      : match.entry.answer;
+    return {
+      matched: finalScore >= MATCH_SCORE_THRESHOLD,
+      confidence: Math.round(finalScore * 100),
+      entry: result.match.entry,
+      matchedKeywords: detail.matchedKeywords,
+      matchedPhrases: detail.matchedPhrases,
+      answerPreview: preview,
+      category: result.match.entry.category,
+      matchedIntentKey: intent.intent_key,
+      matchedIntentName: intent.intent_name,
+      finalScore,
+      needsClarification: false,
+      clarificationMessage: null,
+      retrievalMode: "zero_cost",
+    };
+  }
 
-  return {
-    matched,
-    confidence: Math.round(finalScore * 100),
-    entry: matched ? match.entry : null,
-    matchedKeywords: detail.matchedKeywords,
-    matchedPhrases: detail.matchedPhrases,
-    answerPreview: matched ? preview : null,
-    category: matched ? match.entry.category : null,
-    keywordScore,
-    semanticScore,
-    finalScore,
-    semanticAvailable,
-  };
-}
-
-function buildNoMatchFallback(
-  query: string,
-  entries: AIKnowledgeEntry[],
-  semanticAvailable: boolean
-): AITestMatchResult {
-  const topEntry = [...entries].sort(
-    (a, b) => scoreEntry(query, b) - scoreEntry(query, a)
-  )[0];
-  const fallbackDetail = topEntry
-    ? scoreEntryWithMatches(query, topEntry)
+  const top = result.candidates[0];
+  const fallbackDetail = top
+    ? scoreEntryWithMatches(query, top.entry)
     : null;
 
   return {
     matched: false,
-    confidence: Math.round((fallbackDetail?.score ?? 0) * 100),
+    confidence: Math.round((top?.score ?? 0) * 100),
     entry: null,
     matchedKeywords: fallbackDetail?.matchedKeywords ?? [],
     matchedPhrases: fallbackDetail?.matchedPhrases ?? [],
     answerPreview: null,
     category: null,
-    keywordScore: fallbackDetail?.score ?? 0,
-    semanticScore: null,
-    finalScore: fallbackDetail?.score ?? 0,
-    semanticAvailable,
+    matchedIntentKey: top?.breakdown.matchedIntentKey ?? null,
+    matchedIntentName: top
+      ? resolveEntryIntent(top.entry).intent_name
+      : null,
+    finalScore: top?.score ?? 0,
+    needsClarification: false,
+    clarificationMessage: null,
+    retrievalMode: "zero_cost",
   };
 }
 
@@ -109,49 +110,30 @@ export function testKnowledgeQuery(
 ): AITestMatchResult {
   const trimmed = query.trim();
   if (!trimmed) {
-    return buildTestResult(trimmed, null, false);
+    return buildTestResult(trimmed, {
+      type: "no_match",
+      match: null,
+      clarification: null,
+      candidates: [],
+      expandedQuery: "",
+      matchedIntentKey: null,
+    });
   }
 
-  const match = resolveKnowledgeMatchSync(trimmed, entries, {
-    keywordOnly:
-      options?.keywordOnly ??
-      !(options?.semanticScores && options.semanticScores.size > 0),
-    semanticScores: options?.semanticScores,
+  const result = resolveKnowledgeMatchSync(trimmed, entries, {
+    session: options?.session,
   });
 
-  if (!match || (match.finalScore ?? match.score) < MATCH_SCORE_THRESHOLD) {
-    return buildNoMatchFallback(trimmed, entries, Boolean(options?.semanticScores));
-  }
-
-  return buildTestResult(trimmed, match, Boolean(options?.semanticScores));
+  return buildTestResult(trimmed, result);
 }
 
 export async function testKnowledgeQueryAsync(
   query: string,
   entries: AIKnowledgeEntry[],
-  supabase?: SupabaseClient<Database>,
+  _supabase?: SupabaseClient<Database>,
   options?: TestKnowledgeQueryOptions
 ): Promise<AITestMatchResult> {
-  const trimmed = query.trim();
-  if (!trimmed) {
-    return buildTestResult(trimmed, null, false);
-  }
-
-  const match = await resolveKnowledgeMatch(trimmed, entries, supabase, options);
-  const semanticAvailable = match?.semanticScore !== null && match?.semanticScore !== undefined;
-
-  if (!match || (match.finalScore ?? match.score) < MATCH_SCORE_THRESHOLD) {
-    const fallback = buildNoMatchFallback(trimmed, entries, semanticAvailable);
-    if (match) {
-      fallback.keywordScore = match.keywordScore ?? match.score;
-      fallback.semanticScore = match.semanticScore ?? null;
-      fallback.finalScore = match.finalScore ?? match.score;
-      fallback.confidence = Math.round((match.finalScore ?? match.score) * 100);
-    }
-    return fallback;
-  }
-
-  return buildTestResult(trimmed, match, semanticAvailable);
+  return testKnowledgeQuery(query, entries, options);
 }
 
 export function rankAllForTest(query: string, entries: AIKnowledgeEntry[]) {
