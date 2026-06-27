@@ -67,6 +67,7 @@ import {
 } from "@/components/super-admin/ai-training/shared";
 import { TestAIDrawer } from "@/components/super-admin/ai-training/test-ai-drawer";
 import { enrichEntryMetrics } from "@/lib/ai-training/load-analytics";
+import type { RecommendationApplyAction } from "@/lib/ai-training/test-observability-console";
 import type {
   AIActivityItem,
   AIKnowledgeEntry,
@@ -455,6 +456,65 @@ export function AITrainingClient({
     }
     const data = (await res.json()) as { row: AIKnowledgeEntry };
     openEditForm(data.row);
+  };
+
+  const applyTestSuggestion = async (
+    action: RecommendationApplyAction,
+    value: string | undefined,
+    entryId?: string
+  ) => {
+    if (action === "create_entry") {
+      openCreateForm({ question: value ?? "" });
+      setTab("knowledge");
+      setTestDrawerOpen(false);
+      return;
+    }
+
+    if (action === "recalculate_intent" && entryId) {
+      const res = await fetch(
+        `/api/super-admin/ai-training/knowledge/${entryId}/recalculate-intent`,
+        { method: "POST" }
+      );
+      showToast(
+        res.ok ? "Intent recalculation queued." : "Intent recalculation failed."
+      );
+      if (res.ok) void loadKnowledge();
+      return;
+    }
+
+    if (!entryId) return;
+
+    let row = knowledgeRows.find((r) => r.id === entryId);
+    if (!row) {
+      const res = await fetch(`/api/super-admin/ai-training/knowledge/${entryId}`);
+      if (!res.ok) {
+        showToast("Could not load entry.");
+        return;
+      }
+      row = (await res.json() as { row: AIKnowledgeEntry }).row;
+    }
+
+    const trimmed = value?.trim();
+    const next: AIKnowledgeEntry = { ...row, synonyms: row.synonyms ?? [] };
+
+    if (action === "append_search_phrase" && trimmed) {
+      next.search_phrases = [...new Set([...next.search_phrases, trimmed])];
+    } else if (action === "append_keyword" && trimmed) {
+      next.keywords = [...new Set([...next.keywords, trimmed])];
+    } else if (action === "append_synonym" && trimmed) {
+      next.synonyms = [...new Set([...(next.synonyms ?? []), trimmed])];
+    } else if (action === "append_alternative_wording" && trimmed) {
+      next.alternative_wording = [
+        ...new Set([...next.alternative_wording, trimmed]),
+      ];
+    } else if (action === "append_related_term" && trimmed) {
+      next.related_terms = [...new Set([...next.related_terms, trimmed])];
+    }
+
+    openEditForm(next);
+    setTab("knowledge");
+    setTestDrawerOpen(false);
+    showToast("Entry opened with suggestion applied.");
   };
 
   const handleDuplicateCheck = useCallback((result: DuplicateCheckApiResult | null) => {
@@ -1844,6 +1904,23 @@ export function AITrainingClient({
         onCreateEntry={(question) => {
           openCreateForm({ question });
           setTab("knowledge");
+          setTestDrawerOpen(false);
+        }}
+        onOpenEntry={(entryId) => {
+          void openEntryById(entryId);
+          setTab("knowledge");
+          setTestDrawerOpen(false);
+        }}
+        onImproveEntry={(entryId) => {
+          void openEntryById(entryId);
+          setTab("knowledge");
+          setTestDrawerOpen(false);
+        }}
+        onApplySuggestion={(action, value, entryId) => {
+          void applyTestSuggestion(action, value, entryId);
+        }}
+        onRecalculateIntent={(entryId) => {
+          void applyTestSuggestion("recalculate_intent", undefined, entryId);
         }}
       />
 

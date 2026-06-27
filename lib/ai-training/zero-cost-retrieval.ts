@@ -20,6 +20,9 @@ import {
   type RankedKnowledgeEntry,
 } from "./knowledge-scoring";
 import { resolveEntryIntent } from "./intent-registry";
+import {
+  buildRetrievalObservability,
+} from "./retrieval-observability";
 import type { IntentLearningOverrides } from "./learning-types";
 import { CLARIFICATION_AMBIGUITY_GAP, CLARIFICATION_MIN_SCORE } from "./retrieval-config";
 import type { AIKnowledgeEntry, KnowledgeSearchMatch, UnansweredMatchDebug } from "./types";
@@ -181,13 +184,36 @@ export function formatClarificationResponse(
 
 export function buildMatchDebugPayload(
   query: string,
-  result: ZeroCostRetrievalResult
+  result: ZeroCostRetrievalResult,
+  allEntries?: AIKnowledgeEntry[]
 ): UnansweredMatchDebug {
+  const matchedEntry = result.match?.entry ?? result.candidates[0]?.entry ?? null;
+  const observability = buildRetrievalObservability(
+    query,
+    matchedEntry,
+    result,
+    { allEntries }
+  );
+
   return {
     query,
     expandedQuery: result.expandedQuery,
     topScore: result.candidates[0]?.score ?? 0,
-    matchedIntentKey: result.matchedIntentKey,
+    matchedIntentKey: observability.matchedIntentKey,
+    matchedIntent: observability.matchedIntent,
+    matchedCategory: observability.matchedCategory,
+    matchedEntryId: observability.matchedEntryId,
+    matchedQuestion: observability.matchedQuestion,
+    retrievalMethod: observability.retrievalMethod,
+    matchScore: observability.matchScore,
+    matchedKeywords: observability.matchedKeywords,
+    matchedSearchPhrase: observability.matchedSearchPhrase,
+    knowledgeVersion: observability.knowledgeVersion,
+    isPrimaryEntry: observability.isPrimaryEntry,
+    healthStatus: observability.healthStatus,
+    retrievalExplanation: observability.retrievalExplanation,
+    responseSource: observability.responseSource,
+    noMatchReason: observability.noMatchReason,
     candidates: result.candidates.slice(0, 3).map((c) => ({
       entryId: c.entry.id,
       question: c.entry.question,

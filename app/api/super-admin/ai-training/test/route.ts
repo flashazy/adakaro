@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadActiveKnowledgeEntries } from "@/lib/ai-training/knowledge-search";
+import { loadEntryVersions } from "@/lib/ai-training/knowledge-versioning";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
+import { buildVersionTimeline } from "@/lib/ai-training/test-observability-console";
 import { testKnowledgeQueryAsync } from "@/lib/ai-training/test-match";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +17,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Question is required." }, { status: 400 });
   }
 
+  const loadStart = performance.now();
   const entries = await loadActiveKnowledgeEntries(auth.dataClient);
-  const result = await testKnowledgeQueryAsync(question, entries);
+  const loadEntriesMs = performance.now() - loadStart;
+
+  const result = await testKnowledgeQueryAsync(question, entries, auth.dataClient, {
+    loadEntriesMs,
+  });
+
+  if (result.matchedEntryId && result.entry) {
+    const versions = await loadEntryVersions(
+      auth.dataClient,
+      result.matchedEntryId
+    );
+    result.console.versionTimeline = buildVersionTimeline(result.entry, versions);
+  }
 
   return NextResponse.json(result);
 }

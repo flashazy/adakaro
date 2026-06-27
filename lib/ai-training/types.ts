@@ -142,6 +142,20 @@ export interface UnansweredMatchDebug {
   expandedQuery?: string;
   topScore?: number;
   matchedIntentKey?: string | null;
+  matchedIntent?: string | null;
+  matchedCategory?: string | null;
+  matchedEntryId?: string | null;
+  matchedQuestion?: string | null;
+  retrievalMethod?: string | null;
+  matchScore?: number;
+  matchedKeywords?: string[];
+  matchedSearchPhrase?: string | null;
+  knowledgeVersion?: number | null;
+  isPrimaryEntry?: boolean;
+  healthStatus?: string | null;
+  retrievalExplanation?: string;
+  responseSource?: string;
+  noMatchReason?: string | null;
   candidates?: Array<{
     entryId: string;
     question: string;
