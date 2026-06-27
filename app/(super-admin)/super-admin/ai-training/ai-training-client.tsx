@@ -13,6 +13,7 @@ import {
   Brain,
   CheckCircle2,
   FileUp,
+  GitMerge,
   GraduationCap,
   HelpCircle,
   Loader2,
@@ -43,6 +44,12 @@ import {
   saTableRowHover,
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { BulkImportModal } from "@/components/super-admin/ai-training/bulk-import-modal";
+import { KnowledgeDuplicatePanel } from "@/components/super-admin/ai-training/knowledge-duplicate-panel";
+import type { DuplicateCheckApiResult } from "@/components/super-admin/ai-training/knowledge-duplicate-panel";
+import { KnowledgeDuplicateSaveModal } from "@/components/super-admin/ai-training/knowledge-duplicate-save-modal";
+import { KnowledgeHealthBadge } from "@/components/super-admin/ai-training/knowledge-health-badge";
+import { KnowledgeMergeModal } from "@/components/super-admin/ai-training/knowledge-merge-modal";
+import { KnowledgeVersionPanel } from "@/components/super-admin/ai-training/knowledge-version-panel";
 import { KnowledgePagination, KNOWLEDGE_DEFAULT_PAGE_SIZE } from "@/components/super-admin/ai-training/knowledge-pagination";
 import { AIClassificationPanel } from "@/components/super-admin/ai-training/ai-classification-panel";
 import { BulkIntentRecalculateModal } from "@/components/super-admin/ai-training/bulk-intent-recalculate-modal";
@@ -67,6 +74,7 @@ import type {
   AIUnansweredQuestion,
   BulkRecalculatePreview,
   BulkRecalculateResult,
+  DuplicateSaveAction,
   IntentHealthSummary,
   KnowledgePriority,
   KeywordGenerationResult,
@@ -232,6 +240,17 @@ export function AITrainingClient({
     useState<BulkRecalculateResult | null>(null);
   const [bulkIntentLoading, setBulkIntentLoading] = useState(false);
   const [showIntentColumns, setShowIntentColumns] = useState(false);
+  const [duplicateCheck, setDuplicateCheck] = useState<DuplicateCheckApiResult | null>(
+    null
+  );
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [mergePrimaryId, setMergePrimaryId] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [editMeta, setEditMeta] = useState<{
+    version_number: number;
+    updated_at: string;
+  } | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -395,12 +414,19 @@ export function AITrainingClient({
 
   const openCreateForm = (prefill?: Partial<EntryFormState>) => {
     setClassificationEntry(null);
+    setEditMeta(null);
+    setDuplicateCheck(null);
     setForm({ ...emptyForm(), ...prefill });
     setFormOpen(true);
   };
 
   const openEditForm = (row: AIKnowledgeEntry) => {
     setClassificationEntry(classificationFromEntry(row));
+    setEditMeta({
+      version_number: row.version_number ?? 1,
+      updated_at: row.updated_at,
+    });
+    setDuplicateCheck(null);
     setForm({
       id: row.id,
       category: row.category,
@@ -416,30 +442,55 @@ export function AITrainingClient({
     setFormOpen(true);
   };
 
-  const saveEntry = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const payload = {
-        category: form.category,
-        question: form.question,
-        answer: form.answer,
-        priority: form.priority,
-        keywords: textToKeywords(form.keywords),
-        search_phrases: textToKeywords(form.search_phrases),
-        alternative_wording: textToKeywords(form.alternative_wording),
-        synonyms: textToKeywords(form.synonyms),
-        related_terms: textToKeywords(form.related_terms),
-        autoGenerateKeywords: false,
-        unansweredId: form.unansweredId,
-      };
+  const openEntryById = async (entryId: string) => {
+    const local = knowledgeRows.find((r) => r.id === entryId);
+    if (local) {
+      openEditForm(local);
+      return;
+    }
+    const res = await fetch(`/api/super-admin/ai-training/knowledge/${entryId}`);
+    if (!res.ok) {
+      showToast("Could not load that entry.");
+      return;
+    }
+    const data = (await res.json()) as { row: AIKnowledgeEntry };
+    openEditForm(data.row);
+  };
 
+  const handleDuplicateCheck = useCallback((result: DuplicateCheckApiResult | null) => {
+    setDuplicateCheck(result);
+  }, []);
+
+  const buildEntryPayload = () => ({
+    category: form.category,
+    question: form.question,
+    answer: form.answer,
+    priority: form.priority,
+    keywords: textToKeywords(form.keywords),
+    search_phrases: textToKeywords(form.search_phrases),
+    alternative_wording: textToKeywords(form.alternative_wording),
+    synonyms: textToKeywords(form.synonyms),
+    related_terms: textToKeywords(form.related_terms),
+    autoGenerateKeywords: false,
+    unansweredId: form.unansweredId,
+  });
+
+  const performSave = async (options?: {
+    duplicateAction?: DuplicateSaveAction;
+    targetEntryId?: string;
+  }) => {
+    const payload = {
+      ...buildEntryPayload(),
+      duplicateAction: options?.duplicateAction,
+      targetEntryId: options?.targetEntryId ?? duplicateCheck?.exactMatch?.entry.id,
+    };
+    const editingId = form.id;
+
+    if (editingId && !options?.duplicateAction) {
       const res = await fetch(
-        form.id
-          ? `/api/super-admin/ai-training/knowledge/${form.id}`
-          : "/api/super-admin/ai-training/knowledge",
+        `/api/super-admin/ai-training/knowledge/${editingId}`,
         {
-          method: form.id ? "PATCH" : "POST",
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }
@@ -449,10 +500,74 @@ export function AITrainingClient({
         throw new Error(err.error ?? "Save failed");
       }
       const data = (await res.json()) as { row?: AIKnowledgeEntry };
-      if (data.row && form.id) {
+      if (data.row) {
         setClassificationEntry(classificationFromEntry(data.row));
+        setEditMeta({
+          version_number: data.row.version_number ?? 1,
+          updated_at: data.row.updated_at,
+        });
       }
+      return data.row;
+    }
+
+    const res = await fetch("/api/super-admin/ai-training/knowledge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.status === 409) {
+      const data = (await res.json()) as {
+        duplicate?: boolean;
+        check?: DuplicateCheckApiResult;
+      };
+      if (data.check) setDuplicateCheck(data.check);
+      setDuplicateModalOpen(true);
+      return null;
+    }
+
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error ?? "Save failed");
+    }
+
+    const data = (await res.json()) as { row?: AIKnowledgeEntry };
+    const saved = data.row;
+
+    if (
+      editingId &&
+      saved &&
+      options?.duplicateAction &&
+      editingId !== saved.id
+    ) {
+      await fetch(`/api/super-admin/ai-training/knowledge/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "archived" }),
+      });
+    }
+
+    return saved;
+  };
+
+  const saveEntry = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const conflictingDuplicate =
+      duplicateCheck?.exactMatch &&
+      (!form.id || duplicateCheck.exactMatch.entry.id !== form.id);
+
+    if (conflictingDuplicate) {
+      setDuplicateModalOpen(true);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const saved = await performSave();
+      if (!saved) return;
       setFormOpen(false);
+      setDuplicateModalOpen(false);
       showToast(form.id ? "Entry updated." : "Entry created.");
       void loadKnowledge();
       void refreshAnalytics();
@@ -464,6 +579,79 @@ export function AITrainingClient({
       setSaving(false);
     }
   };
+
+  const handleDuplicateSaveAction = async (action: DuplicateSaveAction) => {
+    setSaving(true);
+    try {
+      const saved = await performSave({
+        duplicateAction: action,
+        targetEntryId: duplicateCheck?.exactMatch?.entry.id,
+      });
+      if (!saved) return;
+      setFormOpen(false);
+      setDuplicateModalOpen(false);
+      showToast("Entry saved.");
+      void loadKnowledge();
+      void refreshAnalytics();
+      void loadIntentHealth();
+      if (form.unansweredId) void loadUnanswered();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const mergeSelectedEntries = async () => {
+    const ids = [...selectedIds];
+    if (ids.length !== 2) return;
+    const entries = ids
+      .map((id) => knowledgeRows.find((r) => r.id === id))
+      .filter(Boolean) as AIKnowledgeEntry[];
+    if (entries.length !== 2) {
+      showToast("Select two entries on this page to merge.");
+      return;
+    }
+    setMergePrimaryId(entries[0]!.id);
+    setMergeModalOpen(true);
+  };
+
+  const confirmMerge = async () => {
+    const ids = [...selectedIds];
+    if (ids.length !== 2 || !mergePrimaryId) return;
+    const duplicateId = ids.find((id) => id !== mergePrimaryId);
+    if (!duplicateId) return;
+
+    setMerging(true);
+    try {
+      const res = await fetch("/api/super-admin/ai-training/knowledge/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ primaryId: mergePrimaryId, duplicateId }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        showToast(err.error ?? "Merge failed.");
+        return;
+      }
+      setMergeModalOpen(false);
+      setSelectedIds(new Set());
+      showToast("Entries merged.");
+      void loadKnowledge();
+      void refreshAnalytics();
+      void loadIntentHealth();
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  const mergeModalEntries = useMemo((): [AIKnowledgeEntry, AIKnowledgeEntry] | null => {
+    if (selectedIds.size !== 2) return null;
+    const entries = [...selectedIds]
+      .map((id) => knowledgeRows.find((r) => r.id === id))
+      .filter(Boolean) as AIKnowledgeEntry[];
+    return entries.length === 2 ? [entries[0]!, entries[1]!] : null;
+  }, [selectedIds, knowledgeRows]);
 
   const bulkAction = async (action: "archive" | "delete" | "activate") => {
     if (selectedIds.size === 0) return;
@@ -947,6 +1135,16 @@ export function AITrainingClient({
           {selectedIds.size > 0 ? (
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-2 text-sm">
               <span>{selectedIds.size} selected</span>
+              {selectedIds.size === 2 ? (
+                <button
+                  type="button"
+                  className={saBtnSecondarySm}
+                  onClick={() => void mergeSelectedEntries()}
+                >
+                  <GitMerge className="mr-1.5 h-3.5 w-3.5" />
+                  Merge
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={saBtnSecondarySm}
@@ -1024,6 +1222,7 @@ export function AITrainingClient({
                       />
                     </th>
                     <th className={saTableHeadCell}>Quality</th>
+                    <th className={saTableHeadCell}>Health</th>
                     <th className={saTableHeadCell}>Category</th>
                     <th className={saTableHeadCell}>Question</th>
                     {showIntentColumns ? (
@@ -1064,6 +1263,9 @@ export function AITrainingClient({
                           level={metrics.qualityLevel}
                           score={metrics.qualityScore}
                         />
+                      </td>
+                      <td className="px-4 py-3">
+                        <KnowledgeHealthBadge level={row.health_status} />
                       </td>
                       <td className="px-4 py-3 text-slate-600">{row.category}</td>
                       <td className="max-w-xs px-4 py-3 font-medium text-slate-900">
@@ -1515,7 +1717,43 @@ export function AITrainingClient({
                   required
                   className={cn(saInput, "mt-1 w-full")}
                 />
+                <KnowledgeDuplicatePanel
+                  question={form.question}
+                  category={form.category}
+                  excludeId={form.id}
+                  onSelectEntry={(id) => void openEntryById(id)}
+                  onCheckResult={handleDuplicateCheck}
+                />
               </label>
+
+              {form.id && editMeta ? (
+                <KnowledgeVersionPanel
+                  entryId={form.id}
+                  currentVersion={editMeta.version_number}
+                  updatedAt={editMeta.updated_at}
+                  onRestored={(row) => {
+                    setForm({
+                      id: row.id,
+                      category: row.category,
+                      question: row.question,
+                      keywords: keywordsToText(row.keywords),
+                      search_phrases: keywordsToText(row.search_phrases),
+                      alternative_wording: keywordsToText(row.alternative_wording),
+                      synonyms: keywordsToText(row.synonyms ?? []),
+                      related_terms: keywordsToText(row.related_terms),
+                      answer: row.answer,
+                      priority: row.priority,
+                    });
+                    setClassificationEntry(classificationFromEntry(row));
+                    setEditMeta({
+                      version_number: row.version_number ?? 1,
+                      updated_at: row.updated_at,
+                    });
+                    showToast("Version restored.");
+                    void loadKnowledge();
+                  }}
+                />
+              ) : null}
 
               {form.id && classificationEntry ? (
                 <AIClassificationPanel
@@ -1630,6 +1868,26 @@ export function AITrainingClient({
         onClose={() => setBulkIntentOpen(false)}
         onApply={() => void applyBulkIntentRecalculate()}
       />
+
+      <KnowledgeDuplicateSaveModal
+        open={duplicateModalOpen}
+        check={duplicateCheck}
+        saving={saving}
+        onAction={(action) => void handleDuplicateSaveAction(action)}
+        onClose={() => setDuplicateModalOpen(false)}
+      />
+
+      {mergeModalEntries ? (
+        <KnowledgeMergeModal
+          open={mergeModalOpen}
+          entries={mergeModalEntries}
+          primaryId={mergePrimaryId}
+          merging={merging}
+          onPrimaryChange={setMergePrimaryId}
+          onMerge={() => void confirmMerge()}
+          onClose={() => setMergeModalOpen(false)}
+        />
+      ) : null}
 
       {toast ? (
         <div className="fixed bottom-6 left-1/2 z-[210] -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">

@@ -36,6 +36,38 @@ export interface AIKnowledgeEntry {
   related_intents?: string[];
   intent_confidence?: number | null;
   intent_recalculated_at?: string | null;
+  normalized_question?: string | null;
+  is_primary?: boolean;
+  root_entry_id?: string | null;
+  version_number?: number;
+  merged_into_id?: string | null;
+  updated_by?: string | null;
+  health_status?: KnowledgeHealthLevel;
+}
+
+export type KnowledgeHealthLevel = "healthy" | "needs_review";
+
+export type DuplicateSaveAction =
+  | "create"
+  | "update_existing"
+  | "replace_answer"
+  | "new_version";
+
+export interface SimilarEntryMatch {
+  entry: AIKnowledgeEntry;
+  similarity: number;
+  matchReasons: string[];
+  isExact: boolean;
+}
+
+export interface DuplicateCheckResult {
+  normalizedQuestion: string;
+  exactMatch: SimilarEntryMatch | null;
+  similar: SimilarEntryMatch[];
+  suggestedIntentKey: string | null;
+  suggestedIntentName: string | null;
+  suggestedCategory: string | null;
+  relatedEntries: SimilarEntryMatch[];
 }
 
 export interface IntentHealthSummary {

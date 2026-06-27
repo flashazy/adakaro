@@ -113,8 +113,16 @@ export async function loadActiveKnowledgeEntries(
       ...entry,
       synonyms: entry.synonyms ?? [],
       related_intents: entry.related_intents ?? [],
+      is_primary: entry.is_primary ?? true,
+      version_number: entry.version_number ?? 1,
+      health_status: entry.health_status ?? "needs_review",
     };
-  });
+  }).filter(
+    (entry) =>
+      entry.status === "active" &&
+      entry.is_primary !== false &&
+      !entry.merged_into_id
+  );
 }
 
 export interface PublicKnowledgeQueryInput {

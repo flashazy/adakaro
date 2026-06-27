@@ -1,13 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
+import { computeKnowledgeHealth, normalizedQuestionField } from "@/lib/ai-training/knowledge-duplicates";
+import { loadEntriesForDuplicateCheck, refreshEntryHealth } from "@/lib/ai-training/knowledge-entry-mutations";
 import {
   intentPatchIfQuestionChanged,
   logIntentHistory,
 } from "@/lib/ai-training/intent-recalculate";
+import { snapshotEntryVersion, upsertIntentPrimaryEntry } from "@/lib/ai-training/knowledge-versioning";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import type { AIKnowledgeEntry, KnowledgePriority, KnowledgeStatus } from "@/lib/ai-training/types";
 
 export const dynamic = "force-dynamic";
+
+export async function GET(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireSuperAdminDataClient();
+  if ("error" in auth) return auth.error;
+  const { id } = await context.params;
+
+  const { data, error } = await auth.dataClient
+    .from("ai_knowledge_entries")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error || !data) {
+    return NextResponse.json({ error: "Entry not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({ row: data });
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -94,6 +118,23 @@ export async function PATCH(
     Object.assign(patch, fields);
   }
 
+  const contentChanged =
+    questionChanged ||
+    (body.answer !== undefined && body.answer.trim() !== current.answer) ||
+    body.keywords !== undefined ||
+    body.search_phrases !== undefined;
+
+  if (contentChanged) {
+    await snapshotEntryVersion(dataClient, current, userId);
+    patch.version_number = (current.version_number ?? 1) + 1;
+  }
+
+  if (body.question !== undefined) {
+    patch.normalized_question = normalizedQuestionField(body.question.trim());
+  }
+
+  patch.updated_by = userId;
+
   const { data, error } = await dataClient
     .from("ai_knowledge_entries")
     .update(patch as never)
@@ -117,9 +158,23 @@ export async function PATCH(
     });
   }
 
-  void syncKnowledgeEntryEmbeddingSafe(dataClient, data as AIKnowledgeEntry);
+  const updated = data as AIKnowledgeEntry;
+  const allEntries = await loadEntriesForDuplicateCheck(dataClient);
+  const health = computeKnowledgeHealth(updated, allEntries);
+  await dataClient
+    .from("ai_knowledge_entries")
+    .update({ health_status: health.level } as never)
+    .eq("id", id);
 
-  return NextResponse.json({ row: data });
+  if (updated.intent_key) {
+    await upsertIntentPrimaryEntry(dataClient, updated.intent_key, updated.id, userId);
+  }
+
+  await refreshEntryHealth(dataClient, id);
+
+  void syncKnowledgeEntryEmbeddingSafe(dataClient, updated);
+
+  return NextResponse.json({ row: { ...updated, health_status: health.level } });
 }
 
 export async function DELETE(

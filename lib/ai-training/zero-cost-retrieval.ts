@@ -13,6 +13,9 @@ import {
   type PublicSessionContext,
 } from "./public-session-memory";
 import {
+  applyRetrievalPriority,
+} from "./knowledge-retrieval-priority";
+import {
   rankAllEntriesScored,
   type RankedKnowledgeEntry,
 } from "./knowledge-scoring";
@@ -103,7 +106,8 @@ export function resolveZeroCostRetrieval(
 
   const context = { allEntries: entries, session };
   const baseRanked = rankAllEntriesScored(expandedQuery, entries, context);
-  const reasoning = applyIntentReasoning(trimmed, baseRanked, session, intentOverrides);
+  const priorityRanked = applyRetrievalPriority(baseRanked);
+  const reasoning = applyIntentReasoning(trimmed, priorityRanked, session, intentOverrides);
   const ranked = reasoning.ranked;
   const candidates = ranked.slice(0, 5);
   const best = ranked[0];

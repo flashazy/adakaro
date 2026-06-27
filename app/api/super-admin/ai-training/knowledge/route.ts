@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
 import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
+import { serializeDuplicateCheckForApi } from "@/lib/ai-training/knowledge-duplicates";
 import {
-  intentPayloadForCreate,
-  logIntentHistory,
-} from "@/lib/ai-training/intent-recalculate";
+  createKnowledgeEntry,
+  type KnowledgeEntryPayload,
+} from "@/lib/ai-training/knowledge-entry-mutations";
+import { logIntentHistory } from "@/lib/ai-training/intent-recalculate";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
-import type { AIKnowledgeEntry, KnowledgePriority } from "@/lib/ai-training/types";
+import type {
+  AIKnowledgeEntry,
+  DuplicateSaveAction,
+  KnowledgePriority,
+} from "@/lib/ai-training/types";
 
 export const dynamic = "force-dynamic";
 
@@ -68,10 +74,8 @@ export async function POST(request: NextRequest) {
     priority?: KnowledgePriority;
     autoGenerateKeywords?: boolean;
     unansweredId?: string;
-    intent_key?: string;
-    intent_name?: string;
-    intent_group?: string;
-    related_intents?: string[];
+    duplicateAction?: DuplicateSaveAction;
+    targetEntryId?: string;
   };
 
   const question = body.question?.trim();
@@ -90,9 +94,7 @@ export async function POST(request: NextRequest) {
       ? generateKeywordsFromQuestion(question, category)
       : null;
 
-  const intentFields = intentPayloadForCreate(question, category);
-
-  const payload = {
+  const payload: KnowledgeEntryPayload = {
     category,
     question,
     answer,
@@ -109,24 +111,28 @@ export async function POST(request: NextRequest) {
     related_terms: body.related_terms?.length
       ? body.related_terms
       : generated?.related_terms ?? [],
-    ...intentFields,
     priority: body.priority ?? "normal",
-    status: "active" as const,
-    created_by: userId,
   };
 
-  const { data, error } = await dataClient
-    .from("ai_knowledge_entries")
-    .insert(payload as never)
-    .select("*")
-    .single();
+  const result = await createKnowledgeEntry(dataClient, payload, userId, {
+    duplicateAction: body.duplicateAction ?? "create",
+    targetEntryId: body.targetEntryId,
+  });
 
-  if (error) {
-    console.error("[ai-training/knowledge] create:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!result.ok) {
+    if ("duplicate" in result && result.duplicate) {
+      return NextResponse.json(
+        {
+          duplicate: true,
+          check: serializeDuplicateCheckForApi(result.check),
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({ error: "error" in result ? result.error : "Create failed." }, { status: 400 });
   }
 
-  const created = data as AIKnowledgeEntry;
+  const created = result.row;
   if (created.intent_key) {
     await logIntentHistory(dataClient, {
       entryId: created.id,
@@ -144,15 +150,12 @@ export async function POST(request: NextRequest) {
       .from("ai_unanswered_questions")
       .update({
         status: "answered",
-        linked_knowledge_entry_id: (data as { id: string }).id,
+        linked_knowledge_entry_id: created.id,
       } as never)
       .eq("id", body.unansweredId);
   }
 
-  void syncKnowledgeEntryEmbeddingSafe(
-    dataClient,
-    data as AIKnowledgeEntry
-  );
+  void syncKnowledgeEntryEmbeddingSafe(dataClient, created as AIKnowledgeEntry);
 
-  return NextResponse.json({ row: data });
+  return NextResponse.json({ row: created });
 }

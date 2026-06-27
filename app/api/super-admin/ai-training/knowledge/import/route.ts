@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
 import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
-import { intentPayloadForCreate } from "@/lib/ai-training/intent-recalculate";
+import {
+  createKnowledgeEntry,
+  type KnowledgeEntryPayload,
+} from "@/lib/ai-training/knowledge-entry-mutations";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import type { AIKnowledgeEntry, KnowledgePriority } from "@/lib/ai-training/types";
 
@@ -102,11 +105,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No valid entries to import." }, { status: 400 });
   }
 
-  const payloads = items.map((item) => {
+  const created: AIKnowledgeEntry[] = [];
+  let skippedDuplicates = 0;
+
+  for (const item of items) {
     const category = item.category?.trim() || "General";
-    const generated = generateKeywordsFromQuestion(item.question, category);
     const question = item.question.trim();
-    return {
+    const generated = generateKeywordsFromQuestion(question, category);
+    const payload: KnowledgeEntryPayload = {
       category,
       question,
       answer: item.answer.trim(),
@@ -115,25 +121,34 @@ export async function POST(request: NextRequest) {
       alternative_wording: generated.alternative_wording,
       synonyms: generated.synonyms,
       related_terms: generated.related_terms,
-      ...intentPayloadForCreate(question, category),
       priority: item.priority ?? "normal",
-      status: "active" as const,
-      created_by: userId,
     };
+
+    const result = await createKnowledgeEntry(dataClient, payload, userId, {
+      duplicateAction: "create",
+    });
+
+    if (!result.ok) {
+      if ("duplicate" in result && result.duplicate) {
+        skippedDuplicates++;
+        continue;
+      }
+      return NextResponse.json(
+        { error: "error" in result ? result.error : "Import failed." },
+        { status: 500 }
+      );
+    }
+
+    created.push(result.row);
+  }
+
+  for (const row of created) {
+    void syncKnowledgeEntryEmbeddingSafe(dataClient, row);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    count: created.length,
+    skippedDuplicates,
   });
-
-  const { data, error } = await dataClient
-    .from("ai_knowledge_entries")
-    .insert(payloads as never)
-    .select("*");
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  for (const row of data ?? []) {
-    void syncKnowledgeEntryEmbeddingSafe(dataClient, row as AIKnowledgeEntry);
-  }
-
-  return NextResponse.json({ ok: true, count: data?.length ?? payloads.length });
 }
