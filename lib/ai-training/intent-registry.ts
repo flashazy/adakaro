@@ -245,13 +245,34 @@ export function getIntentDefinition(key: string): IntentDefinition | undefined {
   return REGISTRY_BY_KEY.get(key);
 }
 
-export function inferIntentFromText(
+export interface IntentInferenceResult {
+  key: string;
+  name: string;
+  group: string;
+  relatedIntents: string[];
+  confidence: number;
+  reason: string;
+}
+
+const MAX_PHRASE_SCORE = 48;
+
+function normalizeConfidence(rawScore: number, maxPossible: number): number {
+  if (maxPossible <= 0) return 0.5;
+  const ratio = Math.min(1, rawScore / maxPossible);
+  return Math.round((0.55 + ratio * 0.44) * 100) / 100;
+}
+
+export function inferIntentWithConfidence(
   question: string,
   category?: string
-): Pick<IntentDefinition, "key" | "name" | "group" | "relatedIntents"> | null {
+): IntentInferenceResult | null {
   const normalized = question.toLowerCase();
 
-  let best: { intent: IntentDefinition; score: number } | null = null;
+  let best: {
+    intent: IntentDefinition;
+    score: number;
+    matchedPhrase: string;
+  } | null = null;
 
   for (const intent of INTENT_REGISTRY) {
     const phrases = [
@@ -259,22 +280,31 @@ export function inferIntentFromText(
       ...intent.matchTerms,
     ];
     let score = 0;
+    let matchedPhrase = "";
     for (const term of phrases) {
-      if (normalized.includes(term.toLowerCase())) {
-        score += term.length;
+      const lower = term.toLowerCase();
+      if (normalized.includes(lower)) {
+        const termScore = lower.length;
+        score += termScore;
+        if (termScore > matchedPhrase.length) matchedPhrase = term;
       }
     }
     if (score > 0 && (!best || score > best.score)) {
-      best = { intent, score };
+      best = { intent, score, matchedPhrase };
     }
   }
 
   if (best) {
+    const confidence = normalizeConfidence(best.score, MAX_PHRASE_SCORE);
     return {
       key: best.intent.key,
       name: best.intent.name,
       group: best.intent.group,
       relatedIntents: best.intent.relatedIntents,
+      confidence,
+      reason: best.matchedPhrase
+        ? `Matched trigger phrase "${best.matchedPhrase}".`
+        : "Matched intent registry terms.",
     };
   }
 
@@ -288,11 +318,27 @@ export function inferIntentFromText(
         name: byGroup.name,
         group: byGroup.group,
         relatedIntents: byGroup.relatedIntents,
+        confidence: 0.62,
+        reason: `Category "${category}" matched intent group.`,
       };
     }
   }
 
   return null;
+}
+
+export function inferIntentFromText(
+  question: string,
+  category?: string
+): Pick<IntentDefinition, "key" | "name" | "group" | "relatedIntents"> | null {
+  const result = inferIntentWithConfidence(question, category);
+  if (!result) return null;
+  return {
+    key: result.key,
+    name: result.name,
+    group: result.group,
+    relatedIntents: result.relatedIntents,
+  };
 }
 
 export function resolveEntryIntent(entry: {

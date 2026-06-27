@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
 import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
+import { intentPayloadForCreate } from "@/lib/ai-training/intent-recalculate";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import type { AIKnowledgeEntry, KnowledgePriority } from "@/lib/ai-training/types";
 
@@ -104,15 +105,17 @@ export async function POST(request: NextRequest) {
   const payloads = items.map((item) => {
     const category = item.category?.trim() || "General";
     const generated = generateKeywordsFromQuestion(item.question, category);
+    const question = item.question.trim();
     return {
       category,
-      question: item.question.trim(),
+      question,
       answer: item.answer.trim(),
       keywords: generated.keywords,
       search_phrases: generated.search_phrases,
       alternative_wording: generated.alternative_wording,
       synonyms: generated.synonyms,
       related_terms: generated.related_terms,
+      ...intentPayloadForCreate(question, category),
       priority: item.priority ?? "normal",
       status: "active" as const,
       created_by: userId,

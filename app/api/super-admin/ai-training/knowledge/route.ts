@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
-import { inferIntentFromText } from "@/lib/ai-training/intent-registry";
 import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
+import {
+  intentPayloadForCreate,
+  logIntentHistory,
+} from "@/lib/ai-training/intent-recalculate";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import type { AIKnowledgeEntry, KnowledgePriority } from "@/lib/ai-training/types";
 
@@ -87,7 +90,7 @@ export async function POST(request: NextRequest) {
       ? generateKeywordsFromQuestion(question, category)
       : null;
 
-  const inferred = inferIntentFromText(question, category);
+  const intentFields = intentPayloadForCreate(question, category);
 
   const payload = {
     category,
@@ -106,13 +109,7 @@ export async function POST(request: NextRequest) {
     related_terms: body.related_terms?.length
       ? body.related_terms
       : generated?.related_terms ?? [],
-    intent_key: body.intent_key ?? inferred?.key ?? null,
-    intent_name: body.intent_name ?? inferred?.name ?? null,
-    intent_group: body.intent_group ?? inferred?.group ?? category,
-    related_intents:
-      body.related_intents?.length
-        ? body.related_intents
-        : inferred?.relatedIntents ?? [],
+    ...intentFields,
     priority: body.priority ?? "normal",
     status: "active" as const,
     created_by: userId,
@@ -127,6 +124,19 @@ export async function POST(request: NextRequest) {
   if (error) {
     console.error("[ai-training/knowledge] create:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const created = data as AIKnowledgeEntry;
+  if (created.intent_key) {
+    await logIntentHistory(dataClient, {
+      entryId: created.id,
+      previousIntentKey: null,
+      newIntentKey: created.intent_key,
+      previousIntentName: null,
+      newIntentName: created.intent_name ?? null,
+      reason: "Initial intent classification on create.",
+      userId,
+    });
   }
 
   if (body.unansweredId) {

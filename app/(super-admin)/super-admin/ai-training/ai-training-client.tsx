@@ -43,6 +43,9 @@ import {
   saTableRowHover,
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { BulkImportModal } from "@/components/super-admin/ai-training/bulk-import-modal";
+import { AIClassificationPanel } from "@/components/super-admin/ai-training/ai-classification-panel";
+import { BulkIntentRecalculateModal } from "@/components/super-admin/ai-training/bulk-intent-recalculate-modal";
+import { IntentHealthBanner } from "@/components/super-admin/ai-training/intent-health-banner";
 import { IntentCoveragePanel } from "@/components/super-admin/ai-training/intent-coverage-panel";
 import { LearningPanel } from "@/components/super-admin/ai-training/learning-panel";
 import {
@@ -61,6 +64,9 @@ import type {
   AIKnowledgeEntry,
   AITrainingAnalytics,
   AIUnansweredQuestion,
+  BulkRecalculatePreview,
+  BulkRecalculateResult,
+  IntentHealthSummary,
   KnowledgePriority,
   KeywordGenerationResult,
 } from "@/lib/ai-training/types";
@@ -151,6 +157,32 @@ function textToKeywords(text: string): string[] {
     .filter(Boolean);
 }
 
+type EntryClassification = Pick<
+  AIKnowledgeEntry,
+  | "intent_key"
+  | "intent_name"
+  | "intent_group"
+  | "related_intents"
+  | "intent_confidence"
+  | "intent_recalculated_at"
+>;
+
+function classificationFromEntry(row: AIKnowledgeEntry): EntryClassification {
+  return {
+    intent_key: row.intent_key ?? null,
+    intent_name: row.intent_name ?? null,
+    intent_group: row.intent_group ?? null,
+    related_intents: row.related_intents ?? [],
+    intent_confidence: row.intent_confidence ?? null,
+    intent_recalculated_at: row.intent_recalculated_at ?? null,
+  };
+}
+
+function formatIntentConfidence(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return `${Math.round(value * 100)}%`;
+}
+
 export function AITrainingClient({
   initialAnalytics,
 }: {
@@ -181,6 +213,22 @@ export function AITrainingClient({
   const [activity, setActivity] = useState<AIActivityItem[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [loadingOverview, setLoadingOverview] = useState(false);
+  const [classificationEntry, setClassificationEntry] =
+    useState<EntryClassification | null>(null);
+  const [recalculatingIntent, setRecalculatingIntent] = useState(false);
+  const [intentHealth, setIntentHealth] = useState<IntentHealthSummary | null>(
+    null
+  );
+  const [bulkIntentOpen, setBulkIntentOpen] = useState(false);
+  const [bulkIntentStep, setBulkIntentStep] = useState<
+    "preview" | "applying" | "summary"
+  >("preview");
+  const [bulkIntentPreview, setBulkIntentPreview] =
+    useState<BulkRecalculatePreview | null>(null);
+  const [bulkIntentResult, setBulkIntentResult] =
+    useState<BulkRecalculateResult | null>(null);
+  const [bulkIntentLoading, setBulkIntentLoading] = useState(false);
+  const [showIntentColumns, setShowIntentColumns] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -206,6 +254,17 @@ export function AITrainingClient({
       setLoadingActivity(false);
     }
   }, []);
+
+  const loadIntentHealth = useCallback(async () => {
+    const res = await fetch("/api/super-admin/ai-training/knowledge/intent-health");
+    if (res.ok) {
+      setIntentHealth((await res.json()) as IntentHealthSummary);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadIntentHealth();
+  }, [loadIntentHealth]);
 
   const refreshOverview = useCallback(async () => {
     setLoadingOverview(true);
@@ -327,11 +386,13 @@ export function AITrainingClient({
   };
 
   const openCreateForm = (prefill?: Partial<EntryFormState>) => {
+    setClassificationEntry(null);
     setForm({ ...emptyForm(), ...prefill });
     setFormOpen(true);
   };
 
   const openEditForm = (row: AIKnowledgeEntry) => {
+    setClassificationEntry(classificationFromEntry(row));
     setForm({
       id: row.id,
       category: row.category,
@@ -379,10 +440,15 @@ export function AITrainingClient({
         const err = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(err.error ?? "Save failed");
       }
+      const data = (await res.json()) as { row?: AIKnowledgeEntry };
+      if (data.row && form.id) {
+        setClassificationEntry(classificationFromEntry(data.row));
+      }
       setFormOpen(false);
       showToast(form.id ? "Entry updated." : "Entry created.");
       void loadKnowledge();
       void refreshAnalytics();
+      void loadIntentHealth();
       if (form.unansweredId) void loadUnanswered();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Save failed");
@@ -425,6 +491,81 @@ export function AITrainingClient({
     });
     void loadKnowledge();
     void refreshAnalytics();
+    void loadIntentHealth();
+  };
+
+  const recalculateEntryIntent = async () => {
+    if (!form.id) return;
+    setRecalculatingIntent(true);
+    try {
+      const res = await fetch(
+        `/api/super-admin/ai-training/knowledge/${form.id}/recalculate-intent`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        showToast("Intent recalculation failed.");
+        return;
+      }
+      const data = (await res.json()) as { row: AIKnowledgeEntry };
+      setClassificationEntry(classificationFromEntry(data.row));
+      showToast("Intent successfully recalculated.");
+      void loadKnowledge();
+      void loadIntentHealth();
+    } finally {
+      setRecalculatingIntent(false);
+    }
+  };
+
+  const openBulkIntentRecalculate = async () => {
+    setBulkIntentOpen(true);
+    setBulkIntentStep("preview");
+    setBulkIntentResult(null);
+    setBulkIntentLoading(true);
+    try {
+      const res = await fetch(
+        "/api/super-admin/ai-training/knowledge/recalculate-intents",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "preview" }),
+        }
+      );
+      if (res.ok) {
+        setBulkIntentPreview((await res.json()) as BulkRecalculatePreview);
+      }
+    } finally {
+      setBulkIntentLoading(false);
+    }
+  };
+
+  const applyBulkIntentRecalculate = async () => {
+    if (!bulkIntentPreview) return;
+    setBulkIntentStep("applying");
+    setBulkIntentLoading(true);
+    try {
+      const res = await fetch(
+        "/api/super-admin/ai-training/knowledge/recalculate-intents",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "apply",
+            changeIds: bulkIntentPreview.changes.map((c) => c.id),
+          }),
+        }
+      );
+      if (res.ok) {
+        setBulkIntentResult((await res.json()) as BulkRecalculateResult);
+        setBulkIntentStep("summary");
+        void loadKnowledge();
+        void loadIntentHealth();
+      } else {
+        showToast("Bulk recalculation failed.");
+        setBulkIntentStep("preview");
+      }
+    } finally {
+      setBulkIntentLoading(false);
+    }
   };
 
   const updateUnanswered = async (
@@ -549,6 +690,11 @@ export function AITrainingClient({
           </button>
         ))}
       </nav>
+
+      <IntentHealthBanner
+        health={intentHealth}
+        onRecalculate={() => void openBulkIntentRecalculate()}
+      />
 
       {tab === "overview" ? (
         <div className="mt-8 space-y-8">
@@ -743,6 +889,21 @@ export function AITrainingClient({
               <button
                 type="button"
                 className={saBtnSecondary}
+                onClick={() => void openBulkIntentRecalculate()}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Recalculate All Intents
+              </button>
+              <button
+                type="button"
+                className={saBtnSecondary}
+                onClick={() => setShowIntentColumns((v) => !v)}
+              >
+                Columns
+              </button>
+              <button
+                type="button"
+                className={saBtnSecondary}
                 onClick={() => setBulkImportOpen(true)}
               >
                 <FileUp className="mr-2 h-4 w-4" />
@@ -841,6 +1002,13 @@ export function AITrainingClient({
                     <th className={saTableHeadCell}>Quality</th>
                     <th className={saTableHeadCell}>Category</th>
                     <th className={saTableHeadCell}>Question</th>
+                    {showIntentColumns ? (
+                      <>
+                        <th className={saTableHeadCell}>Intent</th>
+                        <th className={saTableHeadCell}>Confidence</th>
+                        <th className={saTableHeadCell}>Last Recalculated</th>
+                      </>
+                    ) : null}
                     <th className={saTableHeadCell}>Keywords</th>
                     <th className={saTableHeadCell}>Usage</th>
                     <th className={saTableHeadCell}>Success</th>
@@ -877,6 +1045,19 @@ export function AITrainingClient({
                       <td className="max-w-xs px-4 py-3 font-medium text-slate-900">
                         {row.question}
                       </td>
+                      {showIntentColumns ? (
+                        <>
+                          <td className="max-w-[8rem] truncate px-4 py-3 font-mono text-xs text-slate-600">
+                            {row.intent_key ?? "—"}
+                          </td>
+                          <td className="px-4 py-3 tabular-nums text-slate-600">
+                            {formatIntentConfidence(row.intent_confidence)}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500">
+                            {formatDateTime(row.intent_recalculated_at ?? null)}
+                          </td>
+                        </>
+                      ) : null}
                       <td className="max-w-[12rem] px-4 py-3">
                         <ChipList items={row.keywords} />
                       </td>
@@ -1327,6 +1508,14 @@ export function AITrainingClient({
                 />
               </label>
 
+              {form.id && classificationEntry ? (
+                <AIClassificationPanel
+                  entry={classificationEntry}
+                  recalculating={recalculatingIntent}
+                  onRecalculate={() => void recalculateEntryIntent()}
+                />
+              ) : null}
+
               <button
                 type="button"
                 className={saBtnSecondary}
@@ -1419,7 +1608,18 @@ export function AITrainingClient({
           void loadKnowledge();
           void refreshAnalytics();
           void loadActivity();
+          void loadIntentHealth();
         }}
+      />
+
+      <BulkIntentRecalculateModal
+        open={bulkIntentOpen}
+        preview={bulkIntentPreview}
+        result={bulkIntentResult}
+        step={bulkIntentStep}
+        loading={bulkIntentLoading}
+        onClose={() => setBulkIntentOpen(false)}
+        onApply={() => void applyBulkIntentRecalculate()}
       />
 
       {toast ? (

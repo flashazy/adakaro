@@ -34,6 +34,43 @@ export interface AIKnowledgeEntry {
   intent_name?: string | null;
   intent_group?: string | null;
   related_intents?: string[];
+  intent_confidence?: number | null;
+  intent_recalculated_at?: string | null;
+}
+
+export interface IntentHealthSummary {
+  registryVersion: string;
+  activeEntries: number;
+  nullIntentCount: number;
+  staleIntentCount: number;
+  needsRecalculation: number;
+}
+
+export interface IntentChangePreview {
+  id: string;
+  question: string;
+  category: string;
+  oldIntentKey: string | null;
+  oldIntentName: string | null;
+  newIntentKey: string | null;
+  newIntentName: string | null;
+  confidence: number | null;
+  reason: string;
+}
+
+export interface BulkRecalculatePreview {
+  scanned: number;
+  wouldUpdate: number;
+  unchanged: number;
+  changes: IntentChangePreview[];
+}
+
+export interface BulkRecalculateResult {
+  scanned: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+  durationMs: number;
 }
 
 export interface AIUnansweredQuestion {
