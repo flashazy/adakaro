@@ -43,6 +43,7 @@ import {
   saTableRowHover,
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { BulkImportModal } from "@/components/super-admin/ai-training/bulk-import-modal";
+import { KnowledgePagination, KNOWLEDGE_DEFAULT_PAGE_SIZE } from "@/components/super-admin/ai-training/knowledge-pagination";
 import { AIClassificationPanel } from "@/components/super-admin/ai-training/ai-classification-panel";
 import { BulkIntentRecalculateModal } from "@/components/super-admin/ai-training/bulk-intent-recalculate-modal";
 import { IntentHealthBanner } from "@/components/super-admin/ai-training/intent-health-banner";
@@ -195,6 +196,8 @@ export function AITrainingClient({
   const [knowledgeTotal, setKnowledgeTotal] = useState(0);
   const [unansweredTotal, setUnansweredTotal] = useState(0);
   const [knowledgePage, setKnowledgePage] = useState(1);
+  const [knowledgePageSize, setKnowledgePageSize] = useState(KNOWLEDGE_DEFAULT_PAGE_SIZE);
+  const [knowledgeCategory, setKnowledgeCategory] = useState("");
   const [unansweredPage, setUnansweredPage] = useState(1);
   const [knowledgeSearch, setKnowledgeSearch] = useState("");
   const [unansweredSearch, setUnansweredSearch] = useState("");
@@ -280,10 +283,11 @@ export function AITrainingClient({
     try {
       const params = new URLSearchParams({
         page: String(knowledgePage),
-        pageSize: "20",
+        pageSize: String(knowledgePageSize),
         status: knowledgeStatus,
       });
       if (knowledgeSearch) params.set("search", knowledgeSearch);
+      if (knowledgeCategory) params.set("category", knowledgeCategory);
       const res = await fetch(
         `/api/super-admin/ai-training/knowledge?${params}`
       );
@@ -308,7 +312,11 @@ export function AITrainingClient({
     } finally {
       setLoadingKnowledge(false);
     }
-  }, [knowledgePage, knowledgeSearch, knowledgeStatus]);
+  }, [knowledgePage, knowledgePageSize, knowledgeSearch, knowledgeStatus, knowledgeCategory]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [knowledgePage, knowledgePageSize, knowledgeSearch, knowledgeStatus, knowledgeCategory]);
 
   const loadUnanswered = useCallback(async () => {
     setLoadingUnanswered(true);
@@ -610,7 +618,6 @@ export function AITrainingClient({
     }
   };
 
-  const knowledgePages = Math.max(1, Math.ceil(knowledgeTotal / 20));
   const unansweredPages = Math.max(1, Math.ceil(unansweredTotal / 20));
 
   const overviewCards = useMemo(
@@ -881,10 +888,27 @@ export function AITrainingClient({
                   setKnowledgePage(1);
                 }}
                 className={saInput}
+                aria-label="Filter by status"
               >
                 <option value="active">Active</option>
                 <option value="archived">Archived</option>
                 <option value="all">All</option>
+              </select>
+              <select
+                value={knowledgeCategory}
+                onChange={(e) => {
+                  setKnowledgeCategory(e.target.value);
+                  setKnowledgePage(1);
+                }}
+                className={saInput}
+                aria-label="Filter by category"
+              >
+                <option value="">All categories</option>
+                {KNOWLEDGE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
               <button
                 type="button"
@@ -1105,31 +1129,16 @@ export function AITrainingClient({
             )}
           </div>
 
-          {knowledgePages > 1 ? (
-            <div className="flex items-center justify-between text-sm text-slate-500">
-              <span>
-                Page {knowledgePage} of {knowledgePages}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className={saBtnSecondarySm}
-                  disabled={knowledgePage <= 1}
-                  onClick={() => setKnowledgePage((p) => p - 1)}
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  className={saBtnSecondarySm}
-                  disabled={knowledgePage >= knowledgePages}
-                  onClick={() => setKnowledgePage((p) => p + 1)}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          ) : null}
+          <KnowledgePagination
+            page={knowledgePage}
+            pageSize={knowledgePageSize}
+            total={knowledgeTotal}
+            onPageChange={setKnowledgePage}
+            onPageSizeChange={(size) => {
+              setKnowledgePageSize(size);
+              setKnowledgePage(1);
+            }}
+          />
         </div>
       ) : null}
 
