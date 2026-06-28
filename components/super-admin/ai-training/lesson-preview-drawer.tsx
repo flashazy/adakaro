@@ -12,6 +12,7 @@ import {
   InlineQualityReport,
   LessonMarkdownContent,
 } from "@/components/super-admin/ai-training/lesson-review-shared";
+import type { ReviewerIntelligenceHints } from "@/lib/ai-training/knowledge-intelligence-types";
 import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ interface LessonPreviewDrawerProps {
   onSaveToQueue?: () => void;
   onEdit?: () => void;
   saving?: boolean;
+  reviewerHints?: ReviewerIntelligenceHints;
 }
 
 export function LessonPreviewDrawer({
@@ -33,6 +35,7 @@ export function LessonPreviewDrawer({
   onSaveToQueue,
   onEdit,
   saving,
+  reviewerHints,
 }: LessonPreviewDrawerProps) {
   const [reviewerNotes, setReviewerNotes] = useState("");
   const report = lesson.qualityReport;
@@ -135,6 +138,12 @@ export function LessonPreviewDrawer({
             </CollapsibleSection>
           ) : null}
 
+          {reviewerHints ? (
+            <CollapsibleSection title="Reviewer Intelligence" defaultOpen>
+              <ReviewerHintsPanel hints={reviewerHints} />
+            </CollapsibleSection>
+          ) : null}
+
           <CollapsibleSection title="Reviewer Notes" defaultOpen={false}>
             <textarea
               value={reviewerNotes}
@@ -181,6 +190,53 @@ export function LessonPreviewDrawer({
             </p>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewerHintsPanel({ hints }: { hints: ReviewerIntelligenceHints }) {
+  return (
+    <div className="space-y-4 text-sm">
+      {hints.suggestedImprovements.length > 0 ? (
+        <div>
+          <p className="text-xs font-semibold uppercase text-indigo-600">Suggested improvements</p>
+          <ul className="mt-1 space-y-1 text-slate-700">
+            {hints.suggestedImprovements.map((s) => (
+              <li key={s}>• {s}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {hints.potentialDuplicates.length > 0 ? (
+        <div>
+          <p className="text-xs font-semibold uppercase text-amber-600">Potential duplicates</p>
+          <ul className="mt-1 space-y-1 text-slate-700">
+            {hints.potentialDuplicates.map((d) => (
+              <li key={d.question}>
+                {d.similarity}% — {d.question}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {hints.missingKeywords.length > 0 ? (
+        <p className="text-xs text-slate-600">
+          Missing keywords: {hints.missingKeywords.join(", ")}
+        </p>
+      ) : null}
+      <p className="text-xs text-emerald-700">
+        Expected retrieval gain: +{hints.expectedRetrievalGain}%
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {hints.oneClickActions.map((a) => (
+          <span
+            key={a.id}
+            className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+          >
+            {a.label}
+          </span>
+        ))}
       </div>
     </div>
   );

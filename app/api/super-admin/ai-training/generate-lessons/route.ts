@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ...result,
+    existingEntries: entries,
     queueHint:
       "Save generated lessons to the Approval Queue — they will not become active knowledge until published.",
   });

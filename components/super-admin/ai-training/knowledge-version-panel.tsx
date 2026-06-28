@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { History, Loader2, RotateCcw } from "lucide-react";
 import { saBtnSecondarySm } from "@/components/super-admin/super-admin-dashboard-ui";
 import { formatDate, formatDateTime } from "@/components/super-admin/ai-training/shared";
+import { evolutionTypeLabel } from "@/lib/ai-training/knowledge-evolution";
+import type { EvolutionEventType } from "@/lib/ai-training/knowledge-intelligence-types";
 import type { AIKnowledgeEntry } from "@/lib/ai-training/types";
 
 interface VersionRow {
@@ -19,6 +21,7 @@ interface KnowledgeVersionPanelProps {
   entryId: string;
   currentVersion?: number;
   updatedAt?: string;
+  createdAt?: string;
   onRestored: (row: AIKnowledgeEntry) => void;
 }
 
@@ -26,6 +29,7 @@ export function KnowledgeVersionPanel({
   entryId,
   currentVersion = 1,
   updatedAt,
+  createdAt,
   onRestored,
 }: KnowledgeVersionPanelProps) {
   const [versions, setVersions] = useState<VersionRow[]>([]);
@@ -97,6 +101,13 @@ export function KnowledgeVersionPanel({
         </div>
       </dl>
 
+      <EvolutionTimeline
+        createdAt={createdAt}
+        updatedAt={updatedAt}
+        currentVersion={currentVersion}
+        versions={versions}
+      />
+
       {loading ? (
         <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -139,6 +150,74 @@ export function KnowledgeVersionPanel({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function EvolutionTimeline({
+  createdAt,
+  updatedAt,
+  currentVersion,
+  versions,
+}: {
+  createdAt?: string;
+  updatedAt?: string;
+  currentVersion: number;
+  versions: VersionRow[];
+}) {
+  const events: Array<{ type: EvolutionEventType; label: string; timestamp: string; summary?: string }> = [];
+
+  if (createdAt) {
+    events.push({
+      type: "created",
+      label: evolutionTypeLabel("created"),
+      timestamp: createdAt,
+      summary: "Initial knowledge entry",
+    });
+  }
+
+  for (const version of versions) {
+    events.push({
+      type: version.version_number >= currentVersion ? "improved" : "modified",
+      label: `Version ${version.version_number}`,
+      timestamp: version.created_at,
+      summary: version.question,
+    });
+  }
+
+  if (updatedAt && createdAt && updatedAt !== createdAt) {
+    events.push({
+      type: "modified",
+      label: evolutionTypeLabel("modified"),
+      timestamp: updatedAt,
+    });
+  }
+
+  const sorted = events.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
+  if (sorted.length === 0) return null;
+
+  return (
+    <div className="mt-4 border-t border-slate-200 pt-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Knowledge Evolution Timeline
+      </p>
+      <ol className="mt-3 space-y-2">
+        {sorted.slice(0, 8).map((event, idx) => (
+          <li key={`${event.type}-${event.timestamp}-${idx}`} className="flex gap-3 text-sm">
+            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-indigo-500" />
+            <div className="min-w-0">
+              <p className="font-medium text-slate-800">{event.label}</p>
+              {event.summary ? (
+                <p className="truncate text-xs text-slate-500">{event.summary}</p>
+              ) : null}
+              <p className="text-xs text-slate-400">{formatDateTime(event.timestamp)}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

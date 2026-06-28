@@ -8,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import {
+  Activity,
   Archive,
   BookMarked,
   BookOpen,
@@ -15,16 +16,20 @@ import {
   CheckCircle2,
   ClipboardList,
   FileUp,
+  GitBranch,
   GitMerge,
   GraduationCap,
+  HeartPulse,
   HelpCircle,
   Loader2,
   Pencil,
   Play,
   Plus,
   RefreshCw,
+  Rocket,
   Search,
   Sparkles,
+  Target,
   Trash2,
   TrendingUp,
   X,
@@ -77,8 +82,20 @@ import {
 import { KnowledgeCurriculumPanel } from "@/components/super-admin/ai-training/knowledge-curriculum-panel";
 import { KnowledgeApprovalQueue } from "@/components/super-admin/ai-training/knowledge-approval-queue";
 import { KnowledgeQualityPanel } from "@/components/super-admin/ai-training/knowledge-quality-panel";
+import { KnowledgeOperationsOverview } from "@/components/super-admin/ai-training/knowledge-operations-overview";
+import { KnowledgeHealthPanel } from "@/components/super-admin/ai-training/knowledge-health-panel";
+import { KnowledgeMissionsPanel } from "@/components/super-admin/ai-training/knowledge-missions-panel";
+import { KnowledgeGraphPanel } from "@/components/super-admin/ai-training/knowledge-graph-panel";
+import { KnowledgeSignalsPanel } from "@/components/super-admin/ai-training/knowledge-signals-panel";
+import { KnowledgeMemoryPanel } from "@/components/super-admin/ai-training/knowledge-memory-panel";
+import { KnowledgeIntelligenceScorecardPanel } from "@/components/super-admin/ai-training/knowledge-intelligence-scorecard";
 import { TestAIDrawer } from "@/components/super-admin/ai-training/test-ai-drawer";
 import type { CurriculumModuleId } from "@/lib/ai-training/knowledge-curriculum";
+import {
+  missionToGenerationMode,
+  resolveMissionModuleId,
+} from "@/lib/ai-training/knowledge-missions";
+import type { GenerationMode } from "@/lib/ai-training/lesson-generation-prompt";
 import { enrichEntryMetrics } from "@/lib/ai-training/load-analytics";
 import type { RecommendationApplyAction } from "@/lib/ai-training/test-observability-console";
 import type {
@@ -96,16 +113,35 @@ import type {
 import { KNOWLEDGE_CATEGORIES, STARTER_QUESTIONS } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils";
 
-type TabId = "overview" | "knowledge" | "curriculum" | "approval" | "unanswered" | "analytics" | "learning";
+type TabId =
+  | "overview"
+  | "health"
+  | "missions"
+  | "graph"
+  | "knowledge"
+  | "curriculum"
+  | "approval"
+  | "unanswered"
+  | "signals"
+  | "analytics"
+  | "learning"
+  | "memory"
+  | "intelligence";
 
 const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "overview", label: "Overview", icon: Sparkles },
-  { id: "knowledge", label: "Knowledge Entries", icon: BookOpen },
-  { id: "curriculum", label: "Knowledge Curriculum", icon: BookMarked },
-  { id: "approval", label: "Approval Queue", icon: ClipboardList },
-  { id: "unanswered", label: "Unanswered Questions", icon: HelpCircle },
+  { id: "health", label: "Knowledge Health", icon: HeartPulse },
+  { id: "missions", label: "Missions", icon: Rocket },
+  { id: "graph", label: "Knowledge Graph", icon: GitBranch },
+  { id: "curriculum", label: "Curriculum", icon: BookMarked },
+  { id: "approval", label: "Review Queue", icon: ClipboardList },
+  { id: "knowledge", label: "Published Knowledge", icon: BookOpen },
+  { id: "signals", label: "Learning Signals", icon: Activity },
+  { id: "unanswered", label: "Unanswered", icon: HelpCircle },
   { id: "learning", label: "AI Learning", icon: GraduationCap },
-  { id: "analytics", label: "Usage Analytics", icon: Brain },
+  { id: "analytics", label: "Analytics", icon: TrendingUp },
+  { id: "memory", label: "AI Memory", icon: Brain },
+  { id: "intelligence", label: "System Intelligence", icon: Target },
 ];
 
 const PRIORITY_OPTIONS: KnowledgePriority[] = [
@@ -216,6 +252,10 @@ export function AITrainingClient({
 }) {
   const [tab, setTab] = useState<TabId>("overview");
   const [approvalQueueModule, setApprovalQueueModule] = useState<string | null>(null);
+  const [pendingMission, setPendingMission] = useState<{
+    moduleId: CurriculumModuleId;
+    mode: GenerationMode;
+  } | null>(null);
   const [analytics, setAnalytics] = useState(initialAnalytics);
   const [knowledgeRows, setKnowledgeRows] = useState<AIKnowledgeEntry[]>([]);
   const [unansweredRows, setUnansweredRows] = useState<AIUnansweredQuestion[]>([]);
@@ -1043,6 +1083,8 @@ export function AITrainingClient({
             )}
           </div>
 
+          <KnowledgeOperationsOverview />
+
           <IntentCoveragePanel />
 
           <KnowledgeQualityPanel />
@@ -1669,6 +1711,8 @@ export function AITrainingClient({
             setApprovalQueueModule(moduleId ?? null);
             setTab("approval");
           }}
+          pendingMission={pendingMission}
+          onPendingMissionHandled={() => setPendingMission(null)}
         />
       ) : null}
 
@@ -1677,6 +1721,62 @@ export function AITrainingClient({
           initialModule={approvalQueueModule}
           initialStatus="pending"
         />
+      ) : null}
+
+      {tab === "health" ? (
+        <div className="mt-8">
+          <KnowledgeHealthPanel />
+        </div>
+      ) : null}
+
+      {tab === "missions" ? (
+        <div className="mt-8">
+          <KnowledgeMissionsPanel
+            onStartMission={(mission) => {
+              const moduleId = resolveMissionModuleId(mission);
+              if (moduleId) {
+                setPendingMission({
+                  moduleId,
+                  mode: missionToGenerationMode(mission),
+                });
+                setTab("curriculum");
+                showToast(`Starting mission: ${mission.title}`);
+                return;
+              }
+              if (mission.type === "reduce_duplicates") {
+                setTab("knowledge");
+                showToast(`Mission: ${mission.title} — review Published Knowledge for overlaps`);
+                return;
+              }
+              setTab("curriculum");
+              showToast(`Mission: ${mission.title} — select a module in Curriculum to continue`);
+            }}
+          />
+        </div>
+      ) : null}
+
+      {tab === "graph" ? (
+        <div className="mt-8">
+          <KnowledgeGraphPanel />
+        </div>
+      ) : null}
+
+      {tab === "signals" ? (
+        <div className="mt-8">
+          <KnowledgeSignalsPanel />
+        </div>
+      ) : null}
+
+      {tab === "memory" ? (
+        <div className="mt-8">
+          <KnowledgeMemoryPanel />
+        </div>
+      ) : null}
+
+      {tab === "intelligence" ? (
+        <div className="mt-8">
+          <KnowledgeIntelligenceScorecardPanel />
+        </div>
       ) : null}
 
       {tab === "learning" ? <LearningPanel /> : null}
@@ -1882,6 +1982,7 @@ export function AITrainingClient({
                   entryId={form.id}
                   currentVersion={editMeta.version_number}
                   updatedAt={editMeta.updated_at}
+                  createdAt={editMeta.created_at}
                   onRestored={(row) => {
                     setForm({
                       id: row.id,

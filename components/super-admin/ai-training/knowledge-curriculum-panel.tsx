@@ -37,6 +37,7 @@ import type {
   CurriculumModuleRow,
   ModuleHealthLabel,
 } from "@/lib/ai-training/knowledge-curriculum";
+import type { GenerationMode } from "@/lib/ai-training/lesson-generation-prompt";
 import { cn } from "@/lib/utils";
 
 const HEALTH_STYLES: Record<ModuleHealthLabel, string> = {
@@ -50,12 +51,19 @@ interface KnowledgeCurriculumPanelProps {
   onOpenEntry: (entryId: string) => void;
   onAddLesson: (moduleId: CurriculumModuleId, category: string) => void;
   onOpenApprovalQueue?: (moduleId?: CurriculumModuleId) => void;
+  pendingMission?: {
+    moduleId: CurriculumModuleId;
+    mode: GenerationMode;
+  } | null;
+  onPendingMissionHandled?: () => void;
 }
 
 export function KnowledgeCurriculumPanel({
   onOpenEntry,
   onAddLesson,
   onOpenApprovalQueue,
+  pendingMission,
+  onPendingMissionHandled,
 }: KnowledgeCurriculumPanelProps) {
   const [data, setData] = useState<CurriculumDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,6 +86,7 @@ export function KnowledgeCurriculumPanel({
   const [generatorModuleId, setGeneratorModuleId] = useState<CurriculumModuleId | null>(
     null
   );
+  const [generatorMode, setGeneratorMode] = useState<GenerationMode>("10");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +104,15 @@ export function KnowledgeCurriculumPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!pendingMission) return;
+    setSelectedModuleId(pendingMission.moduleId);
+    setGeneratorModuleId(pendingMission.moduleId);
+    setGeneratorMode(pendingMission.mode);
+    setGeneratorOpen(true);
+    onPendingMissionHandled?.();
+  }, [pendingMission, onPendingMissionHandled]);
 
   const selectedModule = useMemo(
     () => data?.modules.find((m) => m.id === selectedModuleId) ?? null,
@@ -233,6 +251,7 @@ export function KnowledgeCurriculumPanel({
           onAddLesson={() => onAddLesson(selectedModule.id, selectedModule.defaultCategory)}
           onGenerateLessons={() => {
             setGeneratorModuleId(selectedModule.id);
+            setGeneratorMode("10");
             setGeneratorOpen(true);
           }}
           onOpenApprovalQueue={
@@ -248,9 +267,11 @@ export function KnowledgeCurriculumPanel({
           onClose={() => {
             setGeneratorOpen(false);
             setGeneratorModuleId(null);
+            setGeneratorMode("10");
           }}
           modules={data.modules}
           initialModuleId={generatorModuleId}
+          initialMode={generatorMode}
           onSavedToQueue={() => void load()}
         />
       </>
@@ -545,9 +566,11 @@ export function KnowledgeCurriculumPanel({
         onClose={() => {
           setGeneratorOpen(false);
           setGeneratorModuleId(null);
+          setGeneratorMode("10");
         }}
         modules={data.modules}
         initialModuleId={generatorModuleId}
+        initialMode={generatorMode}
         onSavedToQueue={() => void load()}
       />
     </div>

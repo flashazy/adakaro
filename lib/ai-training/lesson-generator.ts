@@ -127,6 +127,8 @@ export interface LessonGenerationResult {
   qualityMetrics: QualityPipelineMetrics;
   provider: "openai" | "rule_based";
   steps: GenerationStep[];
+  /** Active knowledge used during generation (for reviewer intelligence). */
+  existingEntries?: AIKnowledgeEntry[];
 }
 
 export interface LessonGenerationRequest {

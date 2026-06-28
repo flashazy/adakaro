@@ -15,9 +15,11 @@ import {
   DupRiskBadge,
   LessonMarkdownContent,
 } from "@/components/super-admin/ai-training/lesson-review-shared";
+import { KnowledgeStrengthBadge } from "@/components/super-admin/ai-training/knowledge-memory-panel";
 import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator";
 import type { QualityGrade } from "@/lib/ai-training/lesson-generation-validator";
 import { QUALITY_TIER_STYLES } from "@/lib/ai-training/knowledge-quality-rules";
+import { computeDraftKnowledgeStrength } from "@/lib/ai-training/knowledge-strength";
 import { cn } from "@/lib/utils";
 
 const GRADE_STYLES: Record<QualityGrade, string> = {
@@ -64,6 +66,7 @@ export function GeneratedLessonCard({
   const confidence = lesson.qualityReport?.reviewerConfidence ?? lesson.estimatedConfidence;
   const tierKey = lesson.qualityReport?.visualTier ?? "needs_improvement";
   const tier = QUALITY_TIER_STYLES[tierKey];
+  const strength = computeDraftKnowledgeStrength(lesson);
 
   return (
     <div
@@ -97,6 +100,7 @@ export function GeneratedLessonCard({
             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
               {lesson.intentLabel}
             </span>
+            <KnowledgeStrengthBadge level={strength} />
             <DupRiskBadge risk={lesson.duplicateRisk} />
             <span className="text-[10px] font-medium uppercase text-slate-400">
               {lesson.priority}

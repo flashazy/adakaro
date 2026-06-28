@@ -26,6 +26,7 @@ import {
   QualityReportCard,
 } from "@/components/super-admin/ai-training/knowledge-quality-panel";
 import type { CurriculumModuleRow } from "@/lib/ai-training/knowledge-curriculum";
+import { buildReviewerIntelligenceHints } from "@/lib/ai-training/knowledge-reviewer-intelligence";
 import type {
   GeneratedLessonDraft,
   GenerationStep,
@@ -33,6 +34,7 @@ import type {
 } from "@/lib/ai-training/lesson-generator";
 import { GENERATION_STEP_LABELS } from "@/lib/ai-training/lesson-generator";
 import type { GenerationMode } from "@/lib/ai-training/lesson-generation-prompt";
+import type { AIKnowledgeEntry } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils";
 
 type DialogStep = "configure" | "generating" | "review";
@@ -42,6 +44,7 @@ interface AILessonGeneratorDialogProps {
   onClose: () => void;
   modules: CurriculumModuleRow[];
   initialModuleId?: string | null;
+  initialMode?: GenerationMode;
   onSavedToQueue: (count: number) => void;
 }
 
@@ -67,6 +70,7 @@ export function AILessonGeneratorDialog({
   onClose,
   modules,
   initialModuleId,
+  initialMode,
   onSavedToQueue,
 }: AILessonGeneratorDialogProps) {
   const [step, setStep] = useState<DialogStep>("configure");
@@ -74,6 +78,7 @@ export function AILessonGeneratorDialog({
   const [mode, setMode] = useState<GenerationMode>("10");
   const [result, setResult] = useState<LessonGenerationResult | null>(null);
   const [lessons, setLessons] = useState<GeneratedLessonDraft[]>([]);
+  const [existingEntries, setExistingEntries] = useState<AIKnowledgeEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [queueSuccess, setQueueSuccess] = useState<{
     count: number;
@@ -95,17 +100,30 @@ export function AILessonGeneratorDialog({
     [modules, moduleId]
   );
 
+  const previewReviewerHints = useMemo(() => {
+    if (!previewLesson) return undefined;
+    return buildReviewerIntelligenceHints(
+      previewLesson,
+      existingEntries,
+      lessons
+        .filter((l) => l.id !== previewLesson.id)
+        .map((l) => ({ question: l.question, intentLabel: l.intentLabel }))
+    );
+  }, [previewLesson, existingEntries, lessons]);
+
   useEffect(() => {
-    if (open && initialModuleId) {
-      setModuleId(initialModuleId);
+    if (open) {
+      if (initialModuleId) setModuleId(initialModuleId);
+      if (initialMode) setMode(initialMode);
     }
-  }, [open, initialModuleId]);
+  }, [open, initialModuleId, initialMode]);
 
   useEffect(() => {
     if (!open) {
       setStep("configure");
       setResult(null);
       setLessons([]);
+      setExistingEntries([]);
       setError(null);
       setProgressSteps(buildInitialSteps());
       setActiveStepIndex(0);
@@ -158,6 +176,7 @@ export function AILessonGeneratorDialog({
 
       setResult(data);
       setLessons(data.lessons);
+      setExistingEntries(data.existingEntries ?? []);
       setGeneratedCount(data.lessons.length);
       setProgressSteps(data.steps);
       setActiveStepIndex(data.steps.length - 1);
@@ -543,6 +562,7 @@ export function AILessonGeneratorDialog({
           relatedLessons={lessons
             .filter((l) => l.id !== previewLesson.id && l.intentLabel === previewLesson.intentLabel)
             .map((l) => ({ question: l.question, intentLabel: l.intentLabel }))}
+          reviewerHints={previewReviewerHints}
           onClose={() => setPreviewLesson(null)}
           onEdit={() => {
             setEditLesson(previewLesson);
