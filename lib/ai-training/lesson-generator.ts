@@ -176,47 +176,87 @@ function buildAnswerFromSeed(
   moduleName: string
 ): string {
   const k = ADAKARO_PUBLIC_KNOWLEDGE;
-  const intro = `**Overview**\n\nThis lesson covers "${seed.question}" within the ${moduleName} curriculum for Adakaro.`;
+
+  const shortAnswer =
+    seed.intentLabel === "Pricing"
+      ? k.pricing.summary
+      : seed.topicTag.includes("attendance")
+        ? k.attendance
+        : seed.topicTag.includes("report") || seed.topicTag.includes("grade")
+          ? k.reportCards
+          : seed.topicTag.includes("financ") || seed.topicTag.includes("fee")
+            ? k.finance
+            : seed.topicTag.includes("syllabus") || seed.topicTag.includes("curriculum")
+              ? k.syllabus
+              : seed.topicTag.includes("onboard") || seed.topicTag.includes("setup")
+                ? k.onboarding
+                : "Adakaro is a school management platform that helps administrators, teachers, and parents run enrollment, attendance, report cards, finance, and communication from one system.";
+
+  const overview = `This lesson answers "${seed.question}" for the **${moduleName}** curriculum — written for school administrators evaluating or using Adakaro.`;
 
   const facts: string[] = [];
-
   if (seed.intentLabel === "Pricing") {
     facts.push(k.pricing.summary);
-  } else if (seed.topicTag.includes("attendance")) {
-    facts.push(k.attendance);
-  } else if (seed.topicTag.includes("report") || seed.topicTag.includes("grade")) {
-    facts.push(k.reportCards);
-  } else if (seed.topicTag.includes("financ") || seed.topicTag.includes("fee") || seed.topicTag.includes("receipt")) {
-    facts.push(k.finance);
-  } else if (seed.topicTag.includes("syllabus") || seed.topicTag.includes("curriculum")) {
-    facts.push(k.syllabus);
-  } else if (seed.topicTag.includes("onboard") || seed.topicTag.includes("setup") || seed.topicTag.includes("demo")) {
-    facts.push(k.onboarding);
   } else {
     facts.push(
-      "Adakaro is a school management platform that supports enrollment, classes, attendance, report cards, finance, parent access, and communications from one system."
+      "Adakaro supports enrollment, classes, attendance, report cards, finance, parent access, and communications."
     );
   }
+  facts.push(...k.features.slice(0, 3).map((f) => f.replace(/^-\s*/, "")));
 
-  facts.push(...k.features.slice(0, 4).map((f) => `- ${f}`));
+  const benefits = [
+    "Reduces manual work compared to spreadsheets and disconnected tools",
+    "Gives school leaders clearer visibility across students, classes, and finance",
+    "Designed for day-to-day operations—not just demos",
+  ];
+
+  const bestFor =
+    seed.intentLabel === "Parent"
+      ? "School administrators explaining parent-facing features to families."
+      : seed.intentLabel === "Pricing"
+        ? "School owners and finance leads comparing Adakaro plans."
+        : seed.intentLabel === "Security"
+          ? "Administrators evaluating data protection and access control."
+          : "School administrators, owners, and operations leads.";
+
+  const related = [
+    "Platform overview and capabilities",
+    "Getting started and onboarding",
+    seed.intentLabel === "Pricing" ? "Billing and subscription management" : "Pricing and plans",
+  ];
 
   return [
-    intro,
+    "**Short Answer**",
     "",
-    "**Core Facts**",
+    shortAnswer,
     "",
-    ...facts.map((f) => (f.startsWith("-") ? f : `- ${f}`)),
+    "**Overview**",
     "",
-    "**Key Capabilities**",
+    overview,
     "",
-    "- Supports day-to-day school operations in one platform",
-    "- Role-based access for administrators, teachers, finance staff, and parents",
-    "- Designed for schools that need reliable records and reporting",
+    "**Key Facts**",
+    "",
+    ...facts.map((f) => `- ${f}`),
     "",
     "**Benefits**",
     "",
-    "- Reduces manual work compared to spreadsheets and disconnected tools",
-    "- Gives school leaders clearer visibility across students, classes, and finance",
+    ...benefits.map((b) => `- ${b}`),
+    "",
+    "**Best For**",
+    "",
+    bestFor,
+    "",
+    "**Example**",
+    "",
+    `A school administrator asks "${seed.question}" during an evaluation call. This lesson gives a direct, factual answer they can trust.`,
+    "",
+    "**Related Topics**",
+    "",
+    ...related.map((r) => `- ${r}`),
+    "",
+    "**Summary**",
+    "",
+    `${seed.question.replace(/\?$/, "")} — covered with practical, administrator-ready guidance within ${moduleName}.`,
   ].join("\n");
 }
 

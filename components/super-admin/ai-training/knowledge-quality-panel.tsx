@@ -9,7 +9,12 @@ import {
   saSectionTitle,
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { QUALITY_TIER_STYLES } from "@/lib/ai-training/knowledge-quality-rules";
-import type { QualityPipelineMetrics } from "@/lib/ai-training/knowledge-quality-report";
+import type { KnowledgeQualityReport, QualityPipelineMetrics } from "@/lib/ai-training/knowledge-quality-report";
+import {
+  ConfidenceDisplay,
+  ExplainableQualitySummary,
+  QualityBreakdownBars,
+} from "@/components/super-admin/ai-training/lesson-review-shared";
 import { cn } from "@/lib/utils";
 
 interface KnowledgeQualityPanelProps {
@@ -162,54 +167,46 @@ export function QualityReportCard({
   report,
   className,
   showCalibration,
+  compact,
 }: {
-  report: {
-    criteria: Record<string, number>;
-    breakdown?: Array<{ label: string; earned: number; max: number; deductions: Array<{ reason: string; points: number }> }>;
-    duplicateRiskPercent: number;
-    duplicateFalsePositive?: boolean;
-    overallQuality: number;
-    reviewerConfidence?: number;
-    grade: string;
-    visualTier: keyof typeof QUALITY_TIER_STYLES;
-    attempts: number;
-    status: string;
-    calibrationAdjustments?: Array<{ rule: string; originalScore: number; adjustedScore: number; reason: string }>;
-  };
+  report: KnowledgeQualityReport;
   className?: string;
   showCalibration?: boolean;
+  compact?: boolean;
 }) {
   const tier = QUALITY_TIER_STYLES[report.visualTier];
   return (
-    <div className={cn("rounded-xl border border-slate-200 bg-white p-4", className)}>
+    <div className={cn("rounded-xl border border-slate-200 bg-white p-4 shadow-sm", className)}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-slate-900">Quality Report</p>
         <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset", tier.className)}>
           {report.grade} · {tier.label}
         </span>
       </div>
-      <div className="mt-3 flex gap-4 text-xs">
-        <div>
-          <p className="text-slate-500">Quality</p>
-          <p className="text-lg font-bold text-indigo-700">{report.overallQuality}</p>
-        </div>
-        {report.reviewerConfidence != null ? (
-          <div>
-            <p className="text-slate-500">Confidence</p>
-            <p className="text-lg font-bold text-emerald-700">{report.reviewerConfidence}%</p>
+
+      <ConfidenceDisplay
+        quality={report.overallQuality}
+        confidence={report.reviewerConfidence}
+        reasons={report.confidenceReasons}
+        className="mt-3 border-0 bg-slate-50 p-3"
+      />
+
+      {!compact ? (
+        <>
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Score Breakdown</p>
+            <QualityBreakdownBars breakdown={report.breakdown} />
           </div>
-        ) : null}
-      </div>
-      <dl className="mt-3 space-y-1.5 text-xs">
-        {(report.breakdown ?? []).map((item) => (
-          <div key={item.label} className="flex items-center justify-between gap-2">
-            <dt className="text-slate-500">{item.label}</dt>
-            <dd className="font-semibold tabular-nums">
-              {item.earned} / {item.max}
-            </dd>
-          </div>
-        ))}
-      </dl>
+          <ExplainableQualitySummary
+            overallQuality={report.overallQuality}
+            explanation={report.scoreExplanation}
+            className="mt-4"
+          />
+        </>
+      ) : (
+        <QualityBreakdownBars breakdown={report.breakdown} compact className="mt-3" />
+      )}
+
       {report.duplicateFalsePositive ? (
         <p className="mt-2 text-[10px] text-amber-700">Similar phrasing but different intent — not treated as duplicate.</p>
       ) : null}

@@ -134,7 +134,32 @@ describe("knowledge quality engine", () => {
       Math.round(report.breakdown.reduce((s, b) => s + b.earned, 0)),
       report.overallQuality
     );
-    assert.ok(report.reviewerConfidence >= 70);
+    assert.ok(report.reviewerConfidence >= 85);
+    assert.ok(report.confidenceReasons.length >= 0);
+    assert.ok(report.scoreExplanation.strengths.length >= 0);
+  });
+
+  it("aligns confidence with quality tier for ready lessons", () => {
+    const report = buildQualityReport({
+      criteria: {
+        questionQuality: 95,
+        duplicateDetection: 95,
+        curriculumCoverage: 100,
+        answerQuality: 94,
+        retrievalQuality: 92,
+        writingStandard: 96,
+        humanReadability: 93,
+        knowledgeHealth: 94,
+      },
+      duplicateRiskPercent: 2,
+      issues: [],
+      improvementsApplied: [],
+      attempts: 0,
+      coverageMap: [],
+    });
+    assert.ok(report.overallQuality >= 90);
+    assert.ok(report.reviewerConfidence >= 92);
+    assert.ok(report.reviewerConfidence <= 99);
   });
 
   it("passes threshold constant is 90", () => {

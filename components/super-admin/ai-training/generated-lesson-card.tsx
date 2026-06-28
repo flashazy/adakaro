@@ -11,8 +11,13 @@ import {
 import {
   saBtnSecondarySm,
 } from "@/components/super-admin/super-admin-dashboard-ui";
+import {
+  DupRiskBadge,
+  LessonMarkdownContent,
+} from "@/components/super-admin/ai-training/lesson-review-shared";
 import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator";
-import type { DuplicateRiskLevel, QualityGrade } from "@/lib/ai-training/lesson-generation-validator";
+import type { QualityGrade } from "@/lib/ai-training/lesson-generation-validator";
+import { QUALITY_TIER_STYLES } from "@/lib/ai-training/knowledge-quality-rules";
 import { cn } from "@/lib/utils";
 
 const GRADE_STYLES: Record<QualityGrade, string> = {
@@ -23,12 +28,12 @@ const GRADE_STYLES: Record<QualityGrade, string> = {
   "Needs Review": "bg-red-100 text-red-800 ring-red-200",
 };
 
-const DUP_STYLES: Record<DuplicateRiskLevel, string> = {
+const DUP_STYLES = {
   none: "bg-emerald-100 text-emerald-700",
   low: "bg-sky-100 text-sky-700",
   medium: "bg-amber-100 text-amber-800",
   high: "bg-red-100 text-red-800",
-};
+} as const;
 
 interface GeneratedLessonCardProps {
   lesson: GeneratedLessonDraft;
@@ -55,11 +60,15 @@ export function GeneratedLessonCard({
 }: GeneratedLessonCardProps) {
   const discarded = lesson.reviewStatus === "discarded";
   const approved = lesson.reviewStatus === "approved";
+  const quality = lesson.qualityReport?.overallQuality ?? lesson.scores.overallScore;
+  const confidence = lesson.qualityReport?.reviewerConfidence ?? lesson.estimatedConfidence;
+  const tierKey = lesson.qualityReport?.visualTier ?? "needs_improvement";
+  const tier = QUALITY_TIER_STYLES[tierKey];
 
   return (
     <div
       className={cn(
-        "rounded-2xl border bg-white p-4 shadow-sm transition-all",
+        "rounded-2xl border bg-white p-4 shadow-sm transition-all hover:shadow-md",
         discarded && "opacity-50",
         approved && "border-emerald-200 bg-emerald-50/30",
         selected ? "border-indigo-300 ring-2 ring-indigo-100" : "border-slate-200"
@@ -80,34 +89,33 @@ export function GeneratedLessonCard({
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ring-1 ring-inset",
-                GRADE_STYLES[lesson.overallGrade]
+                tier.className
               )}
             >
-              {lesson.overallGrade}
+              {lesson.qualityReport?.grade ?? lesson.overallGrade} · {quality}
             </span>
             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
               {lesson.intentLabel}
             </span>
-            <span
-              className={cn(
-                "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                DUP_STYLES[lesson.duplicateRisk]
-              )}
-            >
-              Dup: {lesson.duplicateRisk}
-            </span>
+            <DupRiskBadge risk={lesson.duplicateRisk} />
             <span className="text-[10px] font-medium uppercase text-slate-400">
               {lesson.priority}
             </span>
           </div>
           <p className="mt-2 font-medium text-slate-900">{lesson.question}</p>
-          <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-            {lesson.answer.replace(/\*\*/g, "").slice(0, 160)}…
-          </p>
+          <div className="mt-2 line-clamp-3 text-sm text-slate-600">
+            <LessonMarkdownContent content={lesson.answer.slice(0, 400)} />
+          </div>
           <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
-            <span>Coverage: {lesson.scores.coverageScore}</span>
-            <span>Quality: {lesson.scores.overallScore}</span>
-            <span>Confidence: {lesson.estimatedConfidence}%</span>
+            <span>
+              Confidence:{" "}
+              <strong className="text-emerald-700">{confidence}%</strong>
+            </span>
+            <span>
+              Dup:{" "}
+              {lesson.qualityReport?.duplicateRiskPercent ?? lesson.scores.duplicateRiskPercent}%
+            </span>
+            <span className="capitalize">{lesson.qualityStatus ?? lesson.reviewStatus}</span>
           </div>
         </div>
       </div>
@@ -125,13 +133,9 @@ export function GeneratedLessonCard({
           <RefreshCw className="mr-1 h-3 w-3" />
           Regenerate
         </button>
-        <button
-          type="button"
-          className={saBtnSecondarySm}
-          onClick={onDuplicateReport}
-        >
+        <button type="button" className={saBtnSecondarySm} onClick={onDuplicateReport}>
           <AlertTriangle className="mr-1 h-3 w-3" />
-          Duplicate Report
+          Duplicate
         </button>
         {!approved && !discarded ? (
           <button

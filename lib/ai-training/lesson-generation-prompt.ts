@@ -151,7 +151,10 @@ export function buildLessonGenerationSystemPrompt(): string {
     "- Follow the Adakaro Knowledge Writing Standard.",
     "- Never invent features that do not exist.",
     "- No marketing exaggeration.",
-    "- Include structured sections: Overview, Core Facts, Key Capabilities, Benefits when appropriate.",
+    "- Include structured sections when appropriate: Short Answer, Overview, Key Facts, Benefits, Best For, Example, Related Topics, Summary.",
+    "- Short Answer must be one clear paragraph that answers immediately.",
+    "- Write like a knowledgeable Adakaro product specialist—not generic AI.",
+    "- Vary sentence structure. Avoid repetitive phrasing.",
     "",
     buildKnowledgeWritingStandardMarkdown().slice(0, 2000),
   ].join("\n");
@@ -178,7 +181,7 @@ export function buildLessonGenerationUserPrompt(input: {
         lessons: [
           {
             question: "string",
-            answer: "string (markdown with **Overview**, bullet lists)",
+            answer: "string (markdown: Short Answer, Overview, Key Facts, Benefits, Best For, Example, Related Topics, Summary)",
             intentLabel: "string",
             priority: "low|normal|high|critical",
             topicTag: "string",

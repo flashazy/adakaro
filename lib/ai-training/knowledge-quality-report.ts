@@ -51,6 +51,11 @@ export interface CoverageMapEntry {
   sourceQuestion?: string;
 }
 
+export interface ScoreExplanation {
+  strengths: string[];
+  minorDeductions: string[];
+}
+
 export interface KnowledgeQualityReport {
   criteria: QualityCriterionScores;
   breakdown: CriterionBreakdownItem[];
@@ -60,6 +65,8 @@ export interface KnowledgeQualityReport {
   grade: string;
   visualTier: QualityVisualTier;
   reviewerConfidence: number;
+  confidenceReasons: string[];
+  scoreExplanation: ScoreExplanation;
   issues: string[];
   primaryFailureReason: string | null;
   improvementsApplied: string[];
@@ -136,27 +143,121 @@ export function buildCriterionBreakdown(
   });
 }
 
+export const CRITERION_TOOLTIPS: Record<QualityCriterionKey, string> = {
+  questionQuality: "Clarity, usefulness, and natural phrasing for school administrators.",
+  duplicateDetection: "Whether this lesson duplicates an existing question or intent.",
+  curriculumCoverage: "How meaningfully this lesson contributes to module curriculum.",
+  answerQuality: "Correctness, completeness, structure, and professional tone.",
+  retrievalQuality: "Keywords, synonyms, and search phrases for accurate retrieval.",
+  writingStandard: "Adherence to the Adakaro Knowledge Writing Standard.",
+  humanReadability: "Natural consultant-style language — not robotic AI phrasing.",
+  knowledgeHealth: "Category, priority, and metadata completeness.",
+};
+
 export function computeReviewerConfidence(
   criteria: QualityCriterionScores,
   overallQuality: number,
   duplicateRiskPercent: number,
   issues: string[]
-): number {
-  const values = Object.values(criteria);
-  const mean = values.reduce((s, v) => s + v, 0) / values.length;
-  const variance =
-    values.reduce((s, v) => s + (v - mean) ** 2, 0) / Math.max(1, values.length);
-  const consistencyBonus = variance < 80 ? 6 : variance < 150 ? 3 : 0;
-  const issuePenalty = Math.min(12, issues.length * 1.5);
-  const dupPenalty = duplicateRiskPercent >= 70 ? 8 : duplicateRiskPercent >= 40 ? 4 : 0;
+): { confidence: number; reasons: string[] } {
+  const reasons: string[] = [];
 
-  return Math.max(
-    40,
-    Math.min(
-      99,
-      Math.round(overallQuality * 0.55 + mean * 0.25 + consistencyBonus - issuePenalty - dupPenalty + 8)
-    )
-  );
+  const factualBase =
+    criteria.retrievalQuality * 0.3 +
+    criteria.answerQuality * 0.35 +
+    criteria.duplicateDetection * 0.2 +
+    criteria.knowledgeHealth * 0.15;
+
+  let confidence: number;
+  if (overallQuality >= 95) {
+    confidence = 92 + Math.min(7, Math.round(((factualBase - 82) / 18) * 7));
+  } else if (overallQuality >= 90) {
+    confidence = 85 + Math.min(10, Math.round(((factualBase - 72) / 28) * 10));
+  } else if (overallQuality >= 80) {
+    confidence = 70 + Math.min(14, Math.round(((factualBase - 58) / 42) * 14));
+  } else if (overallQuality >= 65) {
+    confidence = 55 + Math.min(15, Math.round(((factualBase - 45) / 55) * 15));
+  } else {
+    confidence = Math.max(40, Math.min(69, Math.round(factualBase * 0.62)));
+  }
+
+  if (criteria.retrievalQuality < 88) {
+    reasons.push("Limited source diversity in retrieval metadata");
+    confidence -= 2;
+  }
+  if (criteria.retrievalQuality < 75) {
+    reasons.push("Few supporting keywords for factual lookup");
+  }
+  if (duplicateRiskPercent >= 40 && !issues.some((i) => i.includes("Different intent"))) {
+    reasons.push("Similar phrasing found in existing knowledge");
+    confidence -= 3;
+  }
+  if (issues.some((i) => /brief|concise|partial/i.test(i))) {
+    reasons.push("Answer inferred from partial curriculum coverage");
+    confidence -= 2;
+  }
+  if (criteria.answerQuality < 88) {
+    reasons.push("Answer completeness could be stronger for verification");
+  }
+  if (criteria.duplicateDetection >= 95 && duplicateRiskPercent < 15) {
+    reasons.push("No duplicate detected — high retrieval confidence");
+  }
+
+  if (overallQuality >= 95) {
+    confidence = Math.max(92, Math.min(99, confidence));
+  } else if (overallQuality >= 90) {
+    confidence = Math.max(85, Math.min(95, confidence));
+  } else if (overallQuality >= 80) {
+    confidence = Math.max(70, Math.min(84, confidence));
+  } else if (overallQuality >= 65) {
+    confidence = Math.max(55, Math.min(69, confidence));
+  } else {
+    confidence = Math.max(40, Math.min(69, confidence));
+  }
+
+  if (reasons.length === 0 && overallQuality >= 90) {
+    reasons.push("Strong retrieval metadata and answer structure");
+  }
+
+  return { confidence: Math.round(confidence), reasons: [...new Set(reasons)].slice(0, 4) };
+}
+
+export function buildScoreExplanation(
+  report: Pick<
+    KnowledgeQualityReport,
+    "breakdown" | "criteria" | "duplicateRiskPercent" | "duplicateFalsePositive" | "confidenceReasons"
+  >
+): ScoreExplanation {
+  const strengths: string[] = [];
+  const minorDeductions: string[] = [];
+
+  if (report.criteria.answerQuality >= 88) strengths.push("Strong answer quality");
+  if (report.criteria.curriculumCoverage >= 88) strengths.push("Good curriculum alignment");
+  if (report.duplicateRiskPercent < 25 || report.duplicateFalsePositive) {
+    strengths.push("No duplicate detected");
+  }
+  if (report.criteria.humanReadability >= 88) strengths.push("Clear, natural wording");
+  if (report.criteria.writingStandard >= 88) strengths.push("Complete structured format");
+  if (report.criteria.questionQuality >= 88) strengths.push("Useful, admin-ready question");
+
+  for (const item of report.breakdown) {
+    for (const d of item.deductions) {
+      if (d.points <= 8) {
+        minorDeductions.push(`− ${d.reason}`);
+      }
+    }
+  }
+
+  for (const reason of report.confidenceReasons) {
+    if (/limited|few|partial|could be/i.test(reason)) {
+      minorDeductions.push(`− Confidence reduced: ${reason.toLowerCase()}`);
+    }
+  }
+
+  return {
+    strengths: [...new Set(strengths)].slice(0, 6),
+    minorDeductions: [...new Set(minorDeductions)].slice(0, 5),
+  };
 }
 
 export function formatQualityReportSummary(report: KnowledgeQualityReport): string {
@@ -199,12 +300,22 @@ export function buildQualityReport(params: {
   const primaryFailureReason =
     [...failureCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
-  const reviewerConfidence = computeReviewerConfidence(
-    params.criteria,
-    overallQuality,
-    params.duplicateRiskPercent,
-    params.issues
-  );
+  const { confidence: reviewerConfidence, reasons: confidenceReasons } =
+    computeReviewerConfidence(
+      params.criteria,
+      overallQuality,
+      params.duplicateRiskPercent,
+      params.issues
+    );
+
+  const partialReport = {
+    breakdown,
+    criteria: params.criteria,
+    duplicateRiskPercent: params.duplicateRiskPercent,
+    duplicateFalsePositive: params.duplicateFalsePositive ?? false,
+    confidenceReasons,
+  };
+  const scoreExplanation = buildScoreExplanation(partialReport);
 
   return {
     criteria: params.criteria,
@@ -215,6 +326,8 @@ export function buildQualityReport(params: {
     grade: scoreToLetterGrade(overallQuality),
     visualTier: scoreToVisualTier(overallQuality),
     reviewerConfidence,
+    confidenceReasons,
+    scoreExplanation,
     issues: params.issues,
     primaryFailureReason,
     improvementsApplied: params.improvementsApplied,

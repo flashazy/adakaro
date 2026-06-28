@@ -14,8 +14,16 @@ import {
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { GenerationProgress } from "@/components/super-admin/ai-training/generation-progress";
 import { LessonReviewPanel } from "@/components/super-admin/ai-training/lesson-review-panel";
+import { LessonPreviewDrawer } from "@/components/super-admin/ai-training/lesson-preview-drawer";
+import {
+  DuplicateExplanation,
+  GenerationSuccessBanner,
+  KnowledgeCompletionProgress,
+  LessonMarkdownContent,
+} from "@/components/super-admin/ai-training/lesson-review-shared";
 import {
   KnowledgeQualityPanel,
+  QualityReportCard,
 } from "@/components/super-admin/ai-training/knowledge-quality-panel";
 import type { CurriculumModuleRow } from "@/lib/ai-training/knowledge-curriculum";
 import type {
@@ -67,7 +75,10 @@ export function AILessonGeneratorDialog({
   const [result, setResult] = useState<LessonGenerationResult | null>(null);
   const [lessons, setLessons] = useState<GeneratedLessonDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [queueSuccess, setQueueSuccess] = useState<string | null>(null);
+  const [queueSuccess, setQueueSuccess] = useState<{
+    count: number;
+    message: string;
+  } | null>(null);
   const [progressSteps, setProgressSteps] = useState<GenerationStep[]>(buildInitialSteps);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [generatedCount, setGeneratedCount] = useState(0);
@@ -202,10 +213,12 @@ export function AILessonGeneratorDialog({
     try {
       const data = await saveLessonsToApprovalQueue([lesson]);
       updateLesson(lesson.id, { reviewStatus: "approved" });
-      setQueueSuccess(
-        data.message ??
-          "Lessons saved to Approval Queue. Review and publish them when ready."
-      );
+      setQueueSuccess({
+        count: data.count ?? 1,
+        message:
+          data.message ??
+          "Lessons saved to Approval Queue. Review and publish them when ready.",
+      });
       onSavedToQueue(data.count ?? 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save to queue failed");
@@ -227,10 +240,12 @@ export function AILessonGeneratorDialog({
         updateLesson(lesson.id, { reviewStatus: "approved" });
         count++;
       }
-      setQueueSuccess(
-        data.message ??
-          "Lessons saved to Approval Queue. Review and publish them when ready."
-      );
+      setQueueSuccess({
+        count: data.count ?? count,
+        message:
+          data.message ??
+          "Lessons saved to Approval Queue. Review and publish them when ready.",
+      });
       if (count > 0) onSavedToQueue(data.count ?? count);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Bulk save failed");
@@ -320,9 +335,23 @@ export function AILessonGeneratorDialog({
 
         <div className="flex-1 overflow-y-auto p-6">
           {queueSuccess ? (
-            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              {queueSuccess}
-            </div>
+            <GenerationSuccessBanner
+              savedCount={queueSuccess.count}
+              completedLessons={
+                (selectedModule?.completedLessons ?? 0) + queueSuccess.count
+              }
+              targetLessons={selectedModule?.targetLessons ?? result?.analysis.targetCount ?? 80}
+              averageQuality={result?.qualityMetrics.averageQualityScore}
+              onContinue={() => {
+                setQueueSuccess(null);
+                setStep("configure");
+              }}
+              onGoToQueue={() => {
+                onClose();
+              }}
+              onReviewSaved={() => setQueueSuccess(null)}
+              onDismiss={() => setQueueSuccess(null)}
+            />
           ) : null}
 
           {error ? (
@@ -350,11 +379,11 @@ export function AILessonGeneratorDialog({
               </div>
 
               {selectedModule ? (
-                <div className="grid grid-cols-3 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <Stat label="Current" value={selectedModule.completedLessons} />
-                  <Stat label="Target" value={selectedModule.targetLessons} />
-                  <Stat label="Remaining" value={selectedModule.remainingLessons} />
-                </div>
+                <KnowledgeCompletionProgress
+                  completed={selectedModule.completedLessons}
+                  target={selectedModule.targetLessons}
+                  className="mt-4"
+                />
               ) : null}
 
               <div>
@@ -508,7 +537,20 @@ export function AILessonGeneratorDialog({
       </div>
 
       {previewLesson ? (
-        <LessonPreviewDrawer lesson={previewLesson} onClose={() => setPreviewLesson(null)} />
+        <LessonPreviewDrawer
+          lesson={previewLesson}
+          existingLessonCount={result?.analysis.existingCount}
+          relatedLessons={lessons
+            .filter((l) => l.id !== previewLesson.id && l.intentLabel === previewLesson.intentLabel)
+            .map((l) => ({ question: l.question, intentLabel: l.intentLabel }))}
+          onClose={() => setPreviewLesson(null)}
+          onEdit={() => {
+            setEditLesson(previewLesson);
+            setPreviewLesson(null);
+          }}
+          onSaveToQueue={() => void handleSaveToQueue(previewLesson)}
+          saving={approving}
+        />
       ) : null}
 
       {editLesson ? (
@@ -525,6 +567,7 @@ export function AILessonGeneratorDialog({
       {duplicateReport ? (
         <DuplicateReportModal
           lesson={duplicateReport}
+          existingCount={result?.analysis.existingCount}
           onClose={() => setDuplicateReport(null)}
         />
       ) : null}
@@ -532,60 +575,41 @@ export function AILessonGeneratorDialog({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="text-center">
-      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{value}</p>
-    </div>
-  );
-}
-
-function LessonPreviewDrawer({
+function DuplicateReportModal({
   lesson,
   onClose,
+  existingCount,
 }: {
   lesson: GeneratedLessonDraft;
   onClose: () => void;
+  existingCount?: number;
 }) {
   return (
-    <div className="fixed inset-0 z-[300] flex justify-end bg-slate-900/40">
-      <div className="flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
-        <div className="border-b border-slate-200 px-6 py-4">
-          <div className="flex items-start justify-between">
-            <h3 className="text-lg font-semibold text-slate-900">Lesson Preview</h3>
-            <button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100">
-              <X className="h-5 w-5" />
-            </button>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-6 w-6 shrink-0 text-amber-500" />
+            <h3 className="font-semibold text-slate-900">Duplicate Analysis</h3>
           </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100">
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <div className="flex-1 space-y-5 overflow-y-auto p-6 text-sm">
-          <Field label="Question" value={lesson.question} />
-          <Field label="Answer" value={lesson.answer} pre />
-          <TagList label="Keywords" items={lesson.keywords} />
-          <TagList label="Synonyms" items={lesson.synonyms} />
-          <TagList label="Search phrases" items={lesson.search_phrases} />
-          <TagList label="Alternative wording" items={lesson.alternative_wording} />
-          <TagList label="Related terms" items={lesson.related_terms} />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Intent" value={lesson.intentLabel} />
-            <Field label="Priority" value={lesson.priority} />
-            <Field label="Module" value={lesson.curriculumModule} />
-            <Field label="Grade" value={lesson.overallGrade} />
-            <Field label="Confidence" value={`${lesson.estimatedConfidence}%`} />
-            <Field label="Coverage contribution" value={String(lesson.coverageContribution)} />
+        <DuplicateExplanation
+          lesson={lesson}
+          existingCount={existingCount}
+          className="mt-4 border-0 bg-slate-50"
+        />
+        {lesson.qualityReport ? (
+          <div className="mt-4">
+            <QualityReportCard report={lesson.qualityReport} compact />
           </div>
-          <div className="rounded-xl bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase text-slate-500">Quality scores</p>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-              <span>Knowledge: {lesson.scores.knowledgeScore}</span>
-              <span>Writing: {lesson.scores.writingScore}</span>
-              <span>Retrieval: {lesson.scores.retrievalScore}</span>
-              <span>Intent: {lesson.scores.intentScore}</span>
-              <span>Coverage: {lesson.scores.coverageScore}</span>
-              <span>Dup risk: {lesson.scores.duplicateRiskPercent}%</span>
-            </div>
-          </div>
+        ) : null}
+        <div className="mt-4 flex justify-end">
+          <button type="button" className={saBtnPrimary} onClick={onClose}>
+            Close
+          </button>
         </div>
       </div>
     </div>
@@ -626,11 +650,15 @@ function LessonEditDrawer({
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-700">Answer</label>
+            <label className="text-sm font-medium text-slate-700">Answer preview</label>
+            <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <LessonMarkdownContent content={answer.slice(0, 800)} />
+            </div>
+            <label className="mt-3 block text-sm font-medium text-slate-700">Edit markdown</label>
             <textarea
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              rows={12}
+              rows={10}
               className={cn(saInput, "mt-1 w-full font-mono text-sm")}
             />
           </div>
@@ -660,77 +688,6 @@ function LessonEditDrawer({
             Save Changes
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function DuplicateReportModal({
-  lesson,
-  onClose,
-}: {
-  lesson: GeneratedLessonDraft;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="h-6 w-6 shrink-0 text-amber-500" />
-          <div>
-            <h3 className="font-semibold text-slate-900">Duplicate Report</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              <strong>Risk level:</strong> {lesson.duplicateRisk}
-            </p>
-            {lesson.duplicateReason ? (
-              <p className="mt-1 text-sm text-slate-600">
-                <strong>Reason:</strong> {lesson.duplicateReason}
-              </p>
-            ) : null}
-            <p className="mt-2 text-sm text-slate-500">
-              Similarity score: {lesson.scores.duplicateRiskPercent}%
-            </p>
-          </div>
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button type="button" className={saBtnPrimary} onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, pre }: { label: string; value: string; pre?: boolean }) {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-      {pre ? (
-        <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-800">
-          {value}
-        </pre>
-      ) : (
-        <p className="mt-1 text-slate-800">{value}</p>
-      )}
-    </div>
-  );
-}
-
-function TagList({ label, items }: { label: string; items: string[] }) {
-  if (!items.length) return null;
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-      <div className="mt-1 flex flex-wrap gap-1">
-        {items.map((item) => (
-          <span
-            key={item}
-            className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
-          >
-            {item}
-          </span>
-        ))}
       </div>
     </div>
   );
