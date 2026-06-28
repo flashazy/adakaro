@@ -49,11 +49,13 @@ const HEALTH_STYLES: Record<ModuleHealthLabel, string> = {
 interface KnowledgeCurriculumPanelProps {
   onOpenEntry: (entryId: string) => void;
   onAddLesson: (moduleId: CurriculumModuleId, category: string) => void;
+  onOpenApprovalQueue?: (moduleId?: CurriculumModuleId) => void;
 }
 
 export function KnowledgeCurriculumPanel({
   onOpenEntry,
   onAddLesson,
+  onOpenApprovalQueue,
 }: KnowledgeCurriculumPanelProps) {
   const [data, setData] = useState<CurriculumDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -233,6 +235,11 @@ export function KnowledgeCurriculumPanel({
             setGeneratorModuleId(selectedModule.id);
             setGeneratorOpen(true);
           }}
+          onOpenApprovalQueue={
+            onOpenApprovalQueue
+              ? () => onOpenApprovalQueue(selectedModule.id)
+              : undefined
+          }
           onSaveModuleTarget={(target) => void saveModuleTarget(selectedModule.id, target)}
           onExport={() => downloadCurriculumExport(data, "csv")}
         />
@@ -244,7 +251,7 @@ export function KnowledgeCurriculumPanel({
           }}
           modules={data.modules}
           initialModuleId={generatorModuleId}
-          onApproved={() => void load()}
+          onSavedToQueue={() => void load()}
         />
       </>
     );
@@ -360,6 +367,33 @@ export function KnowledgeCurriculumPanel({
           </dl>
         </div>
       </div>
+
+      {data.modules.some((m) => m.pendingApprovalCount > 0) ? (
+        <div className={cn(saSection, "border-amber-200 bg-amber-50/40")}>
+          <h3 className={saSectionTitle}>Pending Approval</h3>
+          <p className={saSectionSubtitle}>
+            AI-generated drafts waiting for review before they go live.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.modules
+              .filter((m) => m.pendingApprovalCount > 0)
+              .map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => onOpenApprovalQueue?.(m.id)}
+                  className="rounded-xl border border-amber-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-amber-300 hover:shadow-md"
+                >
+                  <p className="font-semibold text-slate-900">{m.name}</p>
+                  <p className="mt-1 text-sm text-amber-800">
+                    {m.pendingApprovalCount} pending lesson
+                    {m.pendingApprovalCount === 1 ? "" : "s"}
+                  </p>
+                </button>
+              ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -514,7 +548,7 @@ export function KnowledgeCurriculumPanel({
         }}
         modules={data.modules}
         initialModuleId={generatorModuleId}
-        onApproved={() => void load()}
+        onSavedToQueue={() => void load()}
       />
     </div>
   );

@@ -31,7 +31,7 @@ interface AILessonGeneratorDialogProps {
   onClose: () => void;
   modules: CurriculumModuleRow[];
   initialModuleId?: string | null;
-  onApproved: (count: number) => void;
+  onSavedToQueue: (count: number) => void;
 }
 
 const MODES: { id: GenerationMode; label: string }[] = [
@@ -56,7 +56,7 @@ export function AILessonGeneratorDialog({
   onClose,
   modules,
   initialModuleId,
-  onApproved,
+  onSavedToQueue,
 }: AILessonGeneratorDialogProps) {
   const [step, setStep] = useState<DialogStep>("configure");
   const [moduleId, setModuleId] = useState<string>("");
@@ -64,6 +64,7 @@ export function AILessonGeneratorDialog({
   const [result, setResult] = useState<LessonGenerationResult | null>(null);
   const [lessons, setLessons] = useState<GeneratedLessonDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [queueSuccess, setQueueSuccess] = useState<string | null>(null);
   const [progressSteps, setProgressSteps] = useState<GenerationStep[]>(buildInitialSteps);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [generatedCount, setGeneratedCount] = useState(0);
@@ -99,6 +100,7 @@ export function AILessonGeneratorDialog({
       setPreviewLesson(null);
       setEditLesson(null);
       setDuplicateReport(null);
+      setQueueSuccess(null);
     }
   }, [open]);
 
@@ -158,55 +160,61 @@ export function AILessonGeneratorDialog({
     );
   };
 
-  const saveLessonAsKnowledge = async (lesson: GeneratedLessonDraft) => {
-    const res = await fetch("/api/super-admin/ai-training/knowledge", {
+  const saveLessonsToApprovalQueue = async (toSave: GeneratedLessonDraft[]) => {
+    const res = await fetch("/api/super-admin/ai-training/approval-queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        category: lesson.category,
-        curriculum_module: lesson.curriculumModule,
-        question: lesson.question,
-        answer: lesson.answer,
-        keywords: lesson.keywords,
-        search_phrases: lesson.search_phrases,
-        alternative_wording: lesson.alternative_wording,
-        synonyms: lesson.synonyms,
-        related_terms: lesson.related_terms,
-        priority: lesson.priority,
-        autoGenerateKeywords: false,
+        lessons: toSave,
+        sourceMetadata: {
+          moduleId,
+          mode,
+          provider: result?.provider,
+        },
       }),
     });
-    const data = (await res.json()) as { error?: string };
-    if (!res.ok) throw new Error(data.error ?? "Failed to save lesson");
+    const data = (await res.json()) as { error?: string; count?: number; message?: string };
+    if (!res.ok) throw new Error(data.error ?? "Failed to save to approval queue");
+    return data;
   };
 
-  const handleApprove = async (lesson: GeneratedLessonDraft) => {
+  const handleSaveToQueue = async (lesson: GeneratedLessonDraft) => {
     setApproving(true);
     try {
-      await saveLessonAsKnowledge(lesson);
+      const data = await saveLessonsToApprovalQueue([lesson]);
       updateLesson(lesson.id, { reviewStatus: "approved" });
-      onApproved(1);
+      setQueueSuccess(
+        data.message ??
+          "Lessons saved to Approval Queue. Review and publish them when ready."
+      );
+      onSavedToQueue(data.count ?? 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Approve failed");
+      setError(err instanceof Error ? err.message : "Save to queue failed");
     } finally {
       setApproving(false);
     }
   };
 
-  const handleApproveMany = async (ids: string[]) => {
+  const handleSaveManyToQueue = async (ids: string[]) => {
     setApproving(true);
     let count = 0;
     try {
-      for (const id of ids) {
-        const lesson = lessons.find((l) => l.id === id);
-        if (!lesson || lesson.reviewStatus !== "draft") continue;
-        await saveLessonAsKnowledge(lesson);
-        updateLesson(id, { reviewStatus: "approved" });
+      const toSave = ids
+        .map((id) => lessons.find((l) => l.id === id))
+        .filter((l): l is GeneratedLessonDraft => Boolean(l && l.reviewStatus === "draft"));
+      if (!toSave.length) return;
+      const data = await saveLessonsToApprovalQueue(toSave);
+      for (const lesson of toSave) {
+        updateLesson(lesson.id, { reviewStatus: "approved" });
         count++;
       }
-      if (count > 0) onApproved(count);
+      setQueueSuccess(
+        data.message ??
+          "Lessons saved to Approval Queue. Review and publish them when ready."
+      );
+      if (count > 0) onSavedToQueue(data.count ?? count);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Bulk approve failed");
+      setError(err instanceof Error ? err.message : "Bulk save failed");
     } finally {
       setApproving(false);
     }
@@ -278,7 +286,7 @@ export function AILessonGeneratorDialog({
                     : "Review generated lessons"}
               </h2>
               <p className="mt-1 text-sm text-indigo-100/90">
-                Drafts only — nothing is published until you approve.
+                Drafts only — saved to Approval Queue, not published until you publish from the queue.
               </p>
             </div>
             <button
@@ -292,6 +300,12 @@ export function AILessonGeneratorDialog({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
+          {queueSuccess ? (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {queueSuccess}
+            </div>
+          ) : null}
+
           {error ? (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               {error}
@@ -385,15 +399,15 @@ export function AILessonGeneratorDialog({
               onPreview={setPreviewLesson}
               onEdit={setEditLesson}
               onRegenerate={(l) => void handleRegenerate(l)}
-              onApprove={(l) => void handleApprove(l)}
+              onApprove={(l) => void handleSaveToQueue(l)}
               onDiscard={(l) => updateLesson(l.id, { reviewStatus: "discarded" })}
               onDuplicateReport={setDuplicateReport}
               onApproveAll={() =>
-                void handleApproveMany(
+                void handleSaveManyToQueue(
                   lessons.filter((l) => l.reviewStatus === "draft").map((l) => l.id)
                 )
               }
-              onApproveSelected={() => void handleApproveMany([...selectedIds])}
+              onApproveSelected={() => void handleSaveManyToQueue([...selectedIds])}
               onDiscardSelected={() => {
                 for (const id of selectedIds) {
                   updateLesson(id, { reviewStatus: "discarded" });
@@ -437,8 +451,22 @@ export function AILessonGeneratorDialog({
               >
                 Generate More
               </button>
-              <button type="button" className={saBtnPrimary} onClick={onClose}>
-                Done
+              <button
+                type="button"
+                className={saBtnPrimary}
+                disabled={approving || !lessons.some((l) => l.reviewStatus === "draft")}
+                onClick={() =>
+                  void handleSaveManyToQueue(
+                    lessons.filter((l) => l.reviewStatus === "draft").map((l) => l.id)
+                  )
+                }
+              >
+                {approving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Save to Approval Queue
               </button>
             </>
           ) : (

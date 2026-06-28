@@ -140,7 +140,7 @@ export function GeneratedLessonCard({
             onClick={onApprove}
           >
             <Sparkles className="mr-1 h-3 w-3" />
-            Approve
+            Save to Queue
           </button>
         ) : null}
         {!discarded ? (

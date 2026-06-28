@@ -242,6 +242,7 @@ export interface CurriculumModuleRow {
   completionPercent: number;
   health: ModuleHealthLabel;
   status: ModuleProgressStatus;
+  pendingApprovalCount: number;
   lessons: CurriculumLesson[];
   duplicateRate: number;
   missingMetadataCount: number;
@@ -416,10 +417,12 @@ export function buildCurriculumDashboard(
   options?: {
     knowledgeTarget?: number;
     moduleTargets?: Record<string, number>;
+    pendingApprovalByModule?: Record<string, number>;
   }
 ): CurriculumDashboardData {
   const knowledgeTarget = options?.knowledgeTarget ?? DEFAULT_KNOWLEDGE_TARGET;
   const moduleTargets = options?.moduleTargets ?? {};
+  const pendingApprovalByModule = options?.pendingApprovalByModule ?? {};
 
   const activePrimary = entries.filter(
     (e) => e.status === "active" && e.is_primary !== false && !e.merged_into_id
@@ -533,6 +536,7 @@ export function buildCurriculumDashboard(
       missingMetadataCount,
       untestedCount,
       needsReviewCount,
+      pendingApprovalCount: pendingApprovalByModule[def.id] ?? 0,
     };
   });
 

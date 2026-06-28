@@ -242,6 +242,75 @@ export interface AITrainingAnalytics {
   }>;
 }
 
+export type ApprovalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "edited"
+  | "published";
+
+export type ApprovalSourceType =
+  | "ai_lesson_generator"
+  | "manual"
+  | "import"
+  | "other";
+
+export type ApprovalDuplicateRisk = "none" | "low" | "medium" | "high";
+
+export interface AIKnowledgeApprovalQueueItem {
+  id: string;
+  proposed_question: string;
+  proposed_answer: string;
+  proposed_category: string;
+  proposed_priority: KnowledgePriority;
+  proposed_keywords: string[];
+  proposed_synonyms: string[];
+  proposed_search_phrases: string[];
+  proposed_alternative_wording: string[];
+  proposed_related_terms: string[];
+  proposed_intent_key: string | null;
+  proposed_intent_name: string | null;
+  proposed_intent_group: string | null;
+  proposed_curriculum_module: string | null;
+  source_type: ApprovalSourceType;
+  source_metadata: Record<string, unknown>;
+  quality_score: number;
+  duplicate_risk: ApprovalDuplicateRisk;
+  coverage_score: number;
+  approval_status: ApprovalStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApprovalQueueSummary {
+  pending: number;
+  approved: number;
+  published: number;
+  rejected: number;
+  needsReview: number;
+  duplicateRisk: number;
+  total: number;
+}
+
+export interface BulkPublishPreviewItem {
+  id: string;
+  question: string;
+  outcome: "safe" | "warning" | "blocked";
+  reason: string | null;
+}
+
+export interface BulkPublishPreview {
+  totalSelected: number;
+  safeToPublish: number;
+  duplicateWarnings: number;
+  blockedDuplicates: number;
+  estimatedNewEntries: number;
+  items: BulkPublishPreviewItem[];
+}
+
 export const KNOWLEDGE_CATEGORIES = [
   "General",
   "Attendance",

@@ -13,6 +13,7 @@ import {
   BookOpen,
   Brain,
   CheckCircle2,
+  ClipboardList,
   FileUp,
   GitMerge,
   GraduationCap,
@@ -74,6 +75,7 @@ import {
   TrendChart,
 } from "@/components/super-admin/ai-training/shared";
 import { KnowledgeCurriculumPanel } from "@/components/super-admin/ai-training/knowledge-curriculum-panel";
+import { KnowledgeApprovalQueue } from "@/components/super-admin/ai-training/knowledge-approval-queue";
 import { TestAIDrawer } from "@/components/super-admin/ai-training/test-ai-drawer";
 import type { CurriculumModuleId } from "@/lib/ai-training/knowledge-curriculum";
 import { enrichEntryMetrics } from "@/lib/ai-training/load-analytics";
@@ -93,12 +95,13 @@ import type {
 import { KNOWLEDGE_CATEGORIES, STARTER_QUESTIONS } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils";
 
-type TabId = "overview" | "knowledge" | "curriculum" | "unanswered" | "analytics" | "learning";
+type TabId = "overview" | "knowledge" | "curriculum" | "approval" | "unanswered" | "analytics" | "learning";
 
 const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "overview", label: "Overview", icon: Sparkles },
   { id: "knowledge", label: "Knowledge Entries", icon: BookOpen },
   { id: "curriculum", label: "Knowledge Curriculum", icon: BookMarked },
+  { id: "approval", label: "Approval Queue", icon: ClipboardList },
   { id: "unanswered", label: "Unanswered Questions", icon: HelpCircle },
   { id: "learning", label: "AI Learning", icon: GraduationCap },
   { id: "analytics", label: "Usage Analytics", icon: Brain },
@@ -211,6 +214,7 @@ export function AITrainingClient({
   initialAnalytics: AITrainingAnalytics;
 }) {
   const [tab, setTab] = useState<TabId>("overview");
+  const [approvalQueueModule, setApprovalQueueModule] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState(initialAnalytics);
   const [knowledgeRows, setKnowledgeRows] = useState<AIKnowledgeEntry[]>([]);
   const [unansweredRows, setUnansweredRows] = useState<AIUnansweredQuestion[]>([]);
@@ -1658,6 +1662,17 @@ export function AITrainingClient({
         <KnowledgeCurriculumPanel
           onOpenEntry={(id) => void openEntryById(id)}
           onAddLesson={(moduleId, category) => openCreateLesson(moduleId, category)}
+          onOpenApprovalQueue={(moduleId) => {
+            setApprovalQueueModule(moduleId ?? null);
+            setTab("approval");
+          }}
+        />
+      ) : null}
+
+      {tab === "approval" ? (
+        <KnowledgeApprovalQueue
+          initialModule={approvalQueueModule}
+          initialStatus="pending"
         />
       ) : null}
 

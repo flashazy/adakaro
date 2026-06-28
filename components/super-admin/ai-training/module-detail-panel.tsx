@@ -68,6 +68,7 @@ export interface ModuleDetailPanelProps {
   onOpenEntry: (id: string) => void;
   onAddLesson: () => void;
   onGenerateLessons: () => void;
+  onOpenApprovalQueue?: () => void;
   onSaveModuleTarget: (target: number) => void;
   onExport: () => void;
 }
@@ -81,6 +82,7 @@ export function ModuleDetailPanel({
   onOpenEntry,
   onAddLesson,
   onGenerateLessons,
+  onOpenApprovalQueue,
   onSaveModuleTarget,
   onExport,
 }: ModuleDetailPanelProps) {
@@ -192,6 +194,28 @@ export function ModuleDetailPanel({
           </div>
         </div>
       </div>
+
+      {module.pendingApprovalCount > 0 && onOpenApprovalQueue ? (
+        <button
+          type="button"
+          onClick={onOpenApprovalQueue}
+          className="flex w-full items-center justify-between rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-4 text-left shadow-sm transition hover:border-amber-300"
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+              Pending Approval
+            </p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{module.name}</p>
+            <p className="mt-1 text-sm text-amber-800">
+              {module.pendingApprovalCount} pending lesson
+              {module.pendingApprovalCount === 1 ? "" : "s"} awaiting review
+            </p>
+          </div>
+          <span className="rounded-full bg-amber-200 px-3 py-1 text-sm font-bold text-amber-900">
+            Review →
+          </span>
+        </button>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <div className="relative min-w-[180px] flex-1">

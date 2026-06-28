@@ -79,5 +79,9 @@ export async function POST(request: NextRequest) {
     regenerateQuestions: body.regenerateQuestions,
   });
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    ...result,
+    queueHint:
+      "Save generated lessons to the Approval Queue — they will not become active knowledge until published.",
+  });
 }

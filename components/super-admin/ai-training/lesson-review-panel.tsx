@@ -130,7 +130,7 @@ export function LessonReviewPanel({
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
         <button type="button" className={saBtnPrimarySm} onClick={onApproveAll} disabled={approving}>
           <Sparkles className="mr-1 h-3 w-3" />
-          Approve All ({activeLessons.length})
+          Save All to Queue ({activeLessons.length})
         </button>
         <button
           type="button"
@@ -139,7 +139,7 @@ export function LessonReviewPanel({
           disabled={selectedIds.size === 0 || approving}
         >
           <CheckSquare className="mr-1 h-3 w-3" />
-          Approve Selected ({selectedIds.size})
+          Save Selected to Queue ({selectedIds.size})
         </button>
         <button
           type="button"
@@ -188,7 +188,7 @@ export function LessonReviewPanel({
       </div>
 
       <p className="text-sm text-slate-500">
-        {activeLessons.length} draft lesson(s) · {approvedCount} approved · Module:{" "}
+        {activeLessons.length} draft lesson(s) · {approvedCount} queued · Module:{" "}
         <span className="font-medium text-slate-700">{analysis.moduleName}</span>
       </p>
 
@@ -196,7 +196,9 @@ export function LessonReviewPanel({
         <div className={cn(saSection, "overflow-x-auto p-0")}>
           <div className="border-b border-slate-200 px-5 py-4">
             <h3 className={saSectionTitle}>Generation Preview</h3>
-            <p className={saSectionSubtitle}>Review before saving — drafts are not published yet</p>
+            <p className={saSectionSubtitle}>
+              Review before saving — use Save to Queue; nothing goes live until published from Approval Queue
+            </p>
           </div>
           <table className="min-w-full text-sm">
             <thead>
@@ -268,7 +270,7 @@ export function LessonReviewPanel({
                         Preview
                       </button>
                       <button type="button" className={saBtnSecondarySm} onClick={() => onApprove(lesson)}>
-                        Approve
+                        Save to Queue
                       </button>
                     </div>
                   </td>

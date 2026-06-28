@@ -10,7 +10,7 @@
     "migrate:capture-card-bcrypt": "node scripts/migrate-capture-card-passwords-to-bcrypt.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test:knowledge": "npx tsx --test lib/ai-training/knowledge-search.regression.test.ts lib/ai-training/knowledge-zero-cost.regression.test.ts lib/ai-training/intent-reasoning.test.ts lib/ai-training/learning-self-learning.test.ts lib/ai-training/intent-recalculate.test.ts lib/ai-training/knowledge-duplicates.test.ts lib/ai-training/knowledge-pagination.test.ts lib/ai-training/retrieval-observability.test.ts lib/ai-training/test-observability-console.test.ts lib/ai-training/knowledge-writing-standard.test.ts lib/ai-training/knowledge-curriculum.test.ts lib/ai-training/lesson-generator.test.ts lib/ai/prompts/public-system-prompt.test.ts"
+    "test:knowledge": "npx tsx --test lib/ai-training/knowledge-search.regression.test.ts lib/ai-training/knowledge-zero-cost.regression.test.ts lib/ai-training/intent-reasoning.test.ts lib/ai-training/learning-self-learning.test.ts lib/ai-training/intent-recalculate.test.ts lib/ai-training/knowledge-duplicates.test.ts lib/ai-training/knowledge-pagination.test.ts lib/ai-training/retrieval-observability.test.ts lib/ai-training/test-observability-console.test.ts lib/ai-training/knowledge-writing-standard.test.ts lib/ai-training/knowledge-curriculum.test.ts lib/ai-training/lesson-generator.test.ts lib/ai-training/knowledge-approval-queue.test.ts lib/ai/prompts/public-system-prompt.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

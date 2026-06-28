@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { computePendingByModule, loadAllQueueItemsForSummary } from "@/lib/ai-training/knowledge-approval-queue";
 import {
   buildCurriculumDashboard,
   DEFAULT_KNOWLEDGE_TARGET,
@@ -15,7 +16,7 @@ export async function GET() {
 
   const { dataClient } = auth;
 
-  const [entriesRes, settingsRes, targetsRes] = await Promise.all([
+  const [entriesRes, settingsRes, targetsRes, queueSummaryRes] = await Promise.all([
     dataClient
       .from("ai_knowledge_entries")
       .select("*")
@@ -26,6 +27,7 @@ export async function GET() {
       .eq("id", "default")
       .maybeSingle(),
     dataClient.from("ai_curriculum_module_targets").select("module_id, target_lessons"),
+    loadAllQueueItemsForSummary(dataClient).catch(() => []),
   ]);
 
   if (entriesRes.error) {
@@ -52,9 +54,12 @@ export async function GET() {
     }>
   );
 
+  const pendingApprovalByModule = computePendingByModule(queueSummaryRes);
+
   const dashboard = buildCurriculumDashboard(entries, {
     knowledgeTarget,
     moduleTargets,
+    pendingApprovalByModule,
   });
 
   return NextResponse.json({
