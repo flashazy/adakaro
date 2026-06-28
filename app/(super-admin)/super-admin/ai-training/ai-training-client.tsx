@@ -310,6 +310,7 @@ export function AITrainingClient({
   const [editMeta, setEditMeta] = useState<{
     version_number: number;
     updated_at: string;
+    created_at: string;
   } | null>(null);
   const [writingStandardOpen, setWritingStandardOpen] = useState(false);
 
@@ -491,6 +492,7 @@ export function AITrainingClient({
     setEditMeta({
       version_number: row.version_number ?? 1,
       updated_at: row.updated_at,
+      created_at: row.created_at,
     });
     setDuplicateCheck(null);
     setForm({
@@ -648,6 +650,7 @@ export function AITrainingClient({
         setEditMeta({
           version_number: data.row.version_number ?? 1,
           updated_at: data.row.updated_at,
+          created_at: data.row.created_at,
         });
       }
       return data.row;
@@ -2000,6 +2003,7 @@ export function AITrainingClient({
                     setEditMeta({
                       version_number: row.version_number ?? 1,
                       updated_at: row.updated_at,
+                      created_at: row.created_at,
                     });
                     showToast("Version restored.");
                     void loadKnowledge();
