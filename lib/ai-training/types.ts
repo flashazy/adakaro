@@ -53,22 +53,13 @@ export type DuplicateSaveAction =
   | "replace_answer"
   | "new_version";
 
-export interface SimilarEntryMatch {
-  entry: AIKnowledgeEntry;
-  similarity: number;
-  matchReasons: string[];
-  isExact: boolean;
-}
-
-export interface DuplicateCheckResult {
-  normalizedQuestion: string;
-  exactMatch: SimilarEntryMatch | null;
-  similar: SimilarEntryMatch[];
-  suggestedIntentKey: string | null;
-  suggestedIntentName: string | null;
-  suggestedCategory: string | null;
-  relatedEntries: SimilarEntryMatch[];
-}
+export type {
+  DuplicateClassification,
+  DuplicateCheckResult,
+  DuplicateScoreBreakdown,
+  IntentComparison,
+  SimilarEntryMatch,
+} from "./knowledge-duplicates";
 
 export interface IntentHealthSummary {
   registryVersion: string;

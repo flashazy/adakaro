@@ -47,6 +47,7 @@ import { BulkImportModal } from "@/components/super-admin/ai-training/bulk-impor
 import { KnowledgeDuplicatePanel } from "@/components/super-admin/ai-training/knowledge-duplicate-panel";
 import type { DuplicateCheckApiResult } from "@/components/super-admin/ai-training/knowledge-duplicate-panel";
 import { KnowledgeDuplicateSaveModal } from "@/components/super-admin/ai-training/knowledge-duplicate-save-modal";
+import { KnowledgeNearDuplicateModal } from "@/components/super-admin/ai-training/knowledge-near-duplicate-modal";
 import { KnowledgeHealthBadge } from "@/components/super-admin/ai-training/knowledge-health-badge";
 import { KnowledgeMergeModal } from "@/components/super-admin/ai-training/knowledge-merge-modal";
 import { KnowledgeVersionPanel } from "@/components/super-admin/ai-training/knowledge-version-panel";
@@ -245,6 +246,8 @@ export function AITrainingClient({
     null
   );
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [nearDuplicateModalOpen, setNearDuplicateModalOpen] = useState(false);
+  const [nearDuplicateAcknowledged, setNearDuplicateAcknowledged] = useState(false);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [mergePrimaryId, setMergePrimaryId] = useState("");
   const [merging, setMerging] = useState(false);
@@ -519,6 +522,7 @@ export function AITrainingClient({
 
   const handleDuplicateCheck = useCallback((result: DuplicateCheckApiResult | null) => {
     setDuplicateCheck(result);
+    setNearDuplicateAcknowledged(false);
   }, []);
 
   const buildEntryPayload = () => ({
@@ -610,6 +614,27 @@ export function AITrainingClient({
     return saved;
   };
 
+  const commitSave = async () => {
+    setSaving(true);
+    try {
+      const saved = await performSave();
+      if (!saved) return;
+      setFormOpen(false);
+      setDuplicateModalOpen(false);
+      setNearDuplicateModalOpen(false);
+      setNearDuplicateAcknowledged(false);
+      showToast(form.id ? "Entry updated." : "Entry created.");
+      void loadKnowledge();
+      void refreshAnalytics();
+      void loadIntentHealth();
+      if (form.unansweredId) void loadUnanswered();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveEntry = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -622,22 +647,17 @@ export function AITrainingClient({
       return;
     }
 
-    setSaving(true);
-    try {
-      const saved = await performSave();
-      if (!saved) return;
-      setFormOpen(false);
-      setDuplicateModalOpen(false);
-      showToast(form.id ? "Entry updated." : "Entry created.");
-      void loadKnowledge();
-      void refreshAnalytics();
-      void loadIntentHealth();
-      if (form.unansweredId) void loadUnanswered();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Save failed");
-    } finally {
-      setSaving(false);
+    const needsNearDuplicateConfirm =
+      !form.id &&
+      duplicateCheck?.nearDuplicateMatch &&
+      !nearDuplicateAcknowledged;
+
+    if (needsNearDuplicateConfirm) {
+      setNearDuplicateModalOpen(true);
+      return;
     }
+
+    await commitSave();
   };
 
   const handleDuplicateSaveAction = async (action: DuplicateSaveAction) => {
@@ -1952,6 +1972,23 @@ export function AITrainingClient({
         saving={saving}
         onAction={(action) => void handleDuplicateSaveAction(action)}
         onClose={() => setDuplicateModalOpen(false)}
+      />
+
+      <KnowledgeNearDuplicateModal
+        open={nearDuplicateModalOpen}
+        check={duplicateCheck}
+        saving={saving}
+        onConfirm={() => {
+          setNearDuplicateAcknowledged(true);
+          setNearDuplicateModalOpen(false);
+          void commitSave();
+        }}
+        onViewExisting={() => {
+          const id = duplicateCheck?.nearDuplicateMatch?.entry.id;
+          setNearDuplicateModalOpen(false);
+          if (id) void openEntryById(id);
+        }}
+        onClose={() => setNearDuplicateModalOpen(false)}
       />
 
       {mergeModalEntries ? (

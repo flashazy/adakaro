@@ -212,8 +212,13 @@ export async function createKnowledgeEntry(
 
   const similar = findSimilarEntries(payload.question, entries, {
     excludeId: row.id,
-    minSimilarity: 0.95,
-  });
+    minSimilarity: 0.85,
+    includeDifferentIntent: false,
+  }).filter(
+    (m) =>
+      m.classification === "exact_duplicate" ||
+      m.classification === "near_duplicate"
+  );
   if (similar.length > 0) {
     await demoteDuplicateEntries(
       client,
