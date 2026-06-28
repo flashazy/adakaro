@@ -14,6 +14,9 @@ import {
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import { GenerationProgress } from "@/components/super-admin/ai-training/generation-progress";
 import { LessonReviewPanel } from "@/components/super-admin/ai-training/lesson-review-panel";
+import {
+  KnowledgeQualityPanel,
+} from "@/components/super-admin/ai-training/knowledge-quality-panel";
 import type { CurriculumModuleRow } from "@/lib/ai-training/knowledge-curriculum";
 import type {
   GeneratedLessonDraft,
@@ -161,11 +164,19 @@ export function AILessonGeneratorDialog({
   };
 
   const saveLessonsToApprovalQueue = async (toSave: GeneratedLessonDraft[]) => {
+    const eligible = toSave.filter(
+      (l) => l.qualityStatus === "ready" && (l.qualityReport?.overallQuality ?? 0) >= 90
+    );
+    if (!eligible.length) {
+      throw new Error(
+        "No lessons met the quality threshold (90+). Review blocked drafts or regenerate."
+      );
+    }
     const res = await fetch("/api/super-admin/ai-training/approval-queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        lessons: toSave,
+        lessons: eligible,
         sourceMetadata: {
           moduleId,
           mode,
@@ -173,8 +184,16 @@ export function AILessonGeneratorDialog({
         },
       }),
     });
-    const data = (await res.json()) as { error?: string; count?: number; message?: string };
+    const data = (await res.json()) as {
+      error?: string;
+      count?: number;
+      rejected?: number;
+      message?: string;
+    };
     if (!res.ok) throw new Error(data.error ?? "Failed to save to approval queue");
+    if (data.rejected && data.rejected > 0) {
+      setError(`${data.rejected} lesson(s) blocked by quality engine.`);
+    }
     return data;
   };
 
@@ -377,10 +396,19 @@ export function AILessonGeneratorDialog({
           ) : null}
 
           {step === "review" && result ? (
-            <LessonReviewPanel
-              analysis={result.analysis}
-              suggestions={result.suggestions}
-              lessons={lessons}
+            <>
+              <KnowledgeQualityPanel
+                metrics={result.qualityMetrics}
+                compact
+                title="Generation Quality Summary"
+              />
+              <LessonReviewPanel
+                analysis={result.analysis}
+                suggestions={result.suggestions}
+                lessons={lessons}
+                blockedLessons={result.blockedLessons}
+                rejectedLessons={result.rejectedLessons}
+                qualityMetrics={result.qualityMetrics}
               selectedIds={selectedIds}
               onToggleSelect={(id, sel) => {
                 setSelectedIds((prev) => {
@@ -422,6 +450,7 @@ export function AILessonGeneratorDialog({
               regenerating={regenerating}
               approving={approving}
             />
+            </>
           ) : null}
         </div>
 

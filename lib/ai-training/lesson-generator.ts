@@ -25,6 +25,15 @@ import {
   type DuplicateRiskLevel,
   type QualityGrade,
 } from "./lesson-generation-validator";
+import {
+  processBatchThroughQualityEngine,
+  type QualityEngineBatchResult,
+} from "./knowledge-quality-engine";
+import type {
+  KnowledgeQualityReport,
+  QualityPipelineMetrics,
+  QualityPipelineStatus,
+} from "./knowledge-quality-report";
 import type { AIKnowledgeEntry, KnowledgePriority } from "./types";
 
 export type GenerationStepId =
@@ -38,6 +47,7 @@ export type GenerationStepId =
   | "synonyms"
   | "duplicates"
   | "validation"
+  | "quality"
   | "preview";
 
 export interface GenerationStep {
@@ -93,6 +103,9 @@ export interface GeneratedLessonDraft {
   estimatedConfidence: number;
   reviewStatus: "draft" | "approved" | "discarded";
   version: number;
+  qualityReport?: KnowledgeQualityReport;
+  qualityStatus?: QualityPipelineStatus;
+  improvementAttempts?: number;
 }
 
 export interface GenerationSmartSuggestions {
@@ -107,8 +120,11 @@ export interface GenerationSmartSuggestions {
 export interface LessonGenerationResult {
   analysis: CurriculumAnalysis;
   lessons: GeneratedLessonDraft[];
+  blockedLessons: GeneratedLessonDraft[];
+  rejectedLessons: GeneratedLessonDraft[];
   skippedDuplicates: number;
   suggestions: GenerationSmartSuggestions;
+  qualityMetrics: QualityPipelineMetrics;
   provider: "openai" | "rule_based";
   steps: GenerationStep[];
 }
@@ -151,6 +167,7 @@ export const GENERATION_STEP_LABELS: Record<GenerationStepId, string> = {
   synonyms: "Generating synonyms…",
   duplicates: "Checking duplicates…",
   validation: "Running quality validation…",
+  quality: "Evaluating knowledge quality…",
   preview: "Preparing preview…",
 };
 
@@ -514,7 +531,7 @@ export async function generateModuleLessons(
     defaultCategory: def.defaultCategory,
   });
 
-  const lessons: GeneratedLessonDraft[] = [];
+  const rawDrafts: GeneratedLessonDraft[] = [];
   let skippedDuplicates = 0;
 
   for (const raw of rawLessons) {
@@ -540,14 +557,14 @@ export async function generateModuleLessons(
       version: 1,
     };
 
-    const validation = validateGeneratedLesson(base, request.existingEntries, lessons);
+    const validation = validateGeneratedLesson(base, request.existingEntries, rawDrafts);
 
     if (shouldSkipDuplicate(validation.duplicateRisk)) {
       skippedDuplicates++;
       continue;
     }
 
-    lessons.push({
+    rawDrafts.push({
       ...base,
       duplicateRisk: validation.duplicateRisk,
       duplicateReason: validation.duplicateReason,
@@ -557,6 +574,17 @@ export async function generateModuleLessons(
       estimatedConfidence: validation.estimatedConfidence,
     });
   }
+
+  const qualityResult: QualityEngineBatchResult = processBatchThroughQualityEngine(
+    rawDrafts,
+    analysis,
+    request.existingEntries,
+    def.defaultCategory
+  );
+
+  const lessons = qualityResult.readyLessons;
+  const blockedLessons = qualityResult.blockedLessons;
+  const rejectedLessons = qualityResult.rejectedLessons;
 
   const beforeMissing = analysis.missingIntents.length;
   const afterMissing = Math.max(
@@ -577,9 +605,7 @@ export async function generateModuleLessons(
     missingIntentsBefore: beforeMissing,
     missingIntentsAfter: afterMissing,
     estimatedAccuracyPercent: lessons.length
-      ? Math.round(
-          lessons.reduce((s, l) => s + l.estimatedConfidence, 0) / lessons.length
-        )
+      ? qualityResult.metrics.averageQualityScore
       : analysis.existingCount > 0
         ? 72
         : 60,
@@ -596,8 +622,11 @@ export async function generateModuleLessons(
   return {
     analysis,
     lessons,
+    blockedLessons,
+    rejectedLessons,
     skippedDuplicates,
     suggestions,
+    qualityMetrics: qualityResult.metrics,
     provider: provider.id,
     steps: buildSteps(true),
   };

@@ -76,6 +76,7 @@ import {
 } from "@/components/super-admin/ai-training/shared";
 import { KnowledgeCurriculumPanel } from "@/components/super-admin/ai-training/knowledge-curriculum-panel";
 import { KnowledgeApprovalQueue } from "@/components/super-admin/ai-training/knowledge-approval-queue";
+import { KnowledgeQualityPanel } from "@/components/super-admin/ai-training/knowledge-quality-panel";
 import { TestAIDrawer } from "@/components/super-admin/ai-training/test-ai-drawer";
 import type { CurriculumModuleId } from "@/lib/ai-training/knowledge-curriculum";
 import { enrichEntryMetrics } from "@/lib/ai-training/load-analytics";
@@ -1043,6 +1044,8 @@ export function AITrainingClient({
           </div>
 
           <IntentCoveragePanel />
+
+          <KnowledgeQualityPanel />
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className={saSection}>

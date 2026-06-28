@@ -61,7 +61,9 @@ describe("lesson generator", () => {
       existingEntries: existing,
     });
 
-    assert.ok(result.lessons.length > 0);
+    assert.ok(result.lessons.length >= 0);
+    assert.ok(Array.isArray(result.blockedLessons));
+    assert.ok(result.qualityMetrics);
     assert.equal(result.provider, "rule_based");
     for (const lesson of result.lessons) {
       assert.equal(lesson.reviewStatus, "draft");

@@ -26,12 +26,17 @@ import type {
   GeneratedLessonDraft,
   GenerationSmartSuggestions,
 } from "@/lib/ai-training/lesson-generator";
+import type { QualityPipelineMetrics } from "@/lib/ai-training/knowledge-quality-report";
+import { QUALITY_TIER_STYLES } from "@/lib/ai-training/knowledge-quality-rules";
 import { cn } from "@/lib/utils";
 
 interface LessonReviewPanelProps {
   analysis: CurriculumAnalysis;
   suggestions: GenerationSmartSuggestions;
   lessons: GeneratedLessonDraft[];
+  blockedLessons?: GeneratedLessonDraft[];
+  rejectedLessons?: GeneratedLessonDraft[];
+  qualityMetrics?: QualityPipelineMetrics;
   selectedIds: Set<string>;
   onToggleSelect: (id: string, selected: boolean) => void;
   onSelectAll: () => void;
@@ -55,6 +60,9 @@ export function LessonReviewPanel({
   analysis,
   suggestions,
   lessons,
+  blockedLessons = [],
+  rejectedLessons = [],
+  qualityMetrics,
   selectedIds,
   onToggleSelect,
   onSelectAll,
@@ -74,13 +82,38 @@ export function LessonReviewPanel({
   approving,
 }: LessonReviewPanelProps) {
   const [view, setView] = useState<"table" | "cards">("table");
+  const [sortBy, setSortBy] = useState<
+    "quality" | "quality_asc" | "duplicate" | "coverage" | "readability" | "answer"
+  >("quality");
+
+  const sortedLessons = useMemo(() => {
+    const list = [...lessons];
+    list.sort((a, b) => {
+      const qa = a.qualityReport?.overallQuality ?? a.scores.overallScore;
+      const qb = b.qualityReport?.overallQuality ?? b.scores.overallScore;
+      switch (sortBy) {
+        case "quality_asc":
+          return qa - qb;
+        case "duplicate":
+          return (b.qualityReport?.duplicateRiskPercent ?? 0) - (a.qualityReport?.duplicateRiskPercent ?? 0);
+        case "coverage":
+          return (b.qualityReport?.criteria.curriculumCoverage ?? 0) - (a.qualityReport?.criteria.curriculumCoverage ?? 0);
+        case "readability":
+          return (b.qualityReport?.criteria.humanReadability ?? 0) - (a.qualityReport?.criteria.humanReadability ?? 0);
+        case "answer":
+          return (b.qualityReport?.criteria.answerQuality ?? 0) - (a.qualityReport?.criteria.answerQuality ?? 0);
+        case "quality":
+        default:
+          return qb - qa;
+      }
+    });
+    return list;
+  }, [lessons, sortBy]);
 
   const activeLessons = useMemo(
     () => lessons.filter((l) => l.reviewStatus !== "discarded"),
     [lessons]
   );
-
-  const approvedCount = lessons.filter((l) => l.reviewStatus === "approved").length;
 
   return (
     <div className="space-y-6">
@@ -188,9 +221,26 @@ export function LessonReviewPanel({
       </div>
 
       <p className="text-sm text-slate-500">
-        {activeLessons.length} draft lesson(s) · {approvedCount} queued · Module:{" "}
+        {activeLessons.length} queue-ready lesson(s) · {blockedLessons.length} need human
+        improvement · {rejectedLessons.length} rejected · Module:{" "}
         <span className="font-medium text-slate-700">{analysis.moduleName}</span>
       </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-xs font-medium text-slate-500">Sort by</label>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+        >
+          <option value="quality">Highest quality</option>
+          <option value="quality_asc">Lowest quality</option>
+          <option value="duplicate">Duplicate risk</option>
+          <option value="coverage">Coverage</option>
+          <option value="readability">Readability</option>
+          <option value="answer">Answer quality</option>
+        </select>
+      </div>
 
       {view === "table" ? (
         <div className={cn(saSection, "overflow-x-auto p-0")}>
@@ -221,7 +271,11 @@ export function LessonReviewPanel({
               </tr>
             </thead>
             <tbody>
-              {lessons.map((lesson) => (
+              {sortedLessons.map((lesson) => {
+                const q = lesson.qualityReport?.overallQuality ?? lesson.scores.overallScore;
+                const tierKey = lesson.qualityReport?.visualTier ?? "needs_improvement";
+                const tier = QUALITY_TIER_STYLES[tierKey];
+                return (
                 <tr
                   key={lesson.id}
                   className={cn(
@@ -257,13 +311,15 @@ export function LessonReviewPanel({
                     <span
                       className={cn(
                         "rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset",
-                        GRADE_STYLES[lesson.overallGrade]
+                        tier.className
                       )}
                     >
-                      {lesson.overallGrade}
+                      {lesson.qualityReport?.grade ?? lesson.overallGrade} · {q}
                     </span>
                   </td>
-                  <td className="px-4 py-3 capitalize text-xs">{lesson.reviewStatus}</td>
+                  <td className="px-4 py-3 capitalize text-xs">
+                    {lesson.qualityStatus ?? lesson.reviewStatus}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       <button type="button" className={saBtnSecondarySm} onClick={() => onPreview(lesson)}>
@@ -275,7 +331,8 @@ export function LessonReviewPanel({
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
@@ -297,6 +354,26 @@ export function LessonReviewPanel({
           ))}
         </div>
       )}
+
+      {blockedLessons.length > 0 ? (
+        <div className={cn(saSection, "border-amber-200 bg-amber-50/40")}>
+          <h3 className={saSectionTitle}>Needs Human Improvement</h3>
+          <p className={saSectionSubtitle}>
+            These drafts scored below 90 after automatic improvement and will not enter the
+            Approval Queue.
+          </p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {blockedLessons.map((l) => (
+              <li key={l.id} className="rounded-lg bg-white/80 px-3 py-2 ring-1 ring-amber-100">
+                <span className="font-medium">{l.question}</span>
+                <span className="ml-2 text-amber-800">
+                  Score: {l.qualityReport?.overallQuality ?? l.scores.overallScore}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

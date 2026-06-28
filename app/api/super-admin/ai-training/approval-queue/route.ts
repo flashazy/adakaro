@@ -115,7 +115,11 @@ export async function POST(request: NextRequest) {
       ok: true,
       count: result.count,
       ids: result.ids,
-      message: "Lessons saved to Approval Queue. Review and publish them when ready.",
+      rejected: result.rejected,
+      message:
+        result.rejected > 0
+          ? `${result.count} lesson(s) saved. ${result.rejected} blocked by quality engine.`
+          : "Lessons saved to Approval Queue. Review and publish them when ready.",
     });
   }
 

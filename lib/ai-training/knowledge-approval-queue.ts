@@ -3,6 +3,10 @@ import type { Database } from "@/types/supabase";
 import type { GeneratedLessonDraft } from "./lesson-generator";
 import { scoreToGrade } from "./lesson-generation-validator";
 import {
+  isEligibleForApprovalQueue,
+  QUALITY_PASS_THRESHOLD,
+} from "./knowledge-quality-engine";
+import {
   createKnowledgeEntry,
   loadEntriesForDuplicateCheck,
   type KnowledgeEntryPayload,
@@ -115,8 +119,11 @@ export function mapGeneratedLessonToQueueInsert(
       duplicateReason: lesson.duplicateReason,
       scores: lesson.scores,
       generatorDraftId: lesson.id,
+      qualityReport: lesson.qualityReport,
+      qualityStatus: lesson.qualityStatus,
+      improvementAttempts: lesson.improvementAttempts,
     },
-    quality_score: lesson.scores.overallScore,
+    quality_score: lesson.qualityReport?.overallQuality ?? lesson.scores.overallScore,
     duplicate_risk: lesson.duplicateRisk,
     coverage_score: lesson.scores.coverageScore,
     approval_status: "pending",
@@ -299,10 +306,23 @@ export async function createApprovalQueueItems(
   client: SupabaseClient<Database>,
   lessons: GeneratedLessonDraft[],
   sourceMetadata: Record<string, unknown> = {}
-): Promise<{ count: number; ids: string[] }> {
-  if (lessons.length === 0) return { count: 0, ids: [] };
+): Promise<{ count: number; ids: string[]; rejected: number }> {
+  if (lessons.length === 0) return { count: 0, ids: [], rejected: 0 };
 
-  const inserts = lessons.map((lesson) =>
+  const eligible = lessons.filter((lesson) =>
+    isEligibleForApprovalQueue(lesson.qualityReport)
+  );
+  const rejected = lessons.length - eligible.length;
+
+  if (eligible.length === 0) {
+    return {
+      count: 0,
+      ids: [],
+      rejected,
+    };
+  }
+
+  const inserts = eligible.map((lesson) =>
     mapGeneratedLessonToQueueInsert(lesson, sourceMetadata)
   );
 
@@ -314,7 +334,7 @@ export async function createApprovalQueueItems(
   if (error) throw new Error(error.message);
 
   const ids = (data ?? []).map((row) => String((row as { id: string }).id));
-  return { count: ids.length, ids };
+  return { count: ids.length, ids, rejected };
 }
 
 export async function updateApprovalQueueItem(
@@ -698,6 +718,8 @@ export async function bulkDeleteQueueItems(
   }
   return count;
 }
+
+export { isEligibleForApprovalQueue, QUALITY_PASS_THRESHOLD };
 
 export function buildDuplicateReportForItem(
   item: AIKnowledgeApprovalQueueItem,

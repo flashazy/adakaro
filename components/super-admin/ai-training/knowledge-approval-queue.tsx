@@ -64,6 +64,9 @@ export function KnowledgeApprovalQueue({
   const [duplicateRisk, setDuplicateRisk] = useState("");
   const [sourceType, setSourceType] = useState("");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<
+    "quality_desc" | "quality_asc" | "duplicate" | "coverage" | "readability" | "answer" | "newest"
+  >("quality_desc");
 
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [reviewItem, setReviewItem] = useState<AIKnowledgeApprovalQueueItem | null>(null);
@@ -232,9 +235,38 @@ export function KnowledgeApprovalQueue({
     }
   };
 
+  const sortedRows = useMemo(() => {
+    const list = [...rows];
+    list.sort((a, b) => {
+      const qa = a.quality_score;
+      const qb = b.quality_score;
+      const metaA = a.source_metadata?.qualityReport as { criteria?: Record<string, number> } | undefined;
+      const metaB = b.source_metadata?.qualityReport as { criteria?: Record<string, number> } | undefined;
+      switch (sortBy) {
+        case "quality_asc":
+          return qa - qb;
+        case "duplicate":
+          return (b.duplicate_risk === "high" ? 3 : b.duplicate_risk === "medium" ? 2 : 1) -
+            (a.duplicate_risk === "high" ? 3 : a.duplicate_risk === "medium" ? 2 : 1);
+        case "coverage":
+          return b.coverage_score - a.coverage_score;
+        case "readability":
+          return (metaB?.criteria?.humanReadability ?? 0) - (metaA?.criteria?.humanReadability ?? 0);
+        case "answer":
+          return (metaB?.criteria?.answerQuality ?? 0) - (metaA?.criteria?.answerQuality ?? 0);
+        case "newest":
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case "quality_desc":
+        default:
+          return qb - qa;
+      }
+    });
+    return list;
+  }, [rows, sortBy]);
+
   const selectableRows = useMemo(
-    () => rows.filter((r) => r.approval_status !== "published"),
-    [rows]
+    () => sortedRows.filter((r) => r.approval_status !== "published"),
+    [sortedRows]
   );
 
   return (
@@ -354,6 +386,15 @@ export function KnowledgeApprovalQueue({
           placeholder="Intent filter"
           className={saInput}
         />
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className={saInput}>
+          <option value="quality_desc">Highest quality</option>
+          <option value="quality_asc">Lowest quality</option>
+          <option value="duplicate">Duplicate risk</option>
+          <option value="coverage">Coverage</option>
+          <option value="readability">Readability</option>
+          <option value="answer">Answer quality</option>
+          <option value="newest">Newest</option>
+        </select>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
@@ -481,7 +522,7 @@ export function KnowledgeApprovalQueue({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {sortedRows.map((row) => {
                 const grade = gradeFromQualityScore(row.quality_score);
                 return (
                   <tr key={row.id} className={saTableRowHover}>
@@ -558,7 +599,7 @@ export function KnowledgeApprovalQueue({
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          {rows.map((row) => (
+          {sortedRows.map((row) => (
             <ApprovalQueueCard
               key={row.id}
               item={row}
