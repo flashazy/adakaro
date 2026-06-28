@@ -5,7 +5,11 @@ import {
   processBatchThroughQualityEngine,
   QUALITY_PASS_THRESHOLD,
 } from "@/lib/ai-training/knowledge-quality-engine";
-import { scoreQuestionQuality } from "@/lib/ai-training/knowledge-quality-scorer";
+import {
+  scoreDuplicateDetection,
+  scoreLessonDraft,
+  scoreQuestionQuality,
+} from "@/lib/ai-training/knowledge-quality-scorer";
 import { buildQualityReport } from "@/lib/ai-training/knowledge-quality-report";
 import { analyzeModuleCurriculum } from "@/lib/ai-training/lesson-generator";
 import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator";
@@ -71,18 +75,73 @@ function draft(overrides: Partial<GeneratedLessonDraft>): GeneratedLessonDraft {
   };
 }
 
+const CURRICULUM_QUESTIONS = [
+  "Why choose Adakaro?",
+  "Why was Adakaro created?",
+  "What makes Adakaro different?",
+  "Is Adakaro cloud based?",
+  "Can Adakaro scale to large schools?",
+  "How secure is Adakaro?",
+];
+
 describe("knowledge quality engine", () => {
   it("scores natural questions highly", () => {
     const good = scoreQuestionQuality("What can Adakaro do?");
     const bad = scoreQuestionQuality("Tell me about Adakaro");
     assert.ok(good.score > bad.score);
+    assert.ok(good.score >= 90);
+  });
+
+  it("does not penalize short useful curriculum questions", () => {
+    for (const question of CURRICULUM_QUESTIONS) {
+      const result = scoreQuestionQuality(question);
+      assert.ok(
+        result.score >= 88,
+        `"${question}" scored ${result.score}, expected >= 88`
+      );
+    }
+  });
+
+  it("treats different-intent questions as non-duplicates", () => {
+    const batch = CURRICULUM_QUESTIONS.map((question, i) => ({
+      question,
+      intentLabel: `Intent ${i}`,
+    }));
+    for (const question of CURRICULUM_QUESTIONS) {
+      const result = scoreDuplicateDetection(
+        { question, intentLabel: question },
+        [],
+        batch.filter((b) => b.question !== question)
+      );
+      assert.ok(
+        result.score >= 85,
+        `"${question}" duplicate score ${result.score}, expected >= 85`
+      );
+    }
+  });
+
+  it("includes explainable score breakdown", () => {
+    const analysis = analyzeModuleCurriculum("about-adakaro", [], 80);
+    const report = scoreLessonDraft(draft({ question: "Why choose Adakaro?" }), {
+      existingEntries: [],
+      batchDrafts: [],
+      analysis,
+      coveredConcepts: new Set(),
+    });
+    assert.ok(report.breakdown.length === 8);
+    assert.ok(report.breakdown.every((b) => b.max > 0 && b.earned >= 0));
+    assert.equal(
+      Math.round(report.breakdown.reduce((s, b) => s + b.earned, 0)),
+      report.overallQuality
+    );
+    assert.ok(report.reviewerConfidence >= 70);
   });
 
   it("passes threshold constant is 90", () => {
     assert.equal(QUALITY_PASS_THRESHOLD, 90);
   });
 
-  it("marks ready lessons eligible for approval queue", () => {
+  it("marks high-confidence ready lessons eligible for approval queue", () => {
     const report = buildQualityReport({
       criteria: {
         questionQuality: 95,
@@ -100,7 +159,40 @@ describe("knowledge quality engine", () => {
       attempts: 1,
       coverageMap: [],
     });
+    assert.equal(report.overallQuality, 95);
     assert.equal(isEligibleForApprovalQueue(report), true);
+  });
+
+  it("scores good curriculum drafts above 90", () => {
+    const analysis = analyzeModuleCurriculum("about-adakaro", [], 80);
+    const questions = [
+      { question: "Why choose Adakaro?", topicTag: "benefits", intentLabel: "Benefits" },
+      { question: "Why was Adakaro created?", topicTag: "origin", intentLabel: "History" },
+      { question: "What makes Adakaro different?", topicTag: "differentiation", intentLabel: "Benefits" },
+      { question: "Is Adakaro cloud based?", topicTag: "cloud", intentLabel: "Technology" },
+      { question: "Can Adakaro scale to large schools?", topicTag: "scale", intentLabel: "Deployment" },
+      { question: "How secure is Adakaro?", topicTag: "security", intentLabel: "Security" },
+    ];
+
+    let passCount = 0;
+    for (const q of questions) {
+      const report = scoreLessonDraft(
+        draft({
+          id: q.question,
+          question: q.question,
+          topicTag: q.topicTag,
+          intentLabel: q.intentLabel,
+        }),
+        {
+          existingEntries: [],
+          batchDrafts: questions.filter((x) => x.question !== q.question),
+          analysis,
+          coveredConcepts: new Set(),
+        }
+      );
+      if (report.overallQuality >= 90) passCount++;
+    }
+    assert.ok(passCount >= 5, `Only ${passCount}/6 curriculum drafts scored >= 90`);
   });
 
   it("processes batch and separates ready from blocked", () => {
@@ -118,7 +210,8 @@ describe("knowledge quality engine", () => {
       [entry({ id: "e1", question: "What is Adakaro?" })],
       "General"
     );
-    assert.ok(result.readyLessons.length >= 0);
     assert.ok(result.metrics.averageQualityScore >= 0);
+    assert.ok(typeof result.metrics.highestScore === "number");
+    assert.ok(typeof result.metrics.lowestScore === "number");
   });
 });

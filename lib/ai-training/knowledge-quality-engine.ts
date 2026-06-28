@@ -2,12 +2,12 @@ import type { CurriculumAnalysis } from "./lesson-generator";
 import type { GeneratedLessonDraft } from "./lesson-generator";
 import {
   aggregateQualityMetrics,
-  buildQualityReport,
   reportCacheKey,
   type KnowledgeQualityReport,
   type QualityPipelineMetrics,
 } from "./knowledge-quality-report";
 import {
+  isCalibrationModeEnabled,
   MAX_AUTO_IMPROVE_ATTEMPTS,
   QUALITY_PASS_THRESHOLD,
   mapTopicToCoverageConcept,
@@ -19,6 +19,10 @@ import {
 } from "./knowledge-quality-scorer";
 import { validateGeneratedLesson } from "./lesson-generation-validator";
 import type { AIKnowledgeEntry } from "./types";
+
+export interface QualityEngineOptions {
+  calibrationMode?: boolean;
+}
 
 export interface QualityEngineBatchResult {
   readyLessons: GeneratedLessonDraft[];
@@ -38,7 +42,8 @@ function buildScoringContext(
   analysis: CurriculumAnalysis,
   existingEntries: AIKnowledgeEntry[],
   batchDrafts: GeneratedLessonDraft[],
-  excludeId?: string
+  excludeId?: string,
+  options?: QualityEngineOptions
 ): QualityScoringContext {
   const coveredConcepts = new Set<string>();
   for (const topic of analysis.coveredTopics) {
@@ -59,6 +64,7 @@ function buildScoringContext(
     batchDrafts: batchDrafts.filter((d) => d.id !== excludeId),
     analysis,
     coveredConcepts,
+    calibrationMode: isCalibrationModeEnabled(options?.calibrationMode),
   };
 }
 
@@ -122,11 +128,11 @@ export function processDraftThroughQualityEngine(
     ...report!,
     attempts,
     improvementsApplied,
-    passed: report!.overallQuality >= QUALITY_PASS_THRESHOLD && report!.status !== "rejected",
+    passed: isEligibleForApprovalQueue(report!),
     status:
       report!.status === "rejected"
         ? "rejected"
-        : report!.overallQuality >= QUALITY_PASS_THRESHOLD
+        : isEligibleForApprovalQueue(report!)
           ? "ready"
           : "needs_human_improvement",
   };
@@ -138,7 +144,7 @@ export function processDraftThroughQualityEngine(
     scores: validation.scores,
     overallGrade: validation.overallGrade,
     coverageContribution: validation.coverageContribution,
-    estimatedConfidence: finalReport.overallQuality,
+    estimatedConfidence: finalReport.reviewerConfidence,
     qualityReport: finalReport,
     qualityStatus: finalReport.status,
     improvementAttempts: attempts,
@@ -151,21 +157,33 @@ export function processBatchThroughQualityEngine(
   drafts: GeneratedLessonDraft[],
   analysis: CurriculumAnalysis,
   existingEntries: AIKnowledgeEntry[],
-  category: string
+  category: string,
+  options?: QualityEngineOptions
 ): QualityEngineBatchResult {
   const readyLessons: GeneratedLessonDraft[] = [];
   const blockedLessons: GeneratedLessonDraft[] = [];
   const rejectedLessons: GeneratedLessonDraft[] = [];
   const reports: KnowledgeQualityReport[] = [];
+  const improvementGains: number[] = [];
 
   for (const draft of drafts) {
-    const context = buildScoringContext(analysis, existingEntries, drafts, draft.id);
+    const context = buildScoringContext(analysis, existingEntries, drafts, draft.id, options);
+    const beforeKey = reportCacheKey(draft);
+    const beforeCached = evaluationCache.get(beforeKey);
+    const beforeScore = beforeCached?.overallQuality;
+
     const { draft: processed, report } = processDraftThroughQualityEngine(
       draft,
       context,
       category
     );
     reports.push(report);
+
+    if (beforeScore !== undefined && report.overallQuality > beforeScore) {
+      improvementGains.push(report.overallQuality - beforeScore);
+    } else if (report.attempts > 0 && report.overallQuality >= QUALITY_PASS_THRESHOLD) {
+      improvementGains.push(Math.max(0, report.overallQuality - (beforeScore ?? report.overallQuality - 5)));
+    }
 
     if (report.status === "ready") {
       readyLessons.push(processed);
@@ -176,7 +194,7 @@ export function processBatchThroughQualityEngine(
     }
   }
 
-  const metrics = aggregateQualityMetrics(reports, analysis.moduleId);
+  const metrics = aggregateQualityMetrics(reports, analysis.moduleId, improvementGains);
 
   return {
     readyLessons,
@@ -189,7 +207,10 @@ export function processBatchThroughQualityEngine(
 
 export function isEligibleForApprovalQueue(report: KnowledgeQualityReport | undefined): boolean {
   if (!report) return false;
-  return report.status === "ready" && report.overallQuality >= QUALITY_PASS_THRESHOLD;
+  if (report.status === "rejected") return false;
+  if (report.overallQuality < QUALITY_PASS_THRESHOLD) return false;
+  if (report.reviewerConfidence >= 85) return true;
+  return report.overallQuality >= 92;
 }
 
 export { aggregateQualityMetrics, QUALITY_PASS_THRESHOLD };

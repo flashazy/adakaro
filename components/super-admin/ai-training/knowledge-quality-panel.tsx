@@ -72,7 +72,9 @@ export function KnowledgeQualityPanel({
         ? QUALITY_TIER_STYLES.ready
         : metrics.averageQualityScore >= 80
           ? QUALITY_TIER_STYLES.needs_improvement
-          : QUALITY_TIER_STYLES.reject;
+          : metrics.averageQualityScore >= 65
+            ? QUALITY_TIER_STYLES.human_review
+            : QUALITY_TIER_STYLES.reject;
 
   return (
     <div className={cn(saSection, "border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-white")}>
@@ -94,21 +96,37 @@ export function KnowledgeQualityPanel({
       </div>
 
       <div className={cn("mt-4 grid gap-4", compact ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-5")}>
-        <SaKpiCard label="Average Quality Score" value={String(metrics.averageQualityScore)} />
+        <SaKpiCard label="Highest Score" value={String(metrics.highestScore)} />
+        <SaKpiCard label="Lowest Score" value={String(metrics.lowestScore)} />
+        <SaKpiCard label="Average Score" value={String(metrics.averageQualityScore)} />
         <SaKpiCard label="Average Grade" value={metrics.averageGrade} />
+        <SaKpiCard label="Avg Confidence" value={`${metrics.averageConfidence}%`} />
         <SaKpiCard label="Lessons Auto Improved" value={String(metrics.lessonsAutoImproved)} />
+        <SaKpiCard label="Auto Improvements Applied" value={String(metrics.lessonsAutoImproved)} />
+        <SaKpiCard label="Avg Improvement Gain" value={`+${metrics.averageImprovementGain}`} />
         <SaKpiCard label="Lessons Auto Rejected" value={String(metrics.lessonsAutoRejected)} />
         <SaKpiCard label="Duplicate Rate" value={`${metrics.duplicateRate}%`} />
+        <SaKpiCard label="Duplicate False Positives" value={String(metrics.duplicateFalsePositives)} />
         {!compact ? (
           <>
-            <SaKpiCard label="Avg Retrieval Score" value={String(metrics.averageRetrievalScore)} />
+            <SaKpiCard label="Avg Question Quality" value={String(metrics.averageByCategory.questionQuality)} />
+            <SaKpiCard label="Avg Coverage" value={String(metrics.averageByCategory.curriculumCoverage)} />
             <SaKpiCard label="Avg Answer Quality" value={String(metrics.averageAnswerQuality)} />
+            <SaKpiCard label="Avg Retrieval Score" value={String(metrics.averageRetrievalScore)} />
             <SaKpiCard label="Avg Readability" value={String(metrics.averageReadability)} />
-            <SaKpiCard label="Ready for Queue" value={String(metrics.readyCount)} />
-            <SaKpiCard label="Blocked Drafts" value={String(metrics.blockedCount)} />
+            <SaKpiCard label="Queue Ready" value={String(metrics.readyCount)} />
+            <SaKpiCard label="Needs Improvement" value={String(metrics.needsImprovementCount)} />
+            <SaKpiCard label="Rejected" value={String(metrics.rejectedCount)} />
           </>
         ) : null}
       </div>
+
+      {metrics.mostCommonFailureReason ? (
+        <p className="mt-3 text-sm text-slate-600">
+          Most common failure reason:{" "}
+          <span className="font-semibold text-slate-800">{metrics.mostCommonFailureReason}</span>
+        </p>
+      ) : null}
 
       {metrics.topWeakModules.length > 0 ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
@@ -143,17 +161,23 @@ export function KnowledgeQualityPanel({
 export function QualityReportCard({
   report,
   className,
+  showCalibration,
 }: {
   report: {
     criteria: Record<string, number>;
+    breakdown?: Array<{ label: string; earned: number; max: number; deductions: Array<{ reason: string; points: number }> }>;
     duplicateRiskPercent: number;
+    duplicateFalsePositive?: boolean;
     overallQuality: number;
+    reviewerConfidence?: number;
     grade: string;
     visualTier: keyof typeof QUALITY_TIER_STYLES;
     attempts: number;
     status: string;
+    calibrationAdjustments?: Array<{ rule: string; originalScore: number; adjustedScore: number; reason: string }>;
   };
   className?: string;
+  showCalibration?: boolean;
 }) {
   const tier = QUALITY_TIER_STYLES[report.visualTier];
   return (
@@ -164,16 +188,40 @@ export function QualityReportCard({
           {report.grade} · {tier.label}
         </span>
       </div>
-      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <div><dt className="text-slate-500">Question</dt><dd className="font-semibold">{report.criteria.questionQuality}</dd></div>
-        <div><dt className="text-slate-500">Answer</dt><dd className="font-semibold">{report.criteria.answerQuality}</dd></div>
-        <div><dt className="text-slate-500">Coverage</dt><dd className="font-semibold">{report.criteria.curriculumCoverage}</dd></div>
-        <div><dt className="text-slate-500">Dup risk</dt><dd className="font-semibold">{report.duplicateRiskPercent}</dd></div>
-        <div><dt className="text-slate-500">Retrieval</dt><dd className="font-semibold">{report.criteria.retrievalQuality}</dd></div>
-        <div><dt className="text-slate-500">Writing</dt><dd className="font-semibold">{report.criteria.writingStandard}</dd></div>
-        <div><dt className="text-slate-500">Readability</dt><dd className="font-semibold">{report.criteria.humanReadability}</dd></div>
-        <div><dt className="text-slate-500">Overall</dt><dd className="font-semibold text-indigo-700">{report.overallQuality}</dd></div>
+      <div className="mt-3 flex gap-4 text-xs">
+        <div>
+          <p className="text-slate-500">Quality</p>
+          <p className="text-lg font-bold text-indigo-700">{report.overallQuality}</p>
+        </div>
+        {report.reviewerConfidence != null ? (
+          <div>
+            <p className="text-slate-500">Confidence</p>
+            <p className="text-lg font-bold text-emerald-700">{report.reviewerConfidence}%</p>
+          </div>
+        ) : null}
+      </div>
+      <dl className="mt-3 space-y-1.5 text-xs">
+        {(report.breakdown ?? []).map((item) => (
+          <div key={item.label} className="flex items-center justify-between gap-2">
+            <dt className="text-slate-500">{item.label}</dt>
+            <dd className="font-semibold tabular-nums">
+              {item.earned} / {item.max}
+            </dd>
+          </div>
+        ))}
       </dl>
+      {report.duplicateFalsePositive ? (
+        <p className="mt-2 text-[10px] text-amber-700">Similar phrasing but different intent — not treated as duplicate.</p>
+      ) : null}
+      {showCalibration && report.calibrationAdjustments?.length ? (
+        <div className="mt-3 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-2 text-[10px] text-indigo-900">
+          {report.calibrationAdjustments.map((adj) => (
+            <p key={adj.rule}>
+              {adj.rule}: {adj.originalScore} → {adj.adjustedScore} — {adj.reason}
+            </p>
+          ))}
+        </div>
+      ) : null}
       <p className="mt-2 text-[10px] uppercase text-slate-400">
         {report.attempts} improvement attempt{report.attempts === 1 ? "" : "s"} · {report.status.replace(/_/g, " ")}
       </p>
