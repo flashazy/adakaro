@@ -162,11 +162,6 @@ export async function* generateChatStream(
     }
   }
 
-  const systemPrompt =
-    product === "copilot" && copilotCtx
-      ? buildCopilotSystemPrompt(copilotCtx)
-      : buildPublicSystemPrompt();
-
   const knowledgeHistory = history
     .filter((m) => m.id !== userMsg.id)
     .map((m) => ({
@@ -188,6 +183,14 @@ export async function* generateChatStream(
 
   const knowledgeMatch = knowledgeResult?.match ?? null;
   const clarification = knowledgeResult?.clarification ?? null;
+
+  const systemPrompt =
+    product === "copilot" && copilotCtx
+      ? buildCopilotSystemPrompt(copilotCtx)
+      : buildPublicSystemPrompt({
+          retrievedKnowledge: knowledgeMatch?.entry ?? null,
+          includeReferenceKnowledge: !knowledgeMatch,
+        });
 
   let fallbackText: string;
   if (product === "copilot" && copilotCtx) {
@@ -217,7 +220,6 @@ export async function* generateChatStream(
   try {
     if (
       shouldUseLiveModel() &&
-      !knowledgeMatch &&
       !clarification &&
       !toolSummary &&
       product !== "copilot"
@@ -234,7 +236,7 @@ export async function* generateChatStream(
         yield { type: "token", content: token };
       }
 
-      if (assistantContent.trim()) {
+      if (assistantContent.trim() && !knowledgeMatch && !clarification) {
         answerSource = "llm";
       } else {
         for await (const token of streamFallbackText(fallbackText)) {

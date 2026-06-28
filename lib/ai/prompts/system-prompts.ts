@@ -1,37 +1,64 @@
 import type { CopilotContext } from "@/lib/ai/types";
+import type { AIKnowledgeEntry } from "@/lib/ai-training/types";
 import {
   roleCapabilitiesDescription,
   roleLabel,
 } from "@/lib/ai/copilot/permissions";
 import { buildPublicKnowledgeContext } from "@/lib/ai/knowledge/public-knowledge";
+import {
+  buildPublicSystemPromptBody,
+  buildRetrievedKnowledgeAppendix,
+  PUBLIC_SYSTEM_PROMPT_META,
+  PUBLIC_SYSTEM_PROMPT_VERSION,
+} from "@/lib/ai/prompts/public-system-prompt";
 
-export function buildPublicSystemPrompt(): string {
-  return `You are Adakaro AI — a premium, helpful assistant on the Adakaro public website.
+export {
+  PUBLIC_SYSTEM_PROMPT_VERSION,
+  PUBLIC_SYSTEM_PROMPT_META,
+  buildPublicSystemPromptBody,
+  buildRetrievedKnowledgeAppendix,
+} from "@/lib/ai/prompts/public-system-prompt";
 
-Your role:
-- Answer the user's exact question directly and conversationally
-- Use the knowledge below only as supporting context — never paste full feature articles as the primary answer
-- Guide visitors to request a demo at /contact when appropriate
-- Be warm, concise, and specific — like a modern SaaS assistant
+export interface PublicSystemPromptOptions {
+  /** Matched knowledge entry — appended for LLM reformulation (facts only). */
+  retrievedKnowledge?: Pick<
+    AIKnowledgeEntry,
+    "question" | "answer" | "category" | "keywords"
+  > | null;
+  /** Include static reference knowledge block (fallback when no KB match). */
+  includeReferenceKnowledge?: boolean;
+}
 
-Response format (REQUIRED for every answer):
-1. **Direct answer first** — open with Yes/No or a clear one-sentence answer to what they asked
-2. **Relevant details** — bullet points that address their specific question (not generic feature lists)
-3. **Brief supporting context** — at most 1–2 sentences from knowledge if helpful
-4. **Next step** — suggest a relevant action (demo, pricing, signup) when appropriate
+/**
+ * Composes the full public system prompt: personality rules + optional knowledge.
+ * Personality rules always come from `public-system-prompt.ts` (single source of truth).
+ */
+export function buildPublicSystemPrompt(
+  options: PublicSystemPromptOptions = {}
+): string {
+  const includeReference =
+    options.includeReferenceKnowledge !== false &&
+    !options.retrievedKnowledge;
 
-Examples:
-- "Can parents see attendance updates?" → Start with: "Yes. Adakaro includes a Parent Portal where parents can view attendance information for their children." Then parent-specific bullets. Do NOT lead with how teachers mark attendance.
-- "Can Adakaro handle receipts?" → Start with: "Yes, Adakaro supports fee receipts." Then receipt-specific details.
-- "Can parents download report cards?" → Start with: "Yes, parents can access report cards through the Parent Portal." Then explain publishing and access.
+  const sections = [buildPublicSystemPromptBody()];
 
-Rules:
-- NEVER access or claim access to any school's private data
-- NEVER invent pricing — use only the knowledge below
-- If unsure, say so and suggest contacting Adakaro or requesting a demo
-- Use markdown: **bold** for emphasis, bullet lists, and [label](/path) links for CTAs
+  if (options.retrievedKnowledge) {
+    sections.push(buildRetrievedKnowledgeAppendix(options.retrievedKnowledge));
+  } else if (includeReference) {
+    sections.push(
+      [
+        "---",
+        "## Reference knowledge (fallback context)",
+        "",
+        "Use only when no retrieved knowledge section is present above.",
+        "Prefer retrieved knowledge when both are available.",
+        "",
+        buildPublicKnowledgeContext(),
+      ].join("\n")
+    );
+  }
 
-${buildPublicKnowledgeContext()}`;
+  return sections.join("\n\n");
 }
 
 export function buildCopilotSystemPrompt(ctx: CopilotContext): string {

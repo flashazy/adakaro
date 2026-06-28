@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   Archive,
+  BookMarked,
   BookOpen,
   Brain,
   CheckCircle2,
@@ -51,6 +52,12 @@ import { KnowledgeNearDuplicateModal } from "@/components/super-admin/ai-trainin
 import { KnowledgeHealthBadge } from "@/components/super-admin/ai-training/knowledge-health-badge";
 import { KnowledgeMergeModal } from "@/components/super-admin/ai-training/knowledge-merge-modal";
 import { KnowledgeVersionPanel } from "@/components/super-admin/ai-training/knowledge-version-panel";
+import {
+  KnowledgeWritingChecklist,
+  KnowledgeWritingStandardButton,
+  KnowledgeWritingStandardModal,
+  buildRecommendedAnswerTemplate,
+} from "@/components/super-admin/ai-training/knowledge-writing-guide";
 import { KnowledgePagination, KNOWLEDGE_DEFAULT_PAGE_SIZE } from "@/components/super-admin/ai-training/knowledge-pagination";
 import { AIClassificationPanel } from "@/components/super-admin/ai-training/ai-classification-panel";
 import { BulkIntentRecalculateModal } from "@/components/super-admin/ai-training/bulk-intent-recalculate-modal";
@@ -66,7 +73,9 @@ import {
   TableSkeleton,
   TrendChart,
 } from "@/components/super-admin/ai-training/shared";
+import { KnowledgeCurriculumPanel } from "@/components/super-admin/ai-training/knowledge-curriculum-panel";
 import { TestAIDrawer } from "@/components/super-admin/ai-training/test-ai-drawer";
+import type { CurriculumModuleId } from "@/lib/ai-training/knowledge-curriculum";
 import { enrichEntryMetrics } from "@/lib/ai-training/load-analytics";
 import type { RecommendationApplyAction } from "@/lib/ai-training/test-observability-console";
 import type {
@@ -84,11 +93,12 @@ import type {
 import { KNOWLEDGE_CATEGORIES, STARTER_QUESTIONS } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils";
 
-type TabId = "overview" | "knowledge" | "unanswered" | "analytics" | "learning";
+type TabId = "overview" | "knowledge" | "curriculum" | "unanswered" | "analytics" | "learning";
 
 const TABS: { id: TabId; label: string; icon: typeof Brain }[] = [
   { id: "overview", label: "Overview", icon: Sparkles },
   { id: "knowledge", label: "Knowledge Entries", icon: BookOpen },
+  { id: "curriculum", label: "Knowledge Curriculum", icon: BookMarked },
   { id: "unanswered", label: "Unanswered Questions", icon: HelpCircle },
   { id: "learning", label: "AI Learning", icon: GraduationCap },
   { id: "analytics", label: "Usage Analytics", icon: Brain },
@@ -134,6 +144,7 @@ function formatSource(source: string): string {
 interface EntryFormState {
   id?: string;
   category: string;
+  curriculumModule?: string;
   question: string;
   keywords: string;
   search_phrases: string;
@@ -255,6 +266,7 @@ export function AITrainingClient({
     version_number: number;
     updated_at: string;
   } | null>(null);
+  const [writingStandardOpen, setWritingStandardOpen] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -424,6 +436,11 @@ export function AITrainingClient({
     setFormOpen(true);
   };
 
+  const openCreateLesson = (moduleId: CurriculumModuleId, category: string) => {
+    openCreateForm({ category, curriculumModule: moduleId });
+    setTab("knowledge");
+  };
+
   const openEditForm = (row: AIKnowledgeEntry) => {
     setClassificationEntry(classificationFromEntry(row));
     setEditMeta({
@@ -525,8 +542,25 @@ export function AITrainingClient({
     setNearDuplicateAcknowledged(false);
   }, []);
 
+  const writingDraft = useMemo(
+    () => ({
+      category: form.category,
+      question: form.question,
+      answer: form.answer,
+      keywords: textToKeywords(form.keywords),
+      search_phrases: textToKeywords(form.search_phrases),
+      alternative_wording: textToKeywords(form.alternative_wording),
+      synonyms: textToKeywords(form.synonyms),
+      related_terms: textToKeywords(form.related_terms),
+      priority: form.priority,
+      intent_key: classificationEntry?.intent_key ?? null,
+    }),
+    [form, classificationEntry?.intent_key]
+  );
+
   const buildEntryPayload = () => ({
     category: form.category,
+    curriculum_module: form.curriculumModule ?? null,
     question: form.question,
     answer: form.answer,
     priority: form.priority,
@@ -1201,6 +1235,10 @@ export function AITrainingClient({
                 <FileUp className="mr-2 h-4 w-4" />
                 Bulk Import
               </button>
+              <KnowledgeWritingStandardButton
+                compact
+                onClick={() => setWritingStandardOpen(true)}
+              />
               <button
                 type="button"
                 className={saBtnPrimary}
@@ -1616,6 +1654,13 @@ export function AITrainingClient({
         </div>
       ) : null}
 
+      {tab === "curriculum" ? (
+        <KnowledgeCurriculumPanel
+          onOpenEntry={(id) => void openEntryById(id)}
+          onAddLesson={(moduleId, category) => openCreateLesson(moduleId, category)}
+        />
+      ) : null}
+
       {tab === "learning" ? <LearningPanel /> : null}
 
       {tab === "analytics" ? (
@@ -1734,7 +1779,15 @@ export function AITrainingClient({
                   {form.id ? "Edit Entry" : "Add Knowledge Entry"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Train Adakaro AI with a curated question and answer.
+                  Train Adakaro AI with a curated question and answer. Follow the{" "}
+                  <button
+                    type="button"
+                    className="font-medium text-indigo-600 hover:underline"
+                    onClick={() => setWritingStandardOpen(true)}
+                  >
+                    Knowledge Writing Standard
+                  </button>
+                  .
                 </p>
               </div>
               <button
@@ -1882,6 +1935,16 @@ export function AITrainingClient({
                 ))}
               </div>
 
+              <KnowledgeWritingChecklist
+                draft={writingDraft}
+                onApplyTemplate={() =>
+                  setForm((f) => ({
+                    ...f,
+                    answer: buildRecommendedAnswerTemplate(f.question),
+                  }))
+                }
+              />
+
               <label className="block text-sm">
                 <span className="font-medium text-slate-700">Answer</span>
                 <textarea
@@ -1891,7 +1954,7 @@ export function AITrainingClient({
                   }
                   rows={8}
                   required
-                  placeholder="Use markdown: **headings**, bullet points, and [CTA labels](/paths)"
+                  placeholder="Facts only — use sections: Overview, Core Facts, Key Capabilities, Benefits, Related Features"
                   className={cn(saInput, "mt-1 w-full")}
                 />
               </label>
@@ -1917,6 +1980,11 @@ export function AITrainingClient({
           </div>
         </div>
       ) : null}
+
+      <KnowledgeWritingStandardModal
+        open={writingStandardOpen}
+        onClose={() => setWritingStandardOpen(false)}
+      />
 
       <TestAIDrawer
         open={testDrawerOpen}

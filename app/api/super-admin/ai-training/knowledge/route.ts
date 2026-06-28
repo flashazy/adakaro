@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
     unansweredId?: string;
     duplicateAction?: DuplicateSaveAction;
     targetEntryId?: string;
+    curriculum_module?: string | null;
   };
 
   const question = body.question?.trim();
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest) {
 
   const payload: KnowledgeEntryPayload = {
     category,
+    curriculum_module: body.curriculum_module ?? null,
     question,
     answer,
     keywords: body.keywords?.length ? body.keywords : generated?.keywords ?? [],

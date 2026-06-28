@@ -22,6 +22,7 @@ import type {
 
 export interface KnowledgeEntryPayload {
   category: string;
+  curriculum_module?: string | null;
   question: string;
   answer: string;
   keywords: string[];
@@ -73,6 +74,9 @@ export function buildEntryPatch(
 ): Record<string, unknown> {
   return {
     category: payload.category,
+    ...(payload.curriculum_module != null
+      ? { curriculum_module: payload.curriculum_module }
+      : {}),
     question: payload.question,
     answer: payload.answer,
     keywords: payload.keywords,

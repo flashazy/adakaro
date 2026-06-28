@@ -43,6 +43,7 @@ export interface AIKnowledgeEntry {
   merged_into_id?: string | null;
   updated_by?: string | null;
   health_status?: KnowledgeHealthLevel;
+  curriculum_module?: string | null;
 }
 
 export type KnowledgeHealthLevel = "healthy" | "needs_review";
