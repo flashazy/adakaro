@@ -4,7 +4,7 @@
  * Future LLM engines replace only this module.
  */
 
-import { buildAudienceComposition, renderAudienceMarkdown } from "./audience-template";
+import { composeDocumentation } from "./composition-writer";
 import { composeSectionBlock, formatGeneratedDraft } from "./draft-formatter";
 import type { QuestionContext } from "./context-engine";
 import {
@@ -129,9 +129,34 @@ export function populateSectionsFromFacts(input: {
   return { sections, factsUsed, duplicatesRemoved, sectionPopulation };
 }
 
-function composeAudienceDraft(facts: ScoredFact[]): string {
-  const composition = buildAudienceComposition(facts);
-  return renderAudienceMarkdown(composition);
+function composeStructuredDraft(input: {
+  questionContext: QuestionContext;
+  sections: DraftSection[];
+  keptFacts: ScoredFact[];
+}): string {
+  const { questionContext, sections, keptFacts } = input;
+  const answerType = questionContext.route.expectedAnswerType;
+
+  const usesSemanticComposer =
+    answerType === "audience" ||
+    answerType === "definition" ||
+    answerType === "capabilities" ||
+    answerType === "general_facts";
+
+  if (usesSemanticComposer && keptFacts.length > 0) {
+    const composed = composeDocumentation({
+      facts: keptFacts,
+      expectedAnswerType: answerType,
+      intent: questionContext.route.intent,
+    });
+    if (composed.draft.trim()) return composed.draft;
+  }
+
+  if (sections.length > 0) {
+    return composeFromPopulatedSections(sections);
+  }
+
+  return "";
 }
 
 function composeFromPopulatedSections(sections: DraftSection[]): string {
@@ -168,13 +193,11 @@ export function composeDraft(input: {
 }): string {
   const { questionContext, sections, factsUsed, keptFacts } = input;
 
-  let draft = "";
-
-  if (questionContext.route.expectedAnswerType === "audience" && factsUsed.length > 0) {
-    draft = composeAudienceDraft(factsUsed);
-  } else if (sections.length > 0) {
-    draft = composeFromPopulatedSections(sections);
-  }
+  let draft = composeStructuredDraft({
+    questionContext,
+    sections,
+    keptFacts,
+  });
 
   if (!draft.trim() && keptFacts.length > 0) {
     draft = composeEmergencyFactsDraft(
