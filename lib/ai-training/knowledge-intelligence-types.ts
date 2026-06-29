@@ -339,6 +339,10 @@ export interface PriorityLessonSuggestion {
   prerequisites: LessonPrerequisite[];
   sources: PlannerSuggestionSource[];
   becauseYouCreated?: string;
+  /** Parent lessons that surfaced this recommendation through the dependency graph. */
+  requiredBy?: string[];
+  /** Count of distinct parent lessons recommending this lesson. */
+  dependentLessonCount?: number;
 }
 
 export interface CurriculumRoadmapLesson {

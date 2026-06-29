@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { loadKnowledgeIntelligenceSnapshot } from "@/lib/ai-training/load-knowledge-intelligence";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const auth = await requireSuperAdminDataClient();
   if ("error" in auth) return auth.error;

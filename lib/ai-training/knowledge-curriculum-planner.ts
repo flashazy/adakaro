@@ -545,7 +545,13 @@ function scoreLessonSuggestion(input: {
     question,
     entryId: entry?.id ?? null,
     inDatabase: Boolean(entry),
-    reason: buildReason(sources, meta.moduleName),
+    reason: becauseYouCreated
+      ? formatRecommendationReason({
+          sources,
+          requiredBy: [becauseYouCreated],
+          moduleName: meta.moduleName,
+        })
+      : buildReason(sources, meta.moduleName),
     priorityScore: finalScore,
     priorityLevel: scoreToLevel(finalScore),
     starRating: scoreToStars(finalScore),
@@ -560,6 +566,8 @@ function scoreLessonSuggestion(input: {
     prerequisites,
     sources,
     becauseYouCreated,
+    requiredBy: becauseYouCreated ? [becauseYouCreated] : [],
+    dependentLessonCount: becauseYouCreated ? 1 : 0,
   };
 }
 
@@ -571,6 +579,172 @@ function buildReason(sources: PlannerSuggestionSource[], moduleName?: string): s
   if (sources.includes("graph")) return "Connected in the knowledge graph";
   if (sources.includes("seed")) return "Core curriculum topic";
   return "High-value knowledge opportunity";
+}
+
+function collectRequiredBy(suggestion: PriorityLessonSuggestion): string[] {
+  const parents = new Set<string>();
+  for (const parent of suggestion.requiredBy ?? []) {
+    const trimmed = parent.trim();
+    if (trimmed) parents.add(trimmed);
+  }
+  if (suggestion.becauseYouCreated?.trim()) {
+    parents.add(suggestion.becauseYouCreated.trim());
+  }
+  return [...parents];
+}
+
+export function formatRecommendationReason(input: {
+  sources: PlannerSuggestionSource[];
+  requiredBy: string[];
+  moduleName?: string;
+}): string {
+  const bullets = input.requiredBy.map((parent) => `Required by "${parent}"`);
+  if (bullets.length >= 2) {
+    return `Recommended because:\n${bullets.map((line) => `• ${line}`).join("\n")}`;
+  }
+  if (bullets.length === 1) {
+    return bullets[0]!;
+  }
+  return buildReason(input.sources, input.moduleName);
+}
+
+function searchDemandRank(label: PriorityLessonSuggestion["searchDemand"]): number {
+  if (label === "high") return 4;
+  if (label === "medium") return 3;
+  if (label === "low") return 2;
+  return 1;
+}
+
+function customerImpactRank(label: PriorityLessonSuggestion["customerImpact"]): number {
+  if (label === "very_high") return 4;
+  if (label === "high") return 3;
+  if (label === "medium") return 2;
+  return 1;
+}
+
+function mergePriorityFactors(
+  a: PriorityScoreFactors,
+  b: PriorityScoreFactors
+): PriorityScoreFactors {
+  return {
+    importance: Math.max(a.importance, b.importance),
+    searchFrequency: Math.max(a.searchFrequency, b.searchFrequency),
+    dependencyWeight: Math.max(a.dependencyWeight, b.dependencyWeight),
+    coverageGap: Math.max(a.coverageGap, b.coverageGap),
+    businessValue: Math.max(a.businessValue, b.businessValue),
+    customerImpact: Math.max(a.customerImpact, b.customerImpact),
+    aiConfidence: Math.max(a.aiConfidence, b.aiConfidence),
+  };
+}
+
+function mergeTwoPrioritySuggestions(
+  primary: PriorityLessonSuggestion,
+  secondary: PriorityLessonSuggestion
+): PriorityLessonSuggestion {
+  const winner = primary.priorityScore >= secondary.priorityScore ? primary : secondary;
+  const loser = winner === primary ? secondary : primary;
+  const requiredBy = [...new Set([...collectRequiredBy(primary), ...collectRequiredBy(secondary)])];
+  const sources = [...new Set([...primary.sources, ...secondary.sources])] as PlannerSuggestionSource[];
+  const factors = mergePriorityFactors(primary.factors, secondary.factors);
+  const priorityScore = Math.max(primary.priorityScore, secondary.priorityScore);
+  const searchDemand =
+    searchDemandRank(primary.searchDemand) >= searchDemandRank(secondary.searchDemand)
+      ? primary.searchDemand
+      : secondary.searchDemand;
+  const customerImpact =
+    customerImpactRank(primary.customerImpact) >= customerImpactRank(secondary.customerImpact)
+      ? primary.customerImpact
+      : secondary.customerImpact;
+
+  return {
+    question: winner.question,
+    entryId: winner.entryId ?? loser.entryId,
+    inDatabase: winner.inDatabase || loser.inDatabase,
+    reason: formatRecommendationReason({
+      sources,
+      requiredBy,
+      moduleName: winner.moduleName ?? loser.moduleName,
+    }),
+    priorityScore,
+    priorityLevel: scoreToLevel(priorityScore),
+    starRating: scoreToStars(priorityScore),
+    category: winner.category,
+    intent: winner.intent,
+    moduleId: winner.moduleId ?? loser.moduleId,
+    moduleName: winner.moduleName ?? loser.moduleName,
+    factors,
+    searchDemand,
+    customerImpact,
+    coverageContribution: Math.max(primary.coverageContribution, secondary.coverageContribution),
+    prerequisites: winner.prerequisites.length >= loser.prerequisites.length ? winner.prerequisites : loser.prerequisites,
+    sources,
+    becauseYouCreated: requiredBy[0],
+    requiredBy,
+    dependentLessonCount: requiredBy.length,
+  };
+}
+
+export function sortPriorityLessonSuggestions(
+  suggestions: PriorityLessonSuggestion[]
+): PriorityLessonSuggestion[] {
+  return [...suggestions].sort((a, b) => {
+    if (b.priorityScore !== a.priorityScore) return b.priorityScore - a.priorityScore;
+    if (b.factors.searchFrequency !== a.factors.searchFrequency) {
+      return b.factors.searchFrequency - a.factors.searchFrequency;
+    }
+    return (b.dependentLessonCount ?? 0) - (a.dependentLessonCount ?? 0);
+  });
+}
+
+export function mergePriorityLessonSuggestions(
+  suggestions: PriorityLessonSuggestion[]
+): PriorityLessonSuggestion[] {
+  const merged = new Map<string, PriorityLessonSuggestion>();
+
+  for (const suggestion of suggestions) {
+    const key = normalizeText(suggestion.question);
+    const existing = merged.get(key);
+    merged.set(key, existing ? mergeTwoPrioritySuggestions(existing, suggestion) : {
+      ...suggestion,
+      requiredBy: collectRequiredBy(suggestion),
+      dependentLessonCount: collectRequiredBy(suggestion).length,
+      reason: formatRecommendationReason({
+        sources: suggestion.sources,
+        requiredBy: collectRequiredBy(suggestion),
+        moduleName: suggestion.moduleName,
+      }),
+    });
+  }
+
+  return sortPriorityLessonSuggestions([...merged.values()]);
+}
+
+function upsertPrioritySuggestion(
+  scored: Map<string, PriorityLessonSuggestion>,
+  suggestion: PriorityLessonSuggestion
+): void {
+  const key = normalizeText(suggestion.question);
+  const existing = scored.get(key);
+  scored.set(key, existing ? mergeTwoPrioritySuggestions(existing, suggestion) : suggestion);
+}
+
+export function scoreDependencyFollowUp(
+  followUpQuestion: string,
+  requiredBy: string,
+  context: CurriculumPlannerContext,
+  options?: { excludeId?: string; category?: string }
+): PriorityLessonSuggestion {
+  return scoreLessonSuggestion({
+    question: followUpQuestion,
+    inDatabase: Boolean(
+      findEntryByQuestion(followUpQuestion, context.activeEntries, options?.excludeId)
+    ),
+    context,
+    categoryHint: options?.category,
+    sources: ["dependency"],
+    excludeId: options?.excludeId,
+    becauseYouCreated: requiredBy,
+  });
 }
 
 /* ─── Public planners ─── */
@@ -585,9 +759,8 @@ export function prioritizeRelatedLessons(
   const becauseYouCreated = question.trim();
 
   for (const lesson of baseSuggestions) {
-    const key = normalizeText(lesson.question);
-    scored.set(
-      key,
+    upsertPrioritySuggestion(
+      scored,
       scoreLessonSuggestion({
         question: lesson.question,
         inDatabase: lesson.inDatabase,
@@ -603,10 +776,8 @@ export function prioritizeRelatedLessons(
   const currentEntry = findEntryByQuestion(question, context.activeEntries, options?.excludeId);
   if (currentEntry) {
     for (const neighbor of getGraphNeighborsForEntry(currentEntry, context.activeEntries)) {
-      const key = normalizeText(neighbor.question);
-      if (scored.has(key)) continue;
-      scored.set(
-        key,
+      upsertPrioritySuggestion(
+        scored,
         scoreLessonSuggestion({
           question: neighbor.question,
           inDatabase: true,
@@ -626,12 +797,11 @@ export function prioritizeRelatedLessons(
     if (relevantModule && relevantModule !== moduleId) continue;
 
     for (const seed of seeds) {
-      const key = normalizeText(seed.question);
-      if (scored.has(key) || normalizeText(seed.question) === normalizeText(question)) continue;
+      if (normalizeText(seed.question) === normalizeText(question)) continue;
       if (findEntryByQuestion(seed.question, context.activeEntries, options?.excludeId)) continue;
 
-      scored.set(
-        key,
+      upsertPrioritySuggestion(
+        scored,
         scoreLessonSuggestion({
           question: seed.question,
           inDatabase: false,
@@ -651,27 +821,23 @@ export function prioritizeRelatedLessons(
       normalizeText(depQuestion).includes(normalizeText(question).slice(0, 12)) ||
       chain.some((d) => normalizeText(question).includes(normalizeText(d).slice(0, 12)));
     if (!relatesToCurrent) continue;
+    if (findEntryByQuestion(depQuestion, context.activeEntries, options?.excludeId)) continue;
 
-    const key = normalizeText(depQuestion);
-    if (!scored.has(key) && !findEntryByQuestion(depQuestion, context.activeEntries, options?.excludeId)) {
-      scored.set(
-        key,
-        scoreLessonSuggestion({
-          question: depQuestion,
-          inDatabase: false,
-          context,
-          categoryHint: options?.category,
-          sources: ["dependency"],
-          excludeId: options?.excludeId,
-          becauseYouCreated,
-        })
-      );
-    }
+    upsertPrioritySuggestion(
+      scored,
+      scoreLessonSuggestion({
+        question: depQuestion,
+        inDatabase: false,
+        context,
+        categoryHint: options?.category,
+        sources: ["dependency"],
+        excludeId: options?.excludeId,
+        becauseYouCreated,
+      })
+    );
   }
 
-  return [...scored.values()]
-    .sort((a, b) => b.priorityScore - a.priorityScore)
-    .slice(0, 12);
+  return mergePriorityLessonSuggestions([...scored.values()]).slice(0, 12);
 }
 
 export function buildTopLessonRecommendations(
@@ -683,9 +849,8 @@ export function buildTopLessonRecommendations(
   for (const [moduleId, seeds] of Object.entries(MODULE_QUESTION_BANK)) {
     for (const seed of seeds) {
       if (findEntryByQuestion(seed.question, context.activeEntries)) continue;
-      const key = normalizeText(seed.question);
-      scored.set(
-        key,
+      upsertPrioritySuggestion(
+        scored,
         scoreLessonSuggestion({
           question: seed.question,
           inDatabase: false,
@@ -707,23 +872,20 @@ export function buildTopLessonRecommendations(
   for (const gap of gaps) {
     for (const sample of gap.sampleQuestions ?? []) {
       if (findEntryByQuestion(sample, context.activeEntries)) continue;
-      const key = normalizeText(sample);
-      const existing = scored.get(key);
-      const next = scoreLessonSuggestion({
-        question: sample,
-        inDatabase: false,
-        context,
-        sources: ["gap", "unanswered"],
-      });
-      if (!existing || next.priorityScore > existing.priorityScore) {
-        scored.set(key, next);
-      }
+      upsertPrioritySuggestion(
+        scored,
+        scoreLessonSuggestion({
+          question: sample,
+          inDatabase: false,
+          context,
+          sources: ["gap", "unanswered"],
+        })
+      );
     }
   }
 
-  return [...scored.values()]
+  return mergePriorityLessonSuggestions([...scored.values()])
     .filter((s) => !s.inDatabase)
-    .sort((a, b) => b.priorityScore - a.priorityScore)
     .slice(0, limit);
 }
 
@@ -992,6 +1154,8 @@ export function serializePrioritySuggestion(s: PriorityLessonSuggestion) {
     prerequisites: s.prerequisites,
     sources: s.sources,
     becauseYouCreated: s.becauseYouCreated ?? null,
+    requiredBy: s.requiredBy ?? [],
+    dependentLessonCount: s.dependentLessonCount ?? 0,
   };
 }
 

@@ -292,6 +292,8 @@ export function KnowledgePostSaveRecommendations({
   recommendations: Array<{
     question: string;
     reason: string;
+    supportingReasons?: string[];
+    dependentLessonCount?: number;
     priorityScore: number;
     priorityLevel: string;
     starRating: number;
@@ -321,12 +323,12 @@ export function KnowledgePostSaveRecommendations({
       <ul className="mt-3 space-y-2">
         {recommendations.map((rec) => (
           <li
-            key={rec.question}
+            key={rec.question.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim()}
             className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-violet-100 bg-white/80 px-3 py-2"
           >
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-slate-900">{rec.question}</p>
-              <p className="text-[10px] text-slate-500">{rec.reason}</p>
+              <p className="whitespace-pre-wrap text-[10px] leading-relaxed text-slate-500">{rec.reason}</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold text-amber-600">

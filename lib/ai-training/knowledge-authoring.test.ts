@@ -97,4 +97,32 @@ describe("knowledge authoring", () => {
     assert.ok(recs.length > 0);
     assert.ok(recs.some((r) => r.question.includes("cost") || r.question.includes("started")));
   });
+
+  it("deduplicates post-save recommendations by normalized lesson question", () => {
+    const saved = entry({ id: "saved", question: "What is Adakaro?" });
+    const recs = buildPostSaveRecommendations(saved, [saved]);
+    const seen = new Set<string>();
+
+    for (const rec of recs) {
+      const key = rec.question
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      assert.ok(!seen.has(key), `duplicate recommendation: ${rec.question}`);
+      seen.add(key);
+    }
+
+    const whyChoose = recs.find((rec) =>
+      rec.question.toLowerCase().includes("why choose adakaro")
+    );
+    if (whyChoose) {
+      assert.equal(
+        recs.filter((rec) =>
+          rec.question.toLowerCase().includes("why choose adakaro")
+        ).length,
+        1
+      );
+    }
+  });
 });

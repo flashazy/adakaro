@@ -20,7 +20,8 @@ import {
   type WritingStandardValidation,
 } from "./knowledge-writing-standard";
 import { validateMetadataDraft } from "./knowledge-metadata-validator";
-import { prioritizeRelatedLessons, buildCurriculumPlannerContext, getLessonPrerequisites, IDENTITY_FOLLOW_UP_QUESTIONS } from "./knowledge-curriculum-planner";
+import { prioritizeRelatedLessons, buildCurriculumPlannerContext, getLessonPrerequisites, IDENTITY_FOLLOW_UP_QUESTIONS, mergePriorityLessonSuggestions, scoreDependencyFollowUp } from "./knowledge-curriculum-planner";
+import { normalizeText } from "./knowledge-scoring";
 import type { AIKnowledgeEntry } from "./types";
 
 export interface EnterpriseReadinessCheck {
@@ -57,6 +58,8 @@ export interface FixAllQualityResult {
 export interface PostSaveRecommendation {
   question: string;
   reason: string;
+  supportingReasons: string[];
+  dependentLessonCount: number;
   priorityScore: number;
   priorityLevel: string;
   starRating: number;
@@ -230,34 +233,34 @@ export function buildPostSaveRecommendations(
   allEntries: AIKnowledgeEntry[]
 ): PostSaveRecommendation[] {
   const context = buildCurriculumPlannerContext({ entries: allEntries });
-  const base = prioritizeRelatedLessons(
+  const suggestions = prioritizeRelatedLessons(
     savedEntry.question,
     [],
     context,
-    { category: savedEntry.category }
+    { category: savedEntry.category, excludeId: savedEntry.id }
   );
 
-  const normQ = savedEntry.question.toLowerCase();
-  if (normQ.includes("what is adakaro") || normQ.includes("who is adakaro")) {
+  const normSaved = normalizeText(savedEntry.question);
+  if (normSaved.includes("what is adakaro") || normSaved.includes("who is adakaro")) {
     for (const followUp of IDENTITY_FOLLOW_UP_QUESTIONS) {
-      if (followUp.toLowerCase() === normQ.replace(/\?+$/, "")) continue;
-      const exists = base.some((b) => b.question.toLowerCase() === followUp.toLowerCase());
-      if (!exists) {
-        const scored = prioritizeRelatedLessons(followUp, [], context, {
+      if (normalizeText(followUp) === normSaved) continue;
+      suggestions.push(
+        scoreDependencyFollowUp(followUp, savedEntry.question.trim(), context, {
           category: savedEntry.category,
-        })[0];
-        if (scored) base.push(scored);
-      }
+          excludeId: savedEntry.id,
+        })
+      );
     }
   }
 
-  return base
+  return mergePriorityLessonSuggestions(suggestions)
     .filter((s) => !s.inDatabase || s.entryId !== savedEntry.id)
-    .sort((a, b) => b.priorityScore - a.priorityScore)
     .slice(0, 8)
     .map((s) => ({
       question: s.question,
       reason: s.reason,
+      supportingReasons: s.requiredBy ?? [],
+      dependentLessonCount: s.dependentLessonCount ?? 0,
       priorityScore: s.priorityScore,
       priorityLevel: s.priorityLevel,
       starRating: s.starRating,
