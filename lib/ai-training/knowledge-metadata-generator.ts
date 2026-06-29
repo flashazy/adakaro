@@ -5,6 +5,10 @@
 
 import { AI_CONFIG } from "@/lib/ai/config";
 import { inferIntentSignature } from "./intent-signature";
+import {
+  MAX_SEARCH_PHRASE_WORDS,
+  validateSearchPhrase,
+} from "./knowledge-metadata-validator";
 import { normalizeText } from "./knowledge-scoring";
 import { ADAKARO_MODULE_TERMS } from "./knowledge-writing-standard";
 import type { KeywordGenerationResult } from "./types";
@@ -31,7 +35,6 @@ export interface KnowledgeMetadataGenerationResult extends KeywordGenerationResu
 const MAX_RETRIES = 3;
 const MAX_KEYWORD_WORDS = 4;
 const MAX_SYNONYM_WORDS = 5;
-const MAX_SEARCH_WORDS = 12;
 const MAX_RELATED_WORDS = 5;
 
 const MARKETING_PATTERN =
@@ -157,8 +160,9 @@ function sanitizeSynonym(item: string): string | null {
 function sanitizeSearchPhrase(item: string): string | null {
   let value = stripMarkdown(item).replace(/[.!?]+$/g, "").trim().toLowerCase();
   if (!value || isMarketingOrSentence(value)) return null;
-  value = truncateWords(value, MAX_SEARCH_WORDS);
-  if (wordCount(value) < 2) return null;
+  value = truncateWords(value, MAX_SEARCH_PHRASE_WORDS);
+  if (wordCount(value) < 1) return null;
+  if (!validateSearchPhrase(value).valid) return null;
   return value;
 }
 
@@ -200,17 +204,14 @@ function validateSynonyms(items: string[]): boolean {
 
 function validateSearchPhrases(items: string[]): boolean {
   if (items.length < 2) return false;
+  const seen = new Set<string>();
   return items.every((item) => {
-    const lower = item.toLowerCase();
-    const looksLikeSearch =
-      lower.startsWith("how ") ||
-      lower.startsWith("what ") ||
-      lower.startsWith("can ") ||
-      lower.startsWith("is ") ||
-      lower.startsWith("where ") ||
-      lower.startsWith("when ") ||
-      lower.includes("adakaro");
-    return looksLikeSearch && wordCount(item) <= MAX_SEARCH_WORDS && !isMarketingOrSentence(item);
+    const result = validateSearchPhrase(item);
+    if (!result.valid) return false;
+    const key = item.trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 }
 

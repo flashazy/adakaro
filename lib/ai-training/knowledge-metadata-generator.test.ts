@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { generateKnowledgeMetadataSync } from "@/lib/ai-training/knowledge-metadata-generator";
+import { validateSearchPhrase } from "@/lib/ai-training/knowledge-metadata-validator";
 
 describe("knowledge-metadata-generator", () => {
   const input = {
@@ -32,13 +33,7 @@ Adakaro helps schools manage students, attendance, and finance.
 
     assert.ok(result.search_phrases.length >= 2);
     for (const phrase of result.search_phrases) {
-      assert.ok(phrase === phrase.toLowerCase());
-      assert.ok(
-        phrase.startsWith("how ") ||
-          phrase.startsWith("what ") ||
-          phrase.startsWith("can ") ||
-          phrase.includes("adakaro")
-      );
+      assert.equal(validateSearchPhrase(phrase).valid, true, phrase);
     }
   });
 

@@ -19,7 +19,7 @@ export type MetadataFormFields = {
 const FIELD_CONFIG: Array<{ key: MetadataField; label: string; hint: string }> = [
   { key: "keywords", label: "Keywords", hint: "One keyword or phrase per line (max 4 words)" },
   { key: "synonyms", label: "Synonyms", hint: "Short synonym phrases" },
-  { key: "search_phrases", label: "Search Phrases", hint: "Realistic lowercase searches" },
+  { key: "search_phrases", label: "Search Phrases", hint: "Lowercase search queries, 1–5 words per line" },
   { key: "alternative_wording", label: "Alternative Wording", hint: "Other ways to ask the same question" },
   { key: "related_terms", label: "Related Terms", hint: "Related concepts and modules" },
 ];
