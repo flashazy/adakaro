@@ -67,6 +67,11 @@ import {
 } from "@/components/super-admin/ai-training/knowledge-writing-guide";
 import { KnowledgeAnswerAssistant } from "@/components/super-admin/ai-training/knowledge-answer-assistant";
 import {
+  AuthoringWorkflowRail,
+  AuthoringWorkflowSection,
+} from "@/components/super-admin/ai-training/knowledge-authoring-workflow";
+import { computeAuthoringWorkflowSteps } from "@/lib/ai-training/knowledge-authoring-workflow";
+import {
   assessEnterpriseReadiness,
   buildPostSaveRecommendations,
   type PostSaveRecommendation,
@@ -312,6 +317,7 @@ export function AITrainingClient({
   const [duplicateCheck, setDuplicateCheck] = useState<DuplicateCheckApiResult | null>(
     null
   );
+  const [duplicateCheckLoading, setDuplicateCheckLoading] = useState(false);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [nearDuplicateModalOpen, setNearDuplicateModalOpen] = useState(false);
   const [nearDuplicateAcknowledged, setNearDuplicateAcknowledged] = useState(false);
@@ -617,6 +623,39 @@ export function AITrainingClient({
       }),
     [writingDraft, duplicateCheck, metadataBaseline, form.id, knowledgeRows]
   );
+
+  const workflowSteps = useMemo(
+    () =>
+      computeAuthoringWorkflowSteps({
+        question: form.question,
+        answer: form.answer,
+        category: form.category,
+        keywordsText: form.keywords,
+        synonymsText: form.synonyms,
+        searchPhrasesText: form.search_phrases,
+        alternativeWordingText: form.alternative_wording,
+        relatedTermsText: form.related_terms,
+        duplicateCheckLoading,
+        duplicateCheckReady: Boolean(duplicateCheck) || (!duplicateCheckLoading && form.question.trim().length >= 3),
+        hasRelatedInsights: Boolean(duplicateCheck),
+        hasDependencyInsights: Boolean(duplicateCheck),
+        hasPriorityInsight: Boolean(duplicateCheck),
+        metadataBaseline,
+        enterpriseReady: enterpriseReadiness.ready,
+        enterpriseConfidence: enterpriseReadiness.confidenceScore,
+      }),
+    [
+      form,
+      duplicateCheck,
+      duplicateCheckLoading,
+      metadataBaseline,
+      enterpriseReadiness.ready,
+      enterpriseReadiness.confidenceScore,
+    ]
+  );
+
+  const workflowStepStatus = (id: string) =>
+    workflowSteps.find((s) => s.id === id)?.status ?? "pending";
 
   const handleAutoFixLanguage = () => {
     setForm((f) => ({
@@ -1983,7 +2022,7 @@ export function AITrainingClient({
       {formOpen ? (
         <div className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
           <div
-            className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+            className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-label={form.id ? "Edit knowledge entry" : "Add knowledge entry"}
@@ -1994,8 +2033,7 @@ export function AITrainingClient({
                   {form.id ? "Edit Entry" : "Add Knowledge Entry"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Train Adakaro AI with a curated question and answer. Use the
-                  Enterprise Quality Checklist below before saving.
+                  Guided enterprise authoring — follow each step from question to save.
                 </p>
               </div>
               <button
@@ -2009,66 +2047,179 @@ export function AITrainingClient({
             </div>
 
             <form onSubmit={(e) => void saveEntry(e)} className="mt-6 space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm">
-                  <span className="font-medium text-slate-700">Category</span>
-                  <KnowledgeCategorySelect
-                    value={form.category}
-                    onChange={(category) => setForm((f) => ({ ...f, category }))}
-                    extraCategories={knowledgeCategoryOptions}
-                    rememberSelection
-                    className="mt-1 w-full"
+              <AuthoringWorkflowRail
+                steps={workflowSteps}
+                loadingStepId={duplicateCheckLoading ? "knowledge-search" : null}
+              />
+
+              <AuthoringWorkflowSection
+                stepId="question"
+                stepNumber={1}
+                title="Question"
+                subtitle="Category, priority, and the lesson question"
+                status={workflowStepStatus("question")}
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="font-medium text-slate-700">Category</span>
+                    <KnowledgeCategorySelect
+                      value={form.category}
+                      onChange={(category) => setForm((f) => ({ ...f, category }))}
+                      extraCategories={knowledgeCategoryOptions}
+                      rememberSelection
+                      className="mt-1 w-full"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="font-medium text-slate-700">Priority</span>
+                    <select
+                      value={form.priority}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          priority: e.target.value as KnowledgePriority,
+                        }))
+                      }
+                      className={cn(saInput, "mt-1 w-full")}
+                    >
+                      {PRIORITY_OPTIONS.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <label className="mt-4 block text-sm">
+                  <span className="font-medium text-slate-700">Question</span>
+                  <textarea
+                    value={form.question}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, question: e.target.value }))
+                    }
+                    rows={2}
+                    required
+                    placeholder="One clear intent per entry"
+                    className={cn(saInput, "mt-1 w-full")}
                   />
                 </label>
-                <label className="block text-sm">
-                  <span className="font-medium text-slate-700">Priority</span>
-                  <select
-                    value={form.priority}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        priority: e.target.value as KnowledgePriority,
-                      }))
-                    }
-                    className={cn(saInput, "mt-1 w-full")}
-                  >
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              </AuthoringWorkflowSection>
 
-              <label className="block text-sm">
-                <span className="font-medium text-slate-700">Question</span>
-                <textarea
-                  value={form.question}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, question: e.target.value }))
-                  }
-                  rows={2}
-                  required
-                  className={cn(saInput, "mt-1 w-full")}
-                />
+              {form.question.trim().length >= 3 ? (
                 <KnowledgeDuplicatePanel
+                  variant="workflow"
                   question={form.question}
                   category={form.category}
                   excludeId={form.id}
-                  draft={{
-                    keywords: textToKeywords(form.keywords),
-                    search_phrases: textToKeywords(form.search_phrases),
-                    synonyms: textToKeywords(form.synonyms),
-                    alternative_wording: textToKeywords(form.alternative_wording),
-                  }}
+                  allEntries={knowledgeRows}
+                  workflowSteps={workflowSteps}
+                  onLoadingChange={setDuplicateCheckLoading}
                   onSelectEntry={(id) => void openEntryById(id)}
                   onCreateLesson={(question, category) =>
                     openCreateForm({ question, category })
                   }
                   onCheckResult={handleDuplicateCheck}
                 />
-              </label>
+              ) : null}
+
+              <AuthoringWorkflowSection
+                stepId="answer-structure"
+                stepNumber={6}
+                title="Generate answer structure"
+                subtitle="Insert a recommended documentation outline"
+                status={workflowStepStatus("answer-structure")}
+              >
+                <button
+                  type="button"
+                  className={saBtnSecondary}
+                  disabled={!form.question.trim()}
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      answer: buildRecommendedAnswerTemplate(f.question),
+                    }))
+                  }
+                >
+                  Generate answer structure
+                </button>
+              </AuthoringWorkflowSection>
+
+              <AuthoringWorkflowSection
+                stepId="author-review"
+                stepNumber={7}
+                title="Author writes & reviews"
+                subtitle="Write facts-only documentation with AI assistance"
+                status={workflowStepStatus("author-review")}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-700">Answer</span>
+                  <KnowledgeAnswerAssistant
+                    question={form.question}
+                    answer={form.answer}
+                    onApply={(nextAnswer) =>
+                      setForm((f) => ({ ...f, answer: nextAnswer }))
+                    }
+                  />
+                </div>
+                <textarea
+                  value={form.answer}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, answer: e.target.value }))
+                  }
+                  rows={8}
+                  required
+                  placeholder="Use sections: Overview, Purpose, Capabilities, Permissions, Notes…"
+                  className={cn(saInput, "mt-1 w-full")}
+                />
+              </AuthoringWorkflowSection>
+
+              <AuthoringWorkflowSection
+                stepId="generate-metadata"
+                stepNumber={8}
+                title="Generate metadata"
+                subtitle="Keywords, synonyms, search phrases, and related terms"
+                status={workflowStepStatus("generate-metadata")}
+              >
+                <KnowledgeMetadataFields
+                  category={form.category}
+                  question={form.question}
+                  answer={form.answer}
+                  fields={{
+                    keywords: form.keywords,
+                    synonyms: form.synonyms,
+                    search_phrases: form.search_phrases,
+                    alternative_wording: form.alternative_wording,
+                    related_terms: form.related_terms,
+                  }}
+                  onChange={(metadataFields) =>
+                    setForm((f) => ({
+                      ...f,
+                      ...metadataFields,
+                    }))
+                  }
+                  metadataBaseline={metadataBaseline}
+                  onBaselineUpdate={setMetadataBaseline}
+                  showGeneratedNotice={metadataGeneratedNotice}
+                  onGeneratedNotice={setMetadataGeneratedNotice}
+                />
+              </AuthoringWorkflowSection>
+
+              <AuthoringWorkflowSection
+                stepId="quality-check"
+                stepNumber={9}
+                title="Quality check"
+                subtitle="Enterprise readiness validation"
+                status={workflowStepStatus("quality-check")}
+              >
+                <KnowledgeWritingChecklist
+                  draft={writingDraft}
+                  readiness={enterpriseReadiness}
+                  fixingAll={fixingAllQuality}
+                  onAutoFixLanguage={handleAutoFixLanguage}
+                  onFixAllQuality={() => void handleFixAllQuality()}
+                />
+              </AuthoringWorkflowSection>
 
               {form.id && editMeta ? (
                 <KnowledgeVersionPanel
@@ -2109,94 +2260,42 @@ export function AITrainingClient({
                 />
               ) : null}
 
-              <KnowledgeWritingChecklist
-                draft={writingDraft}
-                readiness={enterpriseReadiness}
-                fixingAll={fixingAllQuality}
-                onAutoFixLanguage={handleAutoFixLanguage}
-                onFixAllQuality={() => void handleFixAllQuality()}
-                onApplyTemplate={() =>
-                  setForm((f) => ({
-                    ...f,
-                    answer: buildRecommendedAnswerTemplate(f.question),
-                  }))
-                }
-              />
-
-              <label className="block text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium text-slate-700">Answer</span>
-                  <KnowledgeAnswerAssistant
-                    question={form.question}
-                    answer={form.answer}
-                    onApply={(nextAnswer) =>
-                      setForm((f) => ({ ...f, answer: nextAnswer }))
+              <AuthoringWorkflowSection
+                stepId="save"
+                stepNumber={10}
+                title="Save"
+                subtitle="Publish when enterprise quality checks pass"
+                status={workflowStepStatus("save")}
+              >
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className={saBtnSecondary}
+                    onClick={() => setFormOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={saBtnPrimary}
+                    disabled={saving || !enterpriseReadiness.ready}
+                    title={
+                      enterpriseReadiness.ready
+                        ? undefined
+                        : enterpriseReadiness.blockers[0]
                     }
-                  />
+                  >
+                    {saving ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                    )}
+                    {enterpriseReadiness.ready
+                      ? "Save Entry"
+                      : `Enterprise Ready ${enterpriseReadiness.confidenceScore}%`}
+                  </button>
                 </div>
-                <textarea
-                  value={form.answer}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, answer: e.target.value }))
-                  }
-                  rows={8}
-                  required
-                  placeholder="Facts only — use sections: Overview, Core Facts, Key Capabilities, Benefits, Related Features"
-                  className={cn(saInput, "mt-1 w-full")}
-                />
-              </label>
-
-              <KnowledgeMetadataFields
-                category={form.category}
-                question={form.question}
-                answer={form.answer}
-                fields={{
-                  keywords: form.keywords,
-                  synonyms: form.synonyms,
-                  search_phrases: form.search_phrases,
-                  alternative_wording: form.alternative_wording,
-                  related_terms: form.related_terms,
-                }}
-                onChange={(metadataFields) =>
-                  setForm((f) => ({
-                    ...f,
-                    ...metadataFields,
-                  }))
-                }
-                metadataBaseline={metadataBaseline}
-                onBaselineUpdate={setMetadataBaseline}
-                showGeneratedNotice={metadataGeneratedNotice}
-                onGeneratedNotice={setMetadataGeneratedNotice}
-              />
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  className={saBtnSecondary}
-                  onClick={() => setFormOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className={saBtnPrimary}
-                  disabled={saving || !enterpriseReadiness.ready}
-                  title={
-                    enterpriseReadiness.ready
-                      ? undefined
-                      : enterpriseReadiness.blockers[0]
-                  }
-                >
-                  {saving ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                  )}
-                  {enterpriseReadiness.ready
-                    ? "Save Entry"
-                    : `Enterprise Ready ${enterpriseReadiness.confidenceScore}%`}
-                </button>
-              </div>
+              </AuthoringWorkflowSection>
             </form>
           </div>
         </div>

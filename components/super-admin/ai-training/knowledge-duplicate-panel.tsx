@@ -23,6 +23,14 @@ import {
   SuggestedRelatedLessons,
   type PriorityLessonSuggestionApi,
 } from "@/components/super-admin/ai-training/suggested-related-lessons";
+import { AuthoringWorkflowSection } from "@/components/super-admin/ai-training/knowledge-authoring-workflow";
+import type { AuthoringWorkflowStepState } from "@/lib/ai-training/knowledge-authoring-workflow";
+import {
+  buildCurriculumPlannerContext,
+  getLessonPrerequisites,
+  scoreAuthoringQuestion,
+} from "@/lib/ai-training/knowledge-curriculum-planner";
+import type { AIKnowledgeEntry } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils";
 
 export interface DuplicateCheckEntrySummary {
@@ -114,6 +122,10 @@ interface KnowledgeDuplicatePanelProps {
   onSelectEntry: (entryId: string) => void;
   onCreateLesson?: (question: string, category: string) => void;
   onCheckResult?: (result: DuplicateCheckApiResult | null) => void;
+  onLoadingChange?: (loading: boolean) => void;
+  variant?: "default" | "workflow";
+  allEntries?: AIKnowledgeEntry[];
+  workflowSteps?: AuthoringWorkflowStepState[];
 }
 
 export function KnowledgeDuplicatePanel({
@@ -124,11 +136,35 @@ export function KnowledgeDuplicatePanel({
   onSelectEntry,
   onCreateLesson,
   onCheckResult,
+  onLoadingChange,
+  variant = "default",
+  allEntries = [],
+  workflowSteps = [],
 }: KnowledgeDuplicatePanelProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DuplicateCheckApiResult | null>(null);
   const onCheckResultRef = useRef(onCheckResult);
   onCheckResultRef.current = onCheckResult;
+  const onLoadingChangeRef = useRef(onLoadingChange);
+  onLoadingChangeRef.current = onLoadingChange;
+
+  const stepStatus = (id: string) =>
+    workflowSteps.find((s) => s.id === id)?.status ?? "pending";
+
+  const plannerContext = useMemo(
+    () => (allEntries.length > 0 ? buildCurriculumPlannerContext({ entries: allEntries }) : null),
+    [allEntries]
+  );
+
+  const prerequisites = useMemo(() => {
+    if (!plannerContext || question.trim().length < 3) return [];
+    return getLessonPrerequisites(question, plannerContext, excludeId);
+  }, [plannerContext, question, excludeId]);
+
+  const lessonPriority = useMemo(() => {
+    if (!plannerContext || question.trim().length < 3) return null;
+    return scoreAuthoringQuestion(question, plannerContext, { excludeId, category });
+  }, [plannerContext, question, excludeId, category]);
 
   useEffect(() => {
     const trimmed = question.trim();
@@ -141,6 +177,7 @@ export function KnowledgeDuplicatePanel({
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setLoading(true);
+      onLoadingChangeRef.current?.(true);
       try {
         const params = new URLSearchParams({ q: trimmed, category });
         if (excludeId) params.set("excludeId", excludeId);
@@ -158,7 +195,10 @@ export function KnowledgeDuplicatePanel({
           onCheckResultRef.current?.(null);
         }
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          onLoadingChangeRef.current?.(false);
+        }
       }
     }, 350);
 
@@ -189,6 +229,27 @@ export function KnowledgeDuplicatePanel({
     relatedSuggestions.length > 0 ||
     prioritizedSuggestions.length > 0 ||
     (result?.relatedEntries.length ?? 0) > 0;
+
+  if (variant === "workflow") {
+    return (
+      <WorkflowInsights
+        loading={loading}
+        result={result}
+        question={trimmed}
+        category={category}
+        warnings={warnings}
+        relationshipCards={relationshipCards}
+        comparison={result?.intentComparison ?? null}
+        prioritizedSuggestions={prioritizedSuggestions}
+        relatedSuggestions={relatedSuggestions}
+        prerequisites={prerequisites}
+        lessonPriority={lessonPriority}
+        stepStatus={stepStatus}
+        onSelectEntry={onSelectEntry}
+        onCreateLesson={onCreateLesson}
+      />
+    );
+  }
 
   if (
     !loading &&
@@ -570,6 +631,269 @@ function ScoreBreakdown({ scores }: { scores: DuplicateMatchApiItem["scores"] })
           <p className="text-xs font-bold tabular-nums text-slate-700">{row.value}%</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function WorkflowInsights({
+  loading,
+  result,
+  question,
+  category,
+  warnings,
+  relationshipCards,
+  comparison,
+  prioritizedSuggestions,
+  relatedSuggestions,
+  prerequisites,
+  lessonPriority,
+  stepStatus,
+  onSelectEntry,
+  onCreateLesson,
+}: {
+  loading: boolean;
+  result: DuplicateCheckApiResult | null;
+  question: string;
+  category: string;
+  warnings: DuplicateMatchApiItem[];
+  relationshipCards: DuplicateMatchApiItem[];
+  comparison: DuplicateCheckApiResult["intentComparison"];
+  prioritizedSuggestions: PriorityLessonSuggestionApi[];
+  relatedSuggestions: SuggestedRelatedLessonApi[];
+  prerequisites: Array<{ question: string; entryId: string | null; completed: boolean }>;
+  lessonPriority: ReturnType<typeof scoreAuthoringQuestion> | null;
+  stepStatus: (id: string) => AuthoringWorkflowStepState["status"];
+  onSelectEntry: (entryId: string) => void;
+  onCreateLesson?: (question: string, category: string) => void;
+}) {
+  const comparisonStyles = comparison
+    ? DUPLICATE_CLASSIFICATION_STYLES[comparison.status]
+    : null;
+
+  const suggestions =
+    prioritizedSuggestions.length > 0
+      ? prioritizedSuggestions
+      : relatedSuggestions.map((lesson) => ({
+          question: lesson.question,
+          entryId: lesson.entryId,
+          inDatabase: lesson.inDatabase,
+          reason: lesson.reason,
+          priorityScore: lesson.inDatabase ? 40 : 70,
+          priorityLevel: (lesson.inDatabase ? "low" : "medium") as PriorityLessonSuggestionApi["priorityLevel"],
+          starRating: 3 as PriorityLessonSuggestionApi["starRating"],
+          category: category || "General",
+          intent: "Related",
+          moduleId: null,
+          moduleName: null,
+          factors: {
+            importance: 50,
+            searchFrequency: 20,
+            dependencyWeight: 40,
+            coverageGap: 50,
+            businessValue: 50,
+            customerImpact: 50,
+            aiConfidence: 30,
+          },
+          searchDemand: "none" as const,
+          customerImpact: "medium" as const,
+          coverageContribution: 2,
+          prerequisites: [],
+          sources: ["entity_template"],
+          becauseYouCreated: question,
+        }));
+
+  return (
+    <div className="space-y-4">
+      <AuthoringWorkflowSection
+        stepId="knowledge-search"
+        stepNumber={2}
+        title="AI searches existing knowledge"
+        subtitle="Duplicate detection, intent analysis, and semantic matches"
+        status={stepStatus("knowledge-search")}
+      >
+        {loading ? (
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Searching knowledge base…
+          </div>
+        ) : !result ? (
+          <p className="text-xs text-slate-500">Enter a question to search existing lessons.</p>
+        ) : (
+          <div className="space-y-3">
+            {comparison && comparisonStyles ? (
+              <div className={cn("rounded-xl border p-3.5", comparisonStyles.border, comparisonStyles.bg)}>
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <GitBranch className={cn("h-4 w-4", comparisonStyles.text)} />
+                  <span className={comparisonStyles.text}>Intent & Entity Analysis</span>
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <IntentColumn title="Existing Entry" question={comparison.existingQuestion} intent={comparison.existingIntent} />
+                  <IntentColumn title="Current Entry" question={comparison.currentQuestion} intent={comparison.currentIntent} />
+                </div>
+                <p className={cn("mt-2 text-xs", comparisonStyles.text)}>{comparison.recommendation}</p>
+              </div>
+            ) : null}
+
+            {warnings.length > 0 ? (
+              <div className="space-y-2">
+                {warnings.map((item) => (
+                  <DuplicateMatchCard key={item.entry.id} item={item} onSelectEntry={onSelectEntry} />
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-800">
+                No exact or near duplicates found — safe to author a new lesson.
+              </p>
+            )}
+
+            {relationshipCards.length > 0 ? (
+              <div className="space-y-2">
+                {relationshipCards.map((item) => (
+                  <RelationshipCard key={item.entry.id} item={item} onSelectEntry={onSelectEntry} />
+                ))}
+              </div>
+            ) : null}
+
+            {(result.relatedEntries.length ?? 0) > 0 ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold text-slate-600">Matched entries</p>
+                <ul className="mt-1 space-y-1">
+                  {result.relatedEntries.map((item) => (
+                    <li key={item.entry.id}>
+                      <button
+                        type="button"
+                        className="text-xs text-indigo-700 hover:underline"
+                        onClick={() => onSelectEntry(item.entry.id)}
+                      >
+                        {item.entry.question}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </AuthoringWorkflowSection>
+
+      <AuthoringWorkflowSection
+        stepId="related-lessons"
+        stepNumber={3}
+        title="Related lessons"
+        subtitle="Priority-ranked curriculum suggestions"
+        status={stepStatus("related-lessons")}
+      >
+        {suggestions.length > 0 ? (
+          <SuggestedRelatedLessons
+            suggestions={suggestions}
+            becauseYouCreated={question}
+            onSelectEntry={onSelectEntry}
+            onCreateLesson={onCreateLesson}
+            compact
+          />
+        ) : (
+          <p className="text-xs text-slate-500">No related lessons identified for this question yet.</p>
+        )}
+      </AuthoringWorkflowSection>
+
+      <AuthoringWorkflowSection
+        stepId="dependencies"
+        stepNumber={4}
+        title="Dependencies"
+        subtitle="Prerequisite lessons in the learning path"
+        status={stepStatus("dependencies")}
+      >
+        {prerequisites.length > 0 ? (
+          <div className="space-y-2">
+            {prerequisites.map((dep, index) => (
+              <div key={dep.question} className="flex items-start gap-2">
+                <span className="mt-1 text-xs text-slate-400">{index > 0 ? "↓" : ""}</span>
+                <div
+                  className={cn(
+                    "flex-1 rounded-lg border px-3 py-2",
+                    dep.completed
+                      ? "border-emerald-100 bg-emerald-50/50"
+                      : "border-amber-200 bg-amber-50/50"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    {dep.completed ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    )}
+                    <span className="text-xs font-medium text-slate-900">{dep.question}</span>
+                  </div>
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    {dep.completed ? "Published in knowledge base" : "Missing — increases lesson priority"}
+                  </p>
+                  {dep.entryId ? (
+                    <button
+                      type="button"
+                      className="mt-1 text-[10px] font-medium text-indigo-700 hover:underline"
+                      onClick={() => onSelectEntry(dep.entryId!)}
+                    >
+                      Open lesson
+                    </button>
+                  ) : onCreateLesson ? (
+                    <button
+                      type="button"
+                      className="mt-1 text-[10px] font-medium text-indigo-700 hover:underline"
+                      onClick={() => onCreateLesson(dep.question, category)}
+                    >
+                      Create prerequisite
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500">No prerequisite chain defined for this question.</p>
+        )}
+      </AuthoringWorkflowSection>
+
+      <AuthoringWorkflowSection
+        stepId="curriculum-priority"
+        stepNumber={5}
+        title="Curriculum priority"
+        subtitle="Business importance and coverage scoring"
+        status={stepStatus("curriculum-priority")}
+      >
+        {lessonPriority ? (
+          <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50/60 to-white p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+                Suggested priority
+              </span>
+              <span className="text-sm font-bold tabular-nums text-slate-900">
+                {lessonPriority.priorityScore} · {lessonPriority.priorityLevel}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-700">{lessonPriority.reason}</p>
+            <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              <FactorMini label="Importance" value={lessonPriority.factors.importance} />
+              <FactorMini label="Search" value={lessonPriority.factors.searchFrequency} />
+              <FactorMini label="Dependencies" value={lessonPriority.factors.dependencyWeight} />
+              <FactorMini label="Coverage gap" value={lessonPriority.factors.coverageGap} />
+            </div>
+            {lessonPriority.moduleName ? (
+              <p className="mt-2 text-[10px] text-slate-500">Module: {lessonPriority.moduleName}</p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500">Priority scoring available after entering a question.</p>
+        )}
+      </AuthoringWorkflowSection>
+    </div>
+  );
+}
+
+function FactorMini({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md bg-white/80 px-2 py-1.5 ring-1 ring-inset ring-slate-100">
+      <p className="text-[9px] font-semibold uppercase text-slate-400">{label}</p>
+      <p className="text-xs font-bold tabular-nums text-slate-800">{value}</p>
     </div>
   );
 }

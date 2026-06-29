@@ -994,3 +994,22 @@ export function serializePrioritySuggestion(s: PriorityLessonSuggestion) {
     becauseYouCreated: s.becauseYouCreated ?? null,
   };
 }
+
+/** Score the lesson currently being authored for curriculum priority. */
+export function scoreAuthoringQuestion(
+  question: string,
+  context: CurriculumPlannerContext,
+  options?: { excludeId?: string; category?: string }
+): PriorityLessonSuggestion {
+  const trimmed = question.trim();
+  const entry = findEntryByQuestion(trimmed, context.activeEntries, options?.excludeId);
+  return scoreLessonSuggestion({
+    question: trimmed,
+    inDatabase: Boolean(entry),
+    context,
+    categoryHint: options?.category,
+    sources: entry ? ["graph"] : ["seed", "gap"],
+    excludeId: options?.excludeId,
+    becauseYouCreated: trimmed,
+  });
+}
