@@ -507,8 +507,8 @@ export function AITrainingClient({
     setFormOpen(true);
   };
 
-  const openCreateLesson = (moduleId: CurriculumModuleId, category: string) => {
-    openCreateForm({ category, curriculumModule: moduleId });
+  const openCreateLesson = (moduleId: CurriculumModuleId, category: string, question?: string) => {
+    openCreateForm({ category, curriculumModule: moduleId, question });
     setTab("knowledge");
   };
 
@@ -1757,7 +1757,9 @@ export function AITrainingClient({
       {tab === "curriculum" ? (
         <KnowledgeCurriculumPanel
           onOpenEntry={(id) => void openEntryById(id)}
-          onAddLesson={(moduleId, category) => openCreateLesson(moduleId, category)}
+          onAddLesson={(moduleId, category, question) =>
+            openCreateLesson(moduleId, category, question)
+          }
           onOpenApprovalQueue={(moduleId) => {
             setApprovalQueueModule(moduleId ?? null);
             setTab("approval");
@@ -1777,7 +1779,11 @@ export function AITrainingClient({
 
       {tab === "health" ? (
         <div className="mt-4">
-          <KnowledgeHealthPanel snapshot={intelligenceSnapshot} />
+          <KnowledgeHealthPanel
+            snapshot={intelligenceSnapshot}
+            onSelectEntry={(id) => void openEntryById(id)}
+            onCreateLesson={(question, category) => openCreateForm({ question, category })}
+          />
         </div>
       ) : null}
 
@@ -2026,6 +2032,9 @@ export function AITrainingClient({
                     alternative_wording: textToKeywords(form.alternative_wording),
                   }}
                   onSelectEntry={(id) => void openEntryById(id)}
+                  onCreateLesson={(question, category) =>
+                    openCreateForm({ question, category })
+                  }
                   onCheckResult={handleDuplicateCheck}
                 />
               </label>

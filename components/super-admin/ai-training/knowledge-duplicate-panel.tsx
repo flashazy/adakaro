@@ -7,7 +7,6 @@ import {
   GitBranch,
   HeartPulse,
   Info,
-  Link2,
   Loader2,
   Sparkles,
 } from "lucide-react";
@@ -20,6 +19,10 @@ import {
 } from "@/lib/ai-training/knowledge-duplicates";
 import type { ExtractedKnowledgeEntity } from "@/lib/ai-training/knowledge-entities";
 import type { IntentSignature } from "@/lib/ai-training/intent-signature";
+import {
+  SuggestedRelatedLessons,
+  type PriorityLessonSuggestionApi,
+} from "@/components/super-admin/ai-training/suggested-related-lessons";
 import { cn } from "@/lib/utils";
 
 export interface DuplicateCheckEntrySummary {
@@ -82,6 +85,7 @@ export interface DuplicateCheckApiResult {
   relatedEntries: DuplicateMatchApiItem[];
   differentIntentEntries: DuplicateMatchApiItem[];
   suggestedRelatedLessons: SuggestedRelatedLessonApi[];
+  prioritizedRelatedLessons?: PriorityLessonSuggestionApi[];
   intentComparison: {
     existingQuestion: string;
     existingIntent: IntentSignature;
@@ -108,6 +112,7 @@ interface KnowledgeDuplicatePanelProps {
   excludeId?: string;
   draft?: LessonDraftForHealth;
   onSelectEntry: (entryId: string) => void;
+  onCreateLesson?: (question: string, category: string) => void;
   onCheckResult?: (result: DuplicateCheckApiResult | null) => void;
 }
 
@@ -117,6 +122,7 @@ export function KnowledgeDuplicatePanel({
   excludeId,
   draft,
   onSelectEntry,
+  onCreateLesson,
   onCheckResult,
 }: KnowledgeDuplicatePanelProps) {
   const [loading, setLoading] = useState(false);
@@ -176,10 +182,12 @@ export function KnowledgeDuplicatePanel({
   const relationshipCards = result?.differentIntentEntries ?? [];
   const hasIntentComparison = Boolean(result?.intentComparison);
   const relatedSuggestions = result?.suggestedRelatedLessons ?? [];
+  const prioritizedSuggestions = result?.prioritizedRelatedLessons ?? [];
   const hasSuggestions =
     result?.suggestedIntentKey ||
     result?.suggestedCategory ||
     relatedSuggestions.length > 0 ||
+    prioritizedSuggestions.length > 0 ||
     (result?.relatedEntries.length ?? 0) > 0;
 
   if (
@@ -282,42 +290,52 @@ export function KnowledgeDuplicatePanel({
         </div>
       ) : null}
 
-      {!loading && relatedSuggestions.length > 0 ? (
-        <div className="rounded-xl border border-indigo-100 bg-indigo-50/30 p-3.5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-indigo-700">
-            <Link2 className="h-3.5 w-3.5" />
-            Suggested Related Lessons
-          </div>
-          <ul className="mt-2 space-y-1.5">
-            {relatedSuggestions.map((lesson) => (
-              <li key={lesson.question} className="flex items-start gap-2">
-                <span
-                  className={cn(
-                    "mt-1 h-1.5 w-1.5 shrink-0 rounded-full",
-                    lesson.inDatabase ? "bg-emerald-500" : "bg-amber-400"
-                  )}
-                />
-                {lesson.entryId ? (
-                  <button
-                    type="button"
-                    className="text-left text-xs text-indigo-800 hover:underline"
-                    onClick={() => onSelectEntry(lesson.entryId!)}
-                  >
-                    {lesson.question}
-                  </button>
-                ) : (
-                  <span className="text-xs text-slate-700">{lesson.question}</span>
-                )}
-                {!lesson.inDatabase ? (
-                  <span className="ml-auto shrink-0 text-[10px] text-amber-700">Not yet created</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {!loading && prioritizedSuggestions.length > 0 ? (
+        <SuggestedRelatedLessons
+          suggestions={prioritizedSuggestions}
+          becauseYouCreated={question.trim()}
+          onSelectEntry={onSelectEntry}
+          onCreateLesson={onCreateLesson}
+          compact
+        />
+      ) : !loading && relatedSuggestions.length > 0 ? (
+        <SuggestedRelatedLessons
+          suggestions={relatedSuggestions.map((lesson) => ({
+            question: lesson.question,
+            entryId: lesson.entryId,
+            inDatabase: lesson.inDatabase,
+            reason: lesson.reason,
+            priorityScore: lesson.inDatabase ? 40 : 70,
+            priorityLevel: lesson.inDatabase ? "low" : "medium",
+            starRating: 3 as const,
+            category: category || "General",
+            intent: "Related",
+            moduleId: null,
+            moduleName: null,
+            factors: {
+              importance: 50,
+              searchFrequency: 20,
+              dependencyWeight: 40,
+              coverageGap: 50,
+              businessValue: 50,
+              customerImpact: 50,
+              aiConfidence: 30,
+            },
+            searchDemand: "none" as const,
+            customerImpact: "medium" as const,
+            coverageContribution: 2,
+            prerequisites: [],
+            sources: ["entity_template"],
+            becauseYouCreated: question.trim(),
+          }))}
+          becauseYouCreated={question.trim()}
+          onSelectEntry={onSelectEntry}
+          onCreateLesson={onCreateLesson}
+          compact
+        />
       ) : null}
 
-      {!loading && hasSuggestions && relatedSuggestions.length === 0 ? (
+      {!loading && hasSuggestions && relatedSuggestions.length === 0 && prioritizedSuggestions.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <Sparkles className="h-3.5 w-3.5" />

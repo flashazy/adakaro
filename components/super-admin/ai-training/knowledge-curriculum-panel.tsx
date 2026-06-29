@@ -45,6 +45,11 @@ import {
   OPS_STACK,
   PageAIInsight,
 } from "@/components/super-admin/ai-training/operations/operations-premium-ui";
+import {
+  CurriculumPlannerMetrics,
+  KnowledgeRoadmapPanel,
+} from "@/components/super-admin/ai-training/curriculum-planner-panel";
+import { SuggestedRelatedLessons } from "@/components/super-admin/ai-training/suggested-related-lessons";
 import { cn } from "@/lib/utils";
 
 const HEALTH_STYLES: Record<ModuleHealthLabel, string> = {
@@ -56,7 +61,7 @@ const HEALTH_STYLES: Record<ModuleHealthLabel, string> = {
 
 interface KnowledgeCurriculumPanelProps {
   onOpenEntry: (entryId: string) => void;
-  onAddLesson: (moduleId: CurriculumModuleId, category: string) => void;
+  onAddLesson: (moduleId: CurriculumModuleId, category: string, question?: string) => void;
   onOpenApprovalQueue?: (moduleId?: CurriculumModuleId) => void;
   pendingMission?: {
     moduleId: CurriculumModuleId;
@@ -318,6 +323,46 @@ export function KnowledgeCurriculumPanel({
   return (
     <div className={cn("mt-4", OPS_STACK)}>
       {curriculumInsight ? <PageAIInsight message={curriculumInsight} context="curriculum" /> : null}
+
+      {intelligenceSnapshot?.planner ? (
+        <>
+          <CurriculumPlannerMetrics analytics={intelligenceSnapshot.planner.analytics} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <KnowledgeRoadmapPanel
+              roadmap={intelligenceSnapshot.planner.roadmap}
+              onSelectEntry={onOpenEntry}
+              onCreateLesson={(question) => {
+                const track = intelligenceSnapshot.planner!.roadmap.find((t) =>
+                  t.lessons.some((l) => l.question === question)
+                );
+                const moduleId = track?.moduleId ?? "about-adakaro";
+                onAddLesson(moduleId, track?.label ?? "General", question);
+              }}
+            />
+            <SuggestedRelatedLessons
+              suggestions={intelligenceSnapshot.planner.topRecommendations
+                .filter((r) => !r.inDatabase)
+                .map((r) => ({
+                  ...r,
+                  moduleId: r.moduleId ?? null,
+                  moduleName: r.moduleName ?? null,
+                  becauseYouCreated: r.becauseYouCreated ?? null,
+                }))}
+              onSelectEntry={onOpenEntry}
+              onCreateLesson={(question, category) => {
+                const rec = intelligenceSnapshot.planner!.topRecommendations.find(
+                  (r) => r.question === question
+                );
+                onAddLesson(
+                  (rec?.moduleId as CurriculumModuleId) ?? "about-adakaro",
+                  category || rec?.category || "General",
+                  question
+                );
+              }}
+            />
+          </div>
+        </>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SaKpiCard label="Total Knowledge Entries" value={String(s.totalEntries)} />

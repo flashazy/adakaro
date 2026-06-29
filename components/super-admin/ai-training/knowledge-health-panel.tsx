@@ -19,12 +19,17 @@ import {
   buildModuleHeatmaps,
   buildPageInsight,
 } from "@/lib/ai-training/operations-presentation";
+import { CurriculumPlannerPanel } from "@/components/super-admin/ai-training/curriculum-planner-panel";
 import { cn } from "@/lib/utils";
 
 export function KnowledgeHealthPanel({
   snapshot: external,
+  onSelectEntry,
+  onCreateLesson,
 }: {
   snapshot?: KnowledgeIntelligenceSnapshot | null;
+  onSelectEntry?: (entryId: string) => void;
+  onCreateLesson?: (question: string, category?: string) => void;
 }) {
   const { snapshot, loading } = useIntelligenceSnapshot(external);
   if (loading) return <OperationsSkeleton rows={2} />;
@@ -88,6 +93,14 @@ export function KnowledgeHealthPanel({
           </table>
         </div>
       </div>
+
+      {snapshot.planner ? (
+        <CurriculumPlannerPanel
+          planner={snapshot.planner}
+          onSelectEntry={onSelectEntry}
+          onCreateLesson={onCreateLesson}
+        />
+      ) : null}
     </div>
   );
 }

@@ -291,6 +291,110 @@ export interface KnowledgeEvolutionEvent {
   summary?: string;
 }
 
+/* ─── Curriculum Planner ─── */
+
+export type LessonPlannerPriority = "critical" | "high" | "medium" | "low";
+
+export type PlannerSuggestionSource =
+  | "entity_template"
+  | "graph"
+  | "seed"
+  | "gap"
+  | "unanswered"
+  | "dependency"
+  | "context";
+
+export interface PriorityScoreFactors {
+  importance: number;
+  searchFrequency: number;
+  dependencyWeight: number;
+  coverageGap: number;
+  businessValue: number;
+  customerImpact: number;
+  aiConfidence: number;
+}
+
+export interface LessonPrerequisite {
+  question: string;
+  entryId: string | null;
+  completed: boolean;
+}
+
+export interface PriorityLessonSuggestion {
+  question: string;
+  entryId: string | null;
+  inDatabase: boolean;
+  reason: string;
+  priorityScore: number;
+  priorityLevel: LessonPlannerPriority;
+  starRating: 1 | 2 | 3 | 4 | 5;
+  category: string;
+  intent: string;
+  moduleId?: CurriculumModuleId;
+  moduleName?: string;
+  factors: PriorityScoreFactors;
+  searchDemand: "high" | "medium" | "low" | "none";
+  customerImpact: "very_high" | "high" | "medium" | "low";
+  coverageContribution: number;
+  prerequisites: LessonPrerequisite[];
+  sources: PlannerSuggestionSource[];
+  becauseYouCreated?: string;
+}
+
+export interface CurriculumRoadmapLesson {
+  question: string;
+  entryId: string | null;
+  status: "completed" | "missing";
+  priorityLevel?: LessonPlannerPriority;
+  priorityScore?: number;
+}
+
+export interface CurriculumRoadmapTrack {
+  id: string;
+  label: string;
+  moduleId?: CurriculumModuleId;
+  lessons: CurriculumRoadmapLesson[];
+  completedCount: number;
+  totalCount: number;
+  coveragePercent: number;
+}
+
+export interface KnowledgeGapIssue {
+  id: string;
+  kind:
+    | "missing_concept"
+    | "weak_coverage"
+    | "duplicate"
+    | "orphan"
+    | "disconnected"
+    | "unused_category"
+    | "broken_dependency"
+    | "circular_reference";
+  title: string;
+  description: string;
+  severity: LessonPlannerPriority;
+  moduleId?: CurriculumModuleId;
+  entryId?: string;
+  category?: string;
+}
+
+export interface CurriculumPlannerAnalytics {
+  knowledgeCoveragePercent: number;
+  criticalLessonsCompleted: number;
+  criticalLessonsTotal: number;
+  mediumPriorityCount: number;
+  lowPriorityCount: number;
+  estimatedTrainingCompletionPercent: number;
+  categoryCoverage: Array<{ category: string; lessonCount: number }>;
+}
+
+export interface CurriculumPlannerSnapshot {
+  analytics: CurriculumPlannerAnalytics;
+  roadmap: CurriculumRoadmapTrack[];
+  gapIssues: KnowledgeGapIssue[];
+  topRecommendations: PriorityLessonSuggestion[];
+}
+
 /* ─── Full Intelligence Snapshot ─── */
 
 export interface KnowledgeIntelligenceSnapshot {
@@ -309,6 +413,7 @@ export interface KnowledgeIntelligenceSnapshot {
   weakestModules: ModuleHealthRow[];
   strongestModules: ModuleHealthRow[];
   graphSummary: { nodeCount: number; edgeCount: number; orphanCount: number };
+  planner: CurriculumPlannerSnapshot;
 }
 
 export interface EntryIntelligenceProfile {

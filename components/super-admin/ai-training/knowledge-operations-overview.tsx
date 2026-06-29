@@ -28,6 +28,7 @@ import {
 import { formatMissionEta } from "@/lib/ai-training/knowledge-missions";
 import { saBtnPrimarySm } from "@/components/super-admin/super-admin-dashboard-ui";
 import { Rocket, Target } from "lucide-react";
+import { CurriculumPlannerMetrics } from "@/components/super-admin/ai-training/curriculum-planner-panel";
 import { cn } from "@/lib/utils";
 
 export function KnowledgeOperationsOverview({
@@ -91,6 +92,8 @@ export function KnowledgeOperationsOverview({
         averageQuality={snapshot.scorecard.knowledgeQuality}
         readyCount={snapshot.learningSignals.successfulAnswers}
       />
+
+      {snapshot.planner ? <CurriculumPlannerMetrics analytics={snapshot.planner.analytics} /> : null}
 
       <div className={cn("grid", OPS_GRID, "lg:grid-cols-2")}>
         <MissionPreview missions={snapshot.missions} onStartMission={onStartMission} />

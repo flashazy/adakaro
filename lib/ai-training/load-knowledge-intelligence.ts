@@ -15,6 +15,7 @@ import {
 import { analyzeKnowledgeBase } from "./knowledge-intelligence-engine";
 import { aggregateScorecard } from "./knowledge-intelligence-score";
 import type { KnowledgeIntelligenceSnapshot, IntelligenceTrendPoint } from "./knowledge-intelligence-types";
+import { buildCurriculumPlannerSnapshot } from "./knowledge-curriculum-planner";
 import { buildKnowledgeMissions } from "./knowledge-missions";
 import { aggregateLearningSignals } from "./knowledge-self-learning";
 import type { AIKnowledgeEntry, AIUnansweredQuestion } from "./types";
@@ -140,6 +141,12 @@ export async function loadKnowledgeIntelligenceSnapshot(
   const strongestModules = [...moduleHealth].sort((a, b) => b.health - a.health).slice(0, 5);
 
   const trends = buildTrendPoints(entries, learningEvents);
+  const planner = buildCurriculumPlannerSnapshot({
+    entries,
+    unanswered,
+    learningEvents,
+    moduleTargets,
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -157,6 +164,7 @@ export async function loadKnowledgeIntelligenceSnapshot(
     weakestModules,
     strongestModules,
     graphSummary,
+    planner,
   };
 }
 

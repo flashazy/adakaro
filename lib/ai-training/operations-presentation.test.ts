@@ -118,6 +118,20 @@ function snapshot(overrides: Partial<KnowledgeIntelligenceSnapshot> = {}): Knowl
     weakestModules: [],
     strongestModules: [],
     graphSummary: { nodeCount: 120, edgeCount: 340, orphanCount: 2 },
+    planner: {
+      analytics: {
+        knowledgeCoveragePercent: 46,
+        criticalLessonsCompleted: 2,
+        criticalLessonsTotal: 8,
+        mediumPriorityCount: 12,
+        lowPriorityCount: 40,
+        estimatedTrainingCompletionPercent: 73,
+        categoryCoverage: [],
+      },
+      roadmap: [],
+      gapIssues: [],
+      topRecommendations: [],
+    },
     ...overrides,
   };
 }
