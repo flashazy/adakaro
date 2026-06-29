@@ -19,6 +19,8 @@ import { GRADE_STYLES, DUP_STYLES } from "@/components/super-admin/ai-training/g
 import { STATUS_STYLES } from "@/components/super-admin/ai-training/approval-queue-card";
 import { gradeFromQualityScore } from "@/lib/ai-training/knowledge-approval-queue";
 import type { AIKnowledgeApprovalQueueItem } from "@/lib/ai-training/types";
+import { KnowledgeCategorySelect } from "@/components/super-admin/ai-training/knowledge-category-select";
+import { migrateKnowledgeCategory } from "@/lib/ai-training/knowledge-categories";
 import { cn } from "@/lib/utils";
 
 interface DuplicateReportData {
@@ -71,7 +73,7 @@ export function ApprovalReviewDrawer({
     if (!item) return;
     setQuestion(item.proposed_question);
     setAnswer(item.proposed_answer);
-    setCategory(item.proposed_category);
+    setCategory(migrateKnowledgeCategory(item.proposed_category));
     setPriority(item.proposed_priority);
     setPublishWarning(null);
     setShowReject(false);
@@ -179,11 +181,12 @@ export function ApprovalReviewDrawer({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium text-slate-700">Category</label>
-                  <input
+                  <KnowledgeCategorySelect
                     value={category}
-                    onChange={(e) => setCategory(e.target.value)}
+                    onChange={setCategory}
                     disabled={isTerminal}
-                    className={cn(saInput, "mt-1 w-full")}
+                    rememberSelection
+                    className="mt-1 w-full"
                   />
                 </div>
                 <div>

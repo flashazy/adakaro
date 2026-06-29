@@ -6,12 +6,16 @@ import {
   saBtnSecondary,
   saSectionSubtitle,
 } from "@/components/super-admin/super-admin-dashboard-ui";
+import { DUPLICATE_SAVE_RECOMMENDATION_LABELS } from "@/lib/ai-training/knowledge-duplicates";
 import type { DuplicateSaveAction } from "@/lib/ai-training/types";
+import { DuplicateAnalysisSummary } from "./duplicate-analysis-summary";
 import type { DuplicateCheckApiResult } from "./knowledge-duplicate-panel";
 
 interface KnowledgeDuplicateSaveModalProps {
   open: boolean;
   check: DuplicateCheckApiResult | null;
+  currentQuestion?: string;
+  currentCategory?: string;
   saving?: boolean;
   onAction: (action: DuplicateSaveAction) => void;
   onClose: () => void;
@@ -20,18 +24,18 @@ interface KnowledgeDuplicateSaveModalProps {
 export function KnowledgeDuplicateSaveModal({
   open,
   check,
+  currentQuestion,
+  currentCategory,
   saving = false,
   onAction,
   onClose,
 }: KnowledgeDuplicateSaveModalProps) {
   if (!open || !check?.exactMatch) return null;
 
-  const existing = check.exactMatch.entry;
-
   return (
     <div className="fixed inset-0 z-[230] flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
       <div
-        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Knowledge entry already exists"
@@ -39,10 +43,10 @@ export function KnowledgeDuplicateSaveModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">
-              Knowledge Entry Already Exists
+              {DUPLICATE_SAVE_RECOMMENDATION_LABELS.exact_duplicate}
             </h2>
             <p className={saSectionSubtitle}>
-              A very similar knowledge entry already exists.
+              Strongly recommend editing the existing entry instead of creating a duplicate.
             </p>
           </div>
           <button
@@ -56,14 +60,16 @@ export function KnowledgeDuplicateSaveModal({
           </button>
         </div>
 
-        <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Existing
-          </p>
-          <p className="mt-1 font-medium text-slate-900">{existing.question}</p>
-          {existing.intent_key ? (
-            <p className="mt-1 font-mono text-xs text-slate-500">{existing.intent_key}</p>
-          ) : null}
+        <div className="mt-4">
+          <DuplicateAnalysisSummary
+            currentQuestion={currentQuestion ?? check.intentComparison?.currentQuestion ?? ""}
+            currentCategory={currentCategory ?? check.exactMatch.entry.category}
+            currentIntent={check.currentIntentSignature}
+            currentEntity={check.currentEntity}
+            match={check.exactMatch}
+            recommendationLabel={DUPLICATE_SAVE_RECOMMENDATION_LABELS.exact_duplicate}
+            recommendationTone="danger"
+          />
         </div>
 
         <p className="mt-4 text-sm font-medium text-slate-700">Choose one:</p>

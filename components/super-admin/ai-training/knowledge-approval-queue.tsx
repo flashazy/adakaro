@@ -36,6 +36,7 @@ import type {
   ApprovalQueueSummary,
   BulkPublishPreview,
 } from "@/lib/ai-training/types";
+import { KnowledgeCategorySelect } from "@/components/super-admin/ai-training/knowledge-category-select";
 import { cn } from "@/lib/utils";
 
 interface KnowledgeApprovalQueueProps {
@@ -340,6 +341,14 @@ export function KnowledgeApprovalQueue({
             </option>
           ))}
         </select>
+        <KnowledgeCategorySelect
+          value={category}
+          onChange={setCategory}
+          allowEmpty
+          emptyLabel="All categories"
+          aria-label="Filter by category"
+          className="min-w-[180px]"
+        />
         <select value={priority} onChange={(e) => setPriority(e.target.value)} className={saInput}>
           <option value="">All priorities</option>
           <option value="low">Low</option>

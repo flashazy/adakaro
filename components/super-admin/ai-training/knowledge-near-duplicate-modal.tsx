@@ -6,11 +6,15 @@ import {
   saBtnSecondary,
   saSectionSubtitle,
 } from "@/components/super-admin/super-admin-dashboard-ui";
+import { DUPLICATE_SAVE_RECOMMENDATION_LABELS } from "@/lib/ai-training/knowledge-duplicates";
+import { DuplicateAnalysisSummary } from "./duplicate-analysis-summary";
 import type { DuplicateCheckApiResult } from "./knowledge-duplicate-panel";
 
 interface KnowledgeNearDuplicateModalProps {
   open: boolean;
   check: DuplicateCheckApiResult | null;
+  currentQuestion?: string;
+  currentCategory?: string;
   saving?: boolean;
   onConfirm: () => void;
   onViewExisting: () => void;
@@ -20,6 +24,8 @@ interface KnowledgeNearDuplicateModalProps {
 export function KnowledgeNearDuplicateModal({
   open,
   check,
+  currentQuestion,
+  currentCategory,
   saving = false,
   onConfirm,
   onViewExisting,
@@ -28,21 +34,26 @@ export function KnowledgeNearDuplicateModal({
   if (!open || !check?.nearDuplicateMatch) return null;
 
   const match = check.nearDuplicateMatch;
+  const isRelatedEntity = match.scores.entitySimilarity < 0.25;
+  const recommendation = isRelatedEntity
+    ? DUPLICATE_SAVE_RECOMMENDATION_LABELS.related_entry
+    : DUPLICATE_SAVE_RECOMMENDATION_LABELS.near_duplicate;
 
   return (
     <div className="fixed inset-0 z-[225] flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
       <div
-        className="w-full max-w-lg rounded-2xl border border-orange-200 bg-white p-6 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-orange-200 bg-white p-6 shadow-2xl"
         role="dialog"
         aria-modal="true"
-        aria-label="Near duplicate detected"
+        aria-label="Duplicate analysis"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Near Duplicate Detected</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{recommendation}</h2>
             <p className={saSectionSubtitle}>
-              A similar entry with the same intent already exists ({match.similarity}%
-              similar).
+              {isRelatedEntity
+                ? "Same wording style but a different entity — safe to save as a new lesson."
+                : "Similar intent detected. You may view the existing entry or save anyway."}
             </p>
           </div>
           <button
@@ -56,19 +67,17 @@ export function KnowledgeNearDuplicateModal({
           </button>
         </div>
 
-        <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Existing
-          </p>
-          <p className="mt-1 font-medium text-slate-900">{match.entry.question}</p>
-          <p className="mt-1 text-xs text-orange-800">
-            Intent: {match.entryIntentSignature.label}
-          </p>
+        <div className="mt-4">
+          <DuplicateAnalysisSummary
+            currentQuestion={currentQuestion ?? check.intentComparison?.currentQuestion ?? ""}
+            currentCategory={currentCategory}
+            currentIntent={check.currentIntentSignature}
+            currentEntity={check.currentEntity}
+            match={match}
+            recommendationLabel={recommendation}
+            recommendationTone={isRelatedEntity ? "success" : "warning"}
+          />
         </div>
-
-        <p className="mt-4 text-sm text-slate-600">
-          You can still save, but consider updating the existing entry instead.
-        </p>
 
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <button

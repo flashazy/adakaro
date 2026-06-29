@@ -46,6 +46,14 @@ describe("knowledge curriculum", () => {
       resolveEntryModuleId(entry({ id: "2", question: "Q", category: "General", curriculum_module: "ai-copilot" })),
       "ai-copilot"
     );
+    assert.equal(
+      resolveEntryModuleId(entry({ id: "3", question: "Q", category: "Support" })),
+      "troubleshooting"
+    );
+    assert.equal(
+      resolveEntryModuleId(entry({ id: "4", question: "Q", category: "Technical Support" })),
+      "troubleshooting"
+    );
   });
 
   it("builds dashboard summary from knowledge entries", () => {

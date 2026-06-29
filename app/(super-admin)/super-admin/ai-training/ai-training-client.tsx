@@ -111,7 +111,13 @@ import type {
   KnowledgePriority,
   KeywordGenerationResult,
 } from "@/lib/ai-training/types";
-import { KNOWLEDGE_CATEGORIES, STARTER_QUESTIONS } from "@/lib/ai-training/types";
+import { STARTER_QUESTIONS } from "@/lib/ai-training/types";
+import {
+  getLastKnowledgeCategory,
+  migrateKnowledgeCategory,
+  rememberLastKnowledgeCategory,
+} from "@/lib/ai-training/knowledge-categories";
+import { KnowledgeCategorySelect } from "@/components/super-admin/ai-training/knowledge-category-select";
 import { cn } from "@/lib/utils";
 
 type TabId =
@@ -493,7 +499,11 @@ export function AITrainingClient({
     setClassificationEntry(null);
     setEditMeta(null);
     setDuplicateCheck(null);
-    setForm({ ...emptyForm(), ...prefill });
+    setForm({
+      ...emptyForm(),
+      category: prefill?.category ?? getLastKnowledgeCategory(),
+      ...prefill,
+    });
     setFormOpen(true);
   };
 
@@ -621,7 +631,7 @@ export function AITrainingClient({
   );
 
   const buildEntryPayload = () => ({
-    category: form.category,
+    category: migrateKnowledgeCategory(form.category),
     curriculum_module: form.curriculumModule ?? null,
     question: form.question,
     answer: form.answer,
@@ -711,11 +721,16 @@ export function AITrainingClient({
     return saved;
   };
 
+  const persistCategoryAfterSave = () => {
+    rememberLastKnowledgeCategory(migrateKnowledgeCategory(form.category));
+  };
+
   const commitSave = async () => {
     setSaving(true);
     try {
       const saved = await performSave();
       if (!saved) return;
+      persistCategoryAfterSave();
       setFormOpen(false);
       setDuplicateModalOpen(false);
       setNearDuplicateModalOpen(false);
@@ -747,6 +762,7 @@ export function AITrainingClient({
     const needsNearDuplicateConfirm =
       !form.id &&
       duplicateCheck?.nearDuplicateMatch &&
+      duplicateCheck.nearDuplicateMatch.scores.entitySimilarity >= 0.25 &&
       !nearDuplicateAcknowledged;
 
     if (needsNearDuplicateConfirm) {
@@ -765,6 +781,7 @@ export function AITrainingClient({
         targetEntryId: duplicateCheck?.exactMatch?.entry.id,
       });
       if (!saved) return;
+      persistCategoryAfterSave();
       setFormOpen(false);
       setDuplicateModalOpen(false);
       showToast("Entry saved.");
@@ -984,6 +1001,11 @@ export function AITrainingClient({
   };
 
   const unansweredPages = Math.max(1, Math.ceil(unansweredTotal / 20));
+
+  const knowledgeCategoryOptions = useMemo(
+    () => knowledgeRows.map((row) => row.category),
+    [knowledgeRows]
+  );
 
   const overviewCards = useMemo(
     () => [
@@ -1278,22 +1300,18 @@ export function AITrainingClient({
                 <option value="archived">Archived</option>
                 <option value="all">All</option>
               </select>
-              <select
+              <KnowledgeCategorySelect
                 value={knowledgeCategory}
-                onChange={(e) => {
-                  setKnowledgeCategory(e.target.value);
+                onChange={(next) => {
+                  setKnowledgeCategory(next);
                   setKnowledgePage(1);
                 }}
-                className={saInput}
+                extraCategories={knowledgeCategoryOptions}
+                allowEmpty
+                emptyLabel="All categories"
                 aria-label="Filter by category"
-              >
-                <option value="">All categories</option>
-                {KNOWLEDGE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                className="min-w-[200px]"
+              />
               <button
                 type="button"
                 className={saBtnSecondary}
@@ -1957,19 +1975,13 @@ export function AITrainingClient({
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="font-medium text-slate-700">Category</span>
-                  <select
+                  <KnowledgeCategorySelect
                     value={form.category}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, category: e.target.value }))
-                    }
-                    className={cn(saInput, "mt-1 w-full")}
-                  >
-                    {KNOWLEDGE_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(category) => setForm((f) => ({ ...f, category }))}
+                    extraCategories={knowledgeCategoryOptions}
+                    rememberSelection
+                    className="mt-1 w-full"
+                  />
                 </label>
                 <label className="block text-sm">
                   <span className="font-medium text-slate-700">Priority</span>
@@ -2007,6 +2019,12 @@ export function AITrainingClient({
                   question={form.question}
                   category={form.category}
                   excludeId={form.id}
+                  draft={{
+                    keywords: textToKeywords(form.keywords),
+                    search_phrases: textToKeywords(form.search_phrases),
+                    synonyms: textToKeywords(form.synonyms),
+                    alternative_wording: textToKeywords(form.alternative_wording),
+                  }}
                   onSelectEntry={(id) => void openEntryById(id)}
                   onCheckResult={handleDuplicateCheck}
                 />
@@ -2192,6 +2210,8 @@ export function AITrainingClient({
       <KnowledgeDuplicateSaveModal
         open={duplicateModalOpen}
         check={duplicateCheck}
+        currentQuestion={form.question}
+        currentCategory={form.category}
         saving={saving}
         onAction={(action) => void handleDuplicateSaveAction(action)}
         onClose={() => setDuplicateModalOpen(false)}
@@ -2200,6 +2220,8 @@ export function AITrainingClient({
       <KnowledgeNearDuplicateModal
         open={nearDuplicateModalOpen}
         check={duplicateCheck}
+        currentQuestion={form.question}
+        currentCategory={form.category}
         saving={saving}
         onConfirm={() => {
           setNearDuplicateAcknowledged(true);

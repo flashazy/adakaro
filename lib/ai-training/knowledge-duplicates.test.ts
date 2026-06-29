@@ -86,7 +86,26 @@ describe("knowledge-duplicates", () => {
       existing
     );
     assert.equal(classification, "different_intent");
-    assert.ok(similarity <= 0.7);
+    assert.ok(similarity <= 0.35);
+  });
+
+  it("classifies Who is Adakaro AI as different entity from What is Adakaro", () => {
+    const existing = entry({ id: "1", question: "What is Adakaro?" });
+    const { classification, similarity } = computeQuestionSimilarity(
+      "Who is Adakaro AI?",
+      existing
+    );
+    assert.equal(classification, "different_intent");
+    assert.ok(similarity <= 0.35);
+  });
+
+  it("classifies Student Streaming vs Report Cards as different entities", () => {
+    const existing = entry({ id: "1", question: "What is Report Cards?" });
+    const { classification } = computeQuestionSimilarity(
+      "What is Student Streaming?",
+      existing
+    );
+    assert.equal(classification, "different_intent");
   });
 
   it("classifies Why choose Adakaro as different intent from What is Adakaro", () => {
@@ -96,7 +115,7 @@ describe("knowledge-duplicates", () => {
       existing
     );
     assert.equal(classification, "different_intent");
-    assert.ok(similarity <= 0.7);
+    assert.ok(similarity <= 0.35);
   });
 
   it("does not treat capabilities question as exact duplicate", () => {
@@ -135,9 +154,24 @@ describe("knowledge-duplicates", () => {
       "Explain Adakaro platform",
       target
     );
-    assert.ok(similarity > 0.35);
-    assert.ok(similarity <= 0.7);
+    assert.ok(similarity > 0.2);
+    assert.ok(similarity <= 0.35);
     assert.notEqual(classification, "exact_duplicate");
+  });
+
+  it("suggests related lessons for Adakaro AI identity questions", () => {
+    const entries = [
+      entry({ id: "1", question: "Who is Adakaro AI?" }),
+    ];
+    const result = checkQuestionDuplicates("Who is Adakaro AI?", entries, {
+      excludeId: "1",
+    });
+    assert.ok(result.suggestedRelatedLessons.length >= 3);
+    assert.ok(
+      result.suggestedRelatedLessons.some((l) =>
+        l.question.includes("What can Adakaro AI do")
+      )
+    );
   });
 
   it("includes intent comparison in duplicate check results", () => {

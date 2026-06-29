@@ -311,18 +311,11 @@ export interface BulkPublishPreview {
   items: BulkPublishPreviewItem[];
 }
 
-export const KNOWLEDGE_CATEGORIES = [
-  "General",
-  "Attendance",
-  "Report Cards",
-  "Finance",
-  "Parent Portal",
-  "Pricing",
-  "Onboarding",
-  "Student Management",
-  "Syllabus",
-  "Support",
-] as const;
+export {
+  KNOWLEDGE_CATEGORIES,
+  KNOWLEDGE_CATEGORY_TAXONOMY,
+  type KnowledgeCategory,
+} from "./knowledge-categories";
 
 export const STARTER_QUESTIONS = [
   "Can Adakaro generate report cards?",

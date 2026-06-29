@@ -1,10 +1,18 @@
 import { normalizeQuestionForDedup } from "./keyword-generator";
 import { inferIntentWithConfidence } from "./intent-registry";
 import {
+  compareKnowledgeEntities,
+  entityExplanation,
+  extractKnowledgeEntity,
+  getRelatedLessonTemplates,
+  type ExtractedKnowledgeEntity,
+} from "./knowledge-entities";
+import {
   compareIntentSignatures,
   computeQuestionStructureSimilarity,
   inferIntentSignature,
   type IntentSignature,
+  type IntentSignatureCategory,
 } from "./intent-signature";
 import { meaningfulTokens, normalizeText, scoreCandidate } from "./knowledge-scoring";
 import { computeEntryQuality } from "./scoring";
@@ -16,12 +24,47 @@ export type DuplicateClassification =
   | "related_topic"
   | "different_intent";
 
+export type DuplicateConfidenceLevel =
+  | "different_topic"
+  | "related_topic"
+  | "possible_duplicate"
+  | "likely_duplicate"
+  | "true_duplicate";
+
+export const DUPLICATE_CONFIDENCE_LABELS: Record<DuplicateConfidenceLevel, string> = {
+  different_topic: "Different topic",
+  related_topic: "Related topic",
+  possible_duplicate: "Possible duplicate",
+  likely_duplicate: "Likely duplicate",
+  true_duplicate: "True duplicate",
+};
+
 export interface DuplicateScoreBreakdown {
   intentSimilarity: number;
-  questionStructure: number;
+  entitySimilarity: number;
+  productReference: number;
+  topicSimilarity: number;
+  categoryMatch: number;
   semanticSimilarity: number;
   keywordOverlap: number;
+  searchPhraseOverlap: number;
+  questionStructure: number;
   combined: number;
+}
+
+export interface SuggestedRelatedLesson {
+  question: string;
+  entryId: string | null;
+  reason: string;
+  inDatabase: boolean;
+}
+
+export interface DuplicateExplanation {
+  summary: string;
+  recommendation: string;
+  confidenceLevel: DuplicateConfidenceLevel;
+  confidenceLabel: string;
+  entityNote: string | null;
 }
 
 export interface SimilarEntryMatch {
@@ -32,6 +75,9 @@ export interface SimilarEntryMatch {
   classification: DuplicateClassification;
   scores: DuplicateScoreBreakdown;
   entryIntentSignature: IntentSignature;
+  currentEntity: ExtractedKnowledgeEntity | null;
+  entryEntity: ExtractedKnowledgeEntity | null;
+  explanation: DuplicateExplanation;
   recommendation: string;
 }
 
@@ -54,8 +100,10 @@ export interface DuplicateCheckResult {
   suggestedCategory: string | null;
   relatedEntries: SimilarEntryMatch[];
   differentIntentEntries: SimilarEntryMatch[];
+  suggestedRelatedLessons: SuggestedRelatedLesson[];
   intentComparison: IntentComparison | null;
   currentIntentSignature: IntentSignature;
+  currentEntity: ExtractedKnowledgeEntity | null;
 }
 
 export const DUPLICATE_CLASSIFICATION_LABELS: Record<DuplicateClassification, string> = {
@@ -95,8 +143,138 @@ export const DUPLICATE_CLASSIFICATION_STYLES: Record<
   },
 };
 
-const INTENT_DIFFERENT_CAP = 0.7;
+export type DuplicateSaveRecommendation =
+  | "exact_duplicate"
+  | "near_duplicate"
+  | "related_entry"
+  | "safe_to_save";
+
+export const DUPLICATE_SAVE_RECOMMENDATION_LABELS: Record<DuplicateSaveRecommendation, string> = {
+  exact_duplicate: "Exact Duplicate",
+  near_duplicate: "Near Duplicate",
+  related_entry: "Related Entry",
+  safe_to_save: "Safe to Save",
+};
+
+export function resolveDuplicateSaveRecommendation(
+  result: DuplicateCheckResult | null
+): DuplicateSaveRecommendation {
+  if (!result) return "safe_to_save";
+  if (result.exactMatch) return "exact_duplicate";
+  if (result.nearDuplicateMatch) {
+    const entityDiff =
+      result.nearDuplicateMatch.currentEntity &&
+      result.nearDuplicateMatch.entryEntity &&
+      result.nearDuplicateMatch.scores.entitySimilarity < 0.25;
+    if (entityDiff) return "related_entry";
+    return "near_duplicate";
+  }
+  const top = result.similar[0] ?? result.differentIntentEntries[0];
+  if (
+    top &&
+    (top.classification === "different_intent" ||
+      top.classification === "related_topic" ||
+      top.scores.entitySimilarity < 0.25)
+  ) {
+    return "related_entry";
+  }
+  return "safe_to_save";
+}
+
+const INTENT_DIFFERENT_CAP = 0.35;
 const NEAR_DUPLICATE_MIN = 0.72;
+const ENTITY_DIFFERENT_CAP = 0.35;
+
+export function resolveDuplicateConfidenceLevel(
+  combinedPercent: number
+): DuplicateConfidenceLevel {
+  if (combinedPercent >= 95) return "true_duplicate";
+  if (combinedPercent >= 80) return "likely_duplicate";
+  if (combinedPercent >= 60) return "possible_duplicate";
+  if (combinedPercent >= 35) return "related_topic";
+  return "different_topic";
+}
+
+function categoryMatchScore(categoryA: string, categoryB: string): number {
+  if (!categoryA || !categoryB) return 0.5;
+  return normalizeText(categoryA) === normalizeText(categoryB) ? 1 : 0.15;
+}
+
+function topicSimilarityScore(
+  question: string,
+  entry: AIKnowledgeEntry,
+  qEntity: ExtractedKnowledgeEntity | null,
+  eEntity: ExtractedKnowledgeEntity | null
+): number {
+  if (qEntity && eEntity) {
+    return compareKnowledgeEntities(qEntity, eEntity);
+  }
+  return jaccardSimilarity(question, entry.question);
+}
+
+function searchPhraseOverlapScore(question: string, entry: AIKnowledgeEntry): number {
+  let best = 0;
+  const normalizedQ = normalizeText(question);
+
+  for (const phrase of entry.search_phrases) {
+    const normalized = normalizeText(phrase);
+    if (normalized.length >= 4 && normalizedQ.includes(normalized)) {
+      best = Math.max(best, 0.95);
+    }
+    best = Math.max(best, scoreCandidate(question, phrase) * 0.9);
+  }
+
+  return best;
+}
+
+function buildCombinedScore(scores: Omit<DuplicateScoreBreakdown, "combined">): number {
+  return (
+    scores.intentSimilarity * 0.28 +
+    scores.entitySimilarity * 0.22 +
+    scores.semanticSimilarity * 0.16 +
+    scores.topicSimilarity * 0.1 +
+    scores.keywordOverlap * 0.08 +
+    scores.searchPhraseOverlap * 0.06 +
+    scores.categoryMatch * 0.05 +
+    scores.questionStructure * 0.05
+  );
+}
+
+function buildDuplicateExplanation(input: {
+  classification: DuplicateClassification;
+  combined: number;
+  scores: DuplicateScoreBreakdown;
+  qEntity: ExtractedKnowledgeEntity | null;
+  eEntity: ExtractedKnowledgeEntity | null;
+  qSig: IntentSignature;
+  eSig: IntentSignature;
+}): DuplicateExplanation {
+  const percent = Math.round(input.combined * 100);
+  const confidenceLevel = resolveDuplicateConfidenceLevel(percent);
+  const entityNote = entityExplanation(input.qEntity, input.eEntity);
+
+  let recommendation = recommendationForClassification(input.classification);
+  if (entityNote) {
+    recommendation = entityNote;
+  } else if (input.qSig.category !== input.eSig.category) {
+    recommendation = `These questions serve different intents (${input.qSig.label} vs ${input.eSig.label}). Save as a new lesson.`;
+  }
+
+  let summary = `${percent}% overall similarity — ${DUPLICATE_CONFIDENCE_LABELS[confidenceLevel]}.`;
+  if (entityNote) {
+    summary = entityNote;
+  } else if (input.scores.intentSimilarity < 0.5) {
+    summary = `Intent differs (${Math.round(input.scores.intentSimilarity * 100)}% intent match). These are related topics, not duplicates.`;
+  }
+
+  return {
+    summary,
+    recommendation,
+    confidenceLevel,
+    confidenceLabel: DUPLICATE_CONFIDENCE_LABELS[confidenceLevel],
+    entityNote,
+  };
+}
 
 function uniqueStrings(items: string[]): string[] {
   return [...new Set(items.map((s) => s.trim()).filter(Boolean))];
@@ -186,24 +364,24 @@ function resolveIntentSimilarity(
   return similarity;
 }
 
-function buildCombinedScore(scores: Omit<DuplicateScoreBreakdown, "combined">): number {
-  return (
-    scores.intentSimilarity * 0.5 +
-    scores.questionStructure * 0.2 +
-    scores.semanticSimilarity * 0.2 +
-    scores.keywordOverlap * 0.1
-  );
-}
-
 function classifyDuplicateMatch(input: {
   isExact: boolean;
   scores: DuplicateScoreBreakdown;
   qSig: IntentSignature;
   eSig: IntentSignature;
+  qEntity: ExtractedKnowledgeEntity | null;
+  eEntity: ExtractedKnowledgeEntity | null;
 }): DuplicateClassification {
-  const { isExact, scores, qSig, eSig } = input;
+  const { isExact, scores, qSig, eSig, qEntity, eEntity } = input;
 
   if (isExact) return "exact_duplicate";
+
+  const entitiesDiffer =
+    qEntity &&
+    eEntity &&
+    compareKnowledgeEntities(qEntity, eEntity) < 0.25;
+
+  if (entitiesDiffer) return "different_intent";
 
   const sameIntent =
     scores.intentSimilarity >= 0.85 && qSig.category === eSig.category;
@@ -218,7 +396,7 @@ function classifyDuplicateMatch(input: {
     return "related_topic";
   }
 
-  if (scores.semanticSimilarity >= 0.35 || scores.keywordOverlap >= 0.35) {
+  if (scores.combined >= 0.35 || scores.semanticSimilarity >= 0.35) {
     return "different_intent";
   }
 
@@ -242,7 +420,8 @@ function recommendationForClassification(
 
 export function computeQuestionSimilarity(
   question: string,
-  entry: AIKnowledgeEntry
+  entry: AIKnowledgeEntry,
+  options?: { category?: string }
 ): {
   similarity: number;
   reasons: string[];
@@ -250,6 +429,9 @@ export function computeQuestionSimilarity(
   classification: DuplicateClassification;
   scores: DuplicateScoreBreakdown;
   entryIntentSignature: IntentSignature;
+  currentEntity: ExtractedKnowledgeEntity | null;
+  entryEntity: ExtractedKnowledgeEntity | null;
+  explanation: DuplicateExplanation;
   recommendation: string;
 } {
   const normalized = normalizeQuestionForDedup(question);
@@ -259,15 +441,33 @@ export function computeQuestionSimilarity(
 
   const qSig = inferIntentSignature(question);
   const eSig = resolveEntryIntentSignature(entry);
+  const qEntity = extractKnowledgeEntity(question);
+  const eEntity = extractKnowledgeEntity(entry.question);
+
+  const baseExactScores = (): DuplicateScoreBreakdown => ({
+    intentSimilarity: 1,
+    entitySimilarity: compareKnowledgeEntities(qEntity, eEntity),
+    productReference: compareKnowledgeEntities(qEntity, eEntity),
+    topicSimilarity: 1,
+    categoryMatch: categoryMatchScore(options?.category ?? "", entry.category),
+    semanticSimilarity: 1,
+    keywordOverlap: 1,
+    searchPhraseOverlap: 1,
+    questionStructure: 1,
+    combined: 1,
+  });
 
   if (normalized === entryNormalized) {
-    const scores: DuplicateScoreBreakdown = {
-      intentSimilarity: 1,
-      questionStructure: 1,
-      semanticSimilarity: 1,
-      keywordOverlap: 1,
+    const scores = baseExactScores();
+    const explanation = buildDuplicateExplanation({
+      classification: "exact_duplicate",
       combined: 1,
-    };
+      scores,
+      qEntity,
+      eEntity,
+      qSig,
+      eSig,
+    });
     return {
       similarity: 1,
       reasons: ["Exact normalized match"],
@@ -275,18 +475,24 @@ export function computeQuestionSimilarity(
       classification: "exact_duplicate",
       scores,
       entryIntentSignature: eSig,
-      recommendation: recommendationForClassification("exact_duplicate"),
+      currentEntity: qEntity,
+      entryEntity: eEntity,
+      explanation,
+      recommendation: explanation.recommendation,
     };
   }
 
   if (normalizeText(question) === normalizeText(entry.question)) {
-    const scores: DuplicateScoreBreakdown = {
-      intentSimilarity: 1,
-      questionStructure: 1,
-      semanticSimilarity: 0.99,
-      keywordOverlap: 1,
+    const scores = { ...baseExactScores(), combined: 0.99, semanticSimilarity: 0.99 };
+    const explanation = buildDuplicateExplanation({
+      classification: "exact_duplicate",
       combined: 0.99,
-    };
+      scores,
+      qEntity,
+      eEntity,
+      qSig,
+      eSig,
+    });
     return {
       similarity: 0.99,
       reasons: ["Exact question match"],
@@ -294,11 +500,16 @@ export function computeQuestionSimilarity(
       classification: "exact_duplicate",
       scores,
       entryIntentSignature: eSig,
-      recommendation: recommendationForClassification("exact_duplicate"),
+      currentEntity: qEntity,
+      entryEntity: eEntity,
+      explanation,
+      recommendation: explanation.recommendation,
     };
   }
 
   const intentSimilarity = resolveIntentSimilarity(question, entry, qSig, eSig);
+  const entitySimilarity = compareKnowledgeEntities(qEntity, eEntity);
+  const productReference = entitySimilarity;
   const questionStructure = computeQuestionStructureSimilarity(
     question,
     entry.question,
@@ -307,49 +518,97 @@ export function computeQuestionSimilarity(
   );
   const semanticSimilarity = computeSemanticSimilarity(question, entry);
   const keywordOverlap = jaccardSimilarity(question, entry.question);
+  const searchPhraseOverlap = searchPhraseOverlapScore(question, entry);
+  const topicSimilarity = topicSimilarityScore(question, entry, qEntity, eEntity);
+  const categoryMatch = categoryMatchScore(
+    options?.category ?? "",
+    entry.category
+  );
 
   if (semanticSimilarity >= 0.5) reasons.push("Similar question wording");
   if (keywordOverlap >= 0.35) reasons.push("Shared keywords");
-  if (semanticSimilarity >= 0.45 && phraseOverlapScore(question, entry) >= 0.45) {
-    reasons.push("Matches search phrase or synonym");
-  }
+  if (searchPhraseOverlap >= 0.45) reasons.push("Matches search phrase");
   if (intentSimilarity >= 0.85 && qSig.category === eSig.category) {
     reasons.push(`Same intent (${eSig.label})`);
   } else if (qSig.category !== eSig.category) {
     reasons.push(`Different intent (${qSig.label} vs ${eSig.label})`);
   }
+  if (qEntity && eEntity && entitySimilarity < 0.25) {
+    reasons.push(`Different entity (${qEntity.label} vs ${eEntity.label})`);
+  } else if (qEntity && eEntity && entitySimilarity >= 0.9) {
+    reasons.push(`Same entity (${qEntity.label})`);
+  }
 
+  const entitiesDiffer = qEntity && eEntity && entitySimilarity < 0.25;
   const intentsDiffer =
     intentSimilarity < 0.85 || qSig.category !== eSig.category;
 
   let combined: number;
-  if (intentsDiffer) {
+  if (entitiesDiffer) {
     combined = Math.min(
-      semanticSimilarity * 0.55 +
-        keywordOverlap * 0.35 +
+      semanticSimilarity * 0.35 +
+        keywordOverlap * 0.25 +
+        searchPhraseOverlap * 0.2 +
         questionStructure * 0.1,
+      ENTITY_DIFFERENT_CAP
+    );
+  } else if (intentsDiffer) {
+    combined = Math.min(
+      buildCombinedScore({
+        intentSimilarity,
+        entitySimilarity,
+        productReference,
+        topicSimilarity,
+        categoryMatch,
+        semanticSimilarity,
+        keywordOverlap,
+        searchPhraseOverlap,
+        questionStructure,
+      }),
       INTENT_DIFFERENT_CAP
     );
   } else {
     combined = buildCombinedScore({
       intentSimilarity,
-      questionStructure,
+      entitySimilarity,
+      productReference,
+      topicSimilarity,
+      categoryMatch,
       semanticSimilarity,
       keywordOverlap,
+      searchPhraseOverlap,
+      questionStructure,
     });
   }
 
   const scores: DuplicateScoreBreakdown = {
     intentSimilarity,
-    questionStructure,
+    entitySimilarity,
+    productReference,
+    topicSimilarity,
+    categoryMatch,
     semanticSimilarity,
     keywordOverlap,
+    searchPhraseOverlap,
+    questionStructure,
     combined,
   };
 
   const classification = classifyDuplicateMatch({
     isExact: false,
     scores,
+    qSig,
+    eSig,
+    qEntity,
+    eEntity,
+  });
+
+  const explanation = buildDuplicateExplanation({
+    classification,
+    combined,
+    scores,
+    qEntity,
+    eEntity,
     qSig,
     eSig,
   });
@@ -361,7 +620,10 @@ export function computeQuestionSimilarity(
     classification,
     scores,
     entryIntentSignature: eSig,
-    recommendation: recommendationForClassification(classification),
+    currentEntity: qEntity,
+    entryEntity: eEntity,
+    explanation,
+    recommendation: explanation.recommendation,
   };
 }
 
@@ -374,6 +636,7 @@ export function findSimilarEntries(
     limit?: number;
     activePrimaryOnly?: boolean;
     includeDifferentIntent?: boolean;
+    category?: string;
   }
 ): SimilarEntryMatch[] {
   const minSimilarity = options?.minSimilarity ?? 0.35;
@@ -387,7 +650,9 @@ export function findSimilarEntries(
     if (entry.merged_into_id) continue;
     if (options?.activePrimaryOnly !== false && entry.is_primary === false) continue;
 
-    const result = computeQuestionSimilarity(question, entry);
+    const result = computeQuestionSimilarity(question, entry, {
+      category: options?.category,
+    });
     const hasTopicOverlap =
       result.scores.semanticSimilarity >= 0.3 ||
       result.scores.keywordOverlap >= 0.25;
@@ -411,6 +676,9 @@ export function findSimilarEntries(
       classification: result.classification,
       scores: result.scores,
       entryIntentSignature: result.entryIntentSignature,
+      currentEntity: result.currentEntity,
+      entryEntity: result.entryEntity,
+      explanation: result.explanation,
       recommendation: result.recommendation,
     });
   }
@@ -437,6 +705,61 @@ function buildIntentComparison(
   };
 }
 
+function buildSuggestedRelatedLessons(
+  question: string,
+  entries: AIKnowledgeEntry[],
+  currentIntent: IntentSignatureCategory,
+  excludeId?: string
+): SuggestedRelatedLesson[] {
+  const entity = extractKnowledgeEntity(question);
+  if (!entity) return [];
+
+  const templates = getRelatedLessonTemplates(entity.id, currentIntent);
+  const suggestions: SuggestedRelatedLesson[] = [];
+
+  for (const template of templates) {
+    const norm = normalizeText(template.question);
+    const existing = entries.find(
+      (e) =>
+        e.id !== excludeId &&
+        e.status === "active" &&
+        (normalizeText(e.question) === norm ||
+          normalizeText(e.question).includes(norm))
+    );
+
+    suggestions.push({
+      question: template.question,
+      entryId: existing?.id ?? null,
+      inDatabase: Boolean(existing),
+      reason: existing
+        ? "Existing related lesson in knowledge base"
+        : "Recommended companion lesson for this entity",
+    });
+  }
+
+  // Also surface same-entity different-intent entries from DB
+  for (const entry of entries) {
+    if (entry.id === excludeId || entry.status === "archived") continue;
+    const entryEntity = extractKnowledgeEntity(entry.question);
+    if (!entryEntity || entryEntity.id !== entity.id) continue;
+    if (normalizeText(entry.question) === normalizeText(question)) continue;
+
+    const entryIntent = inferIntentSignature(entry.question);
+    if (entryIntent.category === currentIntent) continue;
+
+    if (suggestions.some((s) => s.entryId === entry.id)) continue;
+
+    suggestions.push({
+      question: entry.question,
+      entryId: entry.id,
+      inDatabase: true,
+      reason: `Related ${entryIntent.label.toLowerCase()} lesson for ${entity.label}`,
+    });
+  }
+
+  return suggestions.slice(0, 8);
+}
+
 export function checkQuestionDuplicates(
   question: string,
   entries: AIKnowledgeEntry[],
@@ -444,12 +767,14 @@ export function checkQuestionDuplicates(
 ): DuplicateCheckResult {
   const normalizedQuestion = normalizeQuestionForDedup(question);
   const currentIntentSignature = inferIntentSignature(question);
+  const currentEntity = extractKnowledgeEntity(question);
 
   const allMatches = findSimilarEntries(question, entries, {
     excludeId: options?.excludeId,
     minSimilarity: 0.35,
     limit: 8,
     includeDifferentIntent: true,
+    category: options?.category,
   });
 
   const exactMatch =
@@ -492,6 +817,13 @@ export function checkQuestionDuplicates(
 
   const topForComparison = exactMatch ?? nearDuplicateMatch ?? allMatches[0] ?? null;
 
+  const suggestedRelatedLessons = buildSuggestedRelatedLessons(
+    question,
+    entries,
+    currentIntentSignature.category,
+    options?.excludeId
+  );
+
   return {
     normalizedQuestion,
     exactMatch,
@@ -502,12 +834,14 @@ export function checkQuestionDuplicates(
     suggestedCategory: inference?.group ?? options?.category ?? null,
     relatedEntries,
     differentIntentEntries,
+    suggestedRelatedLessons,
     intentComparison: buildIntentComparison(
       question,
       topForComparison,
       currentIntentSignature
     ),
     currentIntentSignature,
+    currentEntity,
   };
 }
 
@@ -570,12 +904,21 @@ export function serializeDuplicateCheckForApi(result: DuplicateCheckResult) {
     classificationLabel: DUPLICATE_CLASSIFICATION_LABELS[item.classification],
     scores: {
       intentSimilarity: Math.round(item.scores.intentSimilarity * 100),
-      questionStructure: Math.round(item.scores.questionStructure * 100),
+      entitySimilarity: Math.round(item.scores.entitySimilarity * 100),
+      productReference: Math.round(item.scores.productReference * 100),
+      topicSimilarity: Math.round(item.scores.topicSimilarity * 100),
+      categoryMatch: Math.round(item.scores.categoryMatch * 100),
       semanticSimilarity: Math.round(item.scores.semanticSimilarity * 100),
       keywordOverlap: Math.round(item.scores.keywordOverlap * 100),
+      searchPhraseOverlap: Math.round(item.scores.searchPhraseOverlap * 100),
+      questionStructure: Math.round(item.scores.questionStructure * 100),
       combined: Math.round(item.scores.combined * 100),
+      meaning: Math.round(item.scores.semanticSimilarity * 100),
     },
     entryIntentSignature: item.entryIntentSignature,
+    currentEntity: item.currentEntity,
+    entryEntity: item.entryEntity,
+    explanation: item.explanation,
     recommendation: item.recommendation,
   });
 
@@ -591,6 +934,7 @@ export function serializeDuplicateCheckForApi(result: DuplicateCheckResult) {
     suggestedCategory: result.suggestedCategory,
     relatedEntries: result.relatedEntries.map(mapMatch),
     differentIntentEntries: result.differentIntentEntries.map(mapMatch),
+    suggestedRelatedLessons: result.suggestedRelatedLessons,
     intentComparison: result.intentComparison
       ? {
           existingQuestion: result.intentComparison.existingQuestion,
@@ -604,5 +948,6 @@ export function serializeDuplicateCheckForApi(result: DuplicateCheckResult) {
         }
       : null,
     currentIntentSignature: result.currentIntentSignature,
+    currentEntity: result.currentEntity,
   };
 }

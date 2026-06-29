@@ -6,6 +6,7 @@
 import { computeKnowledgeHealth } from "./knowledge-duplicates";
 import { validateKnowledgeWritingStandard } from "./knowledge-writing-standard";
 import type { AIKnowledgeEntry, KnowledgeHealthLevel, KnowledgePriority } from "./types";
+import { migrateKnowledgeCategory } from "./knowledge-categories";
 
 export type CurriculumModuleId =
   | "about-adakaro"
@@ -51,7 +52,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "about-adakaro",
     name: "About Adakaro",
     description: "Platform overview, identity, and core value for schools.",
-    defaultCategory: "General",
+    defaultCategory: "About Adakaro",
     defaultTarget: 80,
     sortOrder: 1,
   },
@@ -67,7 +68,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "getting-started",
     name: "Getting Started",
     description: "Onboarding, setup, demos, and first steps for new schools.",
-    defaultCategory: "Onboarding",
+    defaultCategory: "Getting Started",
     defaultTarget: 90,
     sortOrder: 3,
   },
@@ -83,7 +84,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "admissions",
     name: "Admissions",
     description: "Enrollment desk, intake, and admission workflows.",
-    defaultCategory: "Student Management",
+    defaultCategory: "Admissions",
     defaultTarget: 100,
     sortOrder: 5,
   },
@@ -91,7 +92,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "classes-streams",
     name: "Classes & Streams",
     description: "Class structure, subjects, and stream placement.",
-    defaultCategory: "General",
+    defaultCategory: "Classes & Streams",
     defaultTarget: 120,
     sortOrder: 6,
   },
@@ -99,7 +100,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "teachers-staff",
     name: "Teachers & Staff",
     description: "Teacher roles, assignments, and staff management.",
-    defaultCategory: "General",
+    defaultCategory: "Teachers & Staff",
     defaultTarget: 110,
     sortOrder: 7,
   },
@@ -139,7 +140,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "communication",
     name: "Communication",
     description: "Messaging, broadcasts, and school-wide announcements.",
-    defaultCategory: "Support",
+    defaultCategory: "Communication",
     defaultTarget: 80,
     sortOrder: 12,
   },
@@ -147,7 +148,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "curriculum-syllabus",
     name: "Curriculum & Syllabus",
     description: "Syllabus coverage, topics, and academic planning.",
-    defaultCategory: "Syllabus",
+    defaultCategory: "Curriculum & Syllabus",
     defaultTarget: 90,
     sortOrder: 13,
   },
@@ -155,7 +156,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "promotions",
     name: "Promotions",
     description: "Class promotions, academic progression, and transfers.",
-    defaultCategory: "General",
+    defaultCategory: "Promotions",
     defaultTarget: 80,
     sortOrder: 14,
   },
@@ -163,7 +164,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "student-streaming",
     name: "Student Streaming",
     description: "Stream placement, class changes, and movement history.",
-    defaultCategory: "Student Management",
+    defaultCategory: "Student Streaming",
     defaultTarget: 70,
     sortOrder: 15,
   },
@@ -171,7 +172,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "security-roles",
     name: "Security & Roles",
     description: "Permissions, roles, and access control.",
-    defaultCategory: "Support",
+    defaultCategory: "Security & Roles",
     defaultTarget: 90,
     sortOrder: 16,
   },
@@ -179,7 +180,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "ai-copilot",
     name: "AI Copilot",
     description: "In-dashboard AI assistant capabilities and usage.",
-    defaultCategory: "General",
+    defaultCategory: "AI Copilot",
     defaultTarget: 80,
     sortOrder: 17,
   },
@@ -187,7 +188,7 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
     id: "troubleshooting",
     name: "Troubleshooting",
     description: "Common issues, fixes, and support guidance.",
-    defaultCategory: "Support",
+    defaultCategory: "Troubleshooting",
     defaultTarget: 100,
     sortOrder: 18,
   },
@@ -196,16 +197,39 @@ export const CURRICULUM_MODULES: CurriculumModuleDefinition[] = [
 export const DEFAULT_KNOWLEDGE_TARGET = 2500;
 
 const CATEGORY_TO_MODULE: Record<string, CurriculumModuleId> = {
+  "About Adakaro": "about-adakaro",
   General: "about-adakaro",
+  "Frequently Asked Questions": "about-adakaro",
+  "School Administration": "about-adakaro",
+  "System Updates": "about-adakaro",
+  "Analytics & Reporting": "about-adakaro",
   Pricing: "pricing",
+  "Getting Started": "getting-started",
+  "Best Practices": "getting-started",
   Onboarding: "getting-started",
   "Student Management": "student-management",
+  Admissions: "admissions",
+  "Classes & Streams": "classes-streams",
+  "Teachers & Staff": "teachers-staff",
   Attendance: "attendance",
   "Report Cards": "report-cards",
   Finance: "finance",
   "Parent Portal": "parent-portal",
+  Communication: "communication",
+  Notifications: "communication",
+  "Curriculum & Syllabus": "curriculum-syllabus",
   Syllabus: "curriculum-syllabus",
+  Promotions: "promotions",
+  "Student Streaming": "student-streaming",
+  "Security & Roles": "security-roles",
+  Permissions: "security-roles",
+  "User Accounts": "security-roles",
+  "AI Copilot": "ai-copilot",
+  Copilot: "ai-copilot",
+  Troubleshooting: "troubleshooting",
+  "Technical Support": "troubleshooting",
   Support: "troubleshooting",
+  Integrations: "troubleshooting",
 };
 
 export interface LessonChecklistItem {
@@ -281,7 +305,7 @@ export function resolveEntryModuleId(
   if (explicit && CURRICULUM_MODULES.some((m) => m.id === explicit)) {
     return explicit;
   }
-  return CATEGORY_TO_MODULE[entry.category] ?? "about-adakaro";
+  return CATEGORY_TO_MODULE[migrateKnowledgeCategory(entry.category)] ?? "about-adakaro";
 }
 
 export function getModuleDefinition(id: CurriculumModuleId): CurriculumModuleDefinition {
