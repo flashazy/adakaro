@@ -66,6 +66,12 @@ import {
   autoFixTimelessWording,
 } from "@/components/super-admin/ai-training/knowledge-writing-guide";
 import { KnowledgeAnswerAssistant } from "@/components/super-admin/ai-training/knowledge-answer-assistant";
+import { AIKnowledgeAuthorButton } from "@/components/ai-training/AIKnowledgeAuthorButton";
+import { AuthorDocumentationEditor } from "@/components/ai-training/AuthorDocumentationEditor";
+import {
+  buildCurriculumPlannerContext,
+  getLessonPrerequisites,
+} from "@/lib/ai-training/knowledge-curriculum-planner";
 import {
   AuthoringWorkflowRail,
   AuthoringWorkflowSection,
@@ -656,6 +662,25 @@ export function AITrainingClient({
 
   const workflowStepStatus = (id: string) =>
     workflowSteps.find((s) => s.id === id)?.status ?? "pending";
+
+  const draftAuthorContext = useMemo(() => {
+    const plannerContext = buildCurriculumPlannerContext({ entries: knowledgeRows });
+    const prerequisites = getLessonPrerequisites(
+      form.question,
+      plannerContext,
+      form.id
+    );
+    const relatedQuestions =
+      duplicateCheck?.prioritizedRelatedLessons?.map((l) => l.question) ??
+      duplicateCheck?.suggestedRelatedLessons?.map((l) => l.question) ??
+      [];
+
+    return {
+      prerequisiteQuestions: prerequisites.map((p) => p.question),
+      dependencyQuestions: prerequisites.filter((p) => !p.completed).map((p) => p.question),
+      relatedQuestions,
+    };
+  }, [form.question, form.id, knowledgeRows, duplicateCheck]);
 
   const handleAutoFixLanguage = () => {
     setForm((f) => ({
@@ -2149,10 +2174,26 @@ export function AITrainingClient({
                 stepId="author-review"
                 stepNumber={7}
                 title="Author writes & reviews"
-                subtitle="Write facts-only documentation with AI assistance"
+                subtitle="Generate an AI draft, then edit facts-only documentation"
                 status={workflowStepStatus("author-review")}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <AIKnowledgeAuthorButton
+                  question={form.question}
+                  category={form.category}
+                  priority={form.priority}
+                  structure={form.answer}
+                  curriculumModule={form.curriculumModule}
+                  answer={form.answer}
+                  excludeEntryId={form.id}
+                  prerequisiteQuestions={draftAuthorContext.prerequisiteQuestions}
+                  dependencyQuestions={draftAuthorContext.dependencyQuestions}
+                  relatedQuestions={draftAuthorContext.relatedQuestions}
+                  onDraftApplied={(draft) =>
+                    setForm((f) => ({ ...f, answer: draft }))
+                  }
+                />
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm font-medium text-slate-700">Answer</span>
                   <KnowledgeAnswerAssistant
                     question={form.question}
@@ -2162,15 +2203,13 @@ export function AITrainingClient({
                     }
                   />
                 </div>
-                <textarea
+                <AuthorDocumentationEditor
                   value={form.answer}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, answer: e.target.value }))
+                  onChange={(nextAnswer) =>
+                    setForm((f) => ({ ...f, answer: nextAnswer }))
                   }
-                  rows={8}
                   required
                   placeholder="Use sections: Overview, Purpose, Capabilities, Permissions, Notes…"
-                  className={cn(saInput, "mt-1 w-full")}
                 />
               </AuthoringWorkflowSection>
 

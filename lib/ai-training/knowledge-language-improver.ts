@@ -251,7 +251,11 @@ function applyReplacements(text: string, map: Record<string, string>): string {
     });
   }
 
-  return result.replace(/\s{2,}/g, " ").replace(/ +\n/g, "\n").trim();
+  return result
+    .split("\n")
+    .map((line) => line.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .trimEnd();
 }
 
 function applyTimelessFixes(text: string): string {
