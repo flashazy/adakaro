@@ -325,7 +325,7 @@ export function buildExplainableCoverage(
   return {
     value: health.coverage,
     label: "Coverage",
-    explanation: `The AI currently understands ${health.coverage}% of its planned curriculum.`,
+    explanation: `I currently understand approximately ${health.coverage}% of my planned curriculum.`,
     why: "Coverage measures active lessons against curriculum targets across all modules.",
     howToImprove: `Complete ${remaining} remaining lessons across ${weakestModules.length} weak modules.`,
     expectedImpact: `Reaching 90% coverage typically improves answer rate by 15–25%.`,
@@ -347,7 +347,7 @@ export function buildExplainableConfidence(
   return {
     value: health.confidence,
     label: "AI Confidence",
-    explanation: `Retrieval confidence is ${health.confidence}% based on recent answer success.`,
+    explanation: `My retrieval confidence is approximately ${health.confidence}% based on recent answer success.`,
     why: `${ls.lowConfidenceRetrievals} low-confidence retrievals in the last 30 days (${lowRate}% of questions).`,
     howToImprove: "Improve low-confidence lessons and expand keywords for weak modules.",
     expectedImpact: "Each 5% confidence gain reduces fallback answers significantly.",
@@ -546,6 +546,110 @@ export interface HeatmapCell {
   label: string;
   value: number;
   moduleId?: string;
+  coverage?: number;
+  confidence?: number;
+  missingLessons?: number;
+  estimatedCompletion?: string;
+  recommendedAction?: string;
+}
+
+export type PageInsightContext =
+  | "overview"
+  | "health"
+  | "curriculum"
+  | "signals"
+  | "missions"
+  | "intelligence"
+  | "graph"
+  | "memory";
+
+export function buildPageInsight(
+  context: PageInsightContext,
+  snapshot: KnowledgeIntelligenceSnapshot,
+  extra?: { curriculumPercent?: number; strongestModule?: string }
+): string {
+  const { health, learningSignals: ls, missions, scorecard, moduleHealth } = snapshot;
+  const weakest = snapshot.weakestModules[0]?.moduleName ?? "several modules";
+  const strongest =
+    extra?.strongestModule ?? snapshot.strongestModules[0]?.moduleName ?? "core modules";
+  const topMission = missions[0];
+  const confDelta = trendDelta(snapshot.trends, "confidence");
+  const covPct = extra?.curriculumPercent ?? health.coverage;
+  const repeated = ls.topRepeatedQuestions.length;
+
+  switch (context) {
+    case "overview": {
+      const gain = topMission?.coverageGain ?? 4;
+      return `Yesterday I answered ${ls.successfulAnswers} questions successfully. ${weakest} remains my weakest area. ${
+        topMission
+          ? `Completing ${topMission.title} should improve confidence by approximately ${gain}%.`
+          : "My knowledge base is stable — I recommend monitoring rising question patterns."
+      }`;
+    }
+    case "health":
+      return `My memory remains ${health.freshness >= 70 ? "healthy" : "acceptable"}. I currently understand approximately ${health.coverage}% of my planned curriculum, with ${health.duplicateRisk <= 15 ? "low" : "elevated"} duplicate risk across ${weakest}.`;
+    case "curriculum":
+      return `I have mastered approximately ${covPct}% of my planned curriculum. ${strongest} is progressing well while ${weakest} requires more lessons to reach operational readiness.`;
+    case "signals":
+      return repeated > 0
+        ? `I detected ${repeated} recurring unanswered question patterns and ${ls.risingTopics.length} rising topics that may need new lessons.`
+        : "I am monitoring learning signals steadily. No critical recurring gaps detected in the last period.";
+    case "missions":
+      return topMission
+        ? `My highest priority today is ${topMission.title} — ${topMission.lessonsRemaining} lessons remain with an estimated ${topMission.estimatedMinutes} minutes to complete.`
+        : "All strategic missions are complete. I recommend maintaining quality across published knowledge.";
+    case "intelligence": {
+      const radar = [
+        { name: "retrieval accuracy", value: scorecard.retrievalReadiness },
+        { name: "knowledge quality", value: scorecard.knowledgeQuality },
+        { name: "AI reliability", value: scorecard.aiReliability },
+        { name: "learning value", value: scorecard.learningValue },
+      ].sort((a, b) => b.value - a.value);
+      const strongestAxis = radar[0];
+      const weakestAxis = radar[radar.length - 1];
+      return `My strongest capability is ${strongestAxis.name} at ${strongestAxis.value}%. ${weakestAxis.name} at ${weakestAxis.value}% still benefits from additional reviewer feedback.`;
+    }
+    case "graph":
+      return `My knowledge graph contains ${snapshot.graphSummary.nodeCount} connected concepts across ${snapshot.graphSummary.edgeCount} relationships. ${
+        snapshot.graphSummary.orphanCount > 0
+          ? `${snapshot.graphSummary.orphanCount} lessons remain isolated and may need linking.`
+          : "Connectivity is strong across curriculum paths."
+      }`;
+    case "memory":
+      return "My organizational memory preserves terminology, brand language, and reviewer preferences so I never relearn the same institutional knowledge twice.";
+    default:
+      return confDelta >= 0
+        ? `My confidence improved by ${confDelta}% this week.`
+        : `My confidence declined slightly after several low-confidence retrievals.`;
+  }
+}
+
+export function emptyStateMessage(
+  kind: "coverage" | "lessons" | "missions" | "signals" | "graph" | "memory" | "feed",
+  value?: number
+): string {
+  switch (kind) {
+    case "coverage":
+      return value && value > 0
+        ? `I currently understand approximately ${value}% of my planned curriculum.`
+        : "I am beginning my learning journey. Start your first mission to build institutional knowledge.";
+    case "lessons":
+      return value && value > 0
+        ? `${value} lessons are active in my knowledge base.`
+        : "No lessons have been generated yet. Start your first mission to begin building institutional knowledge.";
+    case "missions":
+      return "All strategic missions are complete. I am operating at full curriculum readiness.";
+    case "signals":
+      return "I have not captured enough interactions yet. As users ask questions, I will surface learning patterns here.";
+    case "graph":
+      return "My neural map will grow as you publish and connect lessons across the curriculum.";
+    case "memory":
+      return "My long-term memory is forming. Reviewer decisions and organizational patterns will be stored here.";
+    case "feed":
+      return "No operational events yet. I will report discoveries, approvals, and coverage changes in real time.";
+    default:
+      return "Awaiting data to form intelligence.";
+  }
 }
 
 export function buildModuleHeatmaps(snapshot: KnowledgeIntelligenceSnapshot): {
@@ -563,31 +667,52 @@ export function buildModuleHeatmaps(snapshot: KnowledgeIntelligenceSnapshot): {
       label: m.moduleName,
       value: m.coverage,
       moduleId: m.moduleId,
+      ...heatmapDiagnostics(m),
     })),
     confidence: moduleHealth.map((m) => ({
       id: m.moduleId,
       label: m.moduleName,
       value: Math.max(0, m.health - m.duplicateRisk * 0.2),
       moduleId: m.moduleId,
+      ...heatmapDiagnostics(m),
     })),
     usage: moduleHealth.map((m) => ({
       id: m.moduleId,
       label: m.moduleName,
       value: Math.min(100, Math.round((m.lessonCount / Math.max(1, m.targetCount)) * 100)),
       moduleId: m.moduleId,
+      ...heatmapDiagnostics(m),
     })),
     quality: moduleHealth.map((m) => ({
       id: m.moduleId,
       label: m.moduleName,
       value: Math.max(0, 100 - m.weakCount * 3),
       moduleId: m.moduleId,
+      ...heatmapDiagnostics(m),
     })),
     duplicate: moduleHealth.map((m) => ({
       id: m.moduleId,
       label: m.moduleName,
       value: m.duplicateRisk,
       moduleId: m.moduleId,
+      ...heatmapDiagnostics(m),
     })),
+  };
+}
+
+function heatmapDiagnostics(m: ModuleHealthRow) {
+  const remaining = m.remainingLessons ?? Math.max(0, m.targetCount - m.lessonCount);
+  return {
+    coverage: m.coverage,
+    confidence: m.health,
+    missingLessons: remaining,
+    estimatedCompletion: formatMissionEta(Math.round(remaining * 0.8)),
+    recommendedAction:
+      remaining > 0
+        ? `Generate ${Math.min(remaining, 20)} lessons for ${m.moduleName}`
+        : m.weakCount > 0
+          ? `Review ${m.weakCount} weak lessons`
+          : "Maintain current quality",
   };
 }
 

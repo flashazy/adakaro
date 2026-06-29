@@ -5,8 +5,10 @@ import {
   ExplainableMetricCard,
   HeatmapGrid,
   IntelligenceTrendChart,
+  OPS_GRID,
+  OPS_STACK,
   OperationsSkeleton,
-  StorySection,
+  PageAIInsight,
 } from "@/components/super-admin/ai-training/operations/operations-premium-ui";
 import { useIntelligenceSnapshot } from "@/components/super-admin/ai-training/operations/use-intelligence-snapshot";
 import type { KnowledgeIntelligenceSnapshot } from "@/lib/ai-training/knowledge-intelligence-types";
@@ -15,6 +17,7 @@ import {
   buildExplainableConfidence,
   buildExplainableCoverage,
   buildModuleHeatmaps,
+  buildPageInsight,
 } from "@/lib/ai-training/operations-presentation";
 import { cn } from "@/lib/utils";
 
@@ -24,66 +27,61 @@ export function KnowledgeHealthPanel({
   snapshot?: KnowledgeIntelligenceSnapshot | null;
 }) {
   const { snapshot, loading } = useIntelligenceSnapshot(external);
-  if (loading) return <OperationsSkeleton rows={3} />;
+  if (loading) return <OperationsSkeleton rows={2} />;
   if (!snapshot?.health) return null;
 
   const diagnosis = buildBrainHealthDiagnosis(snapshot);
   const coverage = buildExplainableCoverage(snapshot);
   const confidence = buildExplainableConfidence(snapshot);
   const heatmaps = buildModuleHeatmaps(snapshot);
+  const insight = buildPageInsight("health", snapshot);
 
   return (
-    <div className="space-y-6">
+    <div className={OPS_STACK}>
+      <PageAIInsight message={insight} context="health" />
       <BrainHealthDiagnosisPanel diagnosis={diagnosis} />
 
-      <StorySection
-        title="Health diagnosis summary"
-        what={`Overall brain health is ${snapshot.health.overallHealth}% (${snapshot.health.grade}).`}
-        why="Healthy knowledge ensures users receive accurate, retrievable answers across all modules."
-        next={diagnosis.recommendedAction}
-      />
-
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className={cn("grid", OPS_GRID, "lg:grid-cols-2")}>
         <ExplainableMetricCard metric={coverage} />
         <ExplainableMetricCard metric={confidence} />
       </div>
 
-      <IntelligenceTrendChart trends={snapshot.trends} dataKey="health" label="Brain Health" color="#10b981" />
+      <IntelligenceTrendChart trends={snapshot.trends} dataKey="health" label="Brain Health" color="#10b981" compact />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <HeatmapGrid title="Coverage heatmap" cells={heatmaps.coverage} />
-        <HeatmapGrid title="Confidence heatmap" cells={heatmaps.confidence} />
-        <HeatmapGrid title="Duplicate risk heatmap" cells={heatmaps.duplicate} invert />
-        <HeatmapGrid title="Quality heatmap" cells={heatmaps.quality} />
+      <div className={cn("grid", OPS_GRID, "lg:grid-cols-2")}>
+        <HeatmapGrid title="Coverage" cells={heatmaps.coverage} />
+        <HeatmapGrid title="Confidence" cells={heatmaps.confidence} />
+        <HeatmapGrid title="Duplicate risk" cells={heatmaps.duplicate} invert />
+        <HeatmapGrid title="Quality" cells={heatmaps.quality} />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/70 shadow-sm backdrop-blur-sm">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h4 className="text-sm font-semibold text-slate-900">Module health matrix</h4>
+      <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 shadow-sm">
+        <div className="border-b border-slate-100 px-3 py-2">
+          <h4 className="text-xs font-semibold text-slate-900">Module health</h4>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-xs">
             <thead>
-              <tr className="border-b text-left text-xs uppercase text-slate-500">
-                <th className="px-5 py-3">Module</th>
-                <th className="py-3 pr-4">Health</th>
-                <th className="py-3 pr-4">Coverage</th>
-                <th className="py-3 pr-4">Lessons</th>
-                <th className="py-3 pr-4">Dup risk</th>
+              <tr className="border-b text-left uppercase text-slate-500">
+                <th className="px-3 py-2">Module</th>
+                <th className="py-2 pr-3">Health</th>
+                <th className="py-2 pr-3">Coverage</th>
+                <th className="py-2 pr-3">Lessons</th>
+                <th className="py-2">Dup</th>
               </tr>
             </thead>
             <tbody>
               {snapshot.moduleHealth.map((mod) => (
                 <tr key={mod.moduleId} className="border-b border-slate-50 hover:bg-slate-50/50">
-                  <td className="px-5 py-3 font-medium">{mod.moduleName}</td>
-                  <td className="py-3 pr-4">
+                  <td className="px-3 py-2 font-medium">{mod.moduleName}</td>
+                  <td className="py-2 pr-3">
                     <HealthBar value={mod.health} />
                   </td>
-                  <td className="py-3 pr-4 tabular-nums">{mod.coverage}%</td>
-                  <td className="py-3 pr-4 tabular-nums">
+                  <td className="py-2 pr-3 tabular-nums">{mod.coverage}%</td>
+                  <td className="py-2 pr-3 tabular-nums">
                     {mod.lessonCount}/{mod.targetCount}
                   </td>
-                  <td className="py-3 pr-4 tabular-nums">{mod.duplicateRisk}%</td>
+                  <td className="py-2 tabular-nums">{mod.duplicateRisk}%</td>
                 </tr>
               ))}
             </tbody>
@@ -97,11 +95,11 @@ export function KnowledgeHealthPanel({
 function HealthBar({ value }: { value: number }) {
   const color = value >= 80 ? "bg-emerald-500" : value >= 60 ? "bg-amber-400" : "bg-red-400";
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+    <div className="flex items-center gap-1.5">
+      <div className="h-1 w-14 overflow-hidden rounded-full bg-slate-100">
         <div className={cn("h-full rounded-full transition-all duration-500", color)} style={{ width: `${value}%` }} />
       </div>
-      <span className="text-xs font-semibold tabular-nums">{value}%</span>
+      <span className="text-[10px] font-semibold tabular-nums">{value}%</span>
     </div>
   );
 }

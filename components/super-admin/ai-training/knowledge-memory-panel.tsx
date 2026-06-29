@@ -3,17 +3,26 @@
 import { useEffect, useState } from "react";
 import { Brain } from "lucide-react";
 import { formatDateTime } from "@/components/super-admin/ai-training/shared";
-import { GlassPanel, OperationsSkeleton } from "@/components/super-admin/ai-training/operations/operations-premium-ui";
+import {
+  EmptyStateInsight,
+  GlassPanel,
+  OPS_GRID,
+  OPS_STACK,
+  OperationsSkeleton,
+  PageAIInsight,
+} from "@/components/super-admin/ai-training/operations/operations-premium-ui";
+import { useIntelligenceSnapshot } from "@/components/super-admin/ai-training/operations/use-intelligence-snapshot";
 import type { KnowledgeIntelligenceSnapshot, KnowledgeMemoryItem } from "@/lib/ai-training/knowledge-intelligence-types";
 import { KNOWLEDGE_STRENGTH_LABELS } from "@/lib/ai-training/knowledge-intelligence-types";
-import { groupMemoryItems, MEMORY_GROUP_LABELS } from "@/lib/ai-training/operations-presentation";
+import { buildPageInsight, groupMemoryItems, MEMORY_GROUP_LABELS } from "@/lib/ai-training/operations-presentation";
 import { cn } from "@/lib/utils";
 
 export function KnowledgeMemoryPanel({
-  snapshot: _snapshot,
+  snapshot: external,
 }: {
   snapshot?: KnowledgeIntelligenceSnapshot | null;
 }) {
+  const { snapshot } = useIntelligenceSnapshot(external);
   const [memory, setMemory] = useState<KnowledgeMemoryItem[]>([]);
   const [inferred, setInferred] = useState<KnowledgeMemoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,31 +37,34 @@ export function KnowledgeMemoryPanel({
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <OperationsSkeleton rows={3} />;
+  if (loading) return <OperationsSkeleton rows={2} />;
 
   const orgGroups = groupMemoryItems(memory);
   const learnedGroups = groupMemoryItems(inferred);
+  const total = memory.length + inferred.length;
+  const insight = snapshot ? buildPageInsight("memory", snapshot) : "";
 
   return (
-    <div className="space-y-6">
-      <GlassPanel gradient="violet">
-        <div className="flex items-center gap-3">
-          <Brain className="h-8 w-8 text-violet-600" />
+    <div className={OPS_STACK}>
+      {insight ? <PageAIInsight message={insight} context="memory" /> : null}
+
+      <GlassPanel gradient="violet" compact>
+        <div className="flex items-center gap-2.5">
+          <Brain className="h-5 w-5 text-violet-600" />
           <div>
-            <h3 className="text-lg font-bold text-slate-900">AI Memory</h3>
-            <p className="text-sm text-slate-600">
-              Long-term organizational intelligence — terminology, style, and reviewer decisions
+            <h3 className="text-sm font-bold text-slate-900">AI Memory</h3>
+            <p className="text-[11px] text-slate-500">
+              {total > 0
+                ? `${total} memory items — terminology, style, and reviewer decisions`
+                : "Long-term organizational intelligence forming"}
             </p>
           </div>
         </div>
-        <p className="mt-3 text-sm text-slate-500">
-          {memory.length + inferred.length} memory items · Never relearn the same knowledge twice
-        </p>
       </GlassPanel>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className={cn("grid", OPS_GRID, "lg:grid-cols-2")}>
         <MemoryColumn title="Organizational memory" subtitle="Brand, terminology, and established facts" groups={orgGroups} />
-        <MemoryColumn title="Recently learned" subtitle="Patterns discovered from usage and review" groups={learnedGroups} />
+        <MemoryColumn title="Recently learned" subtitle="Patterns from usage and review" groups={learnedGroups} />
       </div>
     </div>
   );
@@ -68,20 +80,18 @@ function MemoryColumn({
   groups: Array<{ group: string; items: KnowledgeMemoryItem[] }>;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div>
-        <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
-        <p className="text-xs text-slate-500">{subtitle}</p>
+        <h4 className="text-xs font-semibold text-slate-900">{title}</h4>
+        <p className="text-[10px] text-slate-500">{subtitle}</p>
       </div>
       {groups.length === 0 ? (
-        <GlassPanel>
-          <p className="text-center text-sm text-slate-400">No memory items yet.</p>
-        </GlassPanel>
+        <EmptyStateInsight kind="memory" />
       ) : (
         groups.map(({ group, items }) => (
-          <GlassPanel key={group}>
-            <p className="text-xs font-bold uppercase tracking-wider text-violet-600">{group}</p>
-            <ul className="mt-3 space-y-3">
+          <GlassPanel key={group} compact>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600">{group}</p>
+            <ul className="mt-2 space-y-2">
               {items.map((item) => (
                 <MemoryItemCard key={item.id} item={item} />
               ))}
@@ -95,18 +105,18 @@ function MemoryColumn({
 
 function MemoryItemCard({ item }: { item: KnowledgeMemoryItem }) {
   return (
-    <li className="rounded-xl border border-slate-200/80 bg-white/60 px-4 py-3 transition-colors hover:border-violet-200">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-700">
+    <li className="rounded-lg border border-slate-200/80 bg-white/60 px-3 py-2 transition-all duration-200 hover:border-violet-200 hover:shadow-sm">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-violet-700">
           {MEMORY_GROUP_LABELS[item.category]?.split(" ")[0] ?? item.category}
         </span>
         <span className="text-xs font-semibold text-slate-800">{item.key}</span>
-        <span className="ml-auto rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-          {item.confidence}% confidence
+        <span className="ml-auto rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
+          {item.confidence}%
         </span>
       </div>
-      <p className="mt-2 text-sm text-slate-700">{item.value}</p>
-      <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 text-[10px] text-slate-500">
+      <p className="mt-1 text-xs text-slate-700">{item.value}</p>
+      <dl className="mt-2 grid grid-cols-2 gap-1.5 border-t border-slate-100 pt-1.5 text-[9px] text-slate-500">
         <div>
           <dt className="font-semibold uppercase">Learned</dt>
           <dd>{formatDateTime(item.updatedAt)}</dd>

@@ -4,7 +4,9 @@ import {
   buildBrainHeader,
   buildIntelligenceFeed,
   buildMorningBrief,
+  buildPageInsight,
   buildWelcomeMessage,
+  emptyStateMessage,
   formatKnowledgeVersion,
 } from "@/lib/ai-training/operations-presentation";
 import type { KnowledgeIntelligenceSnapshot } from "@/lib/ai-training/knowledge-intelligence-types";
@@ -148,5 +150,23 @@ describe("operations presentation", () => {
 
   it("formats knowledge version", () => {
     assert.equal(formatKnowledgeVersion(82), "v2.7");
+  });
+
+  it("builds page insights for each context", () => {
+    const snap = snapshot();
+    assert.ok(buildPageInsight("overview", snap).includes("290"));
+    assert.ok(buildPageInsight("health", snap).includes("46%"));
+    assert.ok(buildPageInsight("missions", snap).includes("Admissions"));
+    assert.ok(buildPageInsight("signals", snap).includes("recurring"));
+    assert.ok(buildPageInsight("intelligence", snap).includes("strongest capability"));
+    assert.ok(buildPageInsight("graph", snap).includes("120"));
+    assert.ok(buildPageInsight("memory", snap).includes("organizational memory"));
+  });
+
+  it("builds intelligent empty state messages", () => {
+    assert.ok(emptyStateMessage("coverage", 0).includes("learning journey"));
+    assert.ok(emptyStateMessage("coverage", 42).includes("42%"));
+    assert.ok(emptyStateMessage("lessons", 0).includes("No lessons"));
+    assert.ok(emptyStateMessage("graph").includes("neural map"));
   });
 });

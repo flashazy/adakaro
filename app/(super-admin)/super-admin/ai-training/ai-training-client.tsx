@@ -1758,13 +1758,13 @@ export function AITrainingClient({
       ) : null}
 
       {tab === "health" ? (
-        <div className="mt-8">
+        <div className="mt-4">
           <KnowledgeHealthPanel snapshot={intelligenceSnapshot} />
         </div>
       ) : null}
 
       {tab === "missions" ? (
-        <div className="mt-8">
+        <div className="mt-4">
           <KnowledgeMissionsPanel
             snapshot={intelligenceSnapshot}
             onStartMission={(mission) => {
@@ -1791,25 +1791,25 @@ export function AITrainingClient({
       ) : null}
 
       {tab === "graph" ? (
-        <div className="mt-8">
-          <KnowledgeGraphPanel onOpenEntry={(id) => void openEntryById(id)} />
+        <div className="mt-4">
+          <KnowledgeGraphPanel snapshot={intelligenceSnapshot} onOpenEntry={(id) => void openEntryById(id)} />
         </div>
       ) : null}
 
       {tab === "signals" ? (
-        <div className="mt-8">
+        <div className="mt-4">
           <KnowledgeSignalsPanel snapshot={intelligenceSnapshot} />
         </div>
       ) : null}
 
       {tab === "memory" ? (
-        <div className="mt-8">
+        <div className="mt-4">
           <KnowledgeMemoryPanel snapshot={intelligenceSnapshot} />
         </div>
       ) : null}
 
       {tab === "intelligence" ? (
-        <div className="mt-8">
+        <div className="mt-4">
           <KnowledgeIntelligenceScorecardPanel snapshot={intelligenceSnapshot} />
         </div>
       ) : null}

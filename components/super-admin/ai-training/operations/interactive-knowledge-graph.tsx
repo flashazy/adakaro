@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GitBranch, Loader2, Maximize2, Search, ZoomIn, ZoomOut } from "lucide-react";
-import { saBtnSecondarySm, saInput, saSection, saSectionSubtitle, saSectionTitle } from "@/components/super-admin/super-admin-dashboard-ui";
+import { GitBranch, Focus, Loader2, Maximize2, Search, ZoomIn, ZoomOut } from "lucide-react";
+import { saBtnSecondarySm, saInput } from "@/components/super-admin/super-admin-dashboard-ui";
 import type {
   KnowledgeGraphData,
   KnowledgeGraphEdge,
   KnowledgeGraphNode,
 } from "@/lib/ai-training/knowledge-intelligence-types";
 import { cn } from "@/lib/utils";
-import { GlassPanel } from "./operations-premium-ui";
+import { EmptyStateInsight, GlassPanel } from "./operations-premium-ui";
 
 type GraphViewMode = "force" | "tree" | "hierarchy" | "path" | "mindmap";
 
@@ -45,6 +45,7 @@ export function InteractiveKnowledgeGraph({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
   const svgRef = useRef<SVGSVGElement>(null);
@@ -133,62 +134,76 @@ export function InteractiveKnowledgeGraph({
 
   if (loading) {
     return (
-      <div className={cn(saSection, "flex justify-center py-16")}>
-        <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
-      </div>
+      <GlassPanel compact className="flex justify-center py-10">
+        <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
+      </GlassPanel>
     );
   }
 
   if (!graph || graph.nodes.length === 0) {
     return (
-      <GlassPanel>
-        <p className="text-center text-sm text-slate-500">No graph data yet — publish lessons to build connections.</p>
+      <GlassPanel compact>
+        <EmptyStateInsight kind="graph" />
       </GlassPanel>
     );
   }
 
   const width = 900;
-  const height = 520;
+  const height = 440;
 
   return (
-    <div className="space-y-4">
-      <GlassPanel>
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-3">
+      <GlassPanel compact>
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className={saSectionTitle}>Knowledge Graph 2.0</h3>
-            <p className={saSectionSubtitle}>
-              {graph.nodes.length} nodes · {graph.edges.length} connections · interactive exploration
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-40" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500" />
+              </span>
+              <h3 className="text-sm font-bold text-slate-900">Neural Knowledge Map</h3>
+            </div>
+            <p className="text-[10px] text-slate-500">
+              {graph.nodes.length} concepts · {graph.edges.length} synaptic links
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             {(["force", "tree", "hierarchy", "path", "mindmap"] as GraphViewMode[]).map((m) => (
               <button
                 key={m}
                 type="button"
                 className={cn(
-                  "rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition-colors",
+                  "rounded-md px-2 py-0.5 text-[10px] font-medium capitalize transition-all duration-200",
                   mode === m
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-violet-600 text-white shadow-sm"
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 )}
                 onClick={() => setMode(m)}
               >
-                {m === "path" ? "Path explorer" : m.replace("_", " ")}
+                {m === "path" ? "Paths" : m.replace("_", " ")}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[200px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[180px] flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search lessons…"
-              className={cn(saInput, "pl-9")}
+              placeholder="Search concepts…"
+              className={cn(saInput, "py-1.5 pl-8 text-xs")}
             />
           </div>
+          <button
+            type="button"
+            className={cn(saBtnSecondarySm, focusMode && "ring-2 ring-violet-300")}
+            onClick={() => setFocusMode((f) => !f)}
+            title="Focus mode"
+          >
+            <Focus className="h-3.5 w-3.5" />
+          </button>
           <button type="button" className={saBtnSecondarySm} onClick={() => setZoom((z) => Math.min(2.5, z + 0.15))}>
             <ZoomIn className="h-3.5 w-3.5" />
           </button>
@@ -201,6 +216,7 @@ export function InteractiveKnowledgeGraph({
             onClick={() => {
               setZoom(1);
               setPan({ x: 0, y: 0 });
+              setSelectedId(null);
             }}
           >
             <Maximize2 className="h-3.5 w-3.5" />
@@ -208,7 +224,7 @@ export function InteractiveKnowledgeGraph({
         </div>
 
         <div
-          className="relative mt-4 overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-indigo-50/30"
+          className="relative mt-3 overflow-hidden rounded-xl border border-violet-100/80 bg-gradient-to-br from-slate-950 via-indigo-950/90 to-violet-950/80 shadow-inner"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget || (e.target as Element).tagName === "svg") {
               panStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
@@ -222,16 +238,28 @@ export function InteractiveKnowledgeGraph({
             setZoom((z) => Math.min(2.5, Math.max(0.4, z - e.deltaY * 0.001)));
           }}
         >
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(139,92,246,0.15)_0%,_transparent_70%)]" />
           <svg
             ref={svgRef}
             viewBox={`0 0 ${width} ${height}`}
-            className="h-[520px] w-full cursor-grab active:cursor-grabbing"
+            className="relative h-[440px] w-full cursor-grab active:cursor-grabbing"
             style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "center" }}
           >
             <defs>
               <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
                 <path d="M0,0 L0,6 L8,3 z" fill="#a5b4fc" />
               </marker>
+              <filter id="nodeGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <linearGradient id="edgeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#a78bfa" stopOpacity="0.8" />
+              </linearGradient>
             </defs>
 
             {graph.edges.map((edge) => {
@@ -239,23 +267,20 @@ export function InteractiveKnowledgeGraph({
               const target = displayNodes.find((n) => n.id === edge.target);
               if (!source || !target) return null;
               const dimmed =
-                searchLower &&
-                highlightedIds.size > 0 &&
-                !highlightedIds.has(edge.source) &&
-                !highlightedIds.has(edge.target);
-              const selectedDim =
-                selectedId && !connectedIds.has(edge.source) && !connectedIds.has(edge.target);
+                (searchLower && highlightedIds.size > 0 && !highlightedIds.has(edge.source) && !highlightedIds.has(edge.target)) ||
+                (focusMode && selectedId && !connectedIds.has(edge.source) && !connectedIds.has(edge.target));
+              const isActive = selectedId && connectedIds.has(edge.source) && connectedIds.has(edge.target);
+              const midX = (source.x + target.x) / 2;
+              const midY = (source.y + target.y) / 2 - 20;
 
               return (
                 <g key={edge.id}>
-                  <line
-                    x1={source.x}
-                    y1={source.y}
-                    x2={target.x}
-                    y2={target.y}
-                    stroke="#c7d2fe"
-                    strokeWidth={selectedId && connectedIds.has(edge.source) ? 2 : 1}
-                    strokeOpacity={dimmed || selectedDim ? 0.15 : 0.7}
+                  <path
+                    d={`M ${source.x} ${source.y} Q ${midX} ${midY} ${target.x} ${target.y}`}
+                    fill="none"
+                    stroke={isActive ? "url(#edgeGradient)" : "#818cf8"}
+                    strokeWidth={isActive ? 2 : 1}
+                    strokeOpacity={dimmed ? 0.08 : isActive ? 0.9 : 0.45}
                     markerEnd="url(#arrow)"
                     className="transition-all duration-300"
                   />
@@ -265,8 +290,9 @@ export function InteractiveKnowledgeGraph({
 
             {displayNodes.map((node) => {
               const style = nodeStyle(node);
-              const dimmed = searchLower && highlightedIds.size > 0 && !highlightedIds.has(node.id);
-              const selectedDim = selectedId && !connectedIds.has(node.id);
+              const dimmed =
+                (searchLower && highlightedIds.size > 0 && !highlightedIds.has(node.id)) ||
+                (focusMode && selectedId && !connectedIds.has(node.id));
               const isSelected = selectedId === node.id;
 
               return (
@@ -278,46 +304,50 @@ export function InteractiveKnowledgeGraph({
                     if (node.entryId && onOpenEntry) onOpenEntry(node.entryId);
                   }}
                   className="cursor-pointer"
-                  opacity={dimmed || selectedDim ? 0.25 : 1}
+                  opacity={dimmed ? 0.15 : 1}
+                  filter={isSelected ? "url(#nodeGlow)" : undefined}
                 >
+                  {isSelected ? (
+                    <circle r={42} fill="none" stroke="#a78bfa" strokeWidth={1} opacity={0.5} className="animate-pulse" />
+                  ) : null}
                   <rect
-                    x={-70}
-                    y={-18}
-                    width={140}
-                    height={36}
-                    rx={10}
+                    x={-68}
+                    y={-16}
+                    width={136}
+                    height={32}
+                    rx={8}
                     fill={style.fill}
-                    stroke={isSelected ? "#4f46e5" : style.stroke}
-                    strokeWidth={isSelected ? 2.5 : 1.5}
-                    className="transition-all duration-200"
+                    stroke={isSelected ? "#a78bfa" : style.stroke}
+                    strokeWidth={isSelected ? 2 : 1.5}
+                    className="transition-all duration-300 hover:stroke-violet-400"
                   />
                   <text
                     textAnchor="middle"
                     dominantBaseline="middle"
                     fill={style.text}
-                    fontSize={10}
+                    fontSize={9}
                     fontWeight={600}
                     className="pointer-events-none select-none"
                   >
-                    {truncate(node.label, 22)}
+                    {truncate(node.label, 20)}
                   </text>
                 </g>
               );
             })}
           </svg>
 
-          <p className="absolute bottom-2 left-3 text-[10px] text-slate-400">
-            Drag nodes · Scroll to zoom · Double-click to open lesson
+          <p className="absolute bottom-2 left-3 text-[9px] text-violet-200/60">
+            Drag · scroll to zoom · double-click to open · focus isolates connections
           </p>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-500">
+        <div className="mt-2 flex flex-wrap gap-2 text-[9px] text-slate-500">
           {Object.entries(NODE_STYLES)
             .filter(([k]) => k !== "default" && k !== "weak")
             .slice(0, 5)
             .map(([key, s]) => (
               <span key={key} className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.stroke }} />
+                <span className="h-2 w-2 rounded-full" style={{ background: s.stroke }} />
                 {key}
               </span>
             ))}
@@ -325,24 +355,22 @@ export function InteractiveKnowledgeGraph({
       </GlassPanel>
 
       {mode === "path" && graph.paths.length > 0 ? (
-        <div className="space-y-3">
-          {graph.paths.slice(0, 4).map((path) => (
-            <GlassPanel key={path.label}>
-              <p className="mb-2 flex items-center gap-2 text-sm font-semibold capitalize text-indigo-700">
-                <GitBranch className="h-4 w-4" />
+        <div className="space-y-2">
+          {graph.paths.slice(0, 3).map((path) => (
+            <GlassPanel key={path.label} compact>
+              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold capitalize text-indigo-700">
+                <GitBranch className="h-3.5 w-3.5" />
                 {path.label}
               </p>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {path.nodeIds.map((nodeId, idx) => {
                   const node = graph.nodes.find((n) => n.id === nodeId);
                   return (
-                    <div key={nodeId} className="flex items-center gap-2">
-                      <span className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-900">
+                    <div key={nodeId} className="flex items-center gap-1.5">
+                      <span className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-900">
                         {node?.label ?? nodeId}
                       </span>
-                      {idx < path.nodeIds.length - 1 ? (
-                        <span className="text-slate-300">→</span>
-                      ) : null}
+                      {idx < path.nodeIds.length - 1 ? <span className="text-slate-300">→</span> : null}
                     </div>
                   );
                 })}
@@ -362,7 +390,7 @@ function computeLayout(
   paths: KnowledgeGraphData["paths"]
 ): PositionedNode[] {
   const width = 900;
-  const height = 520;
+  const height = 440;
 
   if (mode === "force") {
     const cx = width / 2;

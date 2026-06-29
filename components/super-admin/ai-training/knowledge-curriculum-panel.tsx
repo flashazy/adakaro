@@ -39,8 +39,12 @@ import type {
 } from "@/lib/ai-training/knowledge-curriculum";
 import type { GenerationMode } from "@/lib/ai-training/lesson-generation-prompt";
 import type { KnowledgeIntelligenceSnapshot } from "@/lib/ai-training/knowledge-intelligence-types";
-import { buildModuleDashboardRow } from "@/lib/ai-training/operations-presentation";
-import { ModuleIntelligenceStrip } from "@/components/super-admin/ai-training/operations/operations-premium-ui";
+import { buildModuleDashboardRow, buildPageInsight } from "@/lib/ai-training/operations-presentation";
+import {
+  ModuleIntelligenceStrip,
+  OPS_STACK,
+  PageAIInsight,
+} from "@/components/super-admin/ai-training/operations/operations-premium-ui";
 import { cn } from "@/lib/utils";
 
 const HEALTH_STYLES: Record<ModuleHealthLabel, string> = {
@@ -304,11 +308,18 @@ export function KnowledgeCurriculumPanel({
   }
 
   const s = data.summary;
+  const curriculumInsight = intelligenceSnapshot
+    ? buildPageInsight("curriculum", intelligenceSnapshot, {
+        curriculumPercent: s.overallCompletionPercent,
+        strongestModule: data.modules.find((m) => m.completionPercent >= 70)?.name,
+      })
+    : "";
 
   return (
-    <div className="mt-8 space-y-6">
-      {/* Summary KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className={cn("mt-4", OPS_STACK)}>
+      {curriculumInsight ? <PageAIInsight message={curriculumInsight} context="curriculum" /> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SaKpiCard label="Total Knowledge Entries" value={String(s.totalEntries)} />
         <SaKpiCard label="Total Modules" value={String(s.totalModules)} />
         <SaKpiCard label="Completed Modules" value={String(s.completedModules)} />
@@ -361,9 +372,8 @@ export function KnowledgeCurriculumPanel({
         </div>
       </div>
 
-      {/* Overall progress ring */}
-      <div className={cn(saSection, "flex flex-col items-center gap-4 py-8 sm:flex-row sm:justify-center sm:gap-10")}>
-        <ProgressRing percent={s.overallCompletionPercent} size={160} />
+      <div className={cn(saSection, "flex flex-col items-center gap-3 py-4 sm:flex-row sm:justify-center sm:gap-8")}>
+        <ProgressRing percent={s.overallCompletionPercent} size={120} />
         <div className="text-center sm:text-left">
           <h3 className={saSectionTitle}>Overall Knowledge Progress</h3>
           <p className="mt-2 text-3xl font-bold tabular-nums text-indigo-600">
