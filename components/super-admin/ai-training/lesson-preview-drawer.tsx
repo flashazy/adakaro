@@ -13,7 +13,7 @@ import {
   LessonMarkdownContent,
 } from "@/components/super-admin/ai-training/lesson-review-shared";
 import type { ReviewerIntelligenceHints } from "@/lib/ai-training/knowledge-intelligence-types";
-import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator";
+import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator-types";
 import { cn } from "@/lib/utils";
 
 interface LessonPreviewDrawerProps {

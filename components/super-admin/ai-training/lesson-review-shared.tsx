@@ -14,8 +14,8 @@ import {
   saBtnPrimary,
   saBtnSecondary,
 } from "@/components/super-admin/super-admin-dashboard-ui";
-import type { CurriculumAnalysis } from "@/lib/ai-training/lesson-generator";
-import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator";
+import type { CurriculumAnalysis } from "@/lib/ai-training/lesson-generator-types";
+import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator-types";
 import type {
   CriterionBreakdownItem,
   KnowledgeQualityReport,

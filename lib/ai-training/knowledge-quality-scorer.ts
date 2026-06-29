@@ -1,7 +1,7 @@
 import { computeQuestionSimilarity } from "./knowledge-duplicates";
 import { generateKeywordsFromQuestion } from "./keyword-generator";
-import type { CurriculumAnalysis } from "./lesson-generator";
-import type { GeneratedLessonDraft } from "./lesson-generator";
+import type { CurriculumAnalysis } from "./lesson-generator-types";
+import type { GeneratedLessonDraft } from "./lesson-generator-types";
 import {
   buildQualityReport,
   type CalibrationAdjustment,

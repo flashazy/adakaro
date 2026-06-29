@@ -3,7 +3,7 @@ import { inferIntentWithConfidence } from "./intent-registry";
 import { computeEntryQuality } from "./scoring";
 import { validateKnowledgeWritingStandard } from "./knowledge-writing-standard";
 import type { AIKnowledgeEntry, KnowledgePriority } from "./types";
-import type { GeneratedLessonDraft, LessonQualityScores } from "./lesson-generator";
+import type { GeneratedLessonDraft, LessonQualityScores } from "./lesson-generator-types";
 
 export type QualityGrade = "A+" | "A" | "B" | "C" | "Needs Review";
 

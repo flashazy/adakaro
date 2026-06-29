@@ -6,7 +6,7 @@ import { computeQuestionSimilarity } from "./knowledge-duplicates";
 import { getGraphNeighborsForEntry } from "./knowledge-graph-builder";
 import { generateKeywordsFromQuestion } from "./keyword-generator";
 import type { ReviewerIntelligenceHints } from "./knowledge-intelligence-types";
-import type { GeneratedLessonDraft } from "./lesson-generator";
+import type { GeneratedLessonDraft } from "./lesson-generator-types";
 import type { AIKnowledgeEntry } from "./types";
 
 export function buildReviewerIntelligenceHints(

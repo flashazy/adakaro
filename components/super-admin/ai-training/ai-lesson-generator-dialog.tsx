@@ -31,8 +31,8 @@ import type {
   GeneratedLessonDraft,
   GenerationStep,
   LessonGenerationResult,
-} from "@/lib/ai-training/lesson-generator";
-import { GENERATION_STEP_LABELS } from "@/lib/ai-training/lesson-generator";
+} from "@/lib/ai-training/lesson-generator-types";
+import { GENERATION_STEP_LABELS } from "@/lib/ai-training/lesson-generator-types";
 import type { GenerationMode } from "@/lib/ai-training/lesson-generation-prompt";
 import type { AIKnowledgeEntry } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils";

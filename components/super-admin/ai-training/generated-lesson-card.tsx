@@ -16,7 +16,7 @@ import {
   LessonMarkdownContent,
 } from "@/components/super-admin/ai-training/lesson-review-shared";
 import { KnowledgeStrengthBadge } from "@/components/super-admin/ai-training/knowledge-memory-panel";
-import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator";
+import type { GeneratedLessonDraft } from "@/lib/ai-training/lesson-generator-types";
 import type { QualityGrade } from "@/lib/ai-training/lesson-generation-validator";
 import { QUALITY_TIER_STYLES } from "@/lib/ai-training/knowledge-quality-rules";
 import { computeDraftKnowledgeStrength } from "@/lib/ai-training/knowledge-strength";

@@ -6,7 +6,7 @@ import type { CurriculumModuleId } from "./knowledge-curriculum";
 import { CURRICULUM_MODULES } from "./knowledge-curriculum";
 import type { KnowledgeStrengthLevel } from "./knowledge-intelligence-types";
 import { KNOWLEDGE_STRENGTH_LABELS } from "./knowledge-intelligence-types";
-import type { GeneratedLessonDraft } from "./lesson-generator";
+import type { GeneratedLessonDraft } from "./lesson-generator-types";
 import type { AIKnowledgeEntry } from "./types";
 
 const CORE_MODULES: Set<CurriculumModuleId> = new Set([

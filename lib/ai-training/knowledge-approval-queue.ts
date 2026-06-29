@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
-import type { GeneratedLessonDraft } from "./lesson-generator";
+import type { GeneratedLessonDraft } from "./lesson-generator-types";
 import { scoreToGrade } from "./lesson-generation-validator";
 import {
   isEligibleForApprovalQueue,

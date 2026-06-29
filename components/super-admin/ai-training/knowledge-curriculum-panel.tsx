@@ -38,6 +38,9 @@ import type {
   ModuleHealthLabel,
 } from "@/lib/ai-training/knowledge-curriculum";
 import type { GenerationMode } from "@/lib/ai-training/lesson-generation-prompt";
+import type { KnowledgeIntelligenceSnapshot } from "@/lib/ai-training/knowledge-intelligence-types";
+import { buildModuleDashboardRow } from "@/lib/ai-training/operations-presentation";
+import { ModuleIntelligenceStrip } from "@/components/super-admin/ai-training/operations/operations-premium-ui";
 import { cn } from "@/lib/utils";
 
 const HEALTH_STYLES: Record<ModuleHealthLabel, string> = {
@@ -56,6 +59,7 @@ interface KnowledgeCurriculumPanelProps {
     mode: GenerationMode;
   } | null;
   onPendingMissionHandled?: () => void;
+  intelligenceSnapshot?: KnowledgeIntelligenceSnapshot | null;
 }
 
 export function KnowledgeCurriculumPanel({
@@ -64,6 +68,7 @@ export function KnowledgeCurriculumPanel({
   onOpenApprovalQueue,
   pendingMission,
   onPendingMissionHandled,
+  intelligenceSnapshot,
 }: KnowledgeCurriculumPanelProps) {
   const [data, setData] = useState<CurriculumDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -226,8 +231,28 @@ export function KnowledgeCurriculumPanel({
   }
 
   if (selectedModule) {
+    const modHealth = intelligenceSnapshot?.moduleHealth.find((m) => m.moduleId === selectedModule.id);
+    const modDash = modHealth && intelligenceSnapshot
+      ? buildModuleDashboardRow(modHealth, intelligenceSnapshot)
+      : null;
+
     return (
       <>
+        {modDash ? (
+          <div className="mt-8">
+            <ModuleIntelligenceStrip
+              moduleName={selectedModule.name}
+              coverage={modDash.coverage}
+              confidence={modDash.confidence}
+              quality={modDash.quality}
+              mastery={modDash.mastery}
+              remainingLessons={modDash.remainingLessons}
+              estimatedCompletion={modDash.estimatedCompletion}
+              upcomingMission={modDash.upcomingMission}
+              narrative={modDash.narrative}
+            />
+          </div>
+        ) : null}
         <ModuleDetailPanel
           module={selectedModule}
           savingTarget={savingTarget}

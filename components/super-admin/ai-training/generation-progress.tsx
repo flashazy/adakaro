@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, Loader2 } from "lucide-react";
-import type { GenerationStep } from "@/lib/ai-training/lesson-generator";
+import type { GenerationStep } from "@/lib/ai-training/lesson-generator-types";
 import { cn } from "@/lib/utils";
 
 interface GenerationProgressProps {

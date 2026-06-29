@@ -96,6 +96,7 @@ import {
   resolveMissionModuleId,
 } from "@/lib/ai-training/knowledge-missions";
 import type { GenerationMode } from "@/lib/ai-training/lesson-generation-prompt";
+import type { KnowledgeIntelligenceSnapshot } from "@/lib/ai-training/knowledge-intelligence-types";
 import { enrichEntryMetrics } from "@/lib/ai-training/load-analytics";
 import type { RecommendationApplyAction } from "@/lib/ai-training/test-observability-console";
 import type {
@@ -313,6 +314,19 @@ export function AITrainingClient({
     created_at: string;
   } | null>(null);
   const [writingStandardOpen, setWritingStandardOpen] = useState(false);
+  const [intelligenceSnapshot, setIntelligenceSnapshot] =
+    useState<KnowledgeIntelligenceSnapshot | null>(null);
+
+  const loadIntelligenceSnapshot = useCallback(async () => {
+    try {
+      const res = await fetch("/api/super-admin/ai-training/intelligence");
+      if (!res.ok) return;
+      const data = (await res.json()) as { snapshot?: KnowledgeIntelligenceSnapshot };
+      setIntelligenceSnapshot(data.snapshot ?? null);
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -348,16 +362,17 @@ export function AITrainingClient({
 
   useEffect(() => {
     void loadIntentHealth();
-  }, [loadIntentHealth]);
+    void loadIntelligenceSnapshot();
+  }, [loadIntentHealth, loadIntelligenceSnapshot]);
 
   const refreshOverview = useCallback(async () => {
     setLoadingOverview(true);
     try {
-      await Promise.all([refreshAnalytics(), loadActivity()]);
+      await Promise.all([refreshAnalytics(), loadActivity(), loadIntelligenceSnapshot()]);
     } finally {
       setLoadingOverview(false);
     }
-  }, [refreshAnalytics, loadActivity]);
+  }, [refreshAnalytics, loadActivity, loadIntelligenceSnapshot]);
 
   const loadKnowledge = useCallback(async () => {
     setLoadingKnowledge(true);
@@ -1086,7 +1101,22 @@ export function AITrainingClient({
             )}
           </div>
 
-          <KnowledgeOperationsOverview />
+          <KnowledgeOperationsOverview
+            snapshot={intelligenceSnapshot}
+            userName="Abdallah"
+            onStartMission={(mission) => {
+              const moduleId = resolveMissionModuleId(mission);
+              if (moduleId) {
+                setPendingMission({
+                  moduleId,
+                  mode: missionToGenerationMode(mission),
+                });
+                setTab("curriculum");
+                showToast(`Starting mission: ${mission.title}`);
+              }
+            }}
+            onNavigateTab={(t) => setTab(t as TabId)}
+          />
 
           <IntentCoveragePanel />
 
@@ -1716,6 +1746,7 @@ export function AITrainingClient({
           }}
           pendingMission={pendingMission}
           onPendingMissionHandled={() => setPendingMission(null)}
+          intelligenceSnapshot={intelligenceSnapshot}
         />
       ) : null}
 
@@ -1728,13 +1759,14 @@ export function AITrainingClient({
 
       {tab === "health" ? (
         <div className="mt-8">
-          <KnowledgeHealthPanel />
+          <KnowledgeHealthPanel snapshot={intelligenceSnapshot} />
         </div>
       ) : null}
 
       {tab === "missions" ? (
         <div className="mt-8">
           <KnowledgeMissionsPanel
+            snapshot={intelligenceSnapshot}
             onStartMission={(mission) => {
               const moduleId = resolveMissionModuleId(mission);
               if (moduleId) {
@@ -1760,25 +1792,25 @@ export function AITrainingClient({
 
       {tab === "graph" ? (
         <div className="mt-8">
-          <KnowledgeGraphPanel />
+          <KnowledgeGraphPanel onOpenEntry={(id) => void openEntryById(id)} />
         </div>
       ) : null}
 
       {tab === "signals" ? (
         <div className="mt-8">
-          <KnowledgeSignalsPanel />
+          <KnowledgeSignalsPanel snapshot={intelligenceSnapshot} />
         </div>
       ) : null}
 
       {tab === "memory" ? (
         <div className="mt-8">
-          <KnowledgeMemoryPanel />
+          <KnowledgeMemoryPanel snapshot={intelligenceSnapshot} />
         </div>
       ) : null}
 
       {tab === "intelligence" ? (
         <div className="mt-8">
-          <KnowledgeIntelligenceScorecardPanel />
+          <KnowledgeIntelligenceScorecardPanel snapshot={intelligenceSnapshot} />
         </div>
       ) : null}
 

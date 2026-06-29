@@ -30,7 +30,7 @@ import type {
   CurriculumAnalysis,
   GeneratedLessonDraft,
   GenerationSmartSuggestions,
-} from "@/lib/ai-training/lesson-generator";
+} from "@/lib/ai-training/lesson-generator-types";
 import type { QualityPipelineMetrics } from "@/lib/ai-training/knowledge-quality-report";
 import { QUALITY_TIER_STYLES } from "@/lib/ai-training/knowledge-quality-rules";
 import { cn } from "@/lib/utils";

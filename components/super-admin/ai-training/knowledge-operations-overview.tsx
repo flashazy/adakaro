@@ -1,193 +1,188 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Activity, Brain, Loader2, Sparkles, Target, TrendingUp } from "lucide-react";
-import {
-  SaKpiCard,
-  saSection,
-  saSectionSubtitle,
-  saSectionTitle,
-} from "@/components/super-admin/super-admin-dashboard-ui";
 import { KnowledgeCompletionProgress } from "@/components/super-admin/ai-training/lesson-review-shared";
-import type { KnowledgeIntelligenceSnapshot } from "@/lib/ai-training/knowledge-intelligence-types";
+import {
+  AIBrainHeader,
+  ExplainableMetricCard,
+  IntelligenceFeed,
+  IntelligenceTrendChart,
+  MorningBriefCard,
+  OperationsSkeleton,
+  PredictiveInsightsPanel,
+  StorySection,
+  WelcomeBanner,
+} from "@/components/super-admin/ai-training/operations/operations-premium-ui";
+import { useIntelligenceSnapshot } from "@/components/super-admin/ai-training/operations/use-intelligence-snapshot";
+import { ConversationReplayPanel } from "@/components/super-admin/ai-training/operations/conversation-replay-panel";
+import type { KnowledgeIntelligenceSnapshot, KnowledgeMission } from "@/lib/ai-training/knowledge-intelligence-types";
+import {
+  buildBrainHeader,
+  buildExplainableConfidence,
+  buildExplainableCoverage,
+  buildIntelligenceFeed,
+  buildMorningBrief,
+  buildPredictiveIntelligence,
+  buildWelcomeMessage,
+} from "@/lib/ai-training/operations-presentation";
+import { formatMissionEta } from "@/lib/ai-training/knowledge-missions";
+import { saBtnPrimarySm } from "@/components/super-admin/super-admin-dashboard-ui";
+import { Rocket, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function KnowledgeOperationsOverview({
   snapshot: externalSnapshot,
+  userName,
+  onStartMission,
+  onNavigateTab,
 }: {
   snapshot?: KnowledgeIntelligenceSnapshot | null;
+  userName?: string;
+  onStartMission?: (mission: KnowledgeMission) => void;
+  onNavigateTab?: (tab: string) => void;
 }) {
-  const [snapshot, setSnapshot] = useState<KnowledgeIntelligenceSnapshot | null>(
-    externalSnapshot ?? null
-  );
-  const [loading, setLoading] = useState(!externalSnapshot);
+  const { snapshot, loading } = useIntelligenceSnapshot(externalSnapshot);
 
-  useEffect(() => {
-    if (externalSnapshot) {
-      setSnapshot(externalSnapshot);
-      setLoading(false);
-      return;
-    }
-    void (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/super-admin/ai-training/intelligence");
-        if (!res.ok) return;
-        const data = (await res.json()) as { snapshot?: KnowledgeIntelligenceSnapshot };
-        setSnapshot(data.snapshot ?? null);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [externalSnapshot]);
-
-  if (loading) {
-    return (
-      <div className={cn(saSection, "flex items-center justify-center py-16 text-slate-500")}>
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        Loading knowledge intelligence…
-      </div>
-    );
-  }
-
+  if (loading) return <OperationsSkeleton rows={4} />;
   if (!snapshot) return null;
 
-  const { health, scorecard, learningSignals, missions, autonomousSuggestions } = snapshot;
+  const brain = buildBrainHeader(snapshot);
+  const brief = buildMorningBrief(snapshot);
+  const feed = buildIntelligenceFeed(snapshot);
+  const welcome = buildWelcomeMessage(snapshot, userName);
+  const coverage = buildExplainableCoverage(snapshot);
+  const confidence = buildExplainableConfidence(snapshot);
+  const predictions = buildPredictiveIntelligence(snapshot);
+
   const totalLessons = snapshot.moduleHealth.reduce((s, m) => s + m.lessonCount, 0);
   const totalTarget = snapshot.moduleHealth.reduce((s, m) => s + m.targetCount, 0);
+  const topMission = snapshot.missions[0];
 
   return (
     <div className="space-y-6">
-      <div className={cn(saSection, "border-indigo-100 bg-gradient-to-br from-indigo-50/60 via-white to-violet-50/40")}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-600">
-              <Brain className="h-4 w-4" />
-              Enterprise Knowledge Operations
-            </p>
-            <h2 className="mt-1 text-2xl font-bold text-slate-900">Living Knowledge Dashboard</h2>
-            <p className={saSectionSubtitle}>
-              Self-improving intelligence — updated {new Date(snapshot.generatedAt).toLocaleString()}
-            </p>
-          </div>
-          <HealthBadge score={health.overallHealth} grade={health.grade} />
-        </div>
+      <WelcomeBanner message={welcome} />
+      <AIBrainHeader data={brain} />
+      <MorningBriefCard brief={brief} />
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <SaKpiCard label="Knowledge Health" value={`${health.overallHealth}%`} />
-          <SaKpiCard label="Coverage" value={`${health.coverage}%`} />
-          <SaKpiCard label="AI Confidence" value={`${health.confidence}%`} />
-          <SaKpiCard label="Retrievability" value={`${health.retrievability}%`} />
-          <SaKpiCard label="Composite Score" value={`${scorecard.composite}`} />
+      <div className="grid gap-6 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <IntelligenceFeed events={feed} />
         </div>
+        <PredictiveInsightsPanel insights={predictions} />
+      </div>
+
+      <StorySection
+        title="Operations narrative"
+        what={`Brain health at ${snapshot.health.overallHealth}% with ${snapshot.learningSignals.questionsAsked} questions processed.`}
+        why="Continuous learning from usage and reviewer decisions keeps answers accurate and trustworthy."
+        next={topMission?.title ?? "Review autonomous suggestions in System Intelligence."}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ExplainableMetricCard metric={coverage} />
+        <ExplainableMetricCard metric={confidence} />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <IntelligenceTrendChart trends={snapshot.trends} dataKey="confidence" label="Confidence" color="#6366f1" />
+        <IntelligenceTrendChart trends={snapshot.trends} dataKey="coverage" label="Coverage" color="#10b981" />
+        <IntelligenceTrendChart trends={snapshot.trends} dataKey="health" label="Brain Health" color="#8b5cf6" />
       </div>
 
       <KnowledgeCompletionProgress
         completed={totalLessons}
         target={totalTarget}
-        averageQuality={scorecard.knowledgeQuality}
-        readyCount={learningSignals.successfulAnswers}
+        averageQuality={snapshot.scorecard.knowledgeQuality}
+        readyCount={snapshot.learningSignals.successfulAnswers}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className={saSection}>
-          <h3 className={saSectionTitle}>Active Missions</h3>
-          <p className={saSectionSubtitle}>Intelligent knowledge-building milestones</p>
-          <ul className="mt-4 space-y-3">
-            {missions.slice(0, 4).map((m) => (
-              <li
-                key={m.id}
-                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-slate-900">{m.title}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">{m.description}</p>
-                  </div>
-                  <Target className="h-4 w-4 shrink-0 text-indigo-500" />
-                </div>
-                <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-600">
-                  <span>{m.lessonsRemaining} lessons</span>
-                  <span>~{m.estimatedMinutes} min</span>
-                  {m.expectedQuality ? <span>Q {m.expectedQuality}%</span> : null}
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-indigo-500 transition-all"
-                    style={{ width: `${m.progress}%` }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className={saSection}>
-          <h3 className={saSectionTitle}>Autonomous Suggestions</h3>
-          <p className={saSectionSubtitle}>Proactive recommendations from the intelligence engine</p>
-          <ul className="mt-4 space-y-2">
-            {autonomousSuggestions.slice(0, 5).map((s) => (
-              <li
-                key={s.id}
-                className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2.5 text-sm"
-              >
-                <p className="font-medium text-violet-900">{s.title}</p>
-                <p className="text-xs text-violet-700/80">{s.suggestedAction}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <InsightList
-          title="Top Missing Topics"
-          icon={Sparkles}
-          items={snapshot.topMissingTopics.map((t) => `${t.topic} (${t.count} lessons)`)}
-        />
-        <InsightList
-          title="Top Unanswered Questions"
-          icon={Activity}
-          items={snapshot.topUnansweredQuestions.map((q) => `${q.question} (${q.occurrences}×)`)}
-        />
-        <InsightList
-          title="Weakest Modules"
-          icon={TrendingUp}
-          items={snapshot.weakestModules.map((m) => `${m.moduleName} — ${m.health}% health`)}
+        <MissionPreview missions={snapshot.missions} onStartMission={onStartMission} />
+        <SuggestionsPreview
+          suggestions={snapshot.autonomousSuggestions}
+          onNavigate={() => onNavigateTab?.("intelligence")}
         />
       </div>
+
+      <ConversationReplayPanel />
     </div>
   );
 }
 
-function HealthBadge({ score, grade }: { score: number; grade: string }) {
-  const tone =
-    score >= 85 ? "bg-emerald-100 text-emerald-800 ring-emerald-200" : score >= 70 ? "bg-amber-100 text-amber-800 ring-amber-200" : "bg-red-100 text-red-800 ring-red-200";
+function MissionPreview({
+  missions,
+  onStartMission,
+}: {
+  missions: KnowledgeIntelligenceSnapshot["missions"];
+  onStartMission?: (mission: KnowledgeMission) => void;
+}) {
   return (
-    <span className={cn("rounded-full px-4 py-2 text-sm font-bold uppercase ring-1 ring-inset", tone)}>
-      {grade} · {score}%
-    </span>
+    <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-5 shadow-sm backdrop-blur-sm">
+      <h3 className="text-sm font-semibold text-slate-900">Active Missions</h3>
+      <p className="mt-0.5 text-xs text-slate-500">Strategic knowledge-building campaigns</p>
+      <ul className="mt-4 space-y-3">
+        {missions.slice(0, 3).map((m) => (
+          <li
+            key={m.id}
+            className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-white p-4 transition-all hover:border-indigo-200 hover:shadow-sm"
+          >
+            <div className="flex items-start gap-3">
+              <Rocket className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-900">{m.title}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{m.description}</p>
+                <p className="mt-2 text-xs text-slate-600">
+                  {m.lessonsRemaining} lessons · {formatMissionEta(m.estimatedMinutes)}
+                </p>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-700"
+                    style={{ width: `${m.progress}%` }}
+                  />
+                </div>
+                {onStartMission ? (
+                  <button
+                    type="button"
+                    className={cn(saBtnPrimarySm, "mt-3")}
+                    onClick={() => onStartMission(m)}
+                  >
+                    Start Mission
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
-function InsightList({
-  title,
-  icon: Icon,
-  items,
+function SuggestionsPreview({
+  suggestions,
+  onNavigate,
 }: {
-  title: string;
-  icon: typeof Sparkles;
-  items: string[];
+  suggestions: KnowledgeIntelligenceSnapshot["autonomousSuggestions"];
+  onNavigate?: () => void;
 }) {
   return (
-    <div className={cn(saSection, "bg-white")}>
-      <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-        <Icon className="h-4 w-4 text-indigo-500" />
-        {title}
-      </h4>
-      <ul className="mt-3 space-y-1.5 text-sm text-slate-600">
-        {items.length ? items.map((item) => <li key={item}>• {item}</li>) : <li className="text-slate-400">None</li>}
+    <div className="rounded-2xl border border-violet-100/80 bg-gradient-to-br from-violet-50/40 to-white p-5 shadow-sm backdrop-blur-sm">
+      <div className="flex items-center gap-2">
+        <Target className="h-4 w-4 text-violet-600" />
+        <h3 className="text-sm font-semibold text-slate-900">Autonomous Recommendations</h3>
+      </div>
+      <ul className="mt-4 space-y-2">
+        {suggestions.slice(0, 4).map((s) => (
+          <li key={s.id} className="rounded-lg border border-violet-100 bg-white/60 px-3 py-2.5">
+            <p className="text-sm font-medium text-violet-900">{s.title}</p>
+            <p className="text-xs text-violet-700/80">{s.suggestedAction}</p>
+          </li>
+        ))}
       </ul>
+      {onNavigate ? (
+        <button type="button" className="mt-3 text-xs font-semibold text-violet-600 hover:text-violet-800" onClick={onNavigate}>
+          View System Intelligence →
+        </button>
+      ) : null}
     </div>
   );
 }
