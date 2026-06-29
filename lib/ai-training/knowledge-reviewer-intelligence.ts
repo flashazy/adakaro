@@ -33,7 +33,7 @@ export function buildReviewerIntelligenceHints(
   }
   potentialDuplicates.sort((a, b) => b.similarity - a.similarity);
 
-  const suggestedKw = generateKeywordsFromQuestion(question, draft.category);
+  const suggestedKw = generateKeywordsFromQuestion(question, draft.category, draft.answer);
   const missingKeywords = suggestedKw.keywords.filter(
     (k) => !keywords.some((existing) => existing.toLowerCase() === k.toLowerCase())
   );

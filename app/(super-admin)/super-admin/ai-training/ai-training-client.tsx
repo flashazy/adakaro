@@ -60,10 +60,17 @@ import { KnowledgeMergeModal } from "@/components/super-admin/ai-training/knowle
 import { KnowledgeVersionPanel } from "@/components/super-admin/ai-training/knowledge-version-panel";
 import {
   KnowledgeWritingChecklist,
-  KnowledgeWritingStandardButton,
-  KnowledgeWritingStandardModal,
+  KnowledgePostSaveRecommendations,
   buildRecommendedAnswerTemplate,
+  autoFixProfessionalLanguage,
+  autoFixTimelessWording,
 } from "@/components/super-admin/ai-training/knowledge-writing-guide";
+import { KnowledgeAnswerAssistant } from "@/components/super-admin/ai-training/knowledge-answer-assistant";
+import {
+  assessEnterpriseReadiness,
+  buildPostSaveRecommendations,
+  type PostSaveRecommendation,
+} from "@/lib/ai-training/knowledge-authoring";
 import { KnowledgePagination, KNOWLEDGE_DEFAULT_PAGE_SIZE } from "@/components/super-admin/ai-training/knowledge-pagination";
 import { AIClassificationPanel } from "@/components/super-admin/ai-training/ai-classification-panel";
 import { BulkIntentRecalculateModal } from "@/components/super-admin/ai-training/bulk-intent-recalculate-modal";
@@ -109,7 +116,6 @@ import type {
   DuplicateSaveAction,
   IntentHealthSummary,
   KnowledgePriority,
-  KeywordGenerationResult,
 } from "@/lib/ai-training/types";
 import { STARTER_QUESTIONS } from "@/lib/ai-training/types";
 import {
@@ -118,6 +124,7 @@ import {
   rememberLastKnowledgeCategory,
 } from "@/lib/ai-training/knowledge-categories";
 import { KnowledgeCategorySelect } from "@/components/super-admin/ai-training/knowledge-category-select";
+import { KnowledgeMetadataFields, keywordsToText, textToKeywords } from "@/components/super-admin/ai-training/knowledge-metadata-fields";
 import { cn } from "@/lib/utils";
 
 type TabId =
@@ -215,17 +222,6 @@ const emptyForm = (): EntryFormState => ({
   priority: "normal",
 });
 
-function keywordsToText(items: string[]): string {
-  return items.join("\n");
-}
-
-function textToKeywords(text: string): string[] {
-  return text
-    .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 type EntryClassification = Pick<
   AIKnowledgeEntry,
   | "intent_key"
@@ -281,7 +277,15 @@ export function AITrainingClient({
   const [loadingUnanswered, setLoadingUnanswered] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<EntryFormState>(emptyForm());
-  const [generatingKeywords, setGeneratingKeywords] = useState(false);
+  const [metadataBaseline, setMetadataBaseline] = useState<{
+    question: string;
+    answer: string;
+  } | null>(null);
+  const [metadataGeneratedNotice, setMetadataGeneratedNotice] = useState(false);
+  const [fixingAllQuality, setFixingAllQuality] = useState(false);
+  const [postSaveRecommendations, setPostSaveRecommendations] = useState<
+    PostSaveRecommendation[] | null
+  >(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [testDrawerOpen, setTestDrawerOpen] = useState(false);
@@ -319,7 +323,6 @@ export function AITrainingClient({
     updated_at: string;
     created_at: string;
   } | null>(null);
-  const [writingStandardOpen, setWritingStandardOpen] = useState(false);
   const [intelligenceSnapshot, setIntelligenceSnapshot] =
     useState<KnowledgeIntelligenceSnapshot | null>(null);
 
@@ -462,43 +465,12 @@ export function AITrainingClient({
     if (tab === "overview") void loadActivity();
   }, [tab, loadActivity]);
 
-  const applyKeywordResult = (result: KeywordGenerationResult) => {
-    setForm((f) => ({
-      ...f,
-      keywords: keywordsToText(result.keywords),
-      search_phrases: keywordsToText(result.search_phrases),
-      alternative_wording: keywordsToText(result.alternative_wording),
-      synonyms: keywordsToText(result.synonyms),
-      related_terms: keywordsToText(result.related_terms),
-    }));
-  };
-
-  const generateKeywords = async () => {
-    if (!form.question.trim()) return;
-    setGeneratingKeywords(true);
-    try {
-      const res = await fetch(
-        "/api/super-admin/ai-training/knowledge/generate-keywords",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            question: form.question,
-            category: form.category,
-          }),
-        }
-      );
-      if (!res.ok) throw new Error("Keyword generation failed");
-      applyKeywordResult((await res.json()) as KeywordGenerationResult);
-    } finally {
-      setGeneratingKeywords(false);
-    }
-  };
-
   const openCreateForm = (prefill?: Partial<EntryFormState>) => {
     setClassificationEntry(null);
     setEditMeta(null);
     setDuplicateCheck(null);
+    setMetadataBaseline(null);
+    setMetadataGeneratedNotice(false);
     setForm({
       ...emptyForm(),
       category: prefill?.category ?? getLastKnowledgeCategory(),
@@ -506,6 +478,8 @@ export function AITrainingClient({
     });
     setFormOpen(true);
   };
+
+  const unansweredPages = Math.max(1, Math.ceil(unansweredTotal / 20));
 
   const openCreateLesson = (moduleId: CurriculumModuleId, category: string, question?: string) => {
     openCreateForm({ category, curriculumModule: moduleId, question });
@@ -520,6 +494,8 @@ export function AITrainingClient({
       created_at: row.created_at,
     });
     setDuplicateCheck(null);
+    setMetadataBaseline({ question: row.question, answer: row.answer });
+    setMetadataGeneratedNotice(true);
     setForm({
       id: row.id,
       category: row.category,
@@ -630,6 +606,73 @@ export function AITrainingClient({
     [form, classificationEntry?.intent_key]
   );
 
+  const enterpriseReadiness = useMemo(
+    () =>
+      assessEnterpriseReadiness({
+        draft: writingDraft,
+        duplicateCheck,
+        metadataBaseline,
+        editingEntryId: form.id ?? null,
+        allEntries: knowledgeRows,
+      }),
+    [writingDraft, duplicateCheck, metadataBaseline, form.id, knowledgeRows]
+  );
+
+  const handleAutoFixLanguage = () => {
+    setForm((f) => ({
+      ...f,
+      answer: autoFixTimelessWording(autoFixProfessionalLanguage(f.answer)),
+    }));
+  };
+
+  const handleFixAllQuality = async () => {
+    if (!form.question.trim() || !form.answer.trim()) return;
+    setFixingAllQuality(true);
+    try {
+      const res = await fetch("/api/super-admin/ai-training/knowledge/fix-quality", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: form.category,
+          question: form.question,
+          answer: form.answer,
+          keywords: textToKeywords(form.keywords),
+          synonyms: textToKeywords(form.synonyms),
+          search_phrases: textToKeywords(form.search_phrases),
+          alternative_wording: textToKeywords(form.alternative_wording),
+          related_terms: textToKeywords(form.related_terms),
+        }),
+      });
+      if (!res.ok) throw new Error("Fix failed");
+      const data = (await res.json()) as {
+        answer: string;
+        metadata: {
+          keywords: string[];
+          synonyms: string[];
+          search_phrases: string[];
+          alternative_wording: string[];
+          related_terms: string[];
+        };
+      };
+      setForm((f) => ({
+        ...f,
+        answer: data.answer,
+        keywords: keywordsToText(data.metadata.keywords),
+        synonyms: keywordsToText(data.metadata.synonyms),
+        search_phrases: keywordsToText(data.metadata.search_phrases),
+        alternative_wording: keywordsToText(data.metadata.alternative_wording),
+        related_terms: keywordsToText(data.metadata.related_terms),
+      }));
+      setMetadataBaseline({ question: form.question.trim(), answer: data.answer.trim() });
+      setMetadataGeneratedNotice(true);
+      showToast("Quality issues resolved.");
+    } catch {
+      showToast("Could not fix all quality issues.");
+    } finally {
+      setFixingAllQuality(false);
+    }
+  };
+
   const buildEntryPayload = () => ({
     category: migrateKnowledgeCategory(form.category),
     curriculum_module: form.curriculumModule ?? null,
@@ -731,6 +774,11 @@ export function AITrainingClient({
       const saved = await performSave();
       if (!saved) return;
       persistCategoryAfterSave();
+      const recs = buildPostSaveRecommendations(saved, [
+        ...knowledgeRows.filter((r) => r.id !== saved.id),
+        saved,
+      ]);
+      if (recs.length > 0) setPostSaveRecommendations(recs);
       setFormOpen(false);
       setDuplicateModalOpen(false);
       setNearDuplicateModalOpen(false);
@@ -767,6 +815,14 @@ export function AITrainingClient({
 
     if (needsNearDuplicateConfirm) {
       setNearDuplicateModalOpen(true);
+      return;
+    }
+
+    if (!enterpriseReadiness.ready) {
+      showToast(
+        enterpriseReadiness.blockers[0] ??
+          "Complete the Enterprise Quality Checklist before saving."
+      );
       return;
     }
 
@@ -972,35 +1028,11 @@ export function AITrainingClient({
   };
 
   const createFromUnanswered = async (row: AIUnansweredQuestion) => {
-    const nextForm: EntryFormState = {
-      ...emptyForm(),
+    openCreateForm({
       question: row.question,
       unansweredId: row.id,
-    };
-    setForm(nextForm);
-    setFormOpen(true);
-    setGeneratingKeywords(true);
-    try {
-      const res = await fetch(
-        "/api/super-admin/ai-training/knowledge/generate-keywords",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            question: row.question,
-            category: nextForm.category,
-          }),
-        }
-      );
-      if (res.ok) {
-        applyKeywordResult((await res.json()) as KeywordGenerationResult);
-      }
-    } finally {
-      setGeneratingKeywords(false);
-    }
+    });
   };
-
-  const unansweredPages = Math.max(1, Math.ceil(unansweredTotal / 20));
 
   const knowledgeCategoryOptions = useMemo(
     () => knowledgeRows.map((row) => row.category),
@@ -1273,6 +1305,16 @@ export function AITrainingClient({
 
       {tab === "knowledge" ? (
         <div className="mt-8 space-y-4">
+          {postSaveRecommendations && postSaveRecommendations.length > 0 ? (
+            <KnowledgePostSaveRecommendations
+              recommendations={postSaveRecommendations}
+              onCreateLesson={(question) => {
+                openCreateForm({ question, category: form.category });
+                setPostSaveRecommendations(null);
+              }}
+              onDismiss={() => setPostSaveRecommendations(null)}
+            />
+          ) : null}
           <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1335,10 +1377,6 @@ export function AITrainingClient({
                 <FileUp className="mr-2 h-4 w-4" />
                 Bulk Import
               </button>
-              <KnowledgeWritingStandardButton
-                compact
-                onClick={() => setWritingStandardOpen(true)}
-              />
               <button
                 type="button"
                 className={saBtnPrimary}
@@ -1956,15 +1994,8 @@ export function AITrainingClient({
                   {form.id ? "Edit Entry" : "Add Knowledge Entry"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Train Adakaro AI with a curated question and answer. Follow the{" "}
-                  <button
-                    type="button"
-                    className="font-medium text-indigo-600 hover:underline"
-                    onClick={() => setWritingStandardOpen(true)}
-                  >
-                    Knowledge Writing Standard
-                  </button>
-                  .
+                  Train Adakaro AI with a curated question and answer. Use the
+                  Enterprise Quality Checklist below before saving.
                 </p>
               </div>
               <button
@@ -2078,47 +2109,12 @@ export function AITrainingClient({
                 />
               ) : null}
 
-              <button
-                type="button"
-                className={saBtnSecondary}
-                disabled={generatingKeywords || !form.question.trim()}
-                onClick={() => void generateKeywords()}
-              >
-                {generatingKeywords ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                Regenerate Keywords
-              </button>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                {(
-                  [
-                    ["keywords", "Keywords"],
-                    ["synonyms", "Synonyms"],
-                    ["search_phrases", "Search Phrases"],
-                    ["alternative_wording", "Alternative Wording"],
-                    ["related_terms", "Related Terms"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <label key={key} className="block text-sm">
-                    <span className="font-medium text-slate-700">{label}</span>
-                    <textarea
-                      value={form[key]}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, [key]: e.target.value }))
-                      }
-                      rows={3}
-                      placeholder="One per line"
-                      className={cn(saInput, "mt-1 w-full font-mono text-xs")}
-                    />
-                  </label>
-                ))}
-              </div>
-
               <KnowledgeWritingChecklist
                 draft={writingDraft}
+                readiness={enterpriseReadiness}
+                fixingAll={fixingAllQuality}
+                onAutoFixLanguage={handleAutoFixLanguage}
+                onFixAllQuality={() => void handleFixAllQuality()}
                 onApplyTemplate={() =>
                   setForm((f) => ({
                     ...f,
@@ -2128,7 +2124,16 @@ export function AITrainingClient({
               />
 
               <label className="block text-sm">
-                <span className="font-medium text-slate-700">Answer</span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-slate-700">Answer</span>
+                  <KnowledgeAnswerAssistant
+                    question={form.question}
+                    answer={form.answer}
+                    onApply={(nextAnswer) =>
+                      setForm((f) => ({ ...f, answer: nextAnswer }))
+                    }
+                  />
+                </div>
                 <textarea
                   value={form.answer}
                   onChange={(e) =>
@@ -2141,6 +2146,29 @@ export function AITrainingClient({
                 />
               </label>
 
+              <KnowledgeMetadataFields
+                category={form.category}
+                question={form.question}
+                answer={form.answer}
+                fields={{
+                  keywords: form.keywords,
+                  synonyms: form.synonyms,
+                  search_phrases: form.search_phrases,
+                  alternative_wording: form.alternative_wording,
+                  related_terms: form.related_terms,
+                }}
+                onChange={(metadataFields) =>
+                  setForm((f) => ({
+                    ...f,
+                    ...metadataFields,
+                  }))
+                }
+                metadataBaseline={metadataBaseline}
+                onBaselineUpdate={setMetadataBaseline}
+                showGeneratedNotice={metadataGeneratedNotice}
+                onGeneratedNotice={setMetadataGeneratedNotice}
+              />
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -2149,24 +2177,30 @@ export function AITrainingClient({
                 >
                   Cancel
                 </button>
-                <button type="submit" className={saBtnPrimary} disabled={saving}>
+                <button
+                  type="submit"
+                  className={saBtnPrimary}
+                  disabled={saving || !enterpriseReadiness.ready}
+                  title={
+                    enterpriseReadiness.ready
+                      ? undefined
+                      : enterpriseReadiness.blockers[0]
+                  }
+                >
                   {saving ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <CheckCircle2 className="mr-2 h-4 w-4" />
                   )}
-                  Save Entry
+                  {enterpriseReadiness.ready
+                    ? "Save Entry"
+                    : `Enterprise Ready ${enterpriseReadiness.confidenceScore}%`}
                 </button>
               </div>
             </form>
           </div>
         </div>
       ) : null}
-
-      <KnowledgeWritingStandardModal
-        open={writingStandardOpen}
-        onClose={() => setWritingStandardOpen(false)}
-      />
 
       <TestAIDrawer
         open={testDrawerOpen}

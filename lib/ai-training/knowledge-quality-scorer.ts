@@ -603,7 +603,7 @@ export function improveLessonDraft(
 
   switch (target) {
     case "retrievalQuality": {
-      const kw = generateKeywordsFromQuestion(next.question, category);
+      const kw = generateKeywordsFromQuestion(next.question, category, next.answer);
       next = {
         ...next,
         keywords: [...new Set([...next.keywords, ...kw.keywords])].slice(0, 12),

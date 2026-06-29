@@ -119,6 +119,8 @@ export interface KeywordGenerationResult {
   related_terms: string[];
 }
 
+export type { KnowledgeMetadataGenerationResult, MetadataField } from "./knowledge-metadata-generator";
+
 export interface KnowledgeSearchMatch {
   entry: AIKnowledgeEntry;
   /** Final combined score used for selection. */

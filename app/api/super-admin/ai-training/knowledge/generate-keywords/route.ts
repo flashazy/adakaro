@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
+import {
+  generateKnowledgeMetadata,
+  type MetadataField,
+} from "@/lib/ai-training/knowledge-metadata-generator";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 
 export const dynamic = "force-dynamic";
+
+const METADATA_FIELDS: MetadataField[] = [
+  "keywords",
+  "synonyms",
+  "search_phrases",
+  "alternative_wording",
+  "related_terms",
+];
 
 export async function POST(request: NextRequest) {
   const auth = await requireSuperAdminDataClient();
@@ -10,7 +21,9 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as {
     question?: string;
+    answer?: string;
     category?: string;
+    field?: MetadataField;
   };
 
   const question = body.question?.trim();
@@ -18,6 +31,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Question is required." }, { status: 400 });
   }
 
-  const result = generateKeywordsFromQuestion(question, body.category);
+  const field = body.field && METADATA_FIELDS.includes(body.field) ? body.field : undefined;
+
+  const result = await generateKnowledgeMetadata(
+    {
+      question,
+      answer: body.answer?.trim() ?? "",
+      category: body.category?.trim() ?? "General",
+    },
+    { field }
+  );
+
   return NextResponse.json(result);
 }

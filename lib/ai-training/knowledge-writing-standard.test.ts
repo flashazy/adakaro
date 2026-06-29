@@ -53,7 +53,7 @@ describe("knowledge writing standard", () => {
       ...goodDraft,
       answer: "I'd be happy to help! Adakaro is a platform.",
     });
-    assert.ok(result.issues.some((i) => i.includes("conversational")));
+    assert.ok(result.issues.some((i) => i.includes("Facts, not conversation")));
     assert.equal(
       result.checklist.find((c) => c.id === "facts-not-conversation")?.passed,
       false
@@ -86,5 +86,81 @@ describe("knowledge writing standard", () => {
     const template = buildRecommendedAnswerTemplate("What is Adakaro?");
     assert.ok(template.includes("**Overview**"));
     assert.ok(template.includes("**Core Facts**"));
+  });
+
+  it("allows neutral documentation language", () => {
+    const result = validateKnowledgeWritingStandard({
+      ...goodDraft,
+      answer: [
+        "**Overview**",
+        "Adakaro is designed to support school management.",
+        "",
+        "**Capabilities**",
+        "- Includes attendance and report cards",
+        "- Provides role-based access for authorized users",
+        "- Allows administrators to configure the platform",
+        "- Accessible through the web system",
+      ].join("\n"),
+    });
+    const prof = result.checklist.find((c) => c.id === "professional-language");
+    const timeless = result.checklist.find((c) => c.id === "timeless");
+    assert.equal(prof?.passed, true);
+    assert.equal(timeless?.passed, true);
+  });
+
+  it("flags genuine marketing language with exact context", () => {
+    const result = validateKnowledgeWritingStandard({
+      ...goodDraft,
+      answer: goodDraft.answer.replace(
+        "school management platform",
+        "the best school management platform"
+      ),
+    });
+    const prof = result.checklist.find((c) => c.id === "professional-language");
+    assert.equal(prof?.passed, false);
+    const failure = result.failures.find((f) => f.ruleId === "professional-language");
+    assert.ok(failure);
+    assert.equal(failure.word.toLowerCase(), "best");
+    assert.ok(failure.sentence.includes("best"));
+    assert.ok(failure.reason.length > 0);
+    assert.ok(result.issues[0]?.includes("best"));
+  });
+
+  it("does not flag best practices as marketing", () => {
+    const result = validateKnowledgeWritingStandard({
+      ...goodDraft,
+      answer: goodDraft.answer + "\n\nFollow enrollment best practices when importing students.",
+    });
+    assert.equal(
+      result.checklist.find((c) => c.id === "professional-language")?.passed,
+      true
+    );
+  });
+
+  it("flags temporal references only", () => {
+    const result = validateKnowledgeWritingStandard({
+      ...goodDraft,
+      answer: goodDraft.answer + "\n\nThis feature is currently available today.",
+    });
+    assert.equal(result.checklist.find((c) => c.id === "timeless")?.passed, false);
+    assert.ok(result.failures.some((f) => f.ruleId === "timeless" && f.word.toLowerCase().includes("currently")));
+  });
+
+  it("detects semantic structure without fixed headings", () => {
+    const result = validateKnowledgeWritingStandard({
+      ...goodDraft,
+      answer: [
+        "**Purpose**",
+        "Explain deployment for school administrators.",
+        "",
+        "**Permissions**",
+        "- Authorized users can access modules",
+        "- Role-based access controls visibility",
+        "",
+        "**Notes**",
+        "- Additional configuration may be required",
+      ].join("\n"),
+    });
+    assert.equal(result.checklist.find((c) => c.id === "structured-answer")?.passed, true);
   });
 });

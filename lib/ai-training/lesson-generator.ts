@@ -462,7 +462,7 @@ export async function generateModuleLessons(
   let skippedDuplicates = 0;
 
   for (const raw of rawLessons) {
-    const keywords = generateKeywordsFromQuestion(raw.question, def.defaultCategory);
+    const keywords = generateKeywordsFromQuestion(raw.question, def.defaultCategory, raw.answer);
     const inference = inferIntentWithConfidence(raw.question, def.defaultCategory);
 
     const base = {

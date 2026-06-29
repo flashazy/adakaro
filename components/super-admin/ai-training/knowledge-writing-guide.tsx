@@ -5,109 +5,41 @@ import {
   BookOpen,
   Check,
   ChevronDown,
-  Copy,
-  ExternalLink,
-  X,
+  Loader2,
+  ShieldCheck,
+  Sparkles,
+  Wand2,
 } from "lucide-react";
 import {
-  saBtnSecondary,
+  saBtnPrimarySm,
   saBtnSecondarySm,
   saSectionSubtitle,
 } from "@/components/super-admin/super-admin-dashboard-ui";
 import {
-  buildKnowledgeWritingStandardMarkdown,
   buildRecommendedAnswerTemplate,
-  KNOWLEDGE_WRITING_STANDARD_META,
-  KNOWLEDGE_WRITING_STANDARD_SECTIONS,
-  KNOWLEDGE_WRITING_STANDARD_VERSION,
   validateKnowledgeWritingStandard,
+  autoFixProfessionalLanguage,
+  autoFixTimelessWording,
   type KnowledgeWritingDraft,
   type WritingStandardValidation,
 } from "@/lib/ai-training/knowledge-writing-standard";
+import type { EnterpriseReadinessResult } from "@/lib/ai-training/knowledge-authoring";
 import { cn } from "@/lib/utils";
-
-export function KnowledgeWritingStandardModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[240] flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
-      <div
-        className="flex max-h-[90dvh] w-full max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="writing-standard-title"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
-              Permanent Guide · v{KNOWLEDGE_WRITING_STANDARD_VERSION}
-            </p>
-            <h2 id="writing-standard-title" className="text-lg font-semibold text-slate-900">
-              {KNOWLEDGE_WRITING_STANDARD_META.title}
-            </h2>
-            <p className={saSectionSubtitle}>
-              How every knowledge entry must be written. Facts here — conversation tone in the
-              Global System Prompt.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-            aria-label="Close writing standard"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="space-y-4">
-            {KNOWLEDGE_WRITING_STANDARD_SECTIONS.map((section) => (
-              <section
-                key={section.id}
-                className="rounded-xl border border-slate-200 bg-slate-50/50 p-4"
-              >
-                <h3 className="text-sm font-semibold text-slate-900">{section.title}</h3>
-                <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-600">
-                  {section.body}
-                </p>
-              </section>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
-          <button
-            type="button"
-            className={saBtnSecondary}
-            onClick={() => {
-              void navigator.clipboard.writeText(buildKnowledgeWritingStandardMarkdown());
-            }}
-          >
-            <Copy className="mr-2 h-4 w-4" />
-            Copy Markdown
-          </button>
-          <button type="button" className={saBtnSecondary} onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function KnowledgeWritingChecklist({
   draft,
   onApplyTemplate,
+  readiness,
+  onAutoFixLanguage,
+  onFixAllQuality,
+  fixingAll,
 }: {
   draft: KnowledgeWritingDraft;
   onApplyTemplate?: () => void;
+  readiness?: EnterpriseReadinessResult | null;
+  onAutoFixLanguage?: () => void;
+  onFixAllQuality?: () => void;
+  fixingAll?: boolean;
 }) {
   const validation = useMemo(
     () => validateKnowledgeWritingStandard(draft),
@@ -115,6 +47,7 @@ export function KnowledgeWritingChecklist({
   );
 
   const [expanded, setExpanded] = useState(true);
+  const confidence = readiness?.confidenceScore ?? validation.languageScore;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
@@ -124,26 +57,14 @@ export function KnowledgeWritingChecklist({
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <BookOpen className="h-4 w-4 text-indigo-600" aria-hidden />
           <span className="text-sm font-semibold text-slate-900">
             Enterprise Quality Checklist
           </span>
-          <span
-            className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
-              validation.passed
-                ? "bg-emerald-100 text-emerald-800"
-                : validation.requiredPassed
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-red-100 text-red-800"
-            )}
-          >
-            {validation.passed
-              ? "Ready"
-              : validation.requiredPassed
-                ? "Review"
-                : "Incomplete"}
+          <StatusBadge validation={validation} readiness={readiness} />
+          <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-700">
+            {confidence}% confidence
           </span>
         </div>
         <ChevronDown
@@ -155,7 +76,24 @@ export function KnowledgeWritingChecklist({
         <div className="mt-3 space-y-3">
           <ChecklistGrid validation={validation} />
 
-          {validation.issues.length > 0 ? (
+          <ProfessionalLanguagePanel validation={validation} onAutoFix={onAutoFixLanguage} />
+
+          <TimelessLanguagePanel validation={validation} onAutoFix={onAutoFixLanguage} />
+
+          {validation.failures
+            .filter((f) => !["professional-language", "timeless"].includes(f.ruleId))
+            .slice(0, 6)
+            .map((failure) => (
+              <FailureDetailCard key={`${failure.ruleId}-${failure.word}`} failure={failure} tone="rose" />
+            ))}
+
+          {readiness && readiness.blockers.length > 0 ? (
+            <ul className="space-y-1 rounded-lg border border-red-200 bg-red-50/70 p-3 text-xs text-red-800">
+              {readiness.blockers.map((issue) => (
+                <li key={issue}>• {issue}</li>
+              ))}
+            </ul>
+          ) : validation.issues.length > 0 ? (
             <ul className="space-y-1 rounded-lg border border-red-200 bg-red-50/70 p-3 text-xs text-red-800">
               {validation.issues.map((issue) => (
                 <li key={issue}>• {issue}</li>
@@ -171,13 +109,145 @@ export function KnowledgeWritingChecklist({
             </ul>
           ) : null}
 
-          {onApplyTemplate && !draft.answer.trim() && draft.question.trim() ? (
-            <button type="button" className={saBtnSecondarySm} onClick={onApplyTemplate}>
-              Insert recommended answer structure
-            </button>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {onFixAllQuality ? (
+              <button
+                type="button"
+                className={saBtnPrimarySm}
+                disabled={fixingAll}
+                onClick={onFixAllQuality}
+              >
+                {fixingAll ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Fix All Quality Issues
+              </button>
+            ) : null}
+            {onApplyTemplate && !draft.answer.trim() && draft.question.trim() ? (
+              <button type="button" className={saBtnSecondarySm} onClick={onApplyTemplate}>
+                Insert recommended answer structure
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function StatusBadge({
+  validation,
+  readiness,
+}: {
+  validation: WritingStandardValidation;
+  readiness?: EnterpriseReadinessResult | null;
+}) {
+  const ready = readiness?.ready ?? validation.passed;
+  const review = readiness ? !readiness.ready && readiness.writingValidation.requiredPassed : validation.requiredPassed;
+
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+        ready
+          ? "bg-emerald-100 text-emerald-800"
+          : review
+            ? "bg-amber-100 text-amber-800"
+            : "bg-red-100 text-red-800"
+      )}
+    >
+      {ready ? "Enterprise Ready" : review ? "Review" : "Incomplete"}
+    </span>
+  );
+}
+
+function FailureDetailCard({
+  failure,
+  tone,
+}: {
+  failure: import("@/lib/ai-training/knowledge-writing-standard").RuleFailure;
+  tone: "rose" | "amber";
+}) {
+  const border = tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-amber-200 bg-amber-50/50";
+  const title = tone === "rose" ? "text-rose-900" : "text-amber-900";
+  const body = tone === "rose" ? "text-rose-800" : "text-amber-800";
+
+  return (
+    <div className={cn("rounded-md border p-2.5 text-[11px]", border)}>
+      <p className={cn("font-semibold", title)}>Problem</p>
+      <p className={cn("mt-0.5 italic", body)}>&quot;{failure.sentence}&quot;</p>
+      <p className={cn("mt-1.5 font-semibold", title)}>Flag</p>
+      <p className={body}>{failure.word}</p>
+      <p className={cn("mt-1.5 font-semibold", title)}>Reason</p>
+      <p className={body}>{failure.reason}</p>
+      <p className={cn("mt-1.5 font-semibold", title)}>Suggested replacement</p>
+      <p className={body}>{failure.suggestion}</p>
+    </div>
+  );
+}
+
+function ProfessionalLanguagePanel({
+  validation,
+  onAutoFix,
+}: {
+  validation: WritingStandardValidation;
+  onAutoFix?: () => void;
+}) {
+  const profItem = validation.checklist.find((c) => c.id === "professional-language");
+  if (!profItem || profItem.passed) return null;
+
+  const ruleFailures = profItem.failures ?? validation.failures.filter((f) => f.ruleId === "professional-language");
+
+  return (
+    <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="text-xs font-semibold text-rose-900">Professional Language</p>
+        {onAutoFix ? (
+          <button type="button" className={saBtnSecondarySm} onClick={onAutoFix}>
+            <Wand2 className="mr-1 h-3 w-3" />
+            Auto Fix
+          </button>
+        ) : null}
+      </div>
+      <div className="mt-2 space-y-2">
+        {ruleFailures.slice(0, 6).map((failure, idx) => (
+          <FailureDetailCard key={`${failure.word}-${idx}`} failure={failure} tone="rose" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TimelessLanguagePanel({
+  validation,
+  onAutoFix,
+}: {
+  validation: WritingStandardValidation;
+  onAutoFix?: () => void;
+}) {
+  const item = validation.checklist.find((c) => c.id === "timeless");
+  if (!item || item.passed) return null;
+
+  const ruleFailures = item.failures ?? validation.failures.filter((f) => f.ruleId === "timeless");
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="text-xs font-semibold text-amber-900">Timeless Wording</p>
+        {onAutoFix ? (
+          <button type="button" className={saBtnSecondarySm} onClick={onAutoFix}>
+            <Wand2 className="mr-1 h-3 w-3" />
+            Auto Fix
+          </button>
+        ) : null}
+      </div>
+      <div className="mt-2 space-y-2">
+        {ruleFailures.slice(0, 6).map((failure, idx) => (
+          <FailureDetailCard key={`${failure.word}-${idx}`} failure={failure} tone="amber" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -214,20 +284,77 @@ function ChecklistGrid({ validation }: { validation: WritingStandardValidation }
   );
 }
 
-export function KnowledgeWritingStandardButton({
-  onClick,
-  compact = false,
+export function KnowledgePostSaveRecommendations({
+  recommendations,
+  onCreateLesson,
+  onDismiss,
 }: {
-  onClick: () => void;
-  compact?: boolean;
+  recommendations: Array<{
+    question: string;
+    reason: string;
+    priorityScore: number;
+    priorityLevel: string;
+    starRating: number;
+    inDatabase: boolean;
+  }>;
+  onCreateLesson: (question: string) => void;
+  onDismiss: () => void;
 }) {
+  if (recommendations.length === 0) return null;
+
   return (
-    <button type="button" className={saBtnSecondary} onClick={onClick}>
-      <BookOpen className="mr-2 h-4 w-4" aria-hidden />
-      {compact ? "Writing Standard" : "Knowledge Writing Standard"}
-      <ExternalLink className="ml-2 h-3.5 w-3.5 opacity-60" aria-hidden />
-    </button>
+    <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/80 to-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold text-violet-900">
+            <Sparkles className="h-4 w-4" />
+            Recommended Next Lessons
+          </p>
+          <p className={cn(saSectionSubtitle, "mt-0.5")}>
+            Missing knowledge detected from the dependency graph.
+          </p>
+        </div>
+        <button type="button" className="text-xs text-slate-500 hover:text-slate-700" onClick={onDismiss}>
+          Dismiss
+        </button>
+      </div>
+      <ul className="mt-3 space-y-2">
+        {recommendations.map((rec) => (
+          <li
+            key={rec.question}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-violet-100 bg-white/80 px-3 py-2"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-slate-900">{rec.question}</p>
+              <p className="text-[10px] text-slate-500">{rec.reason}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-amber-600">
+                {"★".repeat(rec.starRating)}
+                <span className="text-slate-300">{"★".repeat(5 - rec.starRating)}</span>
+              </span>
+              <span className="text-[10px] font-bold tabular-nums text-slate-600">
+                {rec.priorityScore}
+              </span>
+              {!rec.inDatabase ? (
+                <button
+                  type="button"
+                  className={saBtnSecondarySm}
+                  onClick={() => onCreateLesson(rec.question)}
+                >
+                  Create
+                </button>
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
-export { buildRecommendedAnswerTemplate };
+export {
+  buildRecommendedAnswerTemplate,
+  autoFixProfessionalLanguage,
+  autoFixTimelessWording,
+};

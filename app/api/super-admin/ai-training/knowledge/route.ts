@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncKnowledgeEntryEmbeddingSafe } from "@/lib/ai-training/embeddings";
-import { generateKeywordsFromQuestion } from "@/lib/ai-training/keyword-generator";
+import { generateKnowledgeMetadataSync } from "@/lib/ai-training/knowledge-metadata-generator";
 import { serializeDuplicateCheckForApi } from "@/lib/ai-training/knowledge-duplicates";
 import {
   createKnowledgeEntry,
@@ -92,7 +92,11 @@ export async function POST(request: NextRequest) {
 
   const generated =
     body.autoGenerateKeywords !== false
-      ? generateKeywordsFromQuestion(question, category)
+      ? generateKnowledgeMetadataSync({
+          question,
+          answer,
+          category,
+        })
       : null;
 
   const payload: KnowledgeEntryPayload = {

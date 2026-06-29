@@ -147,13 +147,28 @@ const HIGH_IMPACT_MODULES = new Set<CurriculumModuleId>([
 const DEPENDENCY_CHAINS: Record<string, string[]> = {
   "What can Adakaro do?": ["What is Adakaro?"],
   "Why choose Adakaro?": ["What is Adakaro?", "What can Adakaro do?"],
+  "Who is Adakaro built for?": ["What is Adakaro?"],
+  "Who uses Adakaro?": ["What is Adakaro?"],
   "How do I get started with Adakaro?": ["What is Adakaro?"],
+  "How do I request a demo?": ["What is Adakaro?", "How do I get started with Adakaro?"],
+  "What happens after requesting a demo?": ["How do I request a demo?"],
   "What is Adakaro pricing?": ["What is Adakaro?", "How much does Adakaro cost?"],
   "How much does Adakaro cost?": ["What is Adakaro?"],
   "How do I generate report cards?": ["What are report cards?", "How do report cards work?"],
   "Can parents view report cards?": ["How do I generate report cards?"],
   "How do I mark attendance?": ["How does attendance work in Adakaro?"],
 };
+
+/** Recommended follow-up lessons after saving identity/platform entries. */
+export const IDENTITY_FOLLOW_UP_QUESTIONS = [
+  "What can Adakaro do?",
+  "Who is Adakaro built for?",
+  "Why choose Adakaro?",
+  "How much does Adakaro cost?",
+  "How do I get started with Adakaro?",
+  "How do I request a demo?",
+  "Which schools use Adakaro?",
+];
 
 const BUSINESS_CRITICAL_QUESTIONS = new Set(
   [
@@ -404,6 +419,15 @@ function buildPrerequisites(
       completed: Boolean(entry),
     };
   });
+}
+
+/** Prerequisites for a lesson question (dependency graph). */
+export function getLessonPrerequisites(
+  question: string,
+  context: CurriculumPlannerContext,
+  excludeId?: string
+): LessonPrerequisite[] {
+  return buildPrerequisites(question, context, excludeId);
 }
 
 function resolveLessonMeta(

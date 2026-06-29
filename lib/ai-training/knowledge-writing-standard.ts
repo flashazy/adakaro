@@ -7,6 +7,14 @@
  * Bump KNOWLEDGE_WRITING_STANDARD_VERSION when making material changes.
  */
 
+import {
+  analyzeAnswerLanguage,
+  autoFixProfessionalLanguage,
+  autoFixTimelessWording,
+  type LanguageIssue,
+} from "./knowledge-language-improver";
+import { hasSemanticStructure, describeStructureGap } from "./knowledge-answer-structure";
+
 export const KNOWLEDGE_WRITING_STANDARD_VERSION = "1.0.0";
 
 export const KNOWLEDGE_WRITING_STANDARD_META = {
@@ -39,39 +47,6 @@ export const RECOMMENDED_ANSWER_SECTIONS = [
   "Related Features",
 ] as const;
 
-const CONVERSATIONAL_PHRASES = [
-  /\bi'?d be happy to help\b/i,
-  /\bif you'?d like\b/i,
-  /\blet me know\b/i,
-  /\bfeel free to\b/i,
-  /\bhello\b/i,
-  /\bhi there\b/i,
-  /\bgood (morning|afternoon|evening)\b/i,
-  /\bthank you for asking\b/i,
-  /\bi hope this helps\b/i,
-];
-
-const MARKETING_WORDS = [
-  /\bamazing\b/i,
-  /\brevolutionary\b/i,
-  /\bworld[- ]class\b/i,
-  /\bbest\b/i,
-  /\bincredible\b/i,
-  /\bcutting[- ]edge\b/i,
-  /\bgame[- ]changer\b/i,
-  /\bunmatched\b/i,
-];
-
-const TIME_BOUND_WORDS = [
-  /\btoday\b/i,
-  /\bcurrently\b/i,
-  /\bsoon\b/i,
-  /\bnext month\b/i,
-  /\bthis month\b/i,
-  /\bat the moment\b/i,
-  /\bfor now\b/i,
-];
-
 const MULTI_INTENT_PATTERNS = [
   /\band also\b/i,
   /\bas well as\b/i,
@@ -79,6 +54,15 @@ const MULTI_INTENT_PATTERNS = [
   /\bwhat is .+ and how (much|do|does|can)\b/i,
   /\bhow .+ and (what|how|can|does)\b/i,
 ];
+
+export interface RuleFailure {
+  ruleId: string;
+  ruleLabel: string;
+  sentence: string;
+  word: string;
+  reason: string;
+  suggestion: string;
+}
 
 export interface KnowledgeWritingDraft {
   category: string;
@@ -99,6 +83,9 @@ export interface WritingStandardCheckItem {
   passed: boolean;
   required: boolean;
   hint?: string;
+  detectedWords?: string[];
+  suggestions?: Array<{ word: string; replacement: string }>;
+  failures?: RuleFailure[];
 }
 
 export interface WritingStandardValidation {
@@ -108,6 +95,9 @@ export interface WritingStandardValidation {
   checklist: WritingStandardCheckItem[];
   issues: string[];
   warnings: string[];
+  failures: RuleFailure[];
+  languageIssues: LanguageIssue[];
+  languageScore: number;
 }
 
 export const KNOWLEDGE_WRITING_STANDARD_SECTIONS = [
@@ -221,19 +211,27 @@ export function buildKnowledgeWritingStandardMarkdown(): string {
   return header + body;
 }
 
-function findPatternMatches(text: string, patterns: RegExp[]): string[] {
-  return patterns.filter((p) => p.test(text)).map((p) => p.source);
-}
-
 function hasMultiIntentQuestion(question: string): boolean {
   return MULTI_INTENT_PATTERNS.some((p) => p.test(question.trim()));
 }
 
-function countAnswerSections(answer: string): number {
-  const normalized = answer.toLowerCase();
-  return RECOMMENDED_ANSWER_SECTIONS.filter((section) =>
-    normalized.includes(section.toLowerCase())
-  ).length;
+function issueToFailure(
+  issue: LanguageIssue,
+  ruleId: string,
+  ruleLabel: string
+): RuleFailure {
+  return {
+    ruleId,
+    ruleLabel,
+    sentence: issue.sentence,
+    word: issue.word,
+    reason: issue.reason,
+    suggestion: issue.suggestion,
+  };
+}
+
+function formatFailureSummary(failure: RuleFailure): string {
+  return `${failure.ruleLabel}: "${failure.word}" in "${failure.sentence}" — ${failure.reason} Suggested: ${failure.suggestion}.`;
 }
 
 /**
@@ -245,38 +243,66 @@ export function validateKnowledgeWritingStandard(
 ): WritingStandardValidation {
   const issues: string[] = [];
   const warnings: string[] = [];
+  const failures: RuleFailure[] = [];
   const answer = draft.answer.trim();
   const question = draft.question.trim();
 
-  const conversational = findPatternMatches(answer, CONVERSATIONAL_PHRASES);
-  if (conversational.length) {
-    issues.push("Answer contains conversational phrasing — use facts only (Rule 2).");
+  const languageAnalysis = analyzeAnswerLanguage(answer);
+  const marketingIssues = languageAnalysis.marketingIssues;
+  const timelessIssues = languageAnalysis.timelessIssues;
+  const conversationalIssues = languageAnalysis.conversationalIssues;
+
+  for (const issue of conversationalIssues) {
+    const failure = issueToFailure(issue, "facts-not-conversation", "Facts, not conversation");
+    failures.push(failure);
+    issues.push(formatFailureSummary(failure));
   }
 
-  const marketing = findPatternMatches(answer, MARKETING_WORDS);
-  if (marketing.length) {
-    issues.push("Answer contains marketing language — use professional wording (Rule 4).");
+  for (const issue of marketingIssues) {
+    const failure = issueToFailure(issue, "professional-language", "Professional Language");
+    failures.push(failure);
+    issues.push(formatFailureSummary(failure));
   }
 
-  const timeBound = findPatternMatches(answer, TIME_BOUND_WORDS);
-  if (timeBound.length) {
-    warnings.push("Answer may contain time-bound wording — keep entries timeless (Rule 11).");
+  for (const issue of timelessIssues) {
+    const failure = issueToFailure(issue, "timeless", "Timeless Wording");
+    failures.push(failure);
+    issues.push(formatFailureSummary(failure));
   }
 
   if (hasMultiIntentQuestion(question)) {
-    issues.push("Question appears to combine multiple intents — use one intent per entry (Rule 1).");
+    const failure: RuleFailure = {
+      ruleId: "one-intent",
+      ruleLabel: "One clear intent",
+      sentence: question,
+      word: question,
+      reason: "Question combines multiple intents.",
+      suggestion: "Split into separate focused questions.",
+    };
+    failures.push(failure);
+    issues.push(formatFailureSummary(failure));
   }
 
   if (answer.length > 0 && answer.length < 80) {
     warnings.push("Answer is very short — ensure it fully satisfies the question (Rule 12).");
   }
 
-  const sectionCount = countAnswerSections(answer);
-  if (answer.length >= 120 && sectionCount === 0) {
-    warnings.push(
-      "Consider structuring longer answers with sections like Overview, Core Facts, Key Capabilities (Rule 5)."
-    );
+  const structured = hasSemanticStructure(answer);
+  if (answer.length >= 120 && !structured) {
+    const failure: RuleFailure = {
+      ruleId: "structured-answer",
+      ruleLabel: "Structured answer",
+      sentence: answer.split("\n")[0] ?? answer.slice(0, 120),
+      word: "(structure)",
+      reason: "Long answer lacks multiple logical sections.",
+      suggestion: describeStructureGap(answer),
+    };
+    failures.push(failure);
+    issues.push(formatFailureSummary(failure));
   }
+
+  const marketingWords = marketingIssues.map((i) => i.word);
+  const timelessWords = timelessIssues.map((i) => i.word);
 
   const checklist: WritingStandardCheckItem[] = [
     {
@@ -338,26 +364,41 @@ export function validateKnowledgeWritingStandard(
     {
       id: "facts-not-conversation",
       label: "Facts, not conversation",
-      passed: conversational.length === 0,
+      passed: conversationalIssues.length === 0,
       required: true,
+      failures: failures.filter((f) => f.ruleId === "facts-not-conversation"),
     },
     {
       id: "professional-language",
       label: "Professional language",
-      passed: marketing.length === 0,
+      passed: marketingIssues.length === 0,
       required: true,
+      detectedWords: marketingWords,
+      suggestions: marketingIssues.map((i) => ({
+        word: i.word,
+        replacement: i.suggestion,
+      })),
+      failures: failures.filter((f) => f.ruleId === "professional-language"),
     },
     {
       id: "timeless",
       label: "Timeless wording",
-      passed: timeBound.length === 0,
-      required: false,
+      passed: timelessIssues.length === 0,
+      required: true,
+      detectedWords: timelessWords,
+      suggestions: timelessIssues.map((i) => ({
+        word: i.word,
+        replacement: i.suggestion,
+      })),
+      failures: failures.filter((f) => f.ruleId === "timeless"),
     },
     {
       id: "structured-answer",
-      label: "Structured answer (recommended)",
-      passed: sectionCount >= 1 || answer.length < 120,
-      required: false,
+      label: "Structured answer",
+      passed: structured || answer.length < 120,
+      required: answer.length >= 120,
+      hint: structured ? undefined : describeStructureGap(answer),
+      failures: failures.filter((f) => f.ruleId === "structured-answer"),
     },
   ];
 
@@ -371,8 +412,17 @@ export function validateKnowledgeWritingStandard(
     checklist,
     issues,
     warnings,
+    failures,
+    languageIssues: [
+      ...marketingIssues,
+      ...timelessIssues,
+      ...conversationalIssues,
+    ],
+    languageScore: languageAnalysis.score,
   };
 }
+
+export { autoFixProfessionalLanguage, autoFixTimelessWording };
 
 /** Suggested answer template aligned with Rule 5. */
 export function buildRecommendedAnswerTemplate(question: string): string {
