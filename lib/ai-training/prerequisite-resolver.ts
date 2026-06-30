@@ -6,6 +6,7 @@
  */
 
 import { computeQuestionSimilarity, NEAR_DUPLICATE_MIN } from "./knowledge-duplicates";
+import type { LessonPrerequisite } from "./knowledge-intelligence-types";
 import { normalizeText } from "./knowledge-scoring";
 import type { AIKnowledgeEntry } from "./types";
 
@@ -22,17 +23,8 @@ export interface KnowledgeCoverageMatch {
   matchedQuestion: string;
 }
 
-export interface PrerequisiteResolution {
-  question: string;
-  entryId: string | null;
-  completed: boolean;
-  satisfiedBy: {
-    entryId: string;
-    question: string;
-    similarity: number;
-    matchType: KnowledgeMatchType;
-  } | null;
-}
+/** @deprecated Use LessonPrerequisite — kept as alias for resolver return values. */
+export type PrerequisiteResolution = LessonPrerequisite;
 
 function isActiveEntry(entry: AIKnowledgeEntry, excludeId?: string): boolean {
   return entry.status === "active" && !entry.merged_into_id && entry.id !== excludeId;
@@ -131,7 +123,7 @@ export function resolvePrerequisite(
   prerequisiteQuestion: string,
   entries: AIKnowledgeEntry[],
   excludeId?: string
-): PrerequisiteResolution {
+): LessonPrerequisite {
   const coverage = findKnowledgeCoverage(prerequisiteQuestion, entries, { excludeId });
 
   if (!coverage) {
@@ -143,7 +135,7 @@ export function resolvePrerequisite(
     };
   }
 
-  const matchType =
+  const matchType: KnowledgeMatchType =
     coverage.matchType === "exact" && coverage.similarity >= 0.99
       ? "exact"
       : coverage.similarity >= KNOWLEDGE_COVERED_THRESHOLD
@@ -168,24 +160,24 @@ export function resolvePrerequisite(
   };
 }
 
-export function formatPrerequisiteStatus(resolution: PrerequisiteResolution): string {
-  if (!resolution.completed) {
+export function formatPrerequisiteStatus(prerequisite: LessonPrerequisite): string {
+  if (!prerequisite.completed) {
     return "Missing — increases lesson priority";
   }
-  if (resolution.satisfiedBy) {
-    const pct = Math.round(resolution.satisfiedBy.similarity * 100);
-    return `Prerequisite satisfied by: "${resolution.satisfiedBy.question}" (${pct}% topic match)`;
+  if (prerequisite.satisfiedBy) {
+    const pct = Math.round(prerequisite.satisfiedBy.similarity * 100);
+    return `Prerequisite satisfied by: "${prerequisite.satisfiedBy.question}" (${pct}% topic match)`;
   }
   return "Published in knowledge base";
 }
 
-export function formatPrerequisiteHint(resolution: PrerequisiteResolution): string | undefined {
-  if (resolution.completed) return undefined;
-  return `Missing prerequisite: ${resolution.question}`;
+export function formatPrerequisiteHint(prerequisite: LessonPrerequisite): string | undefined {
+  if (prerequisite.completed) return undefined;
+  return `Missing prerequisite: ${prerequisite.question}`;
 }
 
 export function formatEnterpriseDependencyHint(
-  missing: PrerequisiteResolution[]
+  missing: LessonPrerequisite[]
 ): string | undefined {
   if (missing.length === 0) return undefined;
   return `Missing prerequisites: ${missing.map((p) => p.question).join("; ")}`;

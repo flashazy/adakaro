@@ -80,7 +80,10 @@ function metadataFromDraft(draft: KnowledgeWritingDraft) {
 
 export function assessEnterpriseReadiness(input: {
   draft: KnowledgeWritingDraft;
-  duplicateCheck?: { exactMatch?: { entry: { id: string } } | null } | null;
+  duplicateCheck?: {
+    exactMatch?: { entry: { id: string; question?: string } } | null;
+    nearDuplicateMatch?: { entry: { id: string; question: string } } | null;
+  } | null;
   metadataBaseline?: { question: string; answer: string } | null;
   editingEntryId?: string | null;
   allEntries?: AIKnowledgeEntry[];
@@ -150,14 +153,7 @@ export function assessEnterpriseReadiness(input: {
       label: "Dependency analysis",
       passed: dependencyPassed,
       required: prerequisites.length > 0,
-      hint: formatEnterpriseDependencyHint(
-        missingPrerequisites.map((p) => ({
-          question: p.question,
-          entryId: p.entryId,
-          completed: p.completed,
-          satisfiedBy: p.satisfiedBy ?? null,
-        }))
-      ),
+      hint: formatEnterpriseDependencyHint(missingPrerequisites),
     },
     {
       id: "ai-validation",
