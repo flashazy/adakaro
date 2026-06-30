@@ -157,7 +157,7 @@ const RELATED_LESSON_TEMPLATES: Record<
     { question: "How do I use Adakaro AI?", intent: "process" },
     { question: "What are the limitations of Adakaro AI?", intent: "reasoning" },
     { question: "Can Adakaro AI make mistakes?", intent: "eligibility" },
-    { question: "Which users can access Adakaro AI?", intent: "eligibility" },
+    { question: "Which users can access Adakaro AI?", intent: "permission" },
     { question: "Who is Adakaro AI?", intent: "identity" },
   ],
   adakaro: [
@@ -168,19 +168,20 @@ const RELATED_LESSON_TEMPLATES: Record<
   ],
   "student-streaming": [
     { question: "How does Student Streaming work?", intent: "process" },
-    { question: "Who can manage Student Streaming?", intent: "eligibility" },
+    { question: "Who can manage Student Streaming?", intent: "permission" },
   ],
   "report-cards": [
     { question: "How do I generate report cards?", intent: "process" },
-    { question: "Can parents view report cards?", intent: "eligibility" },
+    { question: "Can parents view report cards?", intent: "permission" },
+    { question: "Can report cards be exported as PDF?", intent: "capability" },
   ],
   attendance: [
     { question: "How do I mark attendance?", intent: "process" },
-    { question: "Can parents see attendance?", intent: "eligibility" },
+    { question: "Can parents see attendance?", intent: "permission" },
   ],
   finance: [
     { question: "How do I record a payment?", intent: "process" },
-    { question: "Can parents pay fees online?", intent: "eligibility" },
+    { question: "Can parents pay fees online?", intent: "permission" },
   ],
 };
 

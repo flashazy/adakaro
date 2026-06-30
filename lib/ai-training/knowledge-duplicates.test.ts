@@ -46,6 +46,28 @@ describe("intent signature", () => {
     assert.equal(inferIntentSignature("Why choose Adakaro?").category, "reasoning");
   });
 
+  it("separates permission from capability intents", () => {
+    const permission = inferIntentSignature("Can parents view report cards?");
+    const capability = inferIntentSignature("Can report cards be exported as PDF?");
+
+    assert.equal(permission.category, "permission");
+    assert.equal(permission.action, "view");
+    assert.equal(capability.category, "capability");
+    assert.equal(capability.action, "exported");
+    assert.ok(compareIntentSignatures(permission, capability) < 0.85);
+  });
+
+  it("differentiates permission actions with the same role", () => {
+    const view = inferIntentSignature("Can parents view report cards?");
+    const download = inferIntentSignature("Can parents download report cards?");
+
+    assert.equal(view.category, "permission");
+    assert.equal(download.category, "permission");
+    assert.equal(view.action, "view");
+    assert.equal(download.action, "download");
+    assert.ok(compareIntentSignatures(view, download) < 0.85);
+  });
+
   it("returns zero similarity for different intent categories", () => {
     const identity = inferIntentSignature("What is Adakaro?");
     const capabilities = inferIntentSignature("What can Adakaro do?");
@@ -181,6 +203,65 @@ describe("knowledge-duplicates", () => {
     assert.equal(result.intentComparison?.currentIntent.category, "capabilities");
     assert.equal(result.intentComparison?.existingIntent.category, "identity");
     assert.equal(result.intentComparison?.status, "different_intent");
+  });
+
+  it("classifies permission vs capability report-card questions as related topic", () => {
+    const existing = entry({
+      id: "1",
+      question: "Can parents view report cards?",
+      category: "Report Cards",
+      keywords: ["parents", "report", "cards", "view"],
+      search_phrases: ["can parents view report cards"],
+    });
+    const { classification, similarity, scores } = computeQuestionSimilarity(
+      "Can report cards be exported as PDF?",
+      existing,
+      { category: "Report Cards" }
+    );
+
+    assert.equal(classification, "related_topic");
+    assert.ok(similarity < 0.72, `expected below near-duplicate threshold, got ${similarity}`);
+    assert.notEqual(scores.intentSimilarity, 1);
+  });
+
+  it("classifies permission view vs download as related not near duplicate", () => {
+    const existing = entry({
+      id: "1",
+      question: "Can parents view report cards?",
+      category: "Report Cards",
+      keywords: ["parents", "report", "cards", "view"],
+    });
+    const { classification, similarity } = computeQuestionSimilarity(
+      "Can parents download report cards?",
+      existing,
+      { category: "Report Cards" }
+    );
+
+    assert.notEqual(classification, "near_duplicate");
+    assert.notEqual(classification, "exact_duplicate");
+    assert.ok(similarity < 0.72);
+  });
+
+  it("preserves near-duplicate behavior for process report-card variants", () => {
+    const existing = entry({
+      id: "1",
+      question: "How do report cards work in Adakaro?",
+      category: "Report Cards",
+      keywords: ["report", "cards", "work", "generate"],
+      search_phrases: ["how do report cards work", "generate report cards"],
+      alternative_wording: ["how are report cards created"],
+    });
+    const { classification, similarity } = computeQuestionSimilarity(
+      "How do I generate report cards?",
+      existing,
+      { category: "Report Cards" }
+    );
+
+    assert.ok(
+      classification === "near_duplicate" || classification === "related_topic",
+      `unexpected classification: ${classification}`
+    );
+    assert.ok(similarity >= 0.65);
   });
 });
 

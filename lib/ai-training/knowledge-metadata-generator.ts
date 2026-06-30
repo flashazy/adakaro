@@ -313,12 +313,14 @@ function buildSearchPhrases(input: KnowledgeMetadataInput): string[] {
       core.replace(/^what is\s+/i, "what is "),
       `${core} adakaro`
     );
-  } else if (intent.category === "eligibility") {
+  } else if (intent.category === "eligibility" || intent.category === "permission") {
     templates.push(
       core,
       core.replace(/^can\s+/i, "can i "),
       core.replace(/^can\s+/i, "is it possible to ")
     );
+  } else if (intent.category === "capability") {
+    templates.push(core, `${core} in adakaro`, `does adakaro support ${tokenize(input.question).slice(-3).join(" ")}`);
   } else {
     templates.push(
       `how do i ${tokenize(input.question).slice(-4).join(" ")}`,

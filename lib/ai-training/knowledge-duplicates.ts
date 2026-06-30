@@ -10,6 +10,7 @@ import {
 import {
   compareIntentSignatures,
   computeQuestionStructureSimilarity,
+  areDistinctButRelatedIntentFamilies,
   inferIntentSignature,
   type IntentSignature,
   type IntentSignatureCategory,
@@ -393,6 +394,15 @@ function classifyDuplicateMatch(input: {
     if (scores.combined >= 0.45 || scores.semanticSimilarity >= 0.45) {
       return "related_topic";
     }
+    return "related_topic";
+  }
+
+  if (
+    areDistinctButRelatedIntentFamilies(qSig, eSig) &&
+    qEntity &&
+    eEntity &&
+    compareKnowledgeEntities(qEntity, eEntity) >= 0.25
+  ) {
     return "related_topic";
   }
 

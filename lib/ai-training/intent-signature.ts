@@ -6,6 +6,8 @@ export type IntentSignatureCategory =
   | "reasoning"
   | "process"
   | "comparison"
+  | "permission"
+  | "capability"
   | "eligibility"
   | "pricing"
   | "general";
@@ -15,6 +17,8 @@ export interface IntentSignature {
   label: string;
   pattern: string | null;
   confidence: number;
+  /** Primary business action when inferable (view, export, generate, …). */
+  action: string | null;
 }
 
 const SIGNATURE_RULES: Array<{
@@ -37,10 +41,37 @@ const SIGNATURE_RULES: Array<{
     ],
   },
   {
+    category: "permission",
+    label: "Permission / Access",
+    patterns: [
+      /^who can (?:view|see|access|download|open|print|manage|edit|use)\b/i,
+      /^who can\b/i,
+      /^can (?:parents|teachers|students|admins|users|staff|coordinators?|school\s+admins?)\s+(?:view|see|access|download|open|print|manage|edit|use|pay)\b/i,
+      /^can (?:i|we|schools?)\s+(?:view|see|access|download|open|print)\b/i,
+      /^are (?:parents|teachers|students|admins|users|staff)\s+(?:allowed|able)\s+to\s+(?:view|see|access|download|open|print|manage|pay)\b/i,
+    ],
+  },
+  {
+    category: "capability",
+    label: "Capability",
+    patterns: [
+      /^can .+\s+be (?:exported|downloaded|printed|generated|shared|sent|emailed|converted|archived|deleted|published|enabled|configured)\b/i,
+      /^can (?:adakaro|the system|report cards|attendance|finance)\s+(?:export|generate|support|send|email|print|download|archive|delete|publish|enable|configure)\b/i,
+      /^does adakaro support\b/i,
+      /^does .+\s+support\b/i,
+      /^is .+\s+(?:supported|available|enabled)\b/i,
+      /^can adakaro\b/i,
+    ],
+  },
+  {
     category: "eligibility",
     label: "Eligibility",
     patterns: [
-      /^(?:can|could|am i allowed|is it possible|are (?:parents|teachers|students|admins) allowed)\b/i,
+      /^can i\b/i,
+      /^could i\b/i,
+      /^am i allowed\b/i,
+      /^is it possible\b/i,
+      /^are .+ allowed\b/i,
     ],
   },
   {
@@ -82,10 +113,61 @@ const SIGNATURE_RULES: Array<{
   },
 ];
 
+const PERMISSION_ACTION_PATTERN =
+  /\b(view|see|access|download|open|print|manage|edit|use|pay)\b/i;
+
+const CAPABILITY_ACTION_PATTERNS = [
+  /\bbe (exported|downloaded|printed|generated|shared|sent|emailed|converted|archived|deleted|published|enabled|configured)\b/i,
+  /\b(?:export|generate|support|send|email|print|download|share|enable|configure|archive|delete|publish)(?:ed|ing|s)?\b/i,
+];
+
+const PROCESS_ACTION_PATTERN = /^how (?:do i|to|does) (\w+)/i;
+
+/** Intent families that share an entity but describe different business concepts. */
+const RELATED_INTENT_FAMILIES = new Set<IntentSignatureCategory>([
+  "permission",
+  "capability",
+  "eligibility",
+  "process",
+]);
+
+function extractPrimaryAction(
+  question: string,
+  category: IntentSignatureCategory
+): string | null {
+  const trimmed = question.trim();
+
+  if (category === "permission") {
+    const match = trimmed.match(PERMISSION_ACTION_PATTERN);
+    return match?.[1]?.toLowerCase() ?? null;
+  }
+
+  if (category === "capability") {
+    for (const pattern of CAPABILITY_ACTION_PATTERNS) {
+      const match = trimmed.match(pattern);
+      if (match?.[1]) return match[1].toLowerCase();
+    }
+    return null;
+  }
+
+  if (category === "process") {
+    const match = trimmed.match(PROCESS_ACTION_PATTERN);
+    return match?.[1]?.toLowerCase() ?? null;
+  }
+
+  return null;
+}
+
 export function inferIntentSignature(question: string): IntentSignature {
   const trimmed = question.trim();
   if (!trimmed) {
-    return { category: "general", label: "General", pattern: null, confidence: 0.3 };
+    return {
+      category: "general",
+      label: "General",
+      pattern: null,
+      confidence: 0.3,
+      action: null,
+    };
   }
 
   for (const rule of SIGNATURE_RULES) {
@@ -96,19 +178,47 @@ export function inferIntentSignature(question: string): IntentSignature {
           label: rule.label,
           pattern: pattern.source,
           confidence: 0.92,
+          action: extractPrimaryAction(trimmed, rule.category),
         };
       }
     }
   }
 
-  return { category: "general", label: "General", pattern: null, confidence: 0.45 };
+  return {
+    category: "general",
+    label: "General",
+    pattern: null,
+    confidence: 0.45,
+    action: null,
+  };
+}
+
+export function areDistinctButRelatedIntentFamilies(
+  a: IntentSignature,
+  b: IntentSignature
+): boolean {
+  if (a.category === b.category) return false;
+  return RELATED_INTENT_FAMILIES.has(a.category) && RELATED_INTENT_FAMILIES.has(b.category);
 }
 
 export function compareIntentSignatures(
   a: IntentSignature,
   b: IntentSignature
 ): number {
-  if (a.category === b.category) return 1;
+  if (a.category === b.category) {
+    if (
+      a.action &&
+      b.action &&
+      a.action !== b.action &&
+      (a.category === "permission" ||
+        a.category === "capability" ||
+        a.category === "process")
+    ) {
+      return 0.4;
+    }
+    return 1;
+  }
+  if (areDistinctButRelatedIntentFamilies(a, b)) return 0.35;
   if (a.category === "general" || b.category === "general") return 0.55;
   return 0;
 }
@@ -137,6 +247,10 @@ export function computeQuestionStructureSimilarity(
   sigB: IntentSignature
 ): number {
   if (sigA.category !== sigB.category) return 0;
+
+  if (sigA.action && sigB.action && sigA.action !== sigB.action) {
+    return 0.15;
+  }
 
   if (sigA.category === "identity") {
     const subjectA = extractIdentitySubject(questionA);
