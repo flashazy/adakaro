@@ -182,7 +182,7 @@ export function resolveDuplicateSaveRecommendation(
 }
 
 const INTENT_DIFFERENT_CAP = 0.35;
-const NEAR_DUPLICATE_MIN = 0.72;
+export const NEAR_DUPLICATE_MIN = 0.72;
 const ENTITY_DIFFERENT_CAP = 0.35;
 
 export function resolveDuplicateConfidenceLevel(

@@ -21,6 +21,7 @@ import {
 } from "./knowledge-writing-standard";
 import { validateMetadataDraft } from "./knowledge-metadata-validator";
 import { prioritizeRelatedLessons, buildCurriculumPlannerContext, getLessonPrerequisites, IDENTITY_FOLLOW_UP_QUESTIONS, mergePriorityLessonSuggestions, scoreDependencyFollowUp } from "./knowledge-curriculum-planner";
+import { formatEnterpriseDependencyHint, isKnowledgeCovered } from "./prerequisite-resolver";
 import { normalizeText } from "./knowledge-scoring";
 import type { AIKnowledgeEntry } from "./types";
 
@@ -107,6 +108,10 @@ export function assessEnterpriseReadiness(input: {
   const missingPrerequisites = prerequisites.filter((p) => !p.completed);
   const dependencyPassed = missingPrerequisites.length === 0;
 
+  const nearDuplicateCoversTopic =
+    duplicateCheck?.nearDuplicateMatch &&
+    (!editingEntryId || duplicateCheck.nearDuplicateMatch.entry.id !== editingEntryId);
+
   const checks: EnterpriseReadinessCheck[] = [
     ...writingValidation.checklist.map((c) => ({
       id: c.id,
@@ -134,17 +139,25 @@ export function assessEnterpriseReadiness(input: {
       label: "Duplicate analysis clear",
       passed: !hasExactDuplicate,
       required: true,
-      hint: "Resolve exact duplicate before saving.",
+      hint: hasExactDuplicate
+        ? "Resolve exact duplicate before saving."
+        : nearDuplicateCoversTopic
+          ? `Existing lesson covers this topic: "${duplicateCheck!.nearDuplicateMatch!.entry.question}". Update that entry instead of creating a new one.`
+          : undefined,
     },
     {
       id: "dependency-analysis",
       label: "Dependency analysis",
       passed: dependencyPassed,
       required: prerequisites.length > 0,
-      hint:
-        missingPrerequisites.length > 0
-          ? `Missing prerequisites: ${missingPrerequisites.map((p) => p.question).join("; ")}`
-          : undefined,
+      hint: formatEnterpriseDependencyHint(
+        missingPrerequisites.map((p) => ({
+          question: p.question,
+          entryId: p.entryId,
+          completed: p.completed,
+          satisfiedBy: p.satisfiedBy ?? null,
+        }))
+      ),
     },
     {
       id: "ai-validation",
@@ -254,7 +267,14 @@ export function buildPostSaveRecommendations(
   }
 
   return mergePriorityLessonSuggestions(suggestions)
-    .filter((s) => !s.inDatabase || s.entryId !== savedEntry.id)
+    .filter(
+      (s) =>
+        (!s.inDatabase || s.entryId !== savedEntry.id) &&
+        !isKnowledgeCovered(s.question, allEntries, {
+          excludeId: savedEntry.id,
+          category: savedEntry.category,
+        })
+    )
     .slice(0, 8)
     .map((s) => ({
       question: s.question,

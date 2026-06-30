@@ -318,6 +318,13 @@ export interface LessonPrerequisite {
   question: string;
   entryId: string | null;
   completed: boolean;
+  /** When a different existing lesson semantically covers this prerequisite. */
+  satisfiedBy?: {
+    entryId: string;
+    question: string;
+    similarity: number;
+    matchType: "exact" | "fuzzy" | "semantic";
+  } | null;
 }
 
 export interface PriorityLessonSuggestion {

@@ -6,6 +6,7 @@ import {
   serializePrioritySuggestion,
 } from "@/lib/ai-training/knowledge-curriculum-planner";
 import { loadEntriesForDuplicateCheck } from "@/lib/ai-training/knowledge-entry-mutations";
+import { isKnowledgeCovered } from "@/lib/ai-training/prerequisite-resolver";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import type { AIUnansweredQuestion } from "@/lib/ai-training/types";
 import type { LearningEventRow } from "@/lib/ai-training/learning-types";
@@ -55,7 +56,12 @@ export async function GET(request: NextRequest) {
     result.suggestedRelatedLessons,
     context,
     { excludeId, category }
-  ).map(serializePrioritySuggestion);
+  )
+    .filter(
+      (s) =>
+        !isKnowledgeCovered(s.question, entries, { excludeId, category })
+    )
+    .map(serializePrioritySuggestion);
 
   return NextResponse.json({
     ...serializeDuplicateCheckForApi(result),

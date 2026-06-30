@@ -30,6 +30,8 @@ import {
   getLessonPrerequisites,
   scoreAuthoringQuestion,
 } from "@/lib/ai-training/knowledge-curriculum-planner";
+import type { LessonPrerequisite } from "@/lib/ai-training/knowledge-intelligence-types";
+import { formatPrerequisiteStatus } from "@/lib/ai-training/prerequisite-resolver";
 import type { AIKnowledgeEntry } from "@/lib/ai-training/types";
 import { cn } from "@/lib/utils";
 
@@ -660,7 +662,7 @@ function WorkflowInsights({
   comparison: DuplicateCheckApiResult["intentComparison"];
   prioritizedSuggestions: PriorityLessonSuggestionApi[];
   relatedSuggestions: SuggestedRelatedLessonApi[];
-  prerequisites: Array<{ question: string; entryId: string | null; completed: boolean }>;
+  prerequisites: LessonPrerequisite[];
   lessonPriority: ReturnType<typeof scoreAuthoringQuestion> | null;
   stepStatus: (id: string) => AuthoringWorkflowStepState["status"];
   onSelectEntry: (entryId: string) => void;
@@ -825,15 +827,15 @@ function WorkflowInsights({
                     <span className="text-xs font-medium text-slate-900">{dep.question}</span>
                   </div>
                   <p className="mt-0.5 text-[10px] text-slate-500">
-                    {dep.completed ? "Published in knowledge base" : "Missing — increases lesson priority"}
+                    {formatPrerequisiteStatus(dep)}
                   </p>
                   {dep.entryId ? (
                     <button
                       type="button"
                       className="mt-1 text-[10px] font-medium text-indigo-700 hover:underline"
-                      onClick={() => onSelectEntry(dep.entryId!)}
+                      onClick={() => onSelectEntry(dep.satisfiedBy?.entryId ?? dep.entryId!)}
                     >
-                      Open lesson
+                      {dep.satisfiedBy ? "Open covering lesson" : "Open lesson"}
                     </button>
                   ) : onCreateLesson ? (
                     <button

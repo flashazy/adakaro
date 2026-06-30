@@ -17,6 +17,11 @@ import { extractKnowledgeEntity } from "./knowledge-entities";
 import { inferIntentSignature } from "./intent-signature";
 import { MODULE_QUESTION_BANK } from "./lesson-generation-prompt";
 import { normalizeText } from "./knowledge-scoring";
+import {
+  findKnowledgeCoverage,
+  isKnowledgeCovered,
+  resolvePrerequisite,
+} from "./prerequisite-resolver";
 import type { AIKnowledgeEntry, AIUnansweredQuestion } from "./types";
 import type { LearningEventRow } from "./learning-types";
 
@@ -155,7 +160,9 @@ const DEPENDENCY_CHAINS: Record<string, string[]> = {
   "What is Adakaro pricing?": ["What is Adakaro?", "How much does Adakaro cost?"],
   "How much does Adakaro cost?": ["What is Adakaro?"],
   "How do I generate report cards?": ["What are report cards?", "How do report cards work?"],
-  "Can parents view report cards?": ["How do I generate report cards?"],
+  "How do report cards work in Adakaro?": ["What are report cards?"],
+  "How do report cards work?": ["What are report cards?"],
+  "Can parents view report cards?": ["How do I generate report cards?", "How do report cards work?"],
   "How do I mark attendance?": ["How does attendance work in Adakaro?"],
 };
 
@@ -308,9 +315,24 @@ function findEntryByQuestion(
       (e) =>
         e.id !== excludeId &&
         e.status === "active" &&
-        (normalizeText(e.question) === norm || normalizeText(e.question).includes(norm.slice(0, 24)))
+        !e.merged_into_id &&
+        (normalizeText(e.question) === norm ||
+          normalizeText(e.question).includes(norm.slice(0, 24)) ||
+          norm.includes(normalizeText(e.question).slice(0, 24)))
     ) ?? null
   );
+}
+
+/** Semantic-aware lookup for coverage / prerequisite satisfaction only. */
+function findCoveredEntry(
+  question: string,
+  entries: AIKnowledgeEntry[],
+  excludeId?: string,
+  category?: string
+): AIKnowledgeEntry | null {
+  const exact = findEntryByQuestion(question, entries, excludeId);
+  if (exact) return exact;
+  return findKnowledgeCoverage(question, entries, { excludeId, category })?.entry ?? null;
 }
 
 function computeSearchDemand(
@@ -412,11 +434,12 @@ function buildPrerequisites(
 ): LessonPrerequisite[] {
   const deps = DEPENDENCY_CHAINS[question] ?? [];
   return deps.map((dep) => {
-    const entry = findEntryByQuestion(dep, context.activeEntries, excludeId);
+    const resolved = resolvePrerequisite(dep, context.activeEntries, excludeId);
     return {
       question: dep,
-      entryId: entry?.id ?? null,
-      completed: Boolean(entry),
+      entryId: resolved.entryId,
+      completed: resolved.completed,
+      satisfiedBy: resolved.satisfiedBy,
     };
   });
 }
@@ -837,7 +860,15 @@ export function prioritizeRelatedLessons(
     );
   }
 
-  return mergePriorityLessonSuggestions([...scored.values()]).slice(0, 12);
+  return mergePriorityLessonSuggestions([...scored.values()])
+    .filter(
+      (s) =>
+        !isKnowledgeCovered(s.question, context.activeEntries, {
+          excludeId: options?.excludeId,
+          category: options?.category,
+        })
+    )
+    .slice(0, 12);
 }
 
 export function buildTopLessonRecommendations(
@@ -972,7 +1003,9 @@ export function detectKnowledgeGapIssues(context: CurriculumPlannerContext): Kno
     }
 
     const deps = DEPENDENCY_CHAINS[entry.question] ?? [];
-    const missingDeps = deps.filter((d) => !findEntryByQuestion(d, context.activeEntries));
+    const missingDeps = deps.filter(
+      (d) => !isKnowledgeCovered(d, context.activeEntries, { category: entry.category })
+    );
     if (missingDeps.length > 0) {
       issues.push({
         id: `broken-dep-${entry.id}`,

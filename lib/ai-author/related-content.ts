@@ -55,11 +55,27 @@ export function collectRelatedContent(
 
   const relatedQuestions = request.relatedQuestions ?? [];
 
-  const prerequisiteEntries = findPublishedByQuestions(
+  const prerequisiteEntries: AIKnowledgeEntry[] = [];
+  const prereqSeen = new Set<string>();
+
+  for (const prereq of graphPrerequisites) {
+    if (!prereq.entryId || prereqSeen.has(prereq.entryId)) continue;
+    const entry = published.find((e) => e.id === prereq.entryId);
+    if (entry) {
+      prereqSeen.add(prereq.entryId);
+      prerequisiteEntries.push(entry);
+    }
+  }
+
+  for (const entry of findPublishedByQuestions(
     prerequisiteQuestions,
     published,
     excludeId
-  );
+  )) {
+    if (prereqSeen.has(entry.id)) continue;
+    prereqSeen.add(entry.id);
+    prerequisiteEntries.push(entry);
+  }
 
   const dependencyEntries = findPublishedByQuestions(
     dependencyQuestions,
