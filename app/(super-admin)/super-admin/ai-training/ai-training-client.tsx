@@ -85,6 +85,7 @@ import {
   replaceSentenceAtLocation,
   type ValidationIssue,
 } from "@/lib/ai-training/knowledge-validation-locations";
+import { normalizeKnowledgeEntry } from "@/lib/ai-training/normalize-knowledge-entry";
 import {
   buildCurriculumPlannerContext,
   getLessonPrerequisites,
@@ -451,10 +452,9 @@ export function AITrainingClient({
         total: number;
       };
       setKnowledgeRows(
-        data.rows.map((row) => ({
-          ...row,
-          synonyms: row.synonyms ?? [],
-        }))
+        data.rows.map((row) =>
+          normalizeKnowledgeEntry(row as unknown as Record<string, unknown>)
+        )
       );
       setKnowledgeTotal(data.total);
     } finally {
@@ -533,48 +533,48 @@ export function AITrainingClient({
     setTab("knowledge");
   };
 
-  const openEditForm = (row: AIKnowledgeEntry) => {
-    setClassificationEntry(classificationFromEntry(row));
+  const populateFormFromEntry = useCallback((row: AIKnowledgeEntry) => {
+    const entry = normalizeKnowledgeEntry(row as unknown as Record<string, unknown>);
+    setClassificationEntry(classificationFromEntry(entry));
     setEditMeta({
-      version_number: row.version_number ?? 1,
-      updated_at: row.updated_at,
-      created_at: row.created_at,
+      version_number: entry.version_number ?? 1,
+      updated_at: entry.updated_at,
+      created_at: entry.created_at,
     });
     setDuplicateCheck(null);
     setIgnoredIssueIds(new Set());
     setActiveIssueIndex(0);
     setActiveHighlightRange(null);
     setActiveMetadataHighlight(null);
-    setMetadataBaseline({ question: row.question, answer: row.answer });
+    setMetadataBaseline({ question: entry.question, answer: entry.answer });
     setMetadataGeneratedNotice(true);
     setForm({
-      id: row.id,
-      category: row.category,
-      question: row.question,
-      keywords: keywordsToText(row.keywords),
-      search_phrases: keywordsToText(row.search_phrases),
-      alternative_wording: keywordsToText(row.alternative_wording),
-      synonyms: keywordsToText(row.synonyms ?? []),
-      related_terms: keywordsToText(row.related_terms),
-      answer: row.answer,
-      priority: row.priority,
+      id: entry.id,
+      category: entry.category,
+      question: entry.question,
+      keywords: keywordsToText(entry.keywords),
+      search_phrases: keywordsToText(entry.search_phrases),
+      alternative_wording: keywordsToText(entry.alternative_wording),
+      synonyms: keywordsToText(entry.synonyms ?? []),
+      related_terms: keywordsToText(entry.related_terms),
+      answer: entry.answer,
+      priority: entry.priority,
     });
     setFormOpen(true);
+  }, []);
+
+  const openEditForm = (row: AIKnowledgeEntry) => {
+    populateFormFromEntry(row);
   };
 
   const openEntryById = async (entryId: string) => {
-    const local = knowledgeRows.find((r) => r.id === entryId);
-    if (local) {
-      openEditForm(local);
-      return;
-    }
     const res = await fetch(`/api/super-admin/ai-training/knowledge/${entryId}`);
     if (!res.ok) {
       showToast("Could not load that entry.");
       return;
     }
     const data = (await res.json()) as { row: AIKnowledgeEntry };
-    openEditForm(data.row);
+    populateFormFromEntry(data.row);
   };
 
   const applyTestSuggestion = async (
@@ -1059,6 +1059,11 @@ export function AITrainingClient({
 
   const saveEntry = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (!form.answer.trim()) {
+      showToast("Answer is required before saving.");
+      return;
+    }
 
     const conflictingDuplicate =
       duplicateCheck?.exactMatch &&
@@ -1818,7 +1823,7 @@ export function AITrainingClient({
                           <button
                             type="button"
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            onClick={() => openEditForm(row)}
+                            onClick={() => void openEntryById(row.id)}
                             aria-label="Edit"
                           >
                             <Pencil className="h-4 w-4" />
@@ -2404,6 +2409,7 @@ export function AITrainingClient({
                   />
                 </div>
                 <AuthorDocumentationEditor
+                  key={form.id ?? "new-entry"}
                   ref={answerEditorRef}
                   value={form.answer}
                   onChange={(nextAnswer) =>

@@ -197,22 +197,27 @@ export const HighlightedTextarea = forwardRef<HighlightedTextareaHandle, Highlig
       "px-3 py-2"
     );
 
+    const useHighlightOverlay = highlights.length > 0;
+
+    useEffect(() => {
+      syncScroll();
+    }, [value, highlights, syncScroll]);
+
     return (
       <div className="relative mt-1">
-        <div
-          ref={backdropRef}
-          aria-hidden
-          className={cn(
-            "pointer-events-none absolute inset-0 overflow-hidden rounded-md border border-transparent",
-            sharedTypography,
-            "text-slate-900"
-          )}
-        >
-          {buildHighlightedMarkup(value, highlights, activeRange)}
-          {!value && placeholder ? (
-            <span className="text-slate-400">{placeholder}</span>
-          ) : null}
-        </div>
+        {useHighlightOverlay ? (
+          <div
+            ref={backdropRef}
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-xl border border-transparent",
+              sharedTypography,
+              "text-slate-900"
+            )}
+          >
+            {buildHighlightedMarkup(value, highlights, activeRange)}
+          </div>
+        ) : null}
 
         <textarea
           ref={textareaRef}
@@ -226,17 +231,23 @@ export const HighlightedTextarea = forwardRef<HighlightedTextareaHandle, Highlig
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
           onScroll={syncScroll}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => {
-            setHoveredIssue(null);
-            setTooltipPos(null);
-          }}
+          onMouseMove={useHighlightOverlay ? handleMouseMove : undefined}
+          onMouseLeave={
+            useHighlightOverlay
+              ? () => {
+                  setHoveredIssue(null);
+                  setTooltipPos(null);
+                }
+              : undefined
+          }
           className={cn(
             saInput,
-            "relative z-[1] w-full resize-y bg-transparent caret-slate-900",
+            "relative z-[1] w-full resize-y",
             sharedTypography,
             "min-h-[18rem] max-h-[36rem] overflow-y-auto scroll-smooth",
-            "text-transparent selection:bg-indigo-200/70 selection:text-slate-900",
+            useHighlightOverlay
+              ? "!bg-transparent text-transparent caret-slate-900 selection:bg-indigo-200/70 selection:text-slate-900"
+              : "text-slate-800",
             className
           )}
         />

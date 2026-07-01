@@ -7,6 +7,7 @@ import {
   logIntentHistory,
 } from "@/lib/ai-training/intent-recalculate";
 import { snapshotEntryVersion, upsertIntentPrimaryEntry } from "@/lib/ai-training/knowledge-versioning";
+import { normalizeKnowledgeEntry } from "@/lib/ai-training/normalize-knowledge-entry";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import type { AIKnowledgeEntry, KnowledgePriority, KnowledgeStatus } from "@/lib/ai-training/types";
 
@@ -30,7 +31,7 @@ export async function GET(
     return NextResponse.json({ error: "Entry not found." }, { status: 404 });
   }
 
-  return NextResponse.json({ row: data });
+  return NextResponse.json({ row: normalizeKnowledgeEntry(data as Record<string, unknown>) });
 }
 
 export async function PATCH(
@@ -70,7 +71,16 @@ export async function PATCH(
   const patch: Record<string, unknown> = {};
   if (body.category !== undefined) patch.category = body.category.trim();
   if (body.question !== undefined) patch.question = body.question.trim();
-  if (body.answer !== undefined) patch.answer = body.answer.trim();
+  if (body.answer !== undefined) {
+    const nextAnswer = body.answer.trim();
+    if (!nextAnswer && current.answer.trim().length > 0) {
+      return NextResponse.json(
+        { error: "Answer cannot be empty while editing an existing entry." },
+        { status: 400 }
+      );
+    }
+    patch.answer = nextAnswer;
+  }
   if (body.keywords !== undefined) patch.keywords = body.keywords;
   if (body.search_phrases !== undefined) patch.search_phrases = body.search_phrases;
   if (body.alternative_wording !== undefined) patch.alternative_wording = body.alternative_wording;
@@ -174,7 +184,9 @@ export async function PATCH(
 
   void syncKnowledgeEntryEmbeddingSafe(dataClient, updated);
 
-  return NextResponse.json({ row: { ...updated, health_status: health.level } });
+  return NextResponse.json({
+    row: normalizeKnowledgeEntry({ ...updated, health_status: health.level } as Record<string, unknown>),
+  });
 }
 
 export async function DELETE(

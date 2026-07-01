@@ -212,7 +212,7 @@ export function KnowledgeMetadataFields({
           <label key={key} className="block text-sm">
             <span className="font-medium text-slate-700">{label}</span>
             <span className="mt-0.5 block text-[10px] text-slate-400">{hint}</span>
-            {(fieldHighlights?.[key]?.length ?? 0) > 0 || onHighlightAction ? (
+            {(fieldHighlights?.[key]?.length ?? 0) > 0 ? (
               <HighlightedTextarea
                 ref={(handle) => {
                   if (fieldRefs) fieldRefs.current[key] = handle;

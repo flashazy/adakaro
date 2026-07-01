@@ -7,6 +7,7 @@ import {
   type KnowledgeEntryPayload,
 } from "@/lib/ai-training/knowledge-entry-mutations";
 import { logIntentHistory } from "@/lib/ai-training/intent-recalculate";
+import { normalizeKnowledgeEntry } from "@/lib/ai-training/normalize-knowledge-entry";
 import { requireSuperAdminDataClient } from "@/lib/ai-training/require-super-admin-api";
 import type {
   AIKnowledgeEntry,
@@ -50,7 +51,9 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    rows: data ?? [],
+    rows: (data ?? []).map((row) =>
+      normalizeKnowledgeEntry(row as Record<string, unknown>)
+    ),
     total: count ?? 0,
     page,
     pageSize,
