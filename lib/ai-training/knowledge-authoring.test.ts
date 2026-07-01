@@ -21,7 +21,7 @@ const baseDraft = {
   ].join("\n"),
   keywords: ["adakaro", "school", "platform", "management"],
   search_phrases: ["what is adakaro", "how does adakaro work"],
-  alternative_wording: ["What does Adakaro do for schools?"],
+  alternative_wording: ["Tell me what Adakaro is?"],
   synonyms: ["school software", "education platform"],
   related_terms: ["School Management System", "Student Information System"],
   priority: "normal",

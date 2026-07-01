@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type MutableRefObject } from "react";
 import { AlertTriangle, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import type { KnowledgeMetadataGenerationResult, MetadataField } from "@/lib/ai-training/knowledge-metadata-generator";
 import { metadataFieldsMatchSource } from "@/lib/ai-training/knowledge-metadata-generator";
 import { validateMetadataDraft } from "@/lib/ai-training/knowledge-metadata-validator";
+import {
+  HighlightedTextarea,
+  type HighlightedTextareaHandle,
+  type TextHighlight,
+} from "@/components/super-admin/ai-training/highlighted-textarea";
 import { saBtnSecondary, saInput } from "@/components/super-admin/super-admin-dashboard-ui";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +24,7 @@ export type MetadataFormFields = {
 const FIELD_CONFIG: Array<{ key: MetadataField; label: string; hint: string }> = [
   { key: "keywords", label: "Keywords", hint: "One keyword or phrase per line (max 4 words)" },
   { key: "synonyms", label: "Synonyms", hint: "Short synonym phrases" },
-  { key: "search_phrases", label: "Search Phrases", hint: "Lowercase search queries, 1–5 words per line" },
+  { key: "search_phrases", label: "Search Phrases", hint: "Lowercase natural search queries, 1–8 words per line" },
   { key: "alternative_wording", label: "Alternative Wording", hint: "Other ways to ask the same question" },
   { key: "related_terms", label: "Related Terms", hint: "Related concepts and modules" },
 ];
@@ -38,6 +43,10 @@ interface KnowledgeMetadataFieldsProps {
   onBaselineUpdate: (baseline: { question: string; answer: string }) => void;
   showGeneratedNotice: boolean;
   onGeneratedNotice: (show: boolean) => void;
+  fieldHighlights?: Partial<Record<MetadataField, TextHighlight[]>>;
+  activeFieldRange?: { field: MetadataField; start: number; end: number } | null;
+  fieldRefs?: MutableRefObject<Partial<Record<MetadataField, HighlightedTextareaHandle | null>>>;
+  onHighlightAction?: (issueId: string, action: "accept" | "ignore") => void;
 }
 
 export function KnowledgeMetadataFields({
@@ -50,6 +59,10 @@ export function KnowledgeMetadataFields({
   onBaselineUpdate,
   showGeneratedNotice,
   onGeneratedNotice,
+  fieldHighlights,
+  activeFieldRange,
+  fieldRefs,
+  onHighlightAction,
 }: KnowledgeMetadataFieldsProps) {
   const [generating, setGenerating] = useState(false);
   const [generatingField, setGeneratingField] = useState<MetadataField | null>(null);
@@ -199,26 +212,53 @@ export function KnowledgeMetadataFields({
           <label key={key} className="block text-sm">
             <span className="font-medium text-slate-700">{label}</span>
             <span className="mt-0.5 block text-[10px] text-slate-400">{hint}</span>
-            <textarea
-              value={fields[key]}
-              onFocus={() => setFocusedField(key)}
-              onChange={(e) => {
-                onGeneratedNotice(false);
-                onChange({ ...fields, [key]: e.target.value });
-              }}
-              rows={3}
-              placeholder="One per line"
-              className={cn(
-                saInput,
-                "mt-1 w-full font-mono text-xs",
-                focusedField === key && "ring-2 ring-violet-200",
-                (fieldErrors[key]?.length ?? 0) > 0 && "border-red-300 ring-red-100"
-              )}
-            />
+            {(fieldHighlights?.[key]?.length ?? 0) > 0 || onHighlightAction ? (
+              <HighlightedTextarea
+                ref={(handle) => {
+                  if (fieldRefs) fieldRefs.current[key] = handle;
+                }}
+                value={fields[key]}
+                onChange={(value) => {
+                  onGeneratedNotice(false);
+                  onChange({ ...fields, [key]: value });
+                }}
+                rows={3}
+                placeholder="One per line"
+                highlights={fieldHighlights?.[key] ?? []}
+                activeRange={
+                  activeFieldRange?.field === key
+                    ? { start: activeFieldRange.start, end: activeFieldRange.end }
+                    : null
+                }
+                onHighlightAction={onHighlightAction}
+                className={cn(
+                  "mt-1 text-xs",
+                  focusedField === key && "ring-2 ring-violet-200",
+                  (fieldErrors[key]?.length ?? 0) > 0 && "border-red-300 ring-red-100"
+                )}
+              />
+            ) : (
+              <textarea
+                value={fields[key]}
+                onFocus={() => setFocusedField(key)}
+                onChange={(e) => {
+                  onGeneratedNotice(false);
+                  onChange({ ...fields, [key]: e.target.value });
+                }}
+                rows={3}
+                placeholder="One per line"
+                className={cn(
+                  saInput,
+                  "mt-1 w-full font-mono text-xs",
+                  focusedField === key && "ring-2 ring-violet-200",
+                  (fieldErrors[key]?.length ?? 0) > 0 && "border-red-300 ring-red-100"
+                )}
+              />
+            )}
             {(fieldErrors[key]?.length ?? 0) > 0 ? (
-              <ul className="mt-1 space-y-0.5 text-[10px] text-red-600">
+              <ul className="mt-1 space-y-1 text-[10px] text-red-600 whitespace-pre-wrap">
                 {fieldErrors[key]!.slice(0, 3).map((msg) => (
-                  <li key={msg}>• {msg}</li>
+                  <li key={msg}>{msg.startsWith("•") ? msg : `• ${msg}`}</li>
                 ))}
               </ul>
             ) : null}

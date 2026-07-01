@@ -7,6 +7,7 @@ import { AI_CONFIG } from "@/lib/ai/config";
 import { inferIntentSignature } from "./intent-signature";
 import {
   MAX_SEARCH_PHRASE_WORDS,
+  validateAlternativeWordingItem,
   validateSearchPhrase,
 } from "./knowledge-metadata-validator";
 import { normalizeText } from "./knowledge-scoring";
@@ -169,15 +170,13 @@ function sanitizeSearchPhrase(item: string): string | null {
 function sanitizeAlternativeWording(item: string, originalQuestion: string): string | null {
   let value = stripMarkdown(item).trim();
   if (!value || isMarketingOrSentence(value)) return null;
-  if (wordCount(value) > 14) return null;
+  if (wordCount(value) > 16) return null;
   if (!value.endsWith("?")) value = `${value.replace(/[.!?]+$/g, "")}?`;
   if (value.charAt(0) === value.charAt(0).toLowerCase()) {
     value = value.charAt(0).toUpperCase() + value.slice(1);
   }
-  const origTokens = new Set(tokenize(originalQuestion));
-  const altTokens = tokenize(value);
-  const overlap = altTokens.filter((t) => origTokens.has(t)).length;
-  if (overlap < 1 && wordCount(originalQuestion) > 3) return null;
+  const check = validateAlternativeWordingItem(originalQuestion, value);
+  if (!check.valid) return null;
   return value;
 }
 
@@ -217,7 +216,9 @@ function validateSearchPhrases(items: string[]): boolean {
 
 function validateAlternativeWording(items: string[], question: string): boolean {
   if (items.length < 2) return false;
-  return items.every((item) => item.includes("?") && !isMarketingOrSentence(item));
+  return items.every(
+    (item) => validateAlternativeWordingItem(question, item).valid && !isMarketingOrSentence(item)
+  );
 }
 
 function validateRelatedTerms(items: string[]): boolean {

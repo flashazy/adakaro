@@ -1,7 +1,14 @@
 "use client";
 
+import { forwardRef } from "react";
+import {
+  HighlightedTextarea,
+  type HighlightedTextareaHandle,
+  type TextHighlight,
+} from "@/components/super-admin/ai-training/highlighted-textarea";
 import { cn } from "@/lib/utils";
-import { saInput } from "@/components/super-admin/super-admin-dashboard-ui";
+
+export type { HighlightedTextareaHandle, TextHighlight };
 
 interface AuthorDocumentationEditorProps {
   value: string;
@@ -11,35 +18,42 @@ interface AuthorDocumentationEditorProps {
   disabled?: boolean;
   id?: string;
   className?: string;
+  highlights?: TextHighlight[];
+  activeRange?: { start: number; end: number } | null;
+  onHighlightAction?: (issueId: string, action: "accept" | "ignore") => void;
 }
 
-export function AuthorDocumentationEditor({
-  value,
-  onChange,
-  placeholder,
-  required,
-  disabled,
-  id,
-  className,
-}: AuthorDocumentationEditorProps) {
+export const AuthorDocumentationEditor = forwardRef<
+  HighlightedTextareaHandle,
+  AuthorDocumentationEditorProps
+>(function AuthorDocumentationEditor(
+  {
+    value,
+    onChange,
+    placeholder,
+    required,
+    disabled,
+    id,
+    className,
+    highlights,
+    activeRange,
+    onHighlightAction,
+  },
+  ref
+) {
   return (
-    <textarea
-      id={id}
+    <HighlightedTextarea
+      ref={ref}
+      id={id ?? "author-answer-editor"}
       value={value}
+      onChange={onChange}
       required={required}
       disabled={disabled}
-      rows={16}
-      spellCheck
-      wrap="soft"
       placeholder={placeholder}
-      onChange={(event) => onChange(event.target.value)}
-      className={cn(
-        saInput,
-        "mt-1 w-full resize-y font-mono text-[13px] leading-relaxed",
-        "whitespace-pre-wrap break-words",
-        "min-h-[18rem] max-h-[36rem] overflow-y-auto scroll-smooth",
-        className
-      )}
+      highlights={highlights}
+      activeRange={activeRange}
+      onHighlightAction={onHighlightAction}
+      className={cn(className)}
     />
   );
-}
+});

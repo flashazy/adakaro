@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
-  Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
+  MapPin,
+  Pencil,
   ShieldCheck,
   Sparkles,
   Wand2,
@@ -18,21 +21,132 @@ import {
 import {
   buildRecommendedAnswerTemplate,
   validateKnowledgeWritingStandard,
-  autoFixProfessionalLanguage,
-  autoFixTimelessWording,
   type KnowledgeWritingDraft,
-  type WritingStandardValidation,
 } from "@/lib/ai-training/knowledge-writing-standard";
 import type { EnterpriseReadinessResult } from "@/lib/ai-training/knowledge-authoring";
+import { collectValidationIssues } from "@/lib/ai-training/collect-validation-issues";
+import type { ValidationIssue } from "@/lib/ai-training/knowledge-validation-locations";
 import { cn } from "@/lib/utils";
+
+function LocationBreadcrumb({ issue }: { issue: ValidationIssue }) {
+  const { location } = issue;
+  return (
+    <div className="mt-2 space-y-0.5 text-[11px] text-slate-600">
+      <p className="flex items-center gap-1 font-medium text-slate-700">
+        <MapPin className="h-3 w-3 shrink-0" aria-hidden />
+        Location
+      </p>
+      <p className="pl-4">{location.section}</p>
+      <p className="pl-4">→ {location.field}</p>
+      <p className="pl-4">
+        → Paragraph {location.paragraphIndex + 1}
+        {location.sentenceIndex > 0 || issue.original.includes(".")
+          ? ` → Sentence ${location.sentenceIndex + 1}`
+          : null}
+      </p>
+    </div>
+  );
+}
+
+function IssueCard({
+  issue,
+  index,
+  isActive,
+  onJump,
+  onReplace,
+  onEdit,
+  onIgnore,
+}: {
+  issue: ValidationIssue;
+  index: number;
+  isActive: boolean;
+  onJump?: () => void;
+  onReplace?: () => void;
+  onEdit?: () => void;
+  onIgnore?: () => void;
+}) {
+  return (
+    <article
+      className={cn(
+        "rounded-lg border p-3 text-xs transition-shadow",
+        isActive
+          ? "border-indigo-300 bg-indigo-50/40 shadow-sm ring-1 ring-indigo-100"
+          : "border-slate-200 bg-white"
+      )}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+        Issue #{index + 1}
+      </p>
+      <p className="mt-1 text-sm font-semibold text-slate-900">{issue.ruleLabel}</p>
+
+      <LocationBreadcrumb issue={issue} />
+
+      <div className="mt-3 space-y-2">
+        <div>
+          <p className="font-semibold text-slate-700">Current</p>
+          <p className="mt-0.5 rounded-md bg-slate-50 px-2 py-1.5 italic text-slate-800">
+            {issue.original || "—"}
+          </p>
+        </div>
+        {issue.suggestion ? (
+          <div>
+            <p className="font-semibold text-emerald-800">Suggested</p>
+            <p className="mt-0.5 rounded-md bg-emerald-50/80 px-2 py-1.5 text-emerald-900">
+              {issue.suggestion}
+            </p>
+          </div>
+        ) : null}
+        {issue.reason && issue.reason !== issue.suggestion ? (
+          <p className="text-[10px] text-slate-500">{issue.reason}</p>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {onJump ? (
+          <button type="button" className={saBtnSecondarySm} onClick={onJump}>
+            <MapPin className="mr-1 h-3 w-3" />
+            Jump to sentence
+          </button>
+        ) : null}
+        {onReplace && issue.fixable && issue.suggestion ? (
+          <button type="button" className={saBtnPrimarySm} onClick={onReplace}>
+            <Wand2 className="mr-1 h-3 w-3" />
+            Accept
+          </button>
+        ) : null}
+        {onEdit ? (
+          <button type="button" className={saBtnSecondarySm} onClick={onEdit}>
+            <Pencil className="mr-1 h-3 w-3" />
+            Edit
+          </button>
+        ) : null}
+        {onIgnore ? (
+          <button
+            type="button"
+            className="rounded-md px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100"
+            onClick={onIgnore}
+          >
+            Ignore
+          </button>
+        ) : null}
+      </div>
+    </article>
+  );
+}
 
 export function KnowledgeWritingChecklist({
   draft,
   onApplyTemplate,
   readiness,
-  onAutoFixLanguage,
   onFixAllQuality,
   fixingAll,
+  issues: issuesProp,
+  activeIssueIndex: activeIssueIndexProp,
+  onActiveIssueChange: onActiveIssueChangeProp,
+  onJumpToIssue,
+  onReplaceIssue,
+  onEditIssue,
+  onIgnoreIssue,
 }: {
   draft: KnowledgeWritingDraft;
   onApplyTemplate?: () => void;
@@ -40,6 +154,13 @@ export function KnowledgeWritingChecklist({
   onAutoFixLanguage?: () => void;
   onFixAllQuality?: () => void;
   fixingAll?: boolean;
+  issues?: ValidationIssue[];
+  activeIssueIndex?: number;
+  onActiveIssueChange?: (index: number) => void;
+  onJumpToIssue?: (issue: ValidationIssue) => void;
+  onReplaceIssue?: (issue: ValidationIssue) => void;
+  onEditIssue?: (issue: ValidationIssue) => void;
+  onIgnoreIssue?: (issue: ValidationIssue) => void;
 }) {
   const validation = useMemo(
     () => validateKnowledgeWritingStandard(draft),
@@ -47,7 +168,41 @@ export function KnowledgeWritingChecklist({
   );
 
   const [expanded, setExpanded] = useState(true);
-  const confidence = readiness?.confidenceScore ?? validation.languageScore;
+  const [localIssueIndex, setLocalIssueIndex] = useState(0);
+
+  const fallbackIssues = useMemo(
+    () => collectValidationIssues(draft, readiness ?? null),
+    [draft, readiness]
+  );
+  const issues = issuesProp ?? fallbackIssues;
+  const activeIssueIndex = activeIssueIndexProp ?? localIssueIndex;
+  const onActiveIssueChange = onActiveIssueChangeProp ?? setLocalIssueIndex;
+
+  const totalChecks = readiness?.checks.length ?? validation.checklist.length;
+  const passedChecks =
+    readiness?.checks.filter((c) => c.passed).length ??
+    validation.checklist.filter((c) => c.passed).length;
+  const issueCount = issues.length;
+  const fixedCount = Math.max(0, totalChecks - passedChecks - issueCount + (readiness ? 0 : 0));
+
+  const activeIssue = issues[activeIssueIndex] ?? null;
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!event.altKey || issues.length === 0) return;
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        onActiveIssueChange(Math.max(0, activeIssueIndex - 1));
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        onActiveIssueChange(Math.min(issues.length - 1, activeIssueIndex + 1));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [issues.length, activeIssueIndex, onActiveIssueChange]);
+
+  const ready = readiness?.ready ?? validation.passed;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
@@ -59,13 +214,24 @@ export function KnowledgeWritingChecklist({
       >
         <div className="flex flex-wrap items-center gap-2">
           <BookOpen className="h-4 w-4 text-indigo-600" aria-hidden />
-          <span className="text-sm font-semibold text-slate-900">
-            Enterprise Quality Checklist
+          <span className="text-sm font-semibold text-slate-900">Enterprise Quality Review</span>
+          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+            {passedChecks} Passed
           </span>
-          <StatusBadge validation={validation} readiness={readiness} />
-          <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-700">
-            {confidence}% confidence
-          </span>
+          {issueCount > 0 ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+              {issueCount} {issueCount === 1 ? "Issue" : "Issues"}
+            </span>
+          ) : (
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+                ready ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"
+              )}
+            >
+              {ready ? "Enterprise Ready" : "Review"}
+            </span>
+          )}
         </div>
         <ChevronDown
           className={cn("h-4 w-4 text-slate-400 transition", expanded && "rotate-180")}
@@ -73,30 +239,111 @@ export function KnowledgeWritingChecklist({
       </button>
 
       {expanded ? (
-        <div className="mt-3 space-y-3">
-          <ChecklistGrid validation={validation} />
+        <div className="mt-3 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <p className="text-xs text-slate-600">
+              {issueCount === 0 ? (
+                <span className="font-semibold text-emerald-700">All quality checks passed</span>
+              ) : (
+                <>
+                  <span className="font-semibold text-amber-800">{issueCount} issues remaining</span>
+                  <span className="mx-1.5 text-slate-300">·</span>
+                  <span>{passedChecks} / {totalChecks} checks passed</span>
+                </>
+              )}
+            </p>
+            {issues.length > 1 ? (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className={saBtnSecondarySm}
+                  disabled={activeIssueIndex <= 0}
+                  onClick={() => onActiveIssueChange(activeIssueIndex - 1)}
+                  title="Previous issue (Alt+↑)"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className={saBtnSecondarySm}
+                  disabled={activeIssueIndex >= issues.length - 1}
+                  onClick={() => onActiveIssueChange(activeIssueIndex + 1)}
+                  title="Next issue (Alt+↓)"
+                >
+                  Next
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
+          </div>
 
-          <ProfessionalLanguagePanel validation={validation} onAutoFix={onAutoFixLanguage} />
+          {issues.length > 0 ? (
+            <div className="space-y-3">
+              {activeIssue ? (
+                <IssueCard
+                  issue={activeIssue}
+                  index={activeIssueIndex}
+                  isActive
+                  onJump={onJumpToIssue ? () => onJumpToIssue(activeIssue) : undefined}
+                  onReplace={
+                    onReplaceIssue && activeIssue.fixable
+                      ? () => onReplaceIssue(activeIssue)
+                      : undefined
+                  }
+                  onEdit={onEditIssue ? () => onEditIssue(activeIssue) : undefined}
+                  onIgnore={onIgnoreIssue ? () => onIgnoreIssue(activeIssue) : undefined}
+                />
+              ) : null}
 
-          <TimelessLanguagePanel validation={validation} onAutoFix={onAutoFixLanguage} />
-
-          {validation.failures
-            .filter((f) => !["professional-language", "timeless"].includes(f.ruleId))
-            .slice(0, 6)
-            .map((failure) => (
-              <FailureDetailCard key={`${failure.ruleId}-${failure.word}`} failure={failure} tone="rose" />
-            ))}
-
-          {readiness && readiness.blockers.length > 0 ? (
-            <ul className="space-y-1 rounded-lg border border-red-200 bg-red-50/70 p-3 text-xs text-red-800">
-              {readiness.blockers.map((issue) => (
-                <li key={issue}>• {issue}</li>
+              {issues.length > 1 ? (
+                <ul className="space-y-1.5">
+                  {issues.map((issue, idx) =>
+                    idx === activeIssueIndex ? null : (
+                      <li key={issue.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between rounded-md border border-slate-100 bg-white px-2.5 py-1.5 text-left text-[11px] hover:border-indigo-200 hover:bg-indigo-50/30"
+                          onClick={() => onActiveIssueChange(idx)}
+                        >
+                          <span className="font-medium text-slate-800">
+                            {issue.ruleLabel}
+                            <span className="ml-1.5 font-normal text-slate-500">
+                              — {issue.location.field}
+                            </span>
+                          </span>
+                          <ChevronRight className="h-3 w-3 text-slate-400" />
+                        </button>
+                      </li>
+                    )
+                  )}
+                </ul>
+              ) : null}
+            </div>
+          ) : (
+            <ul className="grid gap-1.5 sm:grid-cols-2">
+              {(readiness?.checks ?? validation.checklist.map((c) => ({
+                id: c.id,
+                label: c.label,
+                passed: c.passed,
+              }))).map((item) => (
+                <li
+                  key={item.id}
+                  className={cn(
+                    "rounded-lg px-2 py-1.5 text-xs",
+                    item.passed ? "text-emerald-800 bg-emerald-50/50" : "text-slate-500"
+                  )}
+                >
+                  {item.passed ? "✓" : "○"} {item.label}
+                </li>
               ))}
             </ul>
-          ) : validation.issues.length > 0 ? (
+          )}
+
+          {readiness && readiness.blockers.length > 0 && issues.length === 0 ? (
             <ul className="space-y-1 rounded-lg border border-red-200 bg-red-50/70 p-3 text-xs text-red-800">
-              {validation.issues.map((issue) => (
-                <li key={issue}>• {issue}</li>
+              {readiness.blockers.map((blocker) => (
+                <li key={blocker}>• {blocker}</li>
               ))}
             </ul>
           ) : null}
@@ -131,156 +378,15 @@ export function KnowledgeWritingChecklist({
               </button>
             ) : null}
           </div>
+
+          {issues.length > 0 ? (
+            <p className="text-[10px] text-slate-400">
+              Tip: Use Alt+↑ and Alt+↓ to cycle through issues.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
-  );
-}
-
-function StatusBadge({
-  validation,
-  readiness,
-}: {
-  validation: WritingStandardValidation;
-  readiness?: EnterpriseReadinessResult | null;
-}) {
-  const ready = readiness?.ready ?? validation.passed;
-  const review = readiness ? !readiness.ready && readiness.writingValidation.requiredPassed : validation.requiredPassed;
-
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
-        ready
-          ? "bg-emerald-100 text-emerald-800"
-          : review
-            ? "bg-amber-100 text-amber-800"
-            : "bg-red-100 text-red-800"
-      )}
-    >
-      {ready ? "Enterprise Ready" : review ? "Review" : "Incomplete"}
-    </span>
-  );
-}
-
-function FailureDetailCard({
-  failure,
-  tone,
-}: {
-  failure: import("@/lib/ai-training/knowledge-writing-standard").RuleFailure;
-  tone: "rose" | "amber";
-}) {
-  const border = tone === "rose" ? "border-rose-200 bg-rose-50/50" : "border-amber-200 bg-amber-50/50";
-  const title = tone === "rose" ? "text-rose-900" : "text-amber-900";
-  const body = tone === "rose" ? "text-rose-800" : "text-amber-800";
-
-  return (
-    <div className={cn("rounded-md border p-2.5 text-[11px]", border)}>
-      <p className={cn("font-semibold", title)}>Problem</p>
-      <p className={cn("mt-0.5 italic", body)}>&quot;{failure.sentence}&quot;</p>
-      <p className={cn("mt-1.5 font-semibold", title)}>Flag</p>
-      <p className={body}>{failure.word}</p>
-      <p className={cn("mt-1.5 font-semibold", title)}>Reason</p>
-      <p className={body}>{failure.reason}</p>
-      <p className={cn("mt-1.5 font-semibold", title)}>Suggested replacement</p>
-      <p className={body}>{failure.suggestion}</p>
-    </div>
-  );
-}
-
-function ProfessionalLanguagePanel({
-  validation,
-  onAutoFix,
-}: {
-  validation: WritingStandardValidation;
-  onAutoFix?: () => void;
-}) {
-  const profItem = validation.checklist.find((c) => c.id === "professional-language");
-  if (!profItem || profItem.passed) return null;
-
-  const ruleFailures = profItem.failures ?? validation.failures.filter((f) => f.ruleId === "professional-language");
-
-  return (
-    <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="text-xs font-semibold text-rose-900">Professional Language</p>
-        {onAutoFix ? (
-          <button type="button" className={saBtnSecondarySm} onClick={onAutoFix}>
-            <Wand2 className="mr-1 h-3 w-3" />
-            Auto Fix
-          </button>
-        ) : null}
-      </div>
-      <div className="mt-2 space-y-2">
-        {ruleFailures.slice(0, 6).map((failure, idx) => (
-          <FailureDetailCard key={`${failure.word}-${idx}`} failure={failure} tone="rose" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TimelessLanguagePanel({
-  validation,
-  onAutoFix,
-}: {
-  validation: WritingStandardValidation;
-  onAutoFix?: () => void;
-}) {
-  const item = validation.checklist.find((c) => c.id === "timeless");
-  if (!item || item.passed) return null;
-
-  const ruleFailures = item.failures ?? validation.failures.filter((f) => f.ruleId === "timeless");
-
-  return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="text-xs font-semibold text-amber-900">Timeless Wording</p>
-        {onAutoFix ? (
-          <button type="button" className={saBtnSecondarySm} onClick={onAutoFix}>
-            <Wand2 className="mr-1 h-3 w-3" />
-            Auto Fix
-          </button>
-        ) : null}
-      </div>
-      <div className="mt-2 space-y-2">
-        {ruleFailures.slice(0, 6).map((failure, idx) => (
-          <FailureDetailCard key={`${failure.word}-${idx}`} failure={failure} tone="amber" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ChecklistGrid({ validation }: { validation: WritingStandardValidation }) {
-  return (
-    <ul className="grid gap-1.5 sm:grid-cols-2">
-      {validation.checklist.map((item) => (
-        <li
-          key={item.id}
-          className={cn(
-            "flex items-start gap-2 rounded-lg px-2 py-1.5 text-xs",
-            item.passed ? "text-slate-700" : item.required ? "text-red-800" : "text-amber-800"
-          )}
-        >
-          <span
-            className={cn(
-              "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
-              item.passed ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-400"
-            )}
-            aria-hidden
-          >
-            {item.passed ? <Check className="h-3 w-3" /> : null}
-          </span>
-          <span>
-            {item.label}
-            {item.hint && !item.passed ? (
-              <span className="mt-0.5 block text-[10px] opacity-80">{item.hint}</span>
-            ) : null}
-          </span>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -355,8 +461,4 @@ export function KnowledgePostSaveRecommendations({
   );
 }
 
-export {
-  buildRecommendedAnswerTemplate,
-  autoFixProfessionalLanguage,
-  autoFixTimelessWording,
-};
+export { buildRecommendedAnswerTemplate };

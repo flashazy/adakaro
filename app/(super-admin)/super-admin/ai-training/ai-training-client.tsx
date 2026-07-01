@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -62,12 +63,28 @@ import {
   KnowledgeWritingChecklist,
   KnowledgePostSaveRecommendations,
   buildRecommendedAnswerTemplate,
+} from "@/components/super-admin/ai-training/knowledge-writing-guide";
+import {
   autoFixProfessionalLanguage,
   autoFixTimelessWording,
-} from "@/components/super-admin/ai-training/knowledge-writing-guide";
+} from "@/lib/ai-training/knowledge-writing-standard";
 import { KnowledgeAnswerAssistant } from "@/components/super-admin/ai-training/knowledge-answer-assistant";
 import { AIKnowledgeAuthorButton } from "@/components/ai-training/AIKnowledgeAuthorButton";
 import { AuthorDocumentationEditor } from "@/components/ai-training/AuthorDocumentationEditor";
+import type {
+  HighlightedTextareaHandle,
+  TextHighlight,
+} from "@/components/ai-training/AuthorDocumentationEditor";
+import type { MetadataField } from "@/lib/ai-training/knowledge-metadata-generator";
+import {
+  collectValidationIssues,
+  filterActiveIssues,
+} from "@/lib/ai-training/collect-validation-issues";
+import {
+  getEditorStepId,
+  replaceSentenceAtLocation,
+  type ValidationIssue,
+} from "@/lib/ai-training/knowledge-validation-locations";
 import {
   buildCurriculumPlannerContext,
   getLessonPrerequisites,
@@ -294,6 +311,20 @@ export function AITrainingClient({
   } | null>(null);
   const [metadataGeneratedNotice, setMetadataGeneratedNotice] = useState(false);
   const [fixingAllQuality, setFixingAllQuality] = useState(false);
+  const [ignoredIssueIds, setIgnoredIssueIds] = useState<Set<string>>(new Set());
+  const [activeIssueIndex, setActiveIssueIndex] = useState(0);
+  const [activeHighlightRange, setActiveHighlightRange] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
+  const [activeMetadataHighlight, setActiveMetadataHighlight] = useState<{
+    field: MetadataField;
+    start: number;
+    end: number;
+  } | null>(null);
+  const answerEditorRef = useRef<HighlightedTextareaHandle>(null);
+  const questionEditorRef = useRef<HTMLTextAreaElement>(null);
+  const metadataEditorRefs = useRef<Partial<Record<MetadataField, HighlightedTextareaHandle | null>>>({});
   const [postSaveRecommendations, setPostSaveRecommendations] = useState<
     PostSaveRecommendation[] | null
   >(null);
@@ -483,6 +514,10 @@ export function AITrainingClient({
     setDuplicateCheck(null);
     setMetadataBaseline(null);
     setMetadataGeneratedNotice(false);
+    setIgnoredIssueIds(new Set());
+    setActiveIssueIndex(0);
+    setActiveHighlightRange(null);
+    setActiveMetadataHighlight(null);
     setForm({
       ...emptyForm(),
       category: prefill?.category ?? getLastKnowledgeCategory(),
@@ -506,6 +541,10 @@ export function AITrainingClient({
       created_at: row.created_at,
     });
     setDuplicateCheck(null);
+    setIgnoredIssueIds(new Set());
+    setActiveIssueIndex(0);
+    setActiveHighlightRange(null);
+    setActiveMetadataHighlight(null);
     setMetadataBaseline({ question: row.question, answer: row.answer });
     setMetadataGeneratedNotice(true);
     setForm({
@@ -628,6 +667,165 @@ export function AITrainingClient({
         allEntries: knowledgeRows,
       }),
     [writingDraft, duplicateCheck, metadataBaseline, form.id, knowledgeRows]
+  );
+
+  const metadataFieldsText = useMemo(
+    () => ({
+      keywords: form.keywords,
+      synonyms: form.synonyms,
+      search_phrases: form.search_phrases,
+      alternative_wording: form.alternative_wording,
+      related_terms: form.related_terms,
+    }),
+    [form.keywords, form.synonyms, form.search_phrases, form.alternative_wording, form.related_terms]
+  );
+
+  const allValidationIssues = useMemo(
+    () => collectValidationIssues(writingDraft, enterpriseReadiness, metadataFieldsText),
+    [writingDraft, enterpriseReadiness, metadataFieldsText]
+  );
+
+  const validationIssues = useMemo(
+    () => filterActiveIssues(allValidationIssues, ignoredIssueIds),
+    [allValidationIssues, ignoredIssueIds]
+  );
+
+  useEffect(() => {
+    if (activeIssueIndex >= validationIssues.length) {
+      setActiveIssueIndex(Math.max(0, validationIssues.length - 1));
+    }
+  }, [validationIssues.length, activeIssueIndex]);
+
+  const issueTone = (ruleId: string): TextHighlight["tone"] => {
+    if (ruleId.includes("professional")) return "rose";
+    if (ruleId.includes("timeless")) return "amber";
+    if (ruleId.startsWith("metadata")) return "sky";
+    return "violet";
+  };
+
+  const answerHighlights = useMemo((): TextHighlight[] => {
+    return validationIssues
+      .filter((issue) => issue.location.section === "Answer")
+      .map((issue) => ({
+        start: issue.location.charStart,
+        end: issue.location.charEnd,
+        issueId: issue.id,
+        ruleLabel: issue.ruleLabel,
+        reason: issue.reason,
+        suggestion: issue.suggestion,
+        tone: issueTone(issue.ruleId),
+      }));
+  }, [validationIssues]);
+
+  const metadataFieldHighlights = useMemo(() => {
+    const map: Partial<Record<MetadataField, TextHighlight[]>> = {};
+    for (const issue of validationIssues) {
+      if (issue.location.section !== "Metadata") continue;
+      const field = issue.location.field as MetadataField;
+      if (!map[field]) map[field] = [];
+      map[field]!.push({
+        start: issue.location.charStart,
+        end: issue.location.charEnd,
+        issueId: issue.id,
+        ruleLabel: issue.ruleLabel,
+        reason: issue.reason,
+        suggestion: issue.suggestion,
+        tone: issueTone(issue.ruleId),
+      });
+    }
+    return map;
+  }, [validationIssues]);
+
+  const flashHighlight = useCallback((start: number, end: number) => {
+    setActiveHighlightRange({ start, end });
+    window.setTimeout(() => setActiveHighlightRange(null), 3000);
+  }, []);
+
+  const jumpToIssue = useCallback((issue: ValidationIssue) => {
+    const stepId = getEditorStepId(issue);
+    document.getElementById(`authoring-step-${stepId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    window.setTimeout(() => {
+      if (issue.location.section === "Answer") {
+        answerEditorRef.current?.scrollToRange(issue.location.charStart, issue.location.charEnd);
+        answerEditorRef.current?.focusAt(issue.location.charStart, issue.location.charEnd);
+        flashHighlight(issue.location.charStart, issue.location.charEnd);
+      } else if (issue.location.section === "Question") {
+        const textarea = questionEditorRef.current;
+        if (textarea) {
+          textarea.focus();
+          textarea.setSelectionRange(issue.location.charStart, issue.location.charEnd);
+          flashHighlight(issue.location.charStart, issue.location.charEnd);
+        }
+      } else if (issue.location.section === "Metadata") {
+        const field = issue.location.field as MetadataField;
+        setActiveMetadataHighlight({
+          field,
+          start: issue.location.charStart,
+          end: issue.location.charEnd,
+        });
+        const editor = metadataEditorRefs.current[field];
+        editor?.scrollToRange(issue.location.charStart, issue.location.charEnd);
+        editor?.focusAt(issue.location.charStart, issue.location.charEnd);
+        window.setTimeout(() => setActiveMetadataHighlight(null), 3000);
+      }
+    }, 200);
+  }, [flashHighlight]);
+
+  const replaceIssue = useCallback(
+    (issue: ValidationIssue) => {
+      if (!issue.suggestion) return;
+
+      if (issue.location.section === "Answer") {
+        const nextAnswer = replaceSentenceAtLocation(
+          form.answer,
+          issue.location,
+          issue.suggestion
+        );
+        setForm((f) => ({ ...f, answer: nextAnswer }));
+        showToast("Sentence updated.");
+        return;
+      }
+
+      if (issue.location.section === "Metadata") {
+        const field = issue.location.field as MetadataField;
+        const current = form[field];
+        const lines = current.split("\n");
+        const lineIndex = issue.location.paragraphIndex;
+        if (lineIndex >= 0 && lineIndex < lines.length) {
+          lines[lineIndex] = issue.suggestion;
+        } else {
+          lines.push(issue.suggestion);
+        }
+        setForm((f) => ({ ...f, [field]: lines.join("\n") }));
+        showToast("Metadata line updated.");
+        return;
+      }
+
+      if (issue.location.section === "Question") {
+        setForm((f) => ({ ...f, question: issue.suggestion }));
+        showToast("Question updated.");
+      }
+    },
+    [form.answer, form]
+  );
+
+  const ignoreIssue = useCallback((issue: ValidationIssue) => {
+    setIgnoredIssueIds((prev) => new Set([...prev, issue.id]));
+    showToast("Issue ignored for this session.");
+  }, []);
+
+  const handleHighlightAction = useCallback(
+    (issueId: string, action: "accept" | "ignore") => {
+      const issue = validationIssues.find((item) => item.id === issueId);
+      if (!issue) return;
+      if (action === "accept") replaceIssue(issue);
+      else ignoreIssue(issue);
+    },
+    [validationIssues, replaceIssue, ignoreIssue]
   );
 
   const workflowSteps = useMemo(
@@ -2119,6 +2317,8 @@ export function AITrainingClient({
                 <label className="mt-4 block text-sm">
                   <span className="font-medium text-slate-700">Question</span>
                   <textarea
+                    ref={questionEditorRef}
+                    id="author-question-editor"
                     value={form.question}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, question: e.target.value }))
@@ -2204,12 +2404,16 @@ export function AITrainingClient({
                   />
                 </div>
                 <AuthorDocumentationEditor
+                  ref={answerEditorRef}
                   value={form.answer}
                   onChange={(nextAnswer) =>
                     setForm((f) => ({ ...f, answer: nextAnswer }))
                   }
                   required
                   placeholder="Use sections: Overview, Purpose, Capabilities, Permissions, Notes…"
+                  highlights={answerHighlights}
+                  activeRange={activeHighlightRange}
+                  onHighlightAction={handleHighlightAction}
                 />
               </AuthoringWorkflowSection>
 
@@ -2241,6 +2445,10 @@ export function AITrainingClient({
                   onBaselineUpdate={setMetadataBaseline}
                   showGeneratedNotice={metadataGeneratedNotice}
                   onGeneratedNotice={setMetadataGeneratedNotice}
+                  fieldHighlights={metadataFieldHighlights}
+                  activeFieldRange={activeMetadataHighlight}
+                  fieldRefs={metadataEditorRefs}
+                  onHighlightAction={handleHighlightAction}
                 />
               </AuthoringWorkflowSection>
 
@@ -2257,6 +2465,13 @@ export function AITrainingClient({
                   fixingAll={fixingAllQuality}
                   onAutoFixLanguage={handleAutoFixLanguage}
                   onFixAllQuality={() => void handleFixAllQuality()}
+                  issues={validationIssues}
+                  activeIssueIndex={activeIssueIndex}
+                  onActiveIssueChange={setActiveIssueIndex}
+                  onJumpToIssue={jumpToIssue}
+                  onReplaceIssue={replaceIssue}
+                  onEditIssue={jumpToIssue}
+                  onIgnoreIssue={ignoreIssue}
                 />
               </AuthoringWorkflowSection>
 

@@ -12,12 +12,17 @@ export type AnswerImproveAction =
   | "fix_grammar"
   | "improve_readability";
 
+import type { ValidationIssueLocation } from "./knowledge-validation-locations";
+import { locateCharInAnswer } from "./knowledge-validation-locations";
+
 export interface LanguageIssue {
   word: string;
   category: "marketing" | "timeless" | "conversational";
   suggestion: string;
   sentence: string;
   reason: string;
+  charIndex?: number;
+  location?: ValidationIssueLocation;
 }
 
 export interface LanguageAnalysis {
@@ -126,7 +131,12 @@ function truncateSentence(sentence: string, max = 140): string {
   return `${trimmed.slice(0, max - 3).trimEnd()}...`;
 }
 
-function findSentenceForMatch(text: string, phrase: string): string {
+function findSentenceForMatch(text: string, phrase: string, charIndex?: number): string {
+  if (charIndex !== undefined) {
+    const located = locateCharInAnswer(text, charIndex);
+    return truncateSentence(text.slice(located.charStart, located.charEnd));
+  }
+
   const lines = text.split("\n");
   for (const line of lines) {
     const pattern = new RegExp(escapeRegex(phrase), "i");
@@ -144,6 +154,32 @@ function findSentenceForMatch(text: string, phrase: string): string {
   }
 
   return truncateSentence(text);
+}
+
+function buildLanguageIssueLocation(
+  text: string,
+  charIndex: number
+): ValidationIssueLocation {
+  const located = locateCharInAnswer(text, charIndex);
+  const sentenceText = text.slice(located.charStart, located.charEnd);
+
+  let sectionTitle = "Answer";
+  let offset = 0;
+  for (const line of text.split("\n")) {
+    const bold = line.trim().match(/^\*\*([^*]+)\*\*$/);
+    if (bold) sectionTitle = bold[1]!.trim();
+    if (offset + line.length >= charIndex) break;
+    offset += line.length + 1;
+  }
+
+  return {
+    section: "Answer",
+    field: sectionTitle,
+    paragraphIndex: located.paragraphIndex,
+    sentenceIndex: located.sentenceIndex,
+    charStart: located.charStart,
+    charEnd: located.charEnd,
+  };
 }
 
 function isAllowlistedMarketing(text: string, phrase: string, index: number): boolean {
@@ -177,8 +213,10 @@ function findMarketingIssues(text: string): LanguageIssue[] {
         word: match[0],
         category: "marketing",
         suggestion: PROFESSIONAL_REPLACEMENTS[phrase],
-        sentence: findSentenceForMatch(text, match[0]),
+        sentence: findSentenceForMatch(text, match[0], match.index),
         reason: MARKETING_REASONS[phrase] ?? "Marketing language.",
+        charIndex: match.index,
+        location: buildLanguageIssueLocation(text, match.index),
       });
     }
   }
@@ -202,8 +240,10 @@ function findTimelessIssues(text: string): LanguageIssue[] {
         word: match[0],
         category: "timeless",
         suggestion,
-        sentence: findSentenceForMatch(text, match[0]),
+        sentence: findSentenceForMatch(text, match[0], match.index),
         reason,
+        charIndex: match.index,
+        location: buildLanguageIssueLocation(text, match.index),
       });
     }
   }
@@ -217,14 +257,17 @@ export function analyzeAnswerLanguage(answer: string): LanguageAnalysis {
 
   const conversationalIssues: LanguageIssue[] = [];
   for (const { pattern, reason } of CONVERSATIONAL_PATTERNS) {
-    const match = answer.match(pattern);
-    if (match) {
+    const regex = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
+    const match = regex.exec(answer);
+    if (match && match.index !== undefined) {
       conversationalIssues.push({
         word: match[0],
         category: "conversational",
         suggestion: "Remove conversational phrasing",
-        sentence: findSentenceForMatch(answer, match[0]),
+        sentence: findSentenceForMatch(answer, match[0], match.index),
         reason,
+        charIndex: match.index,
+        location: buildLanguageIssueLocation(answer, match.index),
       });
     }
   }

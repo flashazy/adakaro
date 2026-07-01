@@ -14,6 +14,8 @@ import {
   type LanguageIssue,
 } from "./knowledge-language-improver";
 import { hasSemanticStructure, describeStructureGap } from "./knowledge-answer-structure";
+import type { ValidationIssueLocation } from "./knowledge-validation-locations";
+import { locateQuestionIssue, locateSentenceInAnswer } from "./knowledge-validation-locations";
 
 export const KNOWLEDGE_WRITING_STANDARD_VERSION = "1.0.0";
 
@@ -62,6 +64,7 @@ export interface RuleFailure {
   word: string;
   reason: string;
   suggestion: string;
+  location?: ValidationIssueLocation;
 }
 
 export interface KnowledgeWritingDraft {
@@ -227,6 +230,7 @@ function issueToFailure(
     word: issue.word,
     reason: issue.reason,
     suggestion: issue.suggestion,
+    location: issue.location,
   };
 }
 
@@ -278,6 +282,7 @@ export function validateKnowledgeWritingStandard(
       word: question,
       reason: "Question combines multiple intents.",
       suggestion: "Split into separate focused questions.",
+      location: locateQuestionIssue(question),
     };
     failures.push(failure);
     issues.push(formatFailureSummary(failure));
@@ -289,13 +294,23 @@ export function validateKnowledgeWritingStandard(
 
   const structured = hasSemanticStructure(answer);
   if (answer.length >= 120 && !structured) {
+    const firstLine = answer.split("\n")[0] ?? answer.slice(0, 120);
     const failure: RuleFailure = {
       ruleId: "structured-answer",
       ruleLabel: "Structured answer",
-      sentence: answer.split("\n")[0] ?? answer.slice(0, 120),
+      sentence: firstLine,
       word: "(structure)",
       reason: "Long answer lacks multiple logical sections.",
       suggestion: describeStructureGap(answer),
+      location:
+        locateSentenceInAnswer(answer, firstLine) ?? {
+          section: "Answer",
+          field: "Overview",
+          paragraphIndex: 0,
+          sentenceIndex: 0,
+          charStart: 0,
+          charEnd: Math.min(answer.length, firstLine.length),
+        },
     };
     failures.push(failure);
     issues.push(formatFailureSummary(failure));
