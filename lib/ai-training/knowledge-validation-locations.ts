@@ -24,6 +24,18 @@ export interface ValidationIssue {
   fixable: boolean;
 }
 
+export interface GroupedValidationIssue {
+  id: string;
+  ruleId: string;
+  ruleLabel: string;
+  field: string;
+  count: number;
+  summary: string;
+  examples: string[];
+  issues: ValidationIssue[];
+  fixable: boolean;
+}
+
 interface ParsedSentence {
   text: string;
   charStart: number;

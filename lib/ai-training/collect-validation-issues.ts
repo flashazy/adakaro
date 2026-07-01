@@ -3,14 +3,15 @@
  */
 
 import type { EnterpriseReadinessResult } from "./knowledge-authoring";
+import { getLessonPrerequisites, buildCurriculumPlannerContext } from "./knowledge-curriculum-planner";
+import type { AIKnowledgeEntry } from "./types";
+import type { GroupedValidationIssue, ValidationIssue, ValidationIssueLocation } from "./knowledge-validation-locations";
 import {
   applyWordSuggestionToSentence,
   buildIssueId,
   locateMetadataLine,
   locateQuestionIssue,
   locateSentenceInAnswer,
-  type ValidationIssue,
-  type ValidationIssueLocation,
 } from "./knowledge-validation-locations";
 import { validateMetadataDraft } from "./knowledge-metadata-validator";
 import type { KnowledgeWritingDraft, RuleFailure } from "./knowledge-writing-standard";
@@ -143,7 +144,9 @@ function metadataFieldToIssues(
 export function collectValidationIssues(
   draft: KnowledgeWritingDraft,
   readiness: EnterpriseReadinessResult | null,
-  metadataFieldsText?: Record<string, string>
+  metadataFieldsText?: Record<string, string>,
+  allEntries: AIKnowledgeEntry[] = [],
+  editingEntryId?: string | null
 ): ValidationIssue[] {
   const writing = validateKnowledgeWritingStandard(draft);
   const issues: ValidationIssue[] = [];
@@ -184,7 +187,41 @@ export function collectValidationIssues(
           charStart: 0,
           charEnd: 0,
         };
-      } else if (check.id === "duplicate-analysis" || check.id === "dependency-analysis") {
+      } else if (check.id === "duplicate-analysis") {
+        continue;
+      } else if (check.id === "dependency-analysis") {
+        const plannerContext = buildCurriculumPlannerContext({ entries: allEntries });
+        const prerequisites = getLessonPrerequisites(
+          draft.question,
+          plannerContext,
+          editingEntryId ?? undefined
+        );
+        for (const prereq of prerequisites.filter((p) => !p.completed)) {
+          issues.push({
+            id: buildIssueId("dependency-analysis", {
+              section: "Question",
+              field: "Dependencies",
+              paragraphIndex: 0,
+              sentenceIndex: 0,
+              charStart: 0,
+              charEnd: draft.question.length,
+            }, prereq.question),
+            ruleId: "dependency-analysis",
+            ruleLabel: "Dependencies",
+            location: {
+              section: "Question",
+              field: "Dependencies",
+              paragraphIndex: 0,
+              sentenceIndex: 0,
+              charStart: 0,
+              charEnd: draft.question.length,
+            },
+            original: prereq.question,
+            suggestion: `Create or link prerequisite lesson: ${prereq.question}`,
+            reason: `Missing prerequisite: ${prereq.question}`,
+            fixable: false,
+          });
+        }
         continue;
       } else if (check.id === "accurate-answer") {
         location = {
@@ -220,4 +257,57 @@ export function filterActiveIssues(
   ignoredIds: Set<string>
 ): ValidationIssue[] {
   return issues.filter((issue) => !ignoredIds.has(issue.id));
+}
+
+function groupKey(issue: ValidationIssue): string {
+  return `${issue.ruleId}:${issue.location.section}:${issue.location.field}`;
+}
+
+function buildGroupSummary(ruleId: string, field: string, count: number): string {
+  if (ruleId.startsWith("metadata-search")) {
+    return `Search phrases: ${count} line${count === 1 ? "" : "s"} need lowercase normalization`;
+  }
+  if (ruleId.startsWith("metadata-alternative")) {
+    return `Alternative wording: ${count} line${count === 1 ? "" : "s"} need intent correction`;
+  }
+  if (ruleId === "dependency-analysis") {
+    return `Dependencies: ${count} missing prerequisite${count === 1 ? "" : "s"}`;
+  }
+  if (ruleId === "structured-answer") {
+    return "Answer: structure needs improvement";
+  }
+  if (ruleId === "professional-language") {
+    return `Answer: ${count} professional language issue${count === 1 ? "" : "s"}`;
+  }
+  if (ruleId === "timeless") {
+    return `Answer: ${count} timeless wording issue${count === 1 ? "" : "s"}`;
+  }
+  return `${field}: ${count} issue${count === 1 ? "" : "s"}`;
+}
+
+/** Collapse repeated per-line metadata issues into grouped summaries. */
+export function groupValidationIssues(issues: ValidationIssue[]): GroupedValidationIssue[] {
+  const buckets = new Map<string, ValidationIssue[]>();
+
+  for (const issue of issues) {
+    const key = groupKey(issue);
+    const list = buckets.get(key) ?? [];
+    list.push(issue);
+    buckets.set(key, list);
+  }
+
+  return [...buckets.entries()].map(([key, bucket]) => {
+    const first = bucket[0]!;
+    return {
+      id: key,
+      ruleId: first.ruleId,
+      ruleLabel: first.ruleLabel,
+      field: first.location.field,
+      count: bucket.length,
+      summary: buildGroupSummary(first.ruleId, first.location.field, bucket.length),
+      examples: bucket.map((i) => i.original).filter(Boolean).slice(0, 3),
+      issues: bucket,
+      fixable: bucket.some((i) => i.fixable),
+    };
+  });
 }

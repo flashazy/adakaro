@@ -11,6 +11,8 @@ import {
   resolveZeroCostRetrieval,
   type ZeroCostRetrievalResult,
 } from "./zero-cost-retrieval";
+import { normalizeRetrievalIntent } from "./retrieval-intent-normalizer";
+import { rerankByEntityHierarchy } from "./retrieval-entity-reranker";
 import type { PublicSessionContext } from "./public-session-memory";
 import type { AIKnowledgeEntry, KnowledgeSearchMatch } from "./types";
 
@@ -74,10 +76,18 @@ async function resolveWithLiveSemantic(
   const queryEmbedding = await generateEmbedding(query);
   if (!queryEmbedding) return null;
 
-  const keywordCandidates = rankKeywordCandidates(query, entries);
+  const retrievalIntent = normalizeRetrievalIntent(query);
+  const scoringContext = { allEntries: entries, retrievalIntent };
 
-  if (keywordCandidates.length > 0) {
-    const candidateIds = keywordCandidates.map((c) => c.entry.id);
+  const keywordCandidates = rankKeywordCandidates(query, entries, undefined, scoringContext);
+  const entityRankedCandidates = rerankByEntityHierarchy(
+    query,
+    keywordCandidates,
+    retrievalIntent
+  );
+
+  if (entityRankedCandidates.length > 0) {
+    const candidateIds = entityRankedCandidates.map((c) => c.entry.id);
     const storedEmbeddings = await loadEmbeddingsForEntryIds(
       supabase,
       candidateIds
@@ -89,14 +99,55 @@ async function resolveWithLiveSemantic(
         storedEmbeddings
       );
       const reranked = rerankWithSemanticScores({
-        keywordCandidates,
+        keywordCandidates: entityRankedCandidates,
         semanticScoresByEntryId: semanticScores,
       });
-      if (reranked[0]) return reranked[0];
+      if (reranked.length > 0) {
+        const semanticRanked: RankedKnowledgeEntry[] = reranked.map((match) => {
+          const source = entityRankedCandidates.find(
+            (candidate) => candidate.entry.id === match.entry.id
+          );
+          const score = match.finalScore ?? match.score;
+          return {
+            entry: match.entry,
+            score,
+            breakdown: source?.breakdown ?? {
+              score,
+              phraseOverlap: 0,
+              questionScore: score,
+              searchPhraseScore: 0,
+              intentScore: 0,
+              graphScore: 0,
+              contextBoost: 0,
+              priorityBoost: 0,
+              matchedIntentKey: null,
+            },
+          };
+        });
+        const finalRanked = rerankByEntityHierarchy(
+          query,
+          semanticRanked,
+          retrievalIntent
+        );
+        const winner = finalRanked[0];
+        if (winner) {
+          const semanticScore =
+            semanticScores.get(winner.entry.id) ?? reranked.find(
+              (match) => match.entry.id === winner.entry.id
+            )?.semanticScore ?? null;
+          return {
+            entry: winner.entry,
+            score: winner.score,
+            keywordScore: winner.score,
+            semanticScore,
+            finalScore: winner.score,
+          };
+        }
+      }
     }
 
-    if (keywordCandidates.some((c) => c.score >= MATCH_SCORE_THRESHOLD)) {
-      const best = keywordCandidates[0]!;
+    if (entityRankedCandidates.some((c) => c.score >= MATCH_SCORE_THRESHOLD)) {
+      const best = entityRankedCandidates[0]!;
       return {
         entry: best.entry,
         score: best.score,

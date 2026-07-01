@@ -13,6 +13,7 @@ import {
   upsertIntentPrimaryEntry,
 } from "./knowledge-versioning";
 import { loadActiveKnowledgeEntries } from "./knowledge-search";
+import { normalizeKnowledgeEntry } from "./normalize-knowledge-entry";
 import type {
   AIKnowledgeEntry,
   DuplicateCheckResult,
@@ -46,16 +47,9 @@ export async function loadEntriesForDuplicateCheck(
     return [];
   }
 
-  return (data ?? []).map((row) => {
-    const entry = row as AIKnowledgeEntry;
-    return {
-      ...entry,
-      synonyms: entry.synonyms ?? [],
-      related_intents: entry.related_intents ?? [],
-      is_primary: entry.is_primary ?? true,
-      version_number: entry.version_number ?? 1,
-    };
-  });
+  return (data ?? []).map((row) =>
+    normalizeKnowledgeEntry(row as Record<string, unknown>)
+  );
 }
 
 export async function validateDuplicateBeforeSave(

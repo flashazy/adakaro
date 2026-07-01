@@ -79,13 +79,14 @@ import type { MetadataField } from "@/lib/ai-training/knowledge-metadata-generat
 import {
   collectValidationIssues,
   filterActiveIssues,
+  groupValidationIssues,
 } from "@/lib/ai-training/collect-validation-issues";
 import {
   getEditorStepId,
   replaceSentenceAtLocation,
   type ValidationIssue,
 } from "@/lib/ai-training/knowledge-validation-locations";
-import { normalizeKnowledgeEntry } from "@/lib/ai-training/normalize-knowledge-entry";
+import { normalizeKnowledgeEntry, resolveDisplayHealth } from "@/lib/ai-training/normalize-knowledge-entry";
 import {
   buildCurriculumPlannerContext,
   getLessonPrerequisites,
@@ -290,6 +291,7 @@ export function AITrainingClient({
   } | null>(null);
   const [analytics, setAnalytics] = useState(initialAnalytics);
   const [knowledgeRows, setKnowledgeRows] = useState<AIKnowledgeEntry[]>([]);
+  const [allActiveEntries, setAllActiveEntries] = useState<AIKnowledgeEntry[]>([]);
   const [unansweredRows, setUnansweredRows] = useState<AIUnansweredQuestion[]>([]);
   const [knowledgeTotal, setKnowledgeTotal] = useState(0);
   const [unansweredTotal, setUnansweredTotal] = useState(0);
@@ -427,6 +429,19 @@ export function AITrainingClient({
     }
   }, [refreshAnalytics, loadActivity, loadIntelligenceSnapshot]);
 
+  const loadAllActiveEntries = useCallback(async () => {
+    try {
+      const res = await fetch(
+        "/api/super-admin/ai-training/knowledge?scope=all&status=active"
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as { rows: AIKnowledgeEntry[] };
+      setAllActiveEntries(data.rows);
+    } catch {
+      /* keep previous snapshot */
+    }
+  }, []);
+
   const loadKnowledge = useCallback(async () => {
     setLoadingKnowledge(true);
     try {
@@ -497,8 +512,11 @@ export function AITrainingClient({
   }, [unansweredPage, unansweredSearch, unansweredStatus]);
 
   useEffect(() => {
-    if (tab === "knowledge") void loadKnowledge();
-  }, [tab, loadKnowledge]);
+    if (tab === "knowledge") {
+      void loadKnowledge();
+      void loadAllActiveEntries();
+    }
+  }, [tab, loadKnowledge, loadAllActiveEntries]);
 
   useEffect(() => {
     if (tab === "unanswered") void loadUnanswered();
@@ -524,6 +542,7 @@ export function AITrainingClient({
       ...prefill,
     });
     setFormOpen(true);
+    void loadAllActiveEntries();
   };
 
   const unansweredPages = Math.max(1, Math.ceil(unansweredTotal / 20));
@@ -561,7 +580,8 @@ export function AITrainingClient({
       priority: entry.priority,
     });
     setFormOpen(true);
-  }, []);
+    void loadAllActiveEntries();
+  }, [loadAllActiveEntries]);
 
   const openEditForm = (row: AIKnowledgeEntry) => {
     populateFormFromEntry(row);
@@ -657,6 +677,8 @@ export function AITrainingClient({
     [form, classificationEntry?.intent_key]
   );
 
+  const analysisEntries = allActiveEntries.length > 0 ? allActiveEntries : knowledgeRows;
+
   const enterpriseReadiness = useMemo(
     () =>
       assessEnterpriseReadiness({
@@ -664,9 +686,9 @@ export function AITrainingClient({
         duplicateCheck,
         metadataBaseline,
         editingEntryId: form.id ?? null,
-        allEntries: knowledgeRows,
+        allEntries: analysisEntries,
       }),
-    [writingDraft, duplicateCheck, metadataBaseline, form.id, knowledgeRows]
+    [writingDraft, duplicateCheck, metadataBaseline, form.id, analysisEntries]
   );
 
   const metadataFieldsText = useMemo(
@@ -681,8 +703,15 @@ export function AITrainingClient({
   );
 
   const allValidationIssues = useMemo(
-    () => collectValidationIssues(writingDraft, enterpriseReadiness, metadataFieldsText),
-    [writingDraft, enterpriseReadiness, metadataFieldsText]
+    () =>
+      collectValidationIssues(
+        writingDraft,
+        enterpriseReadiness,
+        metadataFieldsText,
+        analysisEntries,
+        form.id ?? null
+      ),
+    [writingDraft, enterpriseReadiness, metadataFieldsText, analysisEntries, form.id]
   );
 
   const validationIssues = useMemo(
@@ -690,11 +719,16 @@ export function AITrainingClient({
     [allValidationIssues, ignoredIssueIds]
   );
 
+  const groupedValidationIssues = useMemo(
+    () => groupValidationIssues(validationIssues),
+    [validationIssues]
+  );
+
   useEffect(() => {
-    if (activeIssueIndex >= validationIssues.length) {
-      setActiveIssueIndex(Math.max(0, validationIssues.length - 1));
+    if (activeIssueIndex >= groupedValidationIssues.length) {
+      setActiveIssueIndex(Math.max(0, groupedValidationIssues.length - 1));
     }
-  }, [validationIssues.length, activeIssueIndex]);
+  }, [groupedValidationIssues.length, activeIssueIndex]);
 
   const issueTone = (ruleId: string): TextHighlight["tone"] => {
     if (ruleId.includes("professional")) return "rose";
@@ -862,7 +896,7 @@ export function AITrainingClient({
     workflowSteps.find((s) => s.id === id)?.status ?? "pending";
 
   const draftAuthorContext = useMemo(() => {
-    const plannerContext = buildCurriculumPlannerContext({ entries: knowledgeRows });
+    const plannerContext = buildCurriculumPlannerContext({ entries: analysisEntries });
     const prerequisites = getLessonPrerequisites(
       form.question,
       plannerContext,
@@ -878,7 +912,7 @@ export function AITrainingClient({
       dependencyQuestions: prerequisites.filter((p) => !p.completed).map((p) => p.question),
       relatedQuestions,
     };
-  }, [form.question, form.id, knowledgeRows, duplicateCheck]);
+  }, [form.question, form.id, analysisEntries, duplicateCheck]);
 
   const handleAutoFixLanguage = () => {
     setForm((f) => ({
@@ -903,6 +937,7 @@ export function AITrainingClient({
           search_phrases: textToKeywords(form.search_phrases),
           alternative_wording: textToKeywords(form.alternative_wording),
           related_terms: textToKeywords(form.related_terms),
+          editingEntryId: form.id ?? null,
         }),
       });
       if (!res.ok) throw new Error("Fix failed");
@@ -927,6 +962,9 @@ export function AITrainingClient({
       }));
       setMetadataBaseline({ question: form.question.trim(), answer: data.answer.trim() });
       setMetadataGeneratedNotice(true);
+      setIgnoredIssueIds(new Set());
+      setActiveIssueIndex(0);
+      void loadAllActiveEntries();
       showToast("Quality issues resolved.");
     } catch {
       showToast("Could not fix all quality issues.");
@@ -1047,6 +1085,7 @@ export function AITrainingClient({
       setNearDuplicateAcknowledged(false);
       showToast(form.id ? "Entry updated." : "Entry created.");
       void loadKnowledge();
+      void loadAllActiveEntries();
       void refreshAnalytics();
       void loadIntentHealth();
       if (form.unansweredId) void loadUnanswered();
@@ -1788,7 +1827,7 @@ export function AITrainingClient({
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <KnowledgeHealthBadge level={row.health_status} />
+                        <KnowledgeHealthBadge level={resolveDisplayHealth(row)} />
                       </td>
                       <td className="px-4 py-3 text-slate-600">{row.category}</td>
                       <td className="max-w-xs px-4 py-3 font-medium text-slate-900">
@@ -2342,7 +2381,7 @@ export function AITrainingClient({
                   question={form.question}
                   category={form.category}
                   excludeId={form.id}
-                  allEntries={knowledgeRows}
+                  allEntries={analysisEntries}
                   workflowSteps={workflowSteps}
                   onLoadingChange={setDuplicateCheckLoading}
                   onSelectEntry={(id) => void openEntryById(id)}

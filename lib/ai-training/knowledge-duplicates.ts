@@ -860,31 +860,51 @@ export function computeKnowledgeHealth(
   allEntries: AIKnowledgeEntry[]
 ): { level: KnowledgeHealthLevel; issues: string[] } {
   const issues: string[] = [];
+  const quality = computeEntryQuality(entry);
+
+  if (!entry.answer?.trim()) {
+    issues.push("Missing answer");
+    return { level: "needs_review", issues };
+  }
 
   const duplicates = findSimilarEntries(entry.question, allEntries, {
     excludeId: entry.id,
     minSimilarity: 0.85,
     limit: 1,
     includeDifferentIntent: false,
-  }).filter(
-    (m) =>
-      m.classification === "exact_duplicate" ||
-      m.classification === "near_duplicate"
-  );
+  }).filter((m) => m.classification === "exact_duplicate");
 
   if (duplicates.length > 0) issues.push("Duplicate exists");
 
-  if (!entry.intent_key) issues.push("Missing intent");
+  const metadataComplete =
+    entry.keywords.length >= 3 &&
+    entry.search_phrases.length >= 1 &&
+    (entry.synonyms ?? []).length >= 1 &&
+    entry.related_terms.length >= 1;
+
+  if (quality.score >= 75 && metadataComplete && issues.length === 0) {
+    return { level: "healthy", issues: [] };
+  }
+
   if (entry.keywords.length < 3) issues.push("Low keyword coverage");
   if (entry.search_phrases.length < 1) issues.push("Missing search phrases");
   if ((entry.synonyms ?? []).length < 1) issues.push("Missing synonyms");
   if (entry.related_terms.length < 1) issues.push("Missing related terms");
-
-  const quality = computeEntryQuality(entry);
   if (quality.level === "needs_improvement") issues.push("Low quality score");
 
+  const blocking = issues.filter(
+    (i) =>
+      i === "Missing answer" ||
+      i === "Duplicate exists" ||
+      i === "Low quality score"
+  );
+
+  if (quality.score >= 75 && blocking.length === 0) {
+    return { level: "healthy", issues };
+  }
+
   return {
-    level: issues.length === 0 ? "healthy" : "needs_review",
+    level: blocking.length > 0 || issues.length > 0 ? "needs_review" : "healthy",
     issues,
   };
 }

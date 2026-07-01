@@ -19,6 +19,8 @@ import {
   rankAllEntriesScored,
   type RankedKnowledgeEntry,
 } from "./knowledge-scoring";
+import { normalizeRetrievalIntent } from "./retrieval-intent-normalizer";
+import { rerankByEntityHierarchy } from "./retrieval-entity-reranker";
 import { resolveEntryIntent } from "./intent-registry";
 import {
   buildRetrievalObservability,
@@ -103,14 +105,17 @@ export function resolveZeroCostRetrieval(
 
   if (!trimmed || entries.length === 0) return empty;
 
+  const retrievalIntent = normalizeRetrievalIntent(trimmed);
+
   const expandedQuery = session
     ? expandQueryWithSession(trimmed, session)
     : trimmed;
 
-  const context = { allEntries: entries, session };
+  const context = { allEntries: entries, session, retrievalIntent };
   const baseRanked = rankAllEntriesScored(expandedQuery, entries, context);
   const priorityRanked = applyRetrievalPriority(baseRanked);
-  const reasoning = applyIntentReasoning(trimmed, priorityRanked, session, intentOverrides);
+  const entityRanked = rerankByEntityHierarchy(trimmed, priorityRanked, retrievalIntent);
+  const reasoning = applyIntentReasoning(trimmed, entityRanked, session, intentOverrides);
   const ranked = reasoning.ranked;
   const candidates = ranked.slice(0, 5);
   const best = ranked[0];

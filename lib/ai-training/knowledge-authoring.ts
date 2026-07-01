@@ -22,6 +22,7 @@ import {
 import { validateMetadataDraft } from "./knowledge-metadata-validator";
 import { prioritizeRelatedLessons, buildCurriculumPlannerContext, getLessonPrerequisites, IDENTITY_FOLLOW_UP_QUESTIONS, mergePriorityLessonSuggestions, scoreDependencyFollowUp } from "./knowledge-curriculum-planner";
 import { formatEnterpriseDependencyHint, isKnowledgeCovered } from "./prerequisite-resolver";
+import { normalizeMetadataBundle } from "./normalize-metadata";
 import { normalizeText } from "./knowledge-scoring";
 import type { AIKnowledgeEntry } from "./types";
 
@@ -189,16 +190,18 @@ export function fixAllQualityIssues(input: {
   answer: string;
   metadata?: Partial<Record<MetadataField, string[]>>;
   maxIterations?: number;
+  allEntries?: AIKnowledgeEntry[];
+  editingEntryId?: string | null;
 }): FixAllQualityResult {
   const maxIterations = input.maxIterations ?? 3;
   let answer = input.answer;
-  let metadata = {
+  let metadata = normalizeMetadataBundle({
     keywords: input.metadata?.keywords ?? [],
     synonyms: input.metadata?.synonyms ?? [],
     search_phrases: input.metadata?.search_phrases ?? [],
     alternative_wording: input.metadata?.alternative_wording ?? [],
     related_terms: input.metadata?.related_terms ?? [],
-  };
+  });
 
   let iterations = 0;
   let readiness: EnterpriseReadinessResult;
@@ -214,13 +217,13 @@ export function fixAllQualityIssues(input: {
       answer,
     });
 
-    metadata = {
+    metadata = normalizeMetadataBundle({
       keywords: generated.keywords,
       synonyms: generated.synonyms,
       search_phrases: generated.search_phrases,
       alternative_wording: generated.alternative_wording,
       related_terms: generated.related_terms,
-    };
+    });
 
     readiness = assessEnterpriseReadiness({
       draft: {
@@ -231,6 +234,8 @@ export function fixAllQualityIssues(input: {
         ...metadata,
       },
       metadataBaseline: { question: input.question, answer },
+      allEntries: input.allEntries ?? [],
+      editingEntryId: input.editingEntryId ?? null,
     });
   } while (!readiness.ready && iterations < maxIterations);
 

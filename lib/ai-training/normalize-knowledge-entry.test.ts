@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { normalizeKnowledgeEntry } from "@/lib/ai-training/normalize-knowledge-entry";
+import { normalizeKnowledgeEntry, resolveDisplayHealth } from "@/lib/ai-training/normalize-knowledge-entry";
 
 describe("normalizeKnowledgeEntry", () => {
   it("keeps answer when present", () => {
@@ -48,5 +48,24 @@ describe("normalizeKnowledgeEntry", () => {
       priority: "normal",
     });
     assert.equal(entry.answer, "");
+  });
+
+  it("overrides stale needs_review when quality is excellent", () => {
+    const entry = normalizeKnowledgeEntry({
+      id: "1",
+      question: "What is Adakaro?",
+      answer:
+        "**Overview**\nAdakaro is a school management platform that helps schools run enrollment, attendance, academics, and parent communication in one place.\n\n**Core Facts**\n- Enrollment\n- Attendance\n- Report cards",
+      keywords: ["adakaro", "school", "platform", "enrollment", "attendance", "reports"],
+      search_phrases: ["what is adakaro", "adakaro overview", "adakaro platform"],
+      alternative_wording: ["Tell me about Adakaro?", "What does Adakaro do?"],
+      synonyms: ["school software", "education platform", "school system"],
+      related_terms: ["School Management", "Student Records", "Education Technology"],
+      category: "General",
+      priority: "normal",
+      usage_count: 12,
+      health_status: "needs_review",
+    });
+    assert.equal(resolveDisplayHealth(entry), "healthy");
   });
 });

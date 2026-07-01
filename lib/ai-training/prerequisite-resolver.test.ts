@@ -151,4 +151,49 @@ describe("prerequisite-resolver workflow consistency", () => {
 
     assert.equal(isKnowledgeCovered(draft.question, [reportCardsEntry]), true);
   });
+
+  it("recognizes What is Adakaro? as existing across curriculum and quality check", () => {
+    const identityEntry = entry({
+      id: "identity-1",
+      question: "What is Adakaro?",
+      category: "General",
+      keywords: ["adakaro", "school", "platform", "management"],
+      search_phrases: ["what is adakaro", "about adakaro"],
+      alternative_wording: ["Tell me about Adakaro?"],
+      synonyms: ["school software"],
+      related_terms: ["School Management"],
+      answer:
+        "**Overview**\nAdakaro is a school management platform for African schools.\n\n**Core Facts**\n- Supports enrollment and attendance",
+    });
+
+    const allEntries = [identityEntry];
+    const context = buildCurriculumPlannerContext({ entries: allEntries });
+
+    const prereq = resolvePrerequisite("What is Adakaro?", allEntries);
+    assert.equal(prereq.completed, true, "resolver should find identity entry");
+
+    const curriculumPrereqs = getLessonPrerequisites("What can Adakaro do?", context);
+    const identityDep = curriculumPrereqs.find((p) => p.question === "What is Adakaro?");
+    assert.ok(identityDep);
+    assert.equal(identityDep!.completed, true, identityDep?.satisfiedBy?.question);
+
+    const readiness = assessEnterpriseReadiness({
+      draft: {
+        category: "General",
+        question: "What can Adakaro do?",
+        answer: identityEntry.answer,
+        keywords: ["adakaro", "modules", "capabilities"],
+        search_phrases: ["what can adakaro do"],
+        alternative_wording: ["What does Adakaro offer?"],
+        synonyms: ["adakaro features"],
+        related_terms: ["School Management"],
+        priority: "normal",
+      },
+      metadataBaseline: { question: "What can Adakaro do?", answer: identityEntry.answer },
+      allEntries,
+    });
+
+    const depCheck = readiness.checks.find((c) => c.id === "dependency-analysis");
+    assert.equal(depCheck?.passed, true, depCheck?.hint);
+  });
 });

@@ -30,6 +30,16 @@ export function compareRetrievalPriority(
   const scoreDiff = b.score - a.score;
   if (Math.abs(scoreDiff) > 0.008) return scoreDiff;
 
+  const searchDiff =
+    b.breakdown.searchPhraseScore - a.breakdown.searchPhraseScore;
+  if (Math.abs(searchDiff) > 0.001) return searchDiff;
+
+  const phraseDiff = b.breakdown.phraseOverlap - a.breakdown.phraseOverlap;
+  if (Math.abs(phraseDiff) > 0.001) return phraseDiff;
+
+  const questionDiff = b.breakdown.questionScore - a.breakdown.questionScore;
+  if (Math.abs(questionDiff) > 0.001) return questionDiff;
+
   const primaryDiff =
     Number(b.entry.is_primary !== false) - Number(a.entry.is_primary !== false);
   if (primaryDiff !== 0) return primaryDiff;

@@ -23,11 +23,37 @@ export async function GET(request: NextRequest) {
   const { dataClient } = auth;
 
   const params = request.nextUrl.searchParams;
+  const scope = params.get("scope") ?? "page";
   const page = Math.max(1, Number(params.get("page") ?? "1"));
   const pageSize = Math.min(100, Math.max(10, Number(params.get("pageSize") ?? "25")));
   const search = params.get("search")?.trim() ?? "";
   const status = params.get("status") ?? "active";
   const category = params.get("category")?.trim() ?? "";
+
+  if (scope === "all") {
+    let allQuery = dataClient
+      .from("ai_knowledge_entries")
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .limit(5000);
+
+    if (status !== "all") allQuery = allQuery.eq("status", status);
+    if (category) allQuery = allQuery.eq("category", category);
+
+    const { data, error } = await allQuery;
+    if (error) {
+      console.error("[ai-training/knowledge] all scope:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      rows: (data ?? []).map((row) =>
+        normalizeKnowledgeEntry(row as Record<string, unknown>)
+      ),
+      total: data?.length ?? 0,
+      scope: "all",
+    });
+  }
 
   let query = dataClient
     .from("ai_knowledge_entries")

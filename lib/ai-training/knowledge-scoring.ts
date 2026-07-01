@@ -6,6 +6,7 @@ import {
   conversationContextBoost,
   type PublicSessionContext,
 } from "./public-session-memory";
+import type { RetrievalIntentNormalization } from "./retrieval-intent-normalizer";
 
 /** Common words excluded from token overlap (still allowed inside multi-word phrases). */
 export const SCORING_STOP_WORDS = new Set([
@@ -51,6 +52,7 @@ const PRIORITY_RANK: Record<KnowledgePriority, number> = {
 export interface ScoringContext {
   allEntries?: AIKnowledgeEntry[];
   session?: PublicSessionContext;
+  retrievalIntent?: RetrievalIntentNormalization;
 }
 
 export interface EntryScoreBreakdown {
@@ -301,6 +303,19 @@ export function scoreEntryBreakdown(
 
   const boost = priorityBoost(entry.priority);
   const phraseOverlap = entryPhraseOverlap(query, entry);
+
+  if (context?.retrievalIntent?.canonicalQuestion) {
+    const canonicalNorm = normalizeText(context.retrievalIntent.canonicalQuestion);
+    const entryNorm = normalizeText(entry.question);
+    if (entryNorm === canonicalNorm) {
+      const paraphraseScore = Math.max(
+        scoreCandidate(query, entry.question),
+        ...entry.search_phrases.map((phrase) => scoreCandidate(query, phrase)),
+        ...entry.alternative_wording.map((alt) => scoreCandidate(query, alt))
+      );
+      bestWeighted = Math.max(bestWeighted, Math.min(1, 0.72 + paraphraseScore * 0.28));
+    }
+  }
 
   return {
     score: Math.min(1, bestWeighted + boost + ctxBoost),

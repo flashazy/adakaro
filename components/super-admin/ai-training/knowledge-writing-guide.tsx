@@ -24,8 +24,8 @@ import {
   type KnowledgeWritingDraft,
 } from "@/lib/ai-training/knowledge-writing-standard";
 import type { EnterpriseReadinessResult } from "@/lib/ai-training/knowledge-authoring";
-import { collectValidationIssues } from "@/lib/ai-training/collect-validation-issues";
-import type { ValidationIssue } from "@/lib/ai-training/knowledge-validation-locations";
+import { collectValidationIssues, groupValidationIssues } from "@/lib/ai-training/collect-validation-issues";
+import type { GroupedValidationIssue, ValidationIssue } from "@/lib/ai-training/knowledge-validation-locations";
 import { cn } from "@/lib/utils";
 
 function LocationBreadcrumb({ issue }: { issue: ValidationIssue }) {
@@ -49,7 +49,7 @@ function LocationBreadcrumb({ issue }: { issue: ValidationIssue }) {
 }
 
 function IssueCard({
-  issue,
+  group,
   index,
   isActive,
   onJump,
@@ -57,7 +57,7 @@ function IssueCard({
   onEdit,
   onIgnore,
 }: {
-  issue: ValidationIssue;
+  group: GroupedValidationIssue;
   index: number;
   isActive: boolean;
   onJump?: () => void;
@@ -65,6 +65,9 @@ function IssueCard({
   onEdit?: () => void;
   onIgnore?: () => void;
 }) {
+  const primary = group.issues[0];
+  if (!primary) return null;
+
   return (
     <article
       className={cn(
@@ -76,28 +79,34 @@ function IssueCard({
     >
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
         Issue #{index + 1}
+        {group.count > 1 ? ` · ${group.count} items` : ""}
       </p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">{issue.ruleLabel}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-900">{group.ruleLabel}</p>
+      <p className="mt-1 text-[11px] text-slate-600">{group.summary}</p>
 
-      <LocationBreadcrumb issue={issue} />
+      <LocationBreadcrumb issue={primary} />
 
       <div className="mt-3 space-y-2">
         <div>
           <p className="font-semibold text-slate-700">Current</p>
           <p className="mt-0.5 rounded-md bg-slate-50 px-2 py-1.5 italic text-slate-800">
-            {issue.original || "—"}
+            {group.examples[0] ?? primary.original ?? "—"}
           </p>
+          {group.examples.length > 1 ? (
+            <ul className="mt-1 space-y-0.5 text-[10px] text-slate-500">
+              {group.examples.slice(1).map((example) => (
+                <li key={example}>• {example}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
-        {issue.suggestion ? (
+        {primary.suggestion ? (
           <div>
             <p className="font-semibold text-emerald-800">Suggested</p>
             <p className="mt-0.5 rounded-md bg-emerald-50/80 px-2 py-1.5 text-emerald-900">
-              {issue.suggestion}
+              {primary.suggestion}
             </p>
           </div>
-        ) : null}
-        {issue.reason && issue.reason !== issue.suggestion ? (
-          <p className="text-[10px] text-slate-500">{issue.reason}</p>
         ) : null}
       </div>
 
@@ -108,7 +117,7 @@ function IssueCard({
             Jump to sentence
           </button>
         ) : null}
-        {onReplace && issue.fixable && issue.suggestion ? (
+        {onReplace && group.fixable && primary.suggestion ? (
           <button type="button" className={saBtnPrimarySm} onClick={onReplace}>
             <Wand2 className="mr-1 h-3 w-3" />
             Accept
@@ -175,6 +184,7 @@ export function KnowledgeWritingChecklist({
     [draft, readiness]
   );
   const issues = issuesProp ?? fallbackIssues;
+  const groupedIssues = useMemo(() => groupValidationIssues(issues), [issues]);
   const activeIssueIndex = activeIssueIndexProp ?? localIssueIndex;
   const onActiveIssueChange = onActiveIssueChangeProp ?? setLocalIssueIndex;
 
@@ -182,25 +192,25 @@ export function KnowledgeWritingChecklist({
   const passedChecks =
     readiness?.checks.filter((c) => c.passed).length ??
     validation.checklist.filter((c) => c.passed).length;
-  const issueCount = issues.length;
-  const fixedCount = Math.max(0, totalChecks - passedChecks - issueCount + (readiness ? 0 : 0));
+  const issueCount = groupedIssues.length;
 
-  const activeIssue = issues[activeIssueIndex] ?? null;
+  const activeGroup = groupedIssues[activeIssueIndex] ?? null;
+  const activeIssue = activeGroup?.issues[0] ?? null;
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (!event.altKey || issues.length === 0) return;
+      if (!event.altKey || groupedIssues.length === 0) return;
       if (event.key === "ArrowUp") {
         event.preventDefault();
         onActiveIssueChange(Math.max(0, activeIssueIndex - 1));
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
-        onActiveIssueChange(Math.min(issues.length - 1, activeIssueIndex + 1));
+        onActiveIssueChange(Math.min(groupedIssues.length - 1, activeIssueIndex + 1));
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [issues.length, activeIssueIndex, onActiveIssueChange]);
+  }, [groupedIssues.length, activeIssueIndex, onActiveIssueChange]);
 
   const ready = readiness?.ready ?? validation.passed;
 
@@ -252,7 +262,7 @@ export function KnowledgeWritingChecklist({
                 </>
               )}
             </p>
-            {issues.length > 1 ? (
+            {groupedIssues.length > 1 ? (
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -267,7 +277,7 @@ export function KnowledgeWritingChecklist({
                 <button
                   type="button"
                   className={saBtnSecondarySm}
-                  disabled={activeIssueIndex >= issues.length - 1}
+                  disabled={activeIssueIndex >= groupedIssues.length - 1}
                   onClick={() => onActiveIssueChange(activeIssueIndex + 1)}
                   title="Next issue (Alt+↓)"
                 >
@@ -278,38 +288,50 @@ export function KnowledgeWritingChecklist({
             ) : null}
           </div>
 
-          {issues.length > 0 ? (
+          {groupedIssues.length > 0 ? (
             <div className="space-y-3">
-              {activeIssue ? (
+              {activeGroup && activeIssue ? (
                 <IssueCard
-                  issue={activeIssue}
+                  group={activeGroup}
                   index={activeIssueIndex}
                   isActive
                   onJump={onJumpToIssue ? () => onJumpToIssue(activeIssue) : undefined}
                   onReplace={
                     onReplaceIssue && activeIssue.fixable
-                      ? () => onReplaceIssue(activeIssue)
+                      ? () => {
+                          for (const item of activeGroup.issues.filter((i) => i.fixable)) {
+                            onReplaceIssue(item);
+                          }
+                        }
                       : undefined
                   }
                   onEdit={onEditIssue ? () => onEditIssue(activeIssue) : undefined}
-                  onIgnore={onIgnoreIssue ? () => onIgnoreIssue(activeIssue) : undefined}
+                  onIgnore={
+                    onIgnoreIssue
+                      ? () => {
+                          for (const item of activeGroup.issues) {
+                            onIgnoreIssue(item);
+                          }
+                        }
+                      : undefined
+                  }
                 />
               ) : null}
 
-              {issues.length > 1 ? (
+              {groupedIssues.length > 1 ? (
                 <ul className="space-y-1.5">
-                  {issues.map((issue, idx) =>
+                  {groupedIssues.map((group, idx) =>
                     idx === activeIssueIndex ? null : (
-                      <li key={issue.id}>
+                      <li key={group.id}>
                         <button
                           type="button"
                           className="flex w-full items-center justify-between rounded-md border border-slate-100 bg-white px-2.5 py-1.5 text-left text-[11px] hover:border-indigo-200 hover:bg-indigo-50/30"
                           onClick={() => onActiveIssueChange(idx)}
                         >
                           <span className="font-medium text-slate-800">
-                            {issue.ruleLabel}
+                            {group.ruleLabel}
                             <span className="ml-1.5 font-normal text-slate-500">
-                              — {issue.location.field}
+                              — {group.summary}
                             </span>
                           </span>
                           <ChevronRight className="h-3 w-3 text-slate-400" />
@@ -379,9 +401,9 @@ export function KnowledgeWritingChecklist({
             ) : null}
           </div>
 
-          {issues.length > 0 ? (
+          {groupedIssues.length > 0 ? (
             <p className="text-[10px] text-slate-400">
-              Tip: Use Alt+↑ and Alt+↓ to cycle through issues.
+              Tip: Use Alt+↑ and Alt+↓ to cycle through grouped issues.
             </p>
           ) : null}
         </div>

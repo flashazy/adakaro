@@ -30,7 +30,27 @@ function isActiveEntry(entry: AIKnowledgeEntry, excludeId?: string): boolean {
   return entry.status === "active" && !entry.merged_into_id && entry.id !== excludeId;
 }
 
-/** Fast exact / substring lookup (legacy behaviour, kept as first pass). */
+function entryMatchesQuestionText(entry: AIKnowledgeEntry, norm: string): boolean {
+  if (normalizeText(entry.question) === norm) return true;
+  if (entry.normalized_question && normalizeText(entry.normalized_question) === norm) return true;
+
+  const entryNorm = normalizeText(entry.question);
+  if (entryNorm.includes(norm.slice(0, 24)) || norm.includes(entryNorm.slice(0, 24))) {
+    return true;
+  }
+
+  for (const phrase of [
+    ...entry.search_phrases,
+    ...entry.alternative_wording,
+    ...entry.synonyms,
+  ]) {
+    if (normalizeText(phrase) === norm) return true;
+  }
+
+  return false;
+}
+
+/** Fast exact / metadata / substring lookup (first pass). */
 export function findEntryByExactQuestion(
   question: string,
   entries: AIKnowledgeEntry[],
@@ -39,11 +59,7 @@ export function findEntryByExactQuestion(
   const norm = normalizeText(question);
   return (
     entries.find(
-      (e) =>
-        isActiveEntry(e, excludeId) &&
-        (normalizeText(e.question) === norm ||
-          normalizeText(e.question).includes(norm.slice(0, 24)) ||
-          norm.includes(normalizeText(e.question).slice(0, 24)))
+      (e) => isActiveEntry(e, excludeId) && entryMatchesQuestionText(e, norm)
     ) ?? null
   );
 }
